@@ -3,6 +3,27 @@
 #include "Imports.h"
 
 
+struct DeletionQueue
+{
+	std::deque<std::function<void()>> deletors;
+
+	void pushFunction(std::function<void()>&& function)
+	{
+		deletors.push_back(function);
+	}
+
+	void flush()
+	{
+		// Call deletor lambdas in reverse order
+		for (auto it = deletors.rbegin(); it != deletors.rend(); it++)
+		{
+			(*it)();
+		}
+
+		deletors.clear();
+	}
+};
+
 class VulkanEngine
 {
 public:
@@ -37,6 +58,8 @@ public:
 
 	VkPipelineLayout _trianglePipelineLayout;
 	VkPipeline _trianglePipeline;
+
+	DeletionQueue _mainDeletionQueue;
 
 	void init();
 	void run();

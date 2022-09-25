@@ -18,6 +18,8 @@
 	} while (0)
 
 
+constexpr uint64_t TIMEOUT_1_SEC = 1000000000;
+
 void VulkanEngine::init()
 {
 	SDL_Init(SDL_INIT_VIDEO);
@@ -70,8 +72,6 @@ void VulkanEngine::run()
 
 void VulkanEngine::render()
 {
-	constexpr uint64_t TIMEOUT_1_SEC = 1000000000;
-
 	// Wait until GPU finishes rendering the previous frame
 	VK_CHECK(vkWaitForFences(_device, 1, &_renderFence, true, TIMEOUT_1_SEC));
 	VK_CHECK(vkResetFences(_device, 1, &_renderFence));
@@ -178,21 +178,14 @@ void VulkanEngine::cleanup()
 {
 	if (_isInitialized)
 	{
-		vkDestroyCommandPool(_device, _commandPool, nullptr);
+		// Wait until the GPU is finished before executing cleanup
+		vkWaitForFences(_device, 1, &_renderFence, true, TIMEOUT_1_SEC);
 
-		vkDestroySwapchainKHR(_device, _swapchain, nullptr);
+		_mainDeletionQueue.flush();
 
-		vkDestroyRenderPass(_device, _renderPass, nullptr);
-
-		for (size_t i = 0; i < _framebuffers.size(); i++)
-		{
-			vkDestroyFramebuffer(_device, _framebuffers[i], nullptr);
-			vkDestroyImageView(_device, _swapchainImageViews[i], nullptr);
-		}
-
-		vkDestroyDevice(_device, nullptr);
 		vkDestroySurfaceKHR(_instance, _surface, nullptr);
 		vkb::destroy_debug_utils_messenger(_instance, _debugMessenger);
+		vkDestroyDevice(_device, nullptr);
 		vkDestroyInstance(_instance, nullptr);
 
 		SDL_DestroyWindow(_window);
@@ -255,17 +248,27 @@ void VulkanEngine::initSwapchain()
 	_swapchainImages = vkbSwapchain.get_images().value();
 	_swapchainImageViews = vkbSwapchain.get_image_views().value();
 	_swapchainImageFormat = vkbSwapchain.image_format;
+
+	// Add destroy command for cleanup
+	_mainDeletionQueue.pushFunction([=]() {
+		vkDestroySwapchainKHR(_device, _swapchain, nullptr);
+		});
 }
 
 void VulkanEngine::initCommands()
 {
-	//
+	// Create command pool
 	VkCommandPoolCreateInfo commandPoolInfo = vkinit::commandPoolCreateInfo(_graphicsQueueFamily, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
 	VK_CHECK(vkCreateCommandPool(_device, &commandPoolInfo, nullptr, &_commandPool));
 
-	//
+	// Create command buffer
 	VkCommandBufferAllocateInfo cmdAllocInfo = vkinit::commandBufferAllocateInfo(_commandPool, 1);
 	VK_CHECK(vkAllocateCommandBuffers(_device, &cmdAllocInfo, &_mainCommandBuffer));
+
+	// Add destroy command for cleanup
+	_mainDeletionQueue.pushFunction([=]() {
+		vkDestroyCommandPool(_device, _commandPool, nullptr);
+		});
 }
 
 void VulkanEngine::initDefaultRenderpass()
@@ -304,6 +307,11 @@ void VulkanEngine::initDefaultRenderpass()
 	renderPassInfo.pSubpasses = &subpass;
 
 	VK_CHECK(vkCreateRenderPass(_device, &renderPassInfo, nullptr, &_renderPass));
+
+	// Add destroy command for cleanup
+	_mainDeletionQueue.pushFunction([=]() {
+		vkDestroyRenderPass(_device, _renderPass, nullptr);
+		});
 }
 
 void VulkanEngine::initFramebuffers()
@@ -325,6 +333,12 @@ void VulkanEngine::initFramebuffers()
 	{
 		fbInfo.pAttachments = &_swapchainImageViews[i];
 		VK_CHECK(vkCreateFramebuffer(_device, &fbInfo, nullptr, &_framebuffers[i]));
+
+	// Add destroy command for cleanup	
+	_mainDeletionQueue.pushFunction([=]() {
+			vkDestroyFramebuffer(_device, _framebuffers[i], nullptr);
+			vkDestroyImageView(_device, _swapchainImageViews[i], nullptr);
+			});
 	}
 }
 
@@ -340,6 +354,11 @@ void VulkanEngine::initSyncStructures()
 
 	VK_CHECK(vkCreateFence(_device, &fenceCreateInfo, nullptr, &_renderFence));
 
+	// Add destroy command for cleanup
+	_mainDeletionQueue.pushFunction([=]() {
+		vkDestroyFence(_device, _renderFence, nullptr);
+		});
+
 	//
 	// Create Semaphores
 	//
@@ -350,6 +369,12 @@ void VulkanEngine::initSyncStructures()
 
 	VK_CHECK(vkCreateSemaphore(_device, &semaphoreCreateInfo, nullptr, &_presentSemaphore));
 	VK_CHECK(vkCreateSemaphore(_device, &semaphoreCreateInfo, nullptr, &_renderSemaphore));
+
+	// Add destroy command for cleanup
+	_mainDeletionQueue.pushFunction([=]() {
+		vkDestroySemaphore(_device, _presentSemaphore, nullptr);
+		vkDestroySemaphore(_device, _renderSemaphore, nullptr);
+		});
 }
 
 void VulkanEngine::initPipelines()
@@ -407,6 +432,16 @@ void VulkanEngine::initPipelines()
 	pipelineBuilder._pipelineLayout = _trianglePipelineLayout;
 
 	_trianglePipeline = pipelineBuilder.buildPipeline(_device, _renderPass);
+
+	// Destroy all shader modules
+	vkDestroyShaderModule(_device, triangleVertShader, nullptr);
+	vkDestroyShaderModule(_device, triangleFragShader, nullptr);
+
+	// Add destroy command for cleanup
+	_mainDeletionQueue.pushFunction([=]() {
+		vkDestroyPipeline(_device, _trianglePipeline, nullptr);
+		vkDestroyPipelineLayout(_device, _trianglePipelineLayout, nullptr);
+		});
 }
 
 bool VulkanEngine::loadShaderModule(const char* filePath, VkShaderModule* outShaderModule)
