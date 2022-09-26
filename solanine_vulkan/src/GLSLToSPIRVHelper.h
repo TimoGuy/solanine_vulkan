@@ -282,7 +282,7 @@ namespace glslToSPIRVHelper
             return false;
         }
 
-        writeFileStream.write((const char*)spirvBuffer.data(), spirvBuffer.size());
+        writeFileStream.write((const char*)spirvBuffer.data(), spirvBuffer.size() * sizeof(uint32_t));
         writeFileStream.close();
 
         if (!writeFileStream.good())
