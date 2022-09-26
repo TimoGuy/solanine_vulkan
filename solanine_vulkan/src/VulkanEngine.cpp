@@ -64,6 +64,10 @@ void VulkanEngine::run()
 	//
 	while (isRunning)
 	{
+#ifdef _DEVELOP
+		checkIfResourceUpdatedThenHotswapRoutine();
+#endif
+
 		//
 		// Poll events from the window
 		//
@@ -562,8 +566,9 @@ void VulkanEngine::buildResourceList()
 		if (!path.has_extension())
 			continue;		// @NOTE: only allow resource files if they have an extension!  -Timo
 
-		if (path.extension().compare(".spv") == 0)
-			continue;		// @NOTE: ignore compiled SPIRV shader files
+		if (path.extension().compare(".spv") == 0 ||
+			path.extension().compare(".log") == 0)
+			continue;		// @NOTE: ignore compiled SPIRV shader files, logs
 
 		resourcesToWatch.push_back({
 			path,
@@ -572,7 +577,8 @@ void VulkanEngine::buildResourceList()
 
 		// Compile glsl shader if corresponding .spv file isn't up to date
 		const auto& ext = path.extension();
-		if (ext.compare(".vert") == 0 || ext.compare(".frag") == 0)		// @COPYPASTA
+		if (ext.compare(".vert") == 0 ||
+			ext.compare(".frag") == 0)		// @COPYPASTA
 		{
 			auto spvPath = path;
 			spvPath += ".spv";
@@ -605,9 +611,10 @@ void VulkanEngine::checkIfResourceUpdatedThenHotswapRoutine()
 			continue;
 		}
 
-		// Find the extension
+		// Find the extension and execute appropriate routine
 		const auto& ext = resource.path.extension();
-		if (ext.compare(".vert") == 0 || ext.compare(".frag") == 0)
+		if (ext.compare(".vert") == 0 ||
+			ext.compare(".frag") == 0)
 		{
 			// Compile the shader (GLSL -> SPIRV)
 			glslToSPIRVHelper::compileGLSLShaderToSPIRV(resource.path);

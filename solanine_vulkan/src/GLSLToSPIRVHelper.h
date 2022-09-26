@@ -122,175 +122,32 @@ namespace glslToSPIRVHelper
 
     bool compileGLSLShaderToSPIRV(const std::filesystem::path& sourceCodePath)
     {
-        //
-        // Get the GLSL shader source code
-        //
-        std::ifstream readFileStream(sourceCodePath, std::ios::in);
-        if (!readFileStream.is_open())
-        {
-            std::cerr << "ERROR: shader source file " << sourceCodePath << " could not be read. File does not exist, osoraku" << std::endl;
-            return false;
-        }
+        std::cout << "INFO: compiling shader source file " << sourceCodePath << " to SPIRV..." << std::endl;
 
-        std::string sourceCode;
-        while (!readFileStream.eof())
+        if (!std::filesystem::exists(sourceCodePath))
         {
-            std::string line = "";
-            std::getline(readFileStream, line);
-            sourceCode.append(line + "\n");
-        }
-        readFileStream.close();
-
-        //
-        // Decipher the shader stage via filename
-        //
-        if (!sourceCodePath.has_extension())
-        {
-            std::cerr << "ERROR: shader source file " << sourceCodePath << " does not have an extension!" << std::endl;
-            return false;
-        }
-
-        glslang_stage_t stage;
-
-        const auto& ext = sourceCodePath.extension();
-        if (ext.compare(".vert") == 0)
-            stage = GLSLANG_STAGE_VERTEX;
-        else if (ext.compare(".tesc") == 0)
-            stage = GLSLANG_STAGE_TESSCONTROL;
-        else if (ext.compare(".tese") == 0)
-            stage = GLSLANG_STAGE_TESSEVALUATION;
-        else if (ext.compare(".geom") == 0)
-            stage = GLSLANG_STAGE_GEOMETRY;
-        else if (ext.compare(".frag") == 0)
-            stage = GLSLANG_STAGE_FRAGMENT;
-        else if (ext.compare(".comp") == 0)
-            stage = GLSLANG_STAGE_COMPUTE;
-        else if (ext.compare(".rgen") == 0)
-            stage = GLSLANG_STAGE_RAYGEN;
-        else if (ext.compare(".rint") == 0)
-            stage = GLSLANG_STAGE_INTERSECT;
-        else if (ext.compare(".rahit") == 0)
-            stage = GLSLANG_STAGE_ANYHIT;
-        else if (ext.compare(".rchit") == 0)
-            stage = GLSLANG_STAGE_CLOSESTHIT;
-        else if (ext.compare(".rmiss") == 0)
-            stage = GLSLANG_STAGE_MISS;
-        else if (ext.compare(".rcall") == 0)
-            stage = GLSLANG_STAGE_CALLABLE;
-        else if (ext.compare(".mesh") == 0)
-            stage = GLSLANG_STAGE_MESH;
-        else if (ext.compare(".task") == 0)
-            stage = GLSLANG_STAGE_TASK;
-        else
-        {
-            std::cerr << "ERROR: unknown stage with shader source code path: " << ext << std::endl;
+            std::cerr << "ERROR: shader source file " << sourceCodePath << " does not exist, osoraku" << std::endl;
+            std::cout << "\t\t\tFAILURE" << std::endl;
             return false;
         }
 
         //
-        // Compile the GLSL shader source into SPIRV
+        // Compile the file and save the results in a .spv file and the messages in a .log file
         //
-        const glslang_input_t input = {
-            .language = GLSLANG_SOURCE_GLSL,
-            .stage = stage,
-            .client = GLSLANG_CLIENT_VULKAN,
-            .client_version = GLSLANG_TARGET_VULKAN_1_3,
-            .target_language = GLSLANG_TARGET_SPV,
-            .target_language_version = GLSLANG_TARGET_SPV_1_6,
-            .code = sourceCode.c_str(),
-            .default_version = 110,		// @NOTE: By default we're using opengl 4.5.0 glsl code... don't know what that means for some kind of gl es implementation tho  -Timo
-            .default_profile = GLSLANG_NO_PROFILE,
-            .force_default_version_and_profile = false,
-            .forward_compatible = false,
-            .messages = GLSLANG_MSG_DEFAULT_BIT,
-            .resource = &defaultResourceLimits
-        };
-
-        glslang_initialize_process();
-
-        glslang_shader_t* shader = nullptr;
-        if (!(shader = glslang_shader_create(&input)))
-        {
-            std::cerr << "ERROR: GLSL shader creation failed:" << std::endl
-                << "Log:\t" << glslang_shader_get_info_log(shader) << std::endl
-                << "Debug Log:\t" << glslang_shader_get_info_debug_log(shader) << std::endl;
-            glslang_finalize_process();
-            return false;
-        }
-
-        // Preprocessing
-        if (!glslang_shader_preprocess(shader, &input))
-        {
-            std::cerr << "ERROR: GLSL preprocessing failed:" << std::endl
-                << "Log:\t" << glslang_shader_get_info_log(shader) << std::endl
-                << "Debug Log:\t" << glslang_shader_get_info_debug_log(shader) << std::endl;
-            glslang_finalize_process();
-            return false;
-        }
-
-        // Parse into tree representation in compiler
-        if (!glslang_shader_parse(shader, &input))
-        {
-            std::cerr << "ERROR: GLSL parsing failed:" << std::endl
-                << "Log:\t" << glslang_shader_get_info_log(shader) << std::endl
-                << "Debug Log:\t" << glslang_shader_get_info_debug_log(shader) << std::endl
-                << "Preprocessed Code:\t" << glslang_shader_get_preprocessed_code(shader) << std::endl;
-            glslang_finalize_process();
-            return false;
-        }
-
-        // Link to program to generate binary code
-        glslang_program_t* program = glslang_program_create();
-        glslang_program_add_shader(program, shader);
-        int messages = GLSLANG_MSG_SPV_RULES_BIT | GLSLANG_MSG_VULKAN_RULES_BIT;
-        if (!glslang_program_link(program, messages))
-        {
-            std::cerr << "ERROR: GLSL linking failed:" << std::endl
-                << "Log:\t" << glslang_shader_get_info_log(shader) << std::endl
-                << "Debug Log:\t" << glslang_shader_get_info_debug_log(shader) << std::endl;
-            glslang_finalize_process();
-            return false;
-        }
-
-        // Generate SPIRV binary code
-        glslang_program_SPIRV_generate(program, stage);
-
-        std::vector<uint32_t> spirvBuffer;
-        spirvBuffer.resize(glslang_program_SPIRV_get_size(program));
-        glslang_program_SPIRV_get(program, spirvBuffer.data());
-
-        // Check for lingering messages and cleanup
-        const char* spirvMessages = glslang_program_SPIRV_get_messages(program);
-        if (spirvMessages)
-            std::cout << "Messages while generating SPIRV:" << std::endl << spirvMessages << std::endl;
-
-        glslang_program_delete(program);
-        glslang_shader_delete(shader);
-
-        glslang_finalize_process();
+        const static std::string compilerPath = "C:/VulkanSDK/1.3.224.1/Bin/glslc.exe";
+        auto spvPath = sourceCodePath;  spvPath += ".spv";
+        int compilerBit = system((compilerPath + " " + sourceCodePath.string() + " -o " + spvPath.string()).c_str());  // @NOTE: errors and output get routed to the console anyways! Yay!
 
         //
-        // Write the generated binary to .spv file
+        // Read the .log file if there was an error
         //
-        auto spvPath = sourceCodePath;
-        spvPath += ".spv";
-
-        std::ofstream writeFileStream(spvPath, std::ios::out | std::ios::binary);
-        if (!writeFileStream)
+        if (compilerBit != 0)
         {
-            std::cerr << "ERROR: cannot open file " << spvPath << " for writing!" << std::endl;
+            std::cout << "\t\t\tFAILURE" << std::endl;
             return false;
         }
 
-        writeFileStream.write((const char*)spirvBuffer.data(), spirvBuffer.size() * sizeof(uint32_t));
-        writeFileStream.close();
-
-        if (!writeFileStream.good())
-        {
-            std::cerr << "ERROR: an error occurred when writing to file " << spvPath << std::endl;
-            return false;
-        }
-
+        std::cout << "\t\t\tSUCCESS" << std::endl;
         return true;
     }
 }
