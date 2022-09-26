@@ -13,33 +13,59 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="Shader Files">
+      <UniqueIdentifier>{d9151bbb-6ec8-4c3d-9889-50243c1045e1}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="Main.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="VulkanEngine.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="VkBootstrap.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="VkInitializers.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
+    <None Include="shader\triangle.vert">
+      <Filter>Shader Files</Filter>
+    </None>
+    <None Include="shader\mesh.frag">
+      <Filter>Shader Files</Filter>
+    </None>
+    <None Include="shader\mesh.vert">
+      <Filter>Shader Files</Filter>
+    </None>
+    <None Include="shader\triangle.frag">
+      <Filter>Shader Files</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="VulkanEngine.h">
+    <ClInclude Include="src\Imports.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Imports.h">
+    <ClInclude Include="src\VkBootstrap.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="VkBootstrap.h">
+    <ClInclude Include="src\VkInitializers.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="VkInitializers.h">
+    <ClInclude Include="src\VkMesh.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\VulkanEngine.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\GLSLToSPIRVHelper.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\Main.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\VkBootstrap.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\VkInitializers.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\VkMesh.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\VulkanEngine.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>
