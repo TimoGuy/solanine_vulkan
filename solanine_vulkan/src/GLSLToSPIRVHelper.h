@@ -6,8 +6,7 @@
 #include <iostream>
 #include <fstream>
 #include <filesystem>
-#include <glslang/Include/glslang_c_interface.h>
-#include <glslang/Include/ResourceLimits.h>
+
 
 namespace glslToSPIRVHelper
 {

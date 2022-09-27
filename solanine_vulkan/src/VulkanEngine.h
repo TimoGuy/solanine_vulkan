@@ -4,6 +4,12 @@
 #include "VkMesh.h"
 
 
+struct MeshPushConstants
+{
+	glm::vec4 data;
+	glm::mat4 renderMatrix;
+};
+
 struct DeletionQueue
 {
 	std::deque<std::function<void()>> deletors;
@@ -63,6 +69,7 @@ public:
 	VkPipeline _trianglePipeline;
 
 	VkPipeline _meshPipeline;
+	VkPipelineLayout _meshPipelineLayout;
 	Mesh _triangleMesh;
 
 	// VMA Lib Allocator
