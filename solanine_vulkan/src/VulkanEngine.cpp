@@ -134,8 +134,11 @@ void VulkanEngine::render()
 	//
 	// Renderpass
 	//
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _trianglePipeline);
-	vkCmdDraw(cmd, 3, 1, 0, 0);
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _meshPipeline);
+
+	VkDeviceSize offset = 0;
+	vkCmdBindVertexBuffers(cmd, 0, 1, &_triangleMesh._vertexBuffer._buffer, &offset);
+	vkCmdDraw(cmd, _triangleMesh._vertices.size(), 1, 0, 0);
 
 	//
 	// End Renderpass
@@ -460,15 +463,50 @@ void VulkanEngine::initPipelines()
 
 	_trianglePipeline = pipelineBuilder.buildPipeline(_device, _renderPass);
 
-	// Destroy all shader modules
+	//
+	// Mesh Pipeline
+	//
+	VertexInputDescription vertexDescription = Vertex::getVertexDescription();
+
+	pipelineBuilder._vertexInputInfo.pVertexAttributeDescriptions = vertexDescription.attributes.data();
+	pipelineBuilder._vertexInputInfo.vertexAttributeDescriptionCount = vertexDescription.attributes.size();
+	pipelineBuilder._vertexInputInfo.pVertexBindingDescriptions = vertexDescription.bindings.data();
+	pipelineBuilder._vertexInputInfo.vertexBindingDescriptionCount= vertexDescription.bindings.size();
+
+	pipelineBuilder._shaderStages.clear();
+
+	VkShaderModule meshVertShader;
+	if (!loadShaderModule("shader/mesh.vert.spv", &meshVertShader))
+	{
+		std::cout << "ERROR: building mesh vert shader" << std::endl;
+	}
+	else
+	{
+		std::cout << "Mesh vert shader SUCCESS" << std::endl;
+	}
+
+	pipelineBuilder._shaderStages.push_back(
+		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, meshVertShader));
+	pipelineBuilder._shaderStages.push_back(
+		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, triangleFragShader));
+
+	_meshPipeline = pipelineBuilder.buildPipeline(_device, _renderPass);
+
+	//
+	// Cleanup
+	//
 	vkDestroyShaderModule(_device, triangleVertShader, nullptr);
 	vkDestroyShaderModule(_device, triangleFragShader, nullptr);
+	vkDestroyShaderModule(_device, meshVertShader, nullptr);
 
 	// Add destroy command for cleanup
 	_mainDeletionQueue.pushFunction([=]() {
 		vkDestroyPipeline(_device, _trianglePipeline, nullptr);
+		vkDestroyPipeline(_device, _meshPipeline, nullptr);
+
 		vkDestroyPipelineLayout(_device, _trianglePipelineLayout, nullptr);
 		});
+	
 }
 
 bool VulkanEngine::loadShaderModule(const char* filePath, VkShaderModule* outShaderModule)
