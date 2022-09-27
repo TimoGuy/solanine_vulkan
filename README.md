@@ -1,5 +1,7 @@
 # Solanine Vulkan
 
+*Due to inability to play the game [Solanine](https://github.com/TimoGuy/DemoEngine) on Steam Deck, as well as the frustration and shottiness of OpenGL, a rewrite and restructuring into Vulkan for the rendering became desirable. Thus, this repository exists.*
+
 ## Build Guide
 
 > NOTE: this repository and guide is currently only compatible with Windows and Visual Studio 2022
