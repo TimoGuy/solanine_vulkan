@@ -39,15 +39,16 @@ void VulkanEngine::init()
 		window_flags
 	);
 
+#ifdef _DEVELOP
+	buildResourceList();
+#endif
+
 	initVulkan();
 	initSwapchain();
 	initCommands();
 	initDefaultRenderpass();
 	initFramebuffers();
 	initSyncStructures();
-#ifdef _DEVELOP
-	buildResourceList();
-#endif
 	initPipelines();
 	loadMeshes();
 
@@ -116,6 +117,11 @@ void VulkanEngine::render()
 	float flash = abs(sin(_frameNumber / 120.f));
 	clearValue.color = { { 0.0f, 0.0f, flash, 1.0f } };
 
+	VkClearValue depthClear;
+	depthClear.depthStencil.depth = 1.0f;
+
+	VkClearValue clearValues[] = { clearValue, depthClear };
+
 	VkRenderPassBeginInfo renderpassInfo = {};
 	renderpassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
 	renderpassInfo.pNext = nullptr;
@@ -126,8 +132,8 @@ void VulkanEngine::render()
 	renderpassInfo.renderArea.extent = _windowExtent;
 	renderpassInfo.framebuffer = _framebuffers[swapchainImageIndex];		// @NOTE: Framebuffer of the index the swapchain gave
 
-	renderpassInfo.clearValueCount = 1;
-	renderpassInfo.pClearValues = &clearValue;
+	renderpassInfo.clearValueCount = 2;
+	renderpassInfo.pClearValues = &clearValues[0];
 
 	vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
@@ -297,6 +303,32 @@ void VulkanEngine::initSwapchain()
 	_mainDeletionQueue.pushFunction([=]() {
 		vkDestroySwapchainKHR(_device, _swapchain, nullptr);
 		});
+
+	//
+	// Create depth buffer
+	//
+	VkExtent3D depthImgExtent = {
+		.width = _windowExtent.width,
+		.height = _windowExtent.height,
+		.depth = 1
+	};
+
+	_depthFormat = VK_FORMAT_D32_SFLOAT;
+	VkImageCreateInfo depthImgInfo = vkinit::imageCreateInfo(_depthFormat, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, depthImgExtent);
+	VmaAllocationCreateInfo depthImgAllocInfo = {
+		.usage = VMA_MEMORY_USAGE_GPU_ONLY,
+		.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
+	};
+	vmaCreateImage(_allocator, &depthImgInfo, &depthImgAllocInfo, &_depthImage._image, &_depthImage._allocation, nullptr);
+
+	VkImageViewCreateInfo depthViewInfo = vkinit::imageviewCreateInfo(_depthFormat, _depthImage._image, VK_IMAGE_ASPECT_DEPTH_BIT);
+	VK_CHECK(vkCreateImageView(_device, &depthViewInfo, nullptr, &_depthImageView));
+
+	// Add destroy command
+	_mainDeletionQueue.pushFunction([=]() {
+		vkDestroyImageView(_device, _depthImageView, nullptr);
+		vmaDestroyImage(_allocator, _depthImage._image, _depthImage._allocation);
+		});
 }
 
 void VulkanEngine::initCommands()
@@ -317,38 +349,87 @@ void VulkanEngine::initCommands()
 
 void VulkanEngine::initDefaultRenderpass()
 {
-	VkAttachmentDescription colorAttachment = {};
-	colorAttachment.format = _swapchainImageFormat;
-	colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
-	colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-	colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-	colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-	colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	//
+	// Color Attachment
+	//
+	VkAttachmentDescription colorAttachment = {
+		.format = _swapchainImageFormat,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+		.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+		.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR		// @NOTE: After this renderpass, the image needs to be ready for the display
+	};
+	VkAttachmentReference colorAttachmentRef = {
+		.attachment = 0,
+		.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+	};
 
-	colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;		// @NOTE: After this renderpass, the image needs to be ready for the display
+	//
+	// Depth attachment
+	//
+	VkAttachmentDescription depthAttachment = {
+		.flags = 0,
+		.format = _depthFormat,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+		.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+		.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+	};
+	VkAttachmentReference depthAttachmentRef = {
+		.attachment = 1,
+		.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+	};
 
 	//
 	// Define the subpass to render to the default renderpass
 	//
-	VkAttachmentReference colorAttachmentRef = {};
-	colorAttachmentRef.attachment = 0;
-	colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	VkSubpassDescription subpass = {
+		.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+		.colorAttachmentCount = 1,
+		.pColorAttachments = &colorAttachmentRef,
+		.pDepthStencilAttachment = &depthAttachmentRef
+	};
 
-	VkSubpassDescription subpass = {};
-	subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-	subpass.colorAttachmentCount = 1;
-	subpass.pColorAttachments = &colorAttachmentRef;
+	//
+	// GPU work ordering dependencies
+	//
+	VkSubpassDependency colorDependency = {
+		.srcSubpass = VK_SUBPASS_EXTERNAL,
+		.dstSubpass = 0,
+		.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.srcAccessMask = 0,
+		.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+	};
+	VkSubpassDependency depthDependency = {
+		.srcSubpass = VK_SUBPASS_EXTERNAL,
+		.dstSubpass = 0,
+		.srcStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+		.dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+		.srcAccessMask = 0,
+		.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT
+	};
 
 	//
 	// Create the renderpass for the subpass
 	//
-	VkRenderPassCreateInfo renderPassInfo = {};
-	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-	renderPassInfo.attachmentCount = 1;
-	renderPassInfo.pAttachments = &colorAttachment;
-	renderPassInfo.subpassCount = 1;
-	renderPassInfo.pSubpasses = &subpass;
+	VkSubpassDependency dependencies[] = {colorDependency, depthDependency};
+	VkAttachmentDescription attachments[] = { colorAttachment, depthAttachment };
+	VkRenderPassCreateInfo renderPassInfo = {
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+		.attachmentCount = 2,
+		.pAttachments = &attachments[0],
+		.subpassCount = 1,
+		.pSubpasses = &subpass,
+		.dependencyCount = 2,
+		.pDependencies = &dependencies[0]
+	};
 
 	VK_CHECK(vkCreateRenderPass(_device, &renderPassInfo, nullptr, &_renderPass));
 
@@ -365,7 +446,7 @@ void VulkanEngine::initFramebuffers()
 	fbInfo.pNext = nullptr;
 
 	fbInfo.renderPass = _renderPass;
-	fbInfo.attachmentCount = 1;
+	fbInfo.attachmentCount = 2;
 	fbInfo.width = _windowExtent.width;
 	fbInfo.height = _windowExtent.height;
 	fbInfo.layers = 1;
@@ -375,11 +456,16 @@ void VulkanEngine::initFramebuffers()
 
 	for (size_t i = 0; i < swapchainImagecount; i++)
 	{
-		fbInfo.pAttachments = &_swapchainImageViews[i];
+		VkImageView attachments[] = {
+			_swapchainImageViews[i],
+			_depthImageView
+		};
+		fbInfo.pAttachments = &attachments[0];
+
 		VK_CHECK(vkCreateFramebuffer(_device, &fbInfo, nullptr, &_framebuffers[i]));
 
-	// Add destroy command for cleanup	
-	_mainDeletionQueue.pushFunction([=]() {
+		// Add destroy command for cleanup
+		_mainDeletionQueue.pushFunction([=]() {
 			vkDestroyFramebuffer(_device, _framebuffers[i], nullptr);
 			vkDestroyImageView(_device, _swapchainImageViews[i], nullptr);
 			});
@@ -474,6 +560,7 @@ void VulkanEngine::initPipelines()
 	pipelineBuilder._multisampling = vkinit::multisamplingStateCreateInfo();
 	pipelineBuilder._colorBlendAttachment = vkinit::colorBlendAttachmentState();
 	pipelineBuilder._pipelineLayout = _trianglePipelineLayout;
+	pipelineBuilder._depthStencil = vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL);
 
 	_trianglePipeline = pipelineBuilder.buildPipeline(_device, _renderPass);
 
@@ -731,6 +818,7 @@ VkPipeline PipelineBuilder::buildPipeline(VkDevice device, VkRenderPass pass)
 	pipelineInfo.renderPass = pass;
 	pipelineInfo.subpass = 0;
 	pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
+	pipelineInfo.pDepthStencilState = &_depthStencil;
 
 	//
 	// Check for errors while creating gfx pipelines

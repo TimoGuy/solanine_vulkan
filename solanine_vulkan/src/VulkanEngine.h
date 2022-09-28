@@ -72,6 +72,11 @@ public:
 	VkPipelineLayout _meshPipelineLayout;
 	Mesh _triangleMesh;
 
+	// Depth Buffer
+	VkImageView _depthImageView;
+	AllocatedImage _depthImage;
+	VkFormat _depthFormat;
+
 	// VMA Lib Allocator
 	VmaAllocator _allocator;
 
@@ -120,6 +125,7 @@ public:
 	VkPipelineColorBlendAttachmentState _colorBlendAttachment;
 	VkPipelineMultisampleStateCreateInfo _multisampling;
 	VkPipelineLayout _pipelineLayout;
+	VkPipelineDepthStencilStateCreateInfo _depthStencil;
 
 	VkPipeline buildPipeline(VkDevice device, VkRenderPass pass);
 };

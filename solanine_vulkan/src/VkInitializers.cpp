@@ -115,3 +115,58 @@ VkPipelineLayoutCreateInfo vkinit::pipelineLayoutCreateInfo()
 
 	return info;
 }
+
+VkImageCreateInfo vkinit::imageCreateInfo(VkFormat format, VkImageUsageFlags usageFlags, VkExtent3D extent)
+{
+	VkImageCreateInfo info = {
+		.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+		.pNext = nullptr,
+		.imageType = VK_IMAGE_TYPE_2D,
+		.format = format,
+		.extent = extent,
+		.mipLevels = 1,
+		.arrayLayers = 1,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		.tiling = VK_IMAGE_TILING_OPTIMAL,
+		.usage = usageFlags
+	};
+
+	return info;
+}
+
+VkImageViewCreateInfo vkinit::imageviewCreateInfo(VkFormat format, VkImage image, VkImageAspectFlags aspectFlags)
+{
+	VkImageViewCreateInfo info = {
+		.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+		.pNext = nullptr,
+		.image = image,
+		.viewType = VK_IMAGE_VIEW_TYPE_2D,
+		.format = format,
+		.subresourceRange = {
+			.aspectMask = aspectFlags,
+			.baseMipLevel = 0,
+			.levelCount = 1,
+			.baseArrayLayer = 0,
+			.layerCount = 1
+		}
+	};
+
+	return info;
+}
+
+VkPipelineDepthStencilStateCreateInfo vkinit::depthStencilCreateInfo(bool doDepthTest, bool doDepthWrite, VkCompareOp compareOp)
+{
+	VkPipelineDepthStencilStateCreateInfo info = {
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+		.pNext = nullptr,
+		.depthTestEnable = (doDepthTest ? VK_TRUE : VK_FALSE),
+		.depthWriteEnable = (doDepthWrite ? VK_TRUE : VK_FALSE),
+		.depthCompareOp = (doDepthTest ? compareOp : VK_COMPARE_OP_ALWAYS),
+		.depthBoundsTestEnable = VK_FALSE,
+		.stencilTestEnable = VK_FALSE,
+		.minDepthBounds = 0.0f,
+		.maxDepthBounds = 1.0f,
+	};
+
+	return info;
+}
