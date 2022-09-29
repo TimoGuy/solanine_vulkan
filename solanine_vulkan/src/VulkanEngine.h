@@ -1,4 +1,4 @@
-#pragma once
+#pragma fonce
 
 #include "Imports.h"
 #include "VkMesh.h"
@@ -29,6 +29,19 @@ struct DeletionQueue
 
 		deletors.clear();
 	}
+};
+
+struct Material
+{
+	VkPipeline pipeline;
+	VkPipelineLayout pipelineLayout;
+};
+
+struct RenderObject
+{
+	Mesh* mesh;
+	Material* material;
+	glm::mat4 transformMatrix;
 };
 
 class VulkanEngine
@@ -80,10 +93,22 @@ public:
 	// VMA Lib Allocator
 	VmaAllocator _allocator;
 
+
 	void init();
 	void run();
 	void render();
 	void cleanup();
+
+	//
+	// Render Objects
+	//
+	std::vector<RenderObject> _renderObjects;
+	std::unordered_map<std::string, Material> _materials;
+	std::unordered_map<std::string, Mesh> _meshes;
+
+	Material* createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name);
+	Material* getMaterial(const std::string& name);
+	Mesh* getMesh(const std::string& name);
 
 private:
 	void initVulkan();
@@ -93,11 +118,14 @@ private:
 	void initFramebuffers();
 	void initSyncStructures();
 	void initPipelines();
+	void initScene();
 
 	bool loadShaderModule(const char* filePath, VkShaderModule* outShaderModule);
 
 	void loadMeshes();
 	void uploadMesh(Mesh& mesh);
+
+	void renderRenderObjects(VkCommandBuffer cmd, RenderObject* first, size_t count);
 
 #ifdef _DEVELOP
 	struct ResourceToWatch
