@@ -230,9 +230,11 @@ void VulkanEngine::cleanup()
 
 	if (_isInitialized)
 	{
-		// Wait until the GPU is finished before executing cleanup (check both fences)
+		// Wait until the GPU is finished before executing cleanup (check all fences)
+		VkFence allFences[FRAME_OVERLAP];
 		for (size_t i = 0; i < FRAME_OVERLAP; i++)
-			vkWaitForFences(_device, 1, &_frames[i].renderFence, true, TIMEOUT_1_SEC * 2);
+			allFences[i] = _frames[i].renderFence;
+		vkWaitForFences(_device, FRAME_OVERLAP, allFences, true, TIMEOUT_1_SEC * FRAME_OVERLAP);	// Extra waiting time, anyone?
 
 		_mainDeletionQueue.flush();
 
