@@ -4,6 +4,15 @@
 #include "VkMesh.h"
 
 
+struct FrameData
+{
+	VkSemaphore presentSemaphore, renderSemaphore;
+	VkFence renderFence;
+
+	VkCommandPool commandPool;
+	VkCommandBuffer mainCommandBuffer;
+};
+
 struct MeshPushConstants
 {
 	glm::vec4 data;
@@ -44,6 +53,7 @@ struct RenderObject
 	glm::mat4 transformMatrix;
 };
 
+constexpr unsigned int FRAME_OVERLAP = 2;
 class VulkanEngine
 {
 public:
@@ -69,21 +79,19 @@ public:
 	VkQueue _graphicsQueue;
 	uint32_t _graphicsQueueFamily;
 
-	VkCommandPool _commandPool;
-	VkCommandBuffer _mainCommandBuffer;
-
 	VkRenderPass _renderPass;
 	std::vector<VkFramebuffer> _framebuffers;
 
-	VkSemaphore _presentSemaphore, _renderSemaphore;
-	VkFence _renderFence;
 
+	// @TODO: DELETE @HARDCODED, FROM HERE.....
 	VkPipelineLayout _trianglePipelineLayout;
 	VkPipeline _trianglePipeline;
 
 	VkPipeline _meshPipeline;
 	VkPipelineLayout _meshPipelineLayout;
 	Mesh _triangleMesh;
+	// ...... UP TO HERE
+
 
 	// Depth Buffer
 	VkImageView _depthImageView;
@@ -119,6 +127,9 @@ private:
 	void initSyncStructures();
 	void initPipelines();
 	void initScene();
+
+	FrameData _frames[FRAME_OVERLAP];
+	FrameData& getCurrentFrame();
 
 	bool loadShaderModule(const char* filePath, VkShaderModule* outShaderModule);
 

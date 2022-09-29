@@ -87,27 +87,30 @@ void VulkanEngine::run()
 
 void VulkanEngine::render()
 {
+	const auto& currentFrame = getCurrentFrame();
+
 	// Wait until GPU finishes rendering the previous frame
-	VK_CHECK(vkWaitForFences(_device, 1, &_renderFence, true, TIMEOUT_1_SEC));
-	VK_CHECK(vkResetFences(_device, 1, &_renderFence));
+	VK_CHECK(vkWaitForFences(_device, 1, &currentFrame.renderFence, true, TIMEOUT_1_SEC));
+	VK_CHECK(vkResetFences(_device, 1, &currentFrame.renderFence));
 
 	// Request image from swapchain
 	uint32_t swapchainImageIndex;
-	VK_CHECK(vkAcquireNextImageKHR(_device, _swapchain, TIMEOUT_1_SEC, _presentSemaphore, nullptr, &swapchainImageIndex));
+	VK_CHECK(vkAcquireNextImageKHR(_device, _swapchain, TIMEOUT_1_SEC, currentFrame.presentSemaphore, nullptr, &swapchainImageIndex));
 
 	// After commands finished executing, we can safely resume recording commands
-	VK_CHECK(vkResetCommandBuffer(_mainCommandBuffer, 0));
+	VK_CHECK(vkResetCommandBuffer(currentFrame.mainCommandBuffer, 0));
 
 	//
 	// Record commands into command buffer
 	//
-	VkCommandBuffer cmd = _mainCommandBuffer;
+	VkCommandBuffer cmd = currentFrame.mainCommandBuffer;
 
-	VkCommandBufferBeginInfo cmdBeginInfo = {};
-	cmdBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-	cmdBeginInfo.pNext = nullptr;
-	cmdBeginInfo.pInheritanceInfo = nullptr;
-	cmdBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+	VkCommandBufferBeginInfo cmdBeginInfo = {
+		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+		.pNext = nullptr,
+		.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+		.pInheritanceInfo = nullptr,
+	};
 
 	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 
@@ -123,18 +126,23 @@ void VulkanEngine::render()
 
 	VkClearValue clearValues[] = { clearValue, depthClear };
 
-	VkRenderPassBeginInfo renderpassInfo = {};
-	renderpassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-	renderpassInfo.pNext = nullptr;
+	VkRenderPassBeginInfo renderpassInfo = {
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+		.pNext = nullptr,
 
-	renderpassInfo.renderPass = _renderPass;
-	renderpassInfo.renderArea.offset.x = 0;
-	renderpassInfo.renderArea.offset.y = 0;
-	renderpassInfo.renderArea.extent = _windowExtent;
-	renderpassInfo.framebuffer = _framebuffers[swapchainImageIndex];		// @NOTE: Framebuffer of the index the swapchain gave
+		.renderPass = _renderPass,
+		.framebuffer = _framebuffers[swapchainImageIndex],		// @NOTE: Framebuffer of the index the swapchain gave
+		.renderArea = {
+			.offset = {
+				.x = 0,
+				.y = 0,
+			},
+			.extent = _windowExtent,
+		},
 
-	renderpassInfo.clearValueCount = 2;
-	renderpassInfo.pClearValues = &clearValues[0];
+		.clearValueCount = 2,
+		.pClearValues = &clearValues[0],
+	};
 
 	vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
@@ -180,30 +188,31 @@ void VulkanEngine::render()
 	submit.pWaitDstStageMask = &waitStage;
 
 	submit.waitSemaphoreCount = 1;
-	submit.pWaitSemaphores = &_presentSemaphore;
+	submit.pWaitSemaphores = &currentFrame.presentSemaphore;
 
 	submit.signalSemaphoreCount = 1;
-	submit.pSignalSemaphores = &_renderSemaphore;
+	submit.pSignalSemaphores = &currentFrame.renderSemaphore;
 
 	submit.commandBufferCount = 1;
 	submit.pCommandBuffers = &cmd;
 
-	VK_CHECK(vkQueueSubmit(_graphicsQueue, 1, &submit, _renderFence));		// Submit work to gpu
+	VK_CHECK(vkQueueSubmit(_graphicsQueue, 1, &submit, currentFrame.renderFence));		// Submit work to gpu
 
 	//
 	// Submit the rendered frame to the screen
 	//
-	VkPresentInfoKHR presentInfo = {};
-	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-	presentInfo.pNext = nullptr;
+	VkPresentInfoKHR presentInfo = {
+		.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+		.pNext = nullptr,
 
-	presentInfo.swapchainCount = 1;
-	presentInfo.pSwapchains = &_swapchain;
+		.waitSemaphoreCount = 1,
+		.pWaitSemaphores = &currentFrame.renderSemaphore,
 
-	presentInfo.waitSemaphoreCount = 1;
-	presentInfo.pWaitSemaphores = &_renderSemaphore;
+		.swapchainCount = 1,
+		.pSwapchains = &_swapchain,
 
-	presentInfo.pImageIndices = &swapchainImageIndex;
+		.pImageIndices = &swapchainImageIndex,
+	};
 
 	VK_CHECK(vkQueuePresentKHR(_graphicsQueue, &presentInfo));
 
@@ -221,8 +230,9 @@ void VulkanEngine::cleanup()
 
 	if (_isInitialized)
 	{
-		// Wait until the GPU is finished before executing cleanup
-		vkWaitForFences(_device, 1, &_renderFence, true, TIMEOUT_1_SEC);
+		// Wait until the GPU is finished before executing cleanup (check both fences)
+		for (size_t i = 0; i < FRAME_OVERLAP; i++)
+			vkWaitForFences(_device, 1, &_frames[i].renderFence, true, TIMEOUT_1_SEC * 2);
 
 		_mainDeletionQueue.flush();
 
@@ -362,18 +372,22 @@ void VulkanEngine::initSwapchain()
 
 void VulkanEngine::initCommands()
 {
-	// Create command pool
 	VkCommandPoolCreateInfo commandPoolInfo = vkinit::commandPoolCreateInfo(_graphicsQueueFamily, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
-	VK_CHECK(vkCreateCommandPool(_device, &commandPoolInfo, nullptr, &_commandPool));
 
-	// Create command buffer
-	VkCommandBufferAllocateInfo cmdAllocInfo = vkinit::commandBufferAllocateInfo(_commandPool, 1);
-	VK_CHECK(vkAllocateCommandBuffers(_device, &cmdAllocInfo, &_mainCommandBuffer));
+	for (size_t i = 0; i < FRAME_OVERLAP; i++)
+	{
+		// @NOTE: we are creating FRAME_OVERLAP number of command pools (for Doublebuffering etc.)
+		VK_CHECK(vkCreateCommandPool(_device, &commandPoolInfo, nullptr, &_frames[i].commandPool));
 
-	// Add destroy command for cleanup
-	_mainDeletionQueue.pushFunction([=]() {
-		vkDestroyCommandPool(_device, _commandPool, nullptr);
-		});
+		// Create command buffer
+		VkCommandBufferAllocateInfo cmdAllocInfo = vkinit::commandBufferAllocateInfo(_frames[i].commandPool, 1);
+		VK_CHECK(vkAllocateCommandBuffers(_device, &cmdAllocInfo, &_frames[i].mainCommandBuffer));
+
+		// Add destroy command for cleanup
+		_mainDeletionQueue.pushFunction([=]() {
+			vkDestroyCommandPool(_device, _frames[i].commandPool, nullptr);
+			});
+	}
 }
 
 void VulkanEngine::initDefaultRenderpass()
@@ -503,37 +517,35 @@ void VulkanEngine::initFramebuffers()
 
 void VulkanEngine::initSyncStructures()
 {
-	//
-	// Create Fence
-	//
-	VkFenceCreateInfo fenceCreateInfo = {};
-	fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-	fenceCreateInfo.pNext = nullptr;
-	fenceCreateInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+	VkFenceCreateInfo fenceCreateInfo = {
+		.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+		.pNext = nullptr,
+		.flags = VK_FENCE_CREATE_SIGNALED_BIT,
+	};
+	VkSemaphoreCreateInfo semaphoreCreateInfo = {
+		.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+		.pNext = nullptr,
+		.flags = 0,
+	};
 
-	VK_CHECK(vkCreateFence(_device, &fenceCreateInfo, nullptr, &_renderFence));
+	for (size_t i = 0; i < FRAME_OVERLAP; i++)
+	{
+		VK_CHECK(vkCreateFence(_device, &fenceCreateInfo, nullptr, &_frames[i].renderFence));
 
-	// Add destroy command for cleanup
-	_mainDeletionQueue.pushFunction([=]() {
-		vkDestroyFence(_device, _renderFence, nullptr);
-		});
+		// Add destroy command for cleanup
+		_mainDeletionQueue.pushFunction([=]() {
+			vkDestroyFence(_device, _frames[i].renderFence, nullptr);
+			});
 
-	//
-	// Create Semaphores
-	//
-	VkSemaphoreCreateInfo semaphoreCreateInfo = {};
-	semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-	semaphoreCreateInfo.pNext = nullptr;
-	semaphoreCreateInfo.flags = 0;
+		VK_CHECK(vkCreateSemaphore(_device, &semaphoreCreateInfo, nullptr, &_frames[i].presentSemaphore));
+		VK_CHECK(vkCreateSemaphore(_device, &semaphoreCreateInfo, nullptr, &_frames[i].renderSemaphore));
 
-	VK_CHECK(vkCreateSemaphore(_device, &semaphoreCreateInfo, nullptr, &_presentSemaphore));
-	VK_CHECK(vkCreateSemaphore(_device, &semaphoreCreateInfo, nullptr, &_renderSemaphore));
-
-	// Add destroy command for cleanup
-	_mainDeletionQueue.pushFunction([=]() {
-		vkDestroySemaphore(_device, _presentSemaphore, nullptr);
-		vkDestroySemaphore(_device, _renderSemaphore, nullptr);
-		});
+		// Add destroy command for cleanup
+		_mainDeletionQueue.pushFunction([=]() {
+			vkDestroySemaphore(_device, _frames[i].presentSemaphore, nullptr);
+			vkDestroySemaphore(_device, _frames[i].renderSemaphore, nullptr);
+			});
+	}
 }
 
 void VulkanEngine::initPipelines()
@@ -670,6 +682,11 @@ void VulkanEngine::initScene()
 		}
 }
 
+FrameData& VulkanEngine::getCurrentFrame()
+{
+	return _frames[_frameNumber % FRAME_OVERLAP];
+}
+
 bool VulkanEngine::loadShaderModule(const char* filePath, VkShaderModule* outShaderModule)
 {
 	// Open SPIRV file
@@ -779,6 +796,12 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first,
 	for (size_t i = 0; i < count; i++)
 	{
 		RenderObject& object = first[i];
+
+		if (!object.material || !object.mesh)	// @NOTE: Subdue a warning that a possible nullptr could be dereferenced
+		{
+			std::cerr << "ERROR: object material and/or mesh are NULL" << std::endl;
+			continue;
+		}
 
 		if (object.material != lastMaterial)
 		{
