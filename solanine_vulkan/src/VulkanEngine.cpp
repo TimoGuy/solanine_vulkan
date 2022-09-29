@@ -552,14 +552,17 @@ void VulkanEngine::initSyncStructures()
 
 void VulkanEngine::initPipelines()
 {
-	VkShaderModule triangleVertShader;
-	if (!loadShaderModule("shader/triangle.vert.spv", &triangleVertShader))
+	//
+	// Load shader modules
+	//
+	VkShaderModule meshVertShader;
+	if (!loadShaderModule("shader/mesh.vert.spv", &meshVertShader))
 	{
-		std::cout << "ERROR: building triangle vert shader" << std::endl;
+		std::cout << "ERROR: building mesh vert shader" << std::endl;
 	}
 	else
 	{
-		std::cout << "Triangle vert shader SUCCESS" << std::endl;
+		std::cout << "Mesh vert shader SUCCESS" << std::endl;
 	}
 
 	VkShaderModule triangleFragShader;
@@ -573,20 +576,35 @@ void VulkanEngine::initPipelines()
 	}
 
 	//
-	// Triangle Pipeline
+	// Mesh Pipeline
 	//
-	VkPipelineLayoutCreateInfo pipelineLayoutInfo = vkinit::pipelineLayoutCreateInfo();
-	VK_CHECK(vkCreatePipelineLayout(_device, &pipelineLayoutInfo, nullptr, &_trianglePipelineLayout));
+	VkPushConstantRange pushConstant = {
+		.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+		.offset = 0,
+		.size = sizeof(MeshPushConstants)
+	};
+	VkPipelineLayoutCreateInfo meshPipelineLayoutInfo = vkinit::pipelineLayoutCreateInfo();
+	meshPipelineLayoutInfo.pPushConstantRanges = &pushConstant;
+	meshPipelineLayoutInfo.pushConstantRangeCount = 1;
+
+	VkPipelineLayout _meshPipelineLayout;
+	VK_CHECK(vkCreatePipelineLayout(_device, &meshPipelineLayoutInfo, nullptr, &_meshPipelineLayout));
+
+	VertexInputDescription vertexDescription = Vertex::getVertexDescription();
 
 	PipelineBuilder pipelineBuilder;
+	pipelineBuilder._shaderStages.clear();
 	pipelineBuilder._shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, triangleVertShader)
-	);
+		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, meshVertShader));
 	pipelineBuilder._shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, triangleFragShader)
-	);
+		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, triangleFragShader));
 
 	pipelineBuilder._vertexInputInfo = vkinit::vertexInputStateCreateInfo();
+	pipelineBuilder._vertexInputInfo.pVertexAttributeDescriptions = vertexDescription.attributes.data();
+	pipelineBuilder._vertexInputInfo.vertexAttributeDescriptionCount = vertexDescription.attributes.size();
+	pipelineBuilder._vertexInputInfo.pVertexBindingDescriptions = vertexDescription.bindings.data();
+	pipelineBuilder._vertexInputInfo.vertexBindingDescriptionCount= vertexDescription.bindings.size();
+
 	pipelineBuilder._inputAssembly = vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
 
 	pipelineBuilder._viewport.x = 0.0f;
@@ -600,68 +618,23 @@ void VulkanEngine::initPipelines()
 	pipelineBuilder._scissor.extent = _windowExtent;
 
 	pipelineBuilder._rasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL);
-	pipelineBuilder._multisampling = vkinit::multisamplingStateCreateInfo();
 	pipelineBuilder._colorBlendAttachment = vkinit::colorBlendAttachmentState();
-	pipelineBuilder._pipelineLayout = _trianglePipelineLayout;
+	pipelineBuilder._multisampling = vkinit::multisamplingStateCreateInfo();
+	pipelineBuilder._pipelineLayout = _meshPipelineLayout;
 	pipelineBuilder._depthStencil = vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL);
 
-	_trianglePipeline = pipelineBuilder.buildPipeline(_device, _renderPass);
-
-	//
-	// Mesh Pipeline
-	//
-	VkPipelineLayoutCreateInfo meshPipelineLayoutInfo = vkinit::pipelineLayoutCreateInfo();
-	VkPushConstantRange pushConstant = {
-		.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-		.offset = 0,
-		.size = sizeof(MeshPushConstants)
-	};
-	meshPipelineLayoutInfo.pPushConstantRanges = &pushConstant;
-	meshPipelineLayoutInfo.pushConstantRangeCount = 1;
-
-	VK_CHECK(vkCreatePipelineLayout(_device, &meshPipelineLayoutInfo, nullptr, &_meshPipelineLayout));
-
-	VertexInputDescription vertexDescription = Vertex::getVertexDescription();
-
-	pipelineBuilder._vertexInputInfo.pVertexAttributeDescriptions = vertexDescription.attributes.data();
-	pipelineBuilder._vertexInputInfo.vertexAttributeDescriptionCount = vertexDescription.attributes.size();
-	pipelineBuilder._vertexInputInfo.pVertexBindingDescriptions = vertexDescription.bindings.data();
-	pipelineBuilder._vertexInputInfo.vertexBindingDescriptionCount= vertexDescription.bindings.size();
-
-	pipelineBuilder._shaderStages.clear();
-
-	VkShaderModule meshVertShader;
-	if (!loadShaderModule("shader/mesh.vert.spv", &meshVertShader))
-	{
-		std::cout << "ERROR: building mesh vert shader" << std::endl;
-	}
-	else
-	{
-		std::cout << "Mesh vert shader SUCCESS" << std::endl;
-	}
-
-	pipelineBuilder._shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, meshVertShader));
-	pipelineBuilder._shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, triangleFragShader));
-	pipelineBuilder._pipelineLayout = _meshPipelineLayout;
-
-	_meshPipeline = pipelineBuilder.buildPipeline(_device, _renderPass);
+	auto _meshPipeline = pipelineBuilder.buildPipeline(_device, _renderPass);
 	createMaterial(_meshPipeline, _meshPipelineLayout, "defaultMaterial");
 
 	//
 	// Cleanup
 	//
-	vkDestroyShaderModule(_device, triangleVertShader, nullptr);
-	vkDestroyShaderModule(_device, triangleFragShader, nullptr);
 	vkDestroyShaderModule(_device, meshVertShader, nullptr);
+	vkDestroyShaderModule(_device, triangleFragShader, nullptr);
 
 	// Add destroy command for cleanup
 	_mainDeletionQueue.pushFunction([=]() {
-		vkDestroyPipeline(_device, _trianglePipeline, nullptr);
 		vkDestroyPipeline(_device, _meshPipeline, nullptr);
-
-		vkDestroyPipelineLayout(_device, _trianglePipelineLayout, nullptr);
 		vkDestroyPipelineLayout(_device, _meshPipelineLayout, nullptr);
 		});
 	
@@ -728,6 +701,8 @@ bool VulkanEngine::loadShaderModule(const char* filePath, VkShaderModule* outSha
 
 void VulkanEngine::loadMeshes()
 {
+	Mesh _triangleMesh;
+
 	//make the array 3 vertices long
 	_triangleMesh._vertices.resize(3);
 
@@ -743,11 +718,12 @@ void VulkanEngine::loadMeshes()
 
 	//we don't care about the vertex normals
 
-	uploadMesh(_triangleMesh);
+	// Register mesh
+	uploadMeshToGPU(_triangleMesh);
 	_meshes["triangle"] = _triangleMesh;
 }
 
-void VulkanEngine::uploadMesh(Mesh& mesh)
+void VulkanEngine::uploadMeshToGPU(Mesh& mesh)
 {
 	VkBufferCreateInfo bufferInfo = {};
 	bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;

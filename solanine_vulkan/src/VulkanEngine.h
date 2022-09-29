@@ -1,4 +1,4 @@
-#pragma fonce
+#pragma once
 
 #include "Imports.h"
 #include "VkMesh.h"
@@ -82,17 +82,6 @@ public:
 	VkRenderPass _renderPass;
 	std::vector<VkFramebuffer> _framebuffers;
 
-
-	// @TODO: DELETE @HARDCODED, FROM HERE.....
-	VkPipelineLayout _trianglePipelineLayout;
-	VkPipeline _trianglePipeline;
-
-	VkPipeline _meshPipeline;
-	VkPipelineLayout _meshPipelineLayout;
-	Mesh _triangleMesh;
-	// ...... UP TO HERE
-
-
 	// Depth Buffer
 	VkImageView _depthImageView;
 	AllocatedImage _depthImage;
@@ -134,7 +123,7 @@ private:
 	bool loadShaderModule(const char* filePath, VkShaderModule* outShaderModule);
 
 	void loadMeshes();
-	void uploadMesh(Mesh& mesh);
+	void uploadMeshToGPU(Mesh& mesh);
 
 	void renderRenderObjects(VkCommandBuffer cmd, RenderObject* first, size_t count);
 
