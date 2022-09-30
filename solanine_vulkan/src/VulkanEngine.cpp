@@ -115,7 +115,7 @@ void VulkanEngine::render()
 	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 
 	//
-	// Begin Renderpass
+	// Execute Renderpass
 	//
 	VkClearValue clearValue;
 	float flash = abs(sin(_frameNumber / 120.f));
@@ -148,32 +148,6 @@ void VulkanEngine::render()
 
 	renderRenderObjects(cmd, _renderObjects.data(), _renderObjects.size());
 
-	////
-	//// Renderpass		@TODO: take out the hardcoded stuff like this!!!
-	////
-	//vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _meshPipeline);
-	//
-	//VkDeviceSize offset = 0;
-	//vkCmdBindVertexBuffers(cmd, 0, 1, &_triangleMesh._vertexBuffer._buffer, &offset);
-	//
-	//// Create modelview matrix for rendering the triangle
-	//glm::vec3 camPos = { 0.0f, 0.0f, -2.0f };
-	//glm::mat4 view = glm::translate(glm::mat4(1.0f), camPos);
-	//glm::mat4 projection = glm::perspective(glm::radians(70.0f), (float)_windowExtent.width / (float)_windowExtent.height, 0.1f, 200.0f);
-	////projection[1][1] *= -1;
-	//glm::mat4 model = glm::rotate(glm::mat4(1.0f), glm::radians(_frameNumber * 0.4f), glm::vec3(0, 1, 0));
-	//
-	//glm::mat4 transform = projection * view * model;
-	//MeshPushConstants constants = {
-	//	.renderMatrix = transform
-	//};
-	//vkCmdPushConstants(cmd, _meshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(MeshPushConstants), &constants);
-	//
-	//vkCmdDraw(cmd, _triangleMesh._vertices.size(), 1, 0, 0);
-
-	//
-	// End Renderpass
-	//
 	vkCmdEndRenderPass(cmd);
 	VK_CHECK(vkEndCommandBuffer(cmd));
 
