@@ -4,6 +4,22 @@
 #include "VkMesh.h"
 
 
+struct GPUCameraData
+{
+	glm::mat4 view;
+	glm::mat4 projection;
+	glm::mat4 projectionView;
+};
+
+struct GPUSceneData
+{
+	glm::vec4 fogColor;
+	glm::vec4 fogDistances;
+	glm::vec4 ambientColor;
+	glm::vec4 sunlightDirection;
+	glm::vec4 sunlightColor;
+};
+
 struct FrameData
 {
 	VkSemaphore presentSemaphore, renderSemaphore;
@@ -11,6 +27,9 @@ struct FrameData
 
 	VkCommandPool commandPool;
 	VkCommandBuffer mainCommandBuffer;
+
+	AllocatedBuffer cameraBuffer;
+	VkDescriptorSet globalDescriptor;
 };
 
 struct MeshPushConstants
@@ -66,6 +85,7 @@ public:
 	VkInstance _instance;							// Vulkan library handle
 	VkDebugUtilsMessengerEXT _debugMessenger;		// Vulkan debug output handle
 	VkPhysicalDevice _chosenGPU;					// GPU chosen as the default device
+	VkPhysicalDeviceProperties _gpuProperties;
 	VkDevice _device;								// Vulkan device for commands
 	VkSurfaceKHR _surface;							// Vulkan window surface
 
@@ -107,6 +127,16 @@ public:
 	Material* getMaterial(const std::string& name);
 	Mesh* getMesh(const std::string& name);
 
+	// Descriptor Sets
+	VkDescriptorSetLayout _globalSetLayout;
+	VkDescriptorPool _descriptorPool;
+
+	GPUSceneData _sceneParameters;
+	AllocatedBuffer _sceneParameterBuffer;
+
+	AllocatedBuffer createBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
+	size_t padUniformBufferSize(size_t originalSize);
+
 private:
 	void initVulkan();
 	void initSwapchain();
@@ -114,6 +144,7 @@ private:
 	void initDefaultRenderpass();
 	void initFramebuffers();
 	void initSyncStructures();
+	void initDescriptors();
 	void initPipelines();
 	void initScene();
 
