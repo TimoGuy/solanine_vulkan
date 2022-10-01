@@ -130,10 +130,6 @@
   <ItemGroup>
     <None Include="shader\default_lit.frag" />
     <None Include="shader\default_lit.vert" />
-    <None Include="shader\mesh.frag" />
-    <None Include="shader\mesh.vert" />
-    <None Include="shader\triangle.frag" />
-    <None Include="shader\triangle.vert" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\GLSLToSPIRVHelper.h" />
