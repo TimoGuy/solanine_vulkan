@@ -12,12 +12,12 @@ namespace glslToSPIRVHelper
 {
     bool compileGLSLShaderToSPIRV(const std::filesystem::path& sourceCodePath)
     {
-        std::cout << "INFO: compiling shader source file " << sourceCodePath << " to SPIRV..." << std::endl;
+        std::cout << "[COMPILING SHADER SOURCE]" << std::endl << sourceCodePath << " to SPIRV\t...\t";
 
         if (!std::filesystem::exists(sourceCodePath))
         {
             std::cerr << "ERROR: shader source file " << sourceCodePath << " does not exist, osoraku" << std::endl;
-            std::cout << "\t\t\tFAILURE" << std::endl;
+            std::cout << "FAILURE" << std::endl;
             return false;
         }
 
@@ -33,11 +33,11 @@ namespace glslToSPIRVHelper
         //
         if (compilerBit != 0)
         {
-            std::cout << "\t\t\tFAILURE" << std::endl;
+            std::cout << "FAILURE" << std::endl;
             return false;
         }
 
-        std::cout << "\t\t\tSUCCESS" << std::endl;
+        std::cout << "SUCCESS" << std::endl;
         return true;
     }
 }

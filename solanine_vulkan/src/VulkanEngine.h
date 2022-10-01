@@ -20,6 +20,11 @@ struct GPUSceneData
 	glm::vec4 sunlightColor;
 };
 
+struct GPUObjectData
+{
+	glm::mat4 modelMatrix;
+};
+
 struct FrameData
 {
 	VkSemaphore presentSemaphore, renderSemaphore;
@@ -30,6 +35,9 @@ struct FrameData
 
 	AllocatedBuffer cameraBuffer;
 	VkDescriptorSet globalDescriptor;
+
+	AllocatedBuffer objectBuffer;
+	VkDescriptorSet objectDescriptor;
 };
 
 struct MeshPushConstants
@@ -129,6 +137,7 @@ public:
 
 	// Descriptor Sets
 	VkDescriptorSetLayout _globalSetLayout;
+	VkDescriptorSetLayout _objectSetLayout;
 	VkDescriptorPool _descriptorPool;
 
 	GPUSceneData _sceneParameters;
