@@ -44,3 +44,13 @@ int __stdcall WinMain(void*, void*, char* cmdLine, int)
 
 	return 0;
 }
+
+
+//
+// Load in TinyGLTF loader (v2.6.0) with STB image
+//
+#define TINYGLTF_IMPLEMENTATION
+#define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+// #define TINYGLTF_NOEXCEPTION // optional. disable exception handling.
+#include <tiny_gltf.h>
