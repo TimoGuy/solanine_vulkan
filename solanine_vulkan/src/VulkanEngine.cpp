@@ -86,6 +86,28 @@ void VulkanEngine::run()
 	}
 }
 
+void VulkanEngine::cleanup()
+{
+#ifdef _DEVELOP
+	teardownResourceList();
+#endif
+
+	if (_isInitialized)
+	{
+		vkDeviceWaitIdle(_device);
+
+		_mainDeletionQueue.flush();
+
+		vmaDestroyAllocator(_allocator);
+		vkDestroySurfaceKHR(_instance, _surface, nullptr);
+		vkb::destroy_debug_utils_messenger(_instance, _debugMessenger);
+		vkDestroyDevice(_device, nullptr);
+		vkDestroyInstance(_instance, nullptr);
+
+		SDL_DestroyWindow(_window);
+	}
+}
+
 void VulkanEngine::render()
 {
 	const auto& currentFrame = getCurrentFrame();
@@ -197,28 +219,6 @@ void VulkanEngine::render()
 	_frameNumber++;
 }
 
-void VulkanEngine::cleanup()
-{
-#ifdef _DEVELOP
-	teardownResourceList();
-#endif
-
-	if (_isInitialized)
-	{
-		vkDeviceWaitIdle(_device);
-
-		_mainDeletionQueue.flush();
-
-		vmaDestroyAllocator(_allocator);
-		vkDestroySurfaceKHR(_instance, _surface, nullptr);
-		vkb::destroy_debug_utils_messenger(_instance, _debugMessenger);
-		vkDestroyDevice(_device, nullptr);
-		vkDestroyInstance(_instance, nullptr);
-
-		SDL_DestroyWindow(_window);
-	}
-}
-
 Material* VulkanEngine::createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name)
 {
 	Material material = {
@@ -270,6 +270,24 @@ size_t VulkanEngine::padUniformBufferSize(size_t originalSize)
 	if (minUboAlignment > 0)
 		alignedSize = (alignedSize + minUboAlignment - 1) & ~(minUboAlignment - 1);
 	return alignedSize;
+}
+
+void VulkanEngine::immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function)
+{
+	VkCommandBuffer cmd = _uploadContext.commandBuffer;
+	VkCommandBufferBeginInfo cmdBeginInfo = vkinit::commandBufferBeginInfo(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
+
+	function(cmd);
+
+	VK_CHECK(vkEndCommandBuffer(cmd));
+	VkSubmitInfo submit = vkinit::submitInfo(&cmd);
+
+	VK_CHECK(vkQueueSubmit(_graphicsQueue, 1, &submit, _uploadContext.uploadFence));
+	vkWaitForFences(_device, 1, &_uploadContext.uploadFence, true, 9999999999);
+	vkResetFences(_device, 1, &_uploadContext.uploadFence);
+
+	vkResetCommandPool(_device, _uploadContext.commandPool, 0);
 }
 
 void VulkanEngine::initVulkan()
@@ -402,6 +420,21 @@ void VulkanEngine::initCommands()
 			vkDestroyCommandPool(_device, _frames[i].commandPool, nullptr);
 			});
 	}
+
+	//
+	// Create Pool dfasdf;lkj
+	//
+	VkCommandPoolCreateInfo uploadCommandPoolInfo = vkinit::commandPoolCreateInfo(_graphicsQueueFamily);
+	VK_CHECK(vkCreateCommandPool(_device, &uploadCommandPoolInfo, nullptr, &_uploadContext.commandPool));
+
+	// Add destroy command for cleanup
+	_mainDeletionQueue.pushFunction([=]() {
+		vkDestroyCommandPool(_device, _uploadContext.commandPool, nullptr);
+		});
+
+	VkCommandBufferAllocateInfo cmdAllocInfo = vkinit::commandBufferAllocateInfo(_uploadContext.commandPool, 1);
+	VkCommandBuffer cmd;		// ?????????? @NOTE
+	VK_CHECK(vkAllocateCommandBuffers(_device, &cmdAllocInfo, &_uploadContext.commandBuffer));
 }
 
 void VulkanEngine::initDefaultRenderpass()
@@ -560,6 +593,21 @@ void VulkanEngine::initSyncStructures()
 			vkDestroySemaphore(_device, _frames[i].renderSemaphore, nullptr);
 			});
 	}
+
+	//
+	// Upload context fence
+	//
+	VkFenceCreateInfo uploadFenceCreateInfo = {
+		.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+		.pNext = nullptr,
+		.flags = 0,		// @NOTE: we will not try to wait on this fence
+	};
+	VK_CHECK(vkCreateFence(_device, &uploadFenceCreateInfo, nullptr, &_uploadContext.uploadFence));
+
+	// Add destroy command for cleanup
+	_mainDeletionQueue.pushFunction([=]() {
+		vkDestroyFence(_device, _uploadContext.uploadFence, nullptr);
+		});
 }
 
 void VulkanEngine::initDescriptors()
@@ -859,29 +907,55 @@ void VulkanEngine::loadMeshes()
 
 void VulkanEngine::uploadMeshToGPU(Mesh& mesh)
 {
-	VkBufferCreateInfo bufferInfo = {};
-	bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-	bufferInfo.size = mesh._vertices.size() * sizeof(Vertex);
-	bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+	const size_t bufferSize = mesh._vertices.size() * sizeof(Vertex);
+	VkBufferCreateInfo stagingBufferInfo = {
+		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+		.pNext = nullptr,
+		.size = bufferSize,
+		.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+	};
+	VmaAllocationCreateInfo vmaAllocInfo = {
+		.usage = VMA_MEMORY_USAGE_CPU_ONLY,
+	};
 
-	VmaAllocationCreateInfo vmaAllocInfo = {};
-	vmaAllocInfo.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
+	// Create temporary staging buffer
+	AllocatedBuffer stagingBuffer;
+	VK_CHECK(vmaCreateBuffer(_allocator, &stagingBufferInfo, &vmaAllocInfo, &stagingBuffer._buffer, &stagingBuffer._allocation, nullptr));
 
-	// Allocate the buffer
-	VK_CHECK(vmaCreateBuffer(_allocator, &bufferInfo, &vmaAllocInfo, &mesh._vertexBuffer._buffer, &mesh._vertexBuffer._allocation, nullptr));
+	// Copy mesh to staging buffer
+	void* data;
+	vmaMapMemory(_allocator, stagingBuffer._allocation, &data);
+	memcpy(data, mesh._vertices.data(), bufferSize);
+	vmaUnmapMemory(_allocator, stagingBuffer._allocation);
+
+	// Create GPU side buffer
+	VkBufferCreateInfo vertexBufferInfo = {
+		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+		.pNext = nullptr,
+		.size = bufferSize,
+		.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+	};
+	vmaAllocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+
+	VK_CHECK(vmaCreateBuffer(_allocator, &vertexBufferInfo, &vmaAllocInfo, &mesh._vertexBuffer._buffer, &mesh._vertexBuffer._allocation, nullptr));
+
+	// Launch copy command! (staging to GPU)
+	immediateSubmit([=](VkCommandBuffer cmd) {
+		VkBufferCopy copy = {
+			.srcOffset = 0,
+			.dstOffset = 0,
+			.size = bufferSize,
+		};
+		vkCmdCopyBuffer(cmd, stagingBuffer._buffer, mesh._vertexBuffer._buffer, 1, &copy);
+		});
+
+	// Destroy staging buffer
+	vmaDestroyBuffer(_allocator, stagingBuffer._buffer, stagingBuffer._allocation);
 
 	// Add destroy command for cleanup
 	_mainDeletionQueue.pushFunction([=]() {
 		vmaDestroyBuffer(_allocator, mesh._vertexBuffer._buffer, mesh._vertexBuffer._allocation);
 		});
-
-	//
-	// Copy to GPU
-	//
-	void* data;
-	vmaMapMemory(_allocator, mesh._vertexBuffer._allocation, &data);
-	memcpy(data, mesh._vertices.data(), mesh._vertices.size() * sizeof(Vertex));
-	vmaUnmapMemory(_allocator, mesh._vertexBuffer._allocation);
 }
 
 void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first, size_t count)

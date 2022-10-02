@@ -46,6 +46,13 @@ struct MeshPushConstants
 	glm::mat4 renderMatrix;
 };
 
+struct UploadContext
+{
+	VkFence uploadFence;
+	VkCommandPool commandPool;
+	VkCommandBuffer commandBuffer;
+};
+
 struct DeletionQueue
 {
 	std::deque<std::function<void()>> deletors;
@@ -121,8 +128,8 @@ public:
 
 	void init();
 	void run();
-	void render();
 	void cleanup();
+	void render();		// @TODO: Why is this public?
 
 	//
 	// Render Objects
@@ -135,7 +142,9 @@ public:
 	Material* getMaterial(const std::string& name);
 	Mesh* getMesh(const std::string& name);
 
+	//
 	// Descriptor Sets
+	//
 	VkDescriptorSetLayout _globalSetLayout;
 	VkDescriptorSetLayout _objectSetLayout;
 	VkDescriptorPool _descriptorPool;
@@ -145,6 +154,10 @@ public:
 
 	AllocatedBuffer createBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
 	size_t padUniformBufferSize(size_t originalSize);
+
+	// Upload context
+	UploadContext _uploadContext;
+	void immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function);
 
 private:
 	void initVulkan();

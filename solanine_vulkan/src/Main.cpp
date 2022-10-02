@@ -53,4 +53,5 @@ int __stdcall WinMain(void*, void*, char* cmdLine, int)
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 // #define TINYGLTF_NOEXCEPTION // optional. disable exception handling.
+#define STBI_MSC_SECURE_CRT
 #include <tiny_gltf.h>
