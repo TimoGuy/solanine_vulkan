@@ -133,6 +133,12 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\GLSLToSPIRVHelper.h" />
+    <ClInclude Include="src\imgui\imconfig.h" />
+    <ClInclude Include="src\imgui\imgui.h" />
+    <ClInclude Include="src\imgui\imgui_internal.h" />
+    <ClInclude Include="src\imgui\imstb_rectpack.h" />
+    <ClInclude Include="src\imgui\imstb_textedit.h" />
+    <ClInclude Include="src\imgui\imstb_truetype.h" />
     <ClInclude Include="src\Imports.h" />
     <ClInclude Include="src\VkBootstrap.h" />
     <ClInclude Include="src\VkInitializers.h" />
@@ -141,6 +147,11 @@
     <ClInclude Include="src\VulkanEngine.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\imgui\imgui.cpp" />
+    <ClCompile Include="src\imgui\imgui_demo.cpp" />
+    <ClCompile Include="src\imgui\imgui_draw.cpp" />
+    <ClCompile Include="src\imgui\imgui_tables.cpp" />
+    <ClCompile Include="src\imgui\imgui_widgets.cpp" />
     <ClCompile Include="src\Main.cpp" />
     <ClCompile Include="src\VkBootstrap.cpp" />
     <ClCompile Include="src\VkInitializers.cpp" />
