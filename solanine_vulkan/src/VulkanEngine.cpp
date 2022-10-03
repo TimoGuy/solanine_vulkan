@@ -82,6 +82,7 @@ void VulkanEngine::run()
 		//
 		while (SDL_PollEvent(&e) != 0)
 		{
+			ImGui_ImplSDL2_ProcessEvent(&e);
 			switch (e.type)
 			{
 			case SDL_QUIT:
@@ -101,8 +102,6 @@ void VulkanEngine::run()
 			}
 			}
 		}
-
-		ImGuiIO& io = ImGui::GetIO(); (void)io;
 
 		//
 		// Render
