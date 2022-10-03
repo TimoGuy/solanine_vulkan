@@ -186,6 +186,7 @@ private:
 	void initDescriptors();
 	void initPipelines();
 	void initScene();
+	void initImgui();
 
 	void recreateSwapchain();
 
