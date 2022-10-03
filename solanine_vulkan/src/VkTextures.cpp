@@ -9,7 +9,7 @@ bool vkutil::loadImageFromFile(VulkanEngine& engine, const char* fname, Allocate
 	// Load image from file
 	//
 	int texWidth, texHeight, texChannels;
-	stbi_uc* pixels = stbi_load(fname, &texWidth, &texHeight, &texChannels, STBI_default);
+	stbi_uc* pixels = stbi_load(fname, &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
 
 	if (!pixels)
 	{
@@ -18,7 +18,7 @@ bool vkutil::loadImageFromFile(VulkanEngine& engine, const char* fname, Allocate
 	}
 
 	void* pixelPtr = pixels;
-	VkDeviceSize imageSize = texWidth * texHeight * texChannels;
+	VkDeviceSize imageSize = texWidth * texHeight * 4;		// @HARDCODED: bc planning on having the alpha channel in here too
 
 	VkFormat imageFormat = VK_FORMAT_R8G8B8A8_SRGB;		// @HARDCODED: this could easily change
 

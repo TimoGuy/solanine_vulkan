@@ -82,6 +82,7 @@ struct Texture
 
 struct Material
 {
+	VkDescriptorSet textureSet{ VK_NULL_HANDLE };	// Texture is defaulted to NULL
 	VkPipeline pipeline;
 	VkPipelineLayout pipelineLayout;
 };
@@ -159,6 +160,7 @@ public:
 	//
 	VkDescriptorSetLayout _globalSetLayout;
 	VkDescriptorSetLayout _objectSetLayout;
+	VkDescriptorSetLayout _singleTextureSetLayout;
 	VkDescriptorPool _descriptorPool;
 
 	GPUSceneData _sceneParameters;

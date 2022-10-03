@@ -229,6 +229,10 @@ void VulkanEngine::loadImages()
 	VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, woodFloor057.image._image, VK_IMAGE_ASPECT_COLOR_BIT);
 	vkCreateImageView(_device, &imageInfo, nullptr, &woodFloor057.imageView);
 
+	_mainDeletionQueue.pushFunction([=]() {
+		vkDestroyImageView(_device, woodFloor057.imageView, nullptr);
+		});
+
 	_loadedTextures["WoodFloor057"] = woodFloor057;
 }
 
@@ -631,7 +635,8 @@ void VulkanEngine::initDescriptors()
 	std::vector<VkDescriptorPoolSize> sizes = {
 		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 10 },
 		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 10 },
-		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 10 }
+		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 10 },
+		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 10 },
 	};
 	VkDescriptorPoolCreateInfo poolInfo = {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
@@ -672,6 +677,19 @@ void VulkanEngine::initDescriptors()
 		.pBindings = &objectBufferBinding,
 	};
 	vkCreateDescriptorSetLayout(_device, &setInfo2, nullptr, &_objectSetLayout);
+
+	//
+	// Create Descriptor Set Layout for singletexture buffer
+	//
+	VkDescriptorSetLayoutBinding singleTextureBufferBinding = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 0);
+	VkDescriptorSetLayoutCreateInfo setInfo3 = {
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+		.pNext = nullptr,
+		.flags = 0,
+		.bindingCount = 1,
+		.pBindings = &singleTextureBufferBinding,
+	};
+	vkCreateDescriptorSetLayout(_device, &setInfo3, nullptr, &_singleTextureSetLayout);
 
 	//
 	// Create buffers
@@ -778,9 +796,9 @@ void VulkanEngine::initPipelines()
 	meshPipelineLayoutInfo.pPushConstantRanges = &pushConstant;
 	meshPipelineLayoutInfo.pushConstantRangeCount = 1;
 
-	VkDescriptorSetLayout setLayouts[] = { _globalSetLayout, _objectSetLayout };
+	VkDescriptorSetLayout setLayouts[] = { _globalSetLayout, _objectSetLayout, _singleTextureSetLayout };
 	meshPipelineLayoutInfo.pSetLayouts = setLayouts;
-	meshPipelineLayoutInfo.setLayoutCount = 2;
+	meshPipelineLayoutInfo.setLayoutCount = 3;
 
 	VkPipelineLayout _meshPipelineLayout;
 	VK_CHECK(vkCreatePipelineLayout(_device, &meshPipelineLayoutInfo, nullptr, &_meshPipelineLayout));
@@ -850,6 +868,31 @@ void VulkanEngine::initScene()
 			};
 			_renderObjects.push_back(triangle);
 		}
+
+	//
+	// Load in sampler for the texture
+	//
+	VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(VK_FILTER_NEAREST);
+	VkSampler wood057Sampler;
+	vkCreateSampler(_device, &samplerInfo, nullptr, &wood057Sampler);
+
+	Material* texturedMaterial = getMaterial("defaultMaterial");
+	VkDescriptorSetAllocateInfo allocInfo = {
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+		.pNext = nullptr,
+		.descriptorPool = _descriptorPool,
+		.descriptorSetCount = 1,
+		.pSetLayouts = &_singleTextureSetLayout,
+	};
+	vkAllocateDescriptorSets(_device, &allocInfo, &texturedMaterial->textureSet);
+
+	VkDescriptorImageInfo imageBufferInfo = {
+		.sampler = wood057Sampler,
+		.imageView = _loadedTextures["WoodFloor057"].imageView,
+		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	};
+	VkWriteDescriptorSet texture1 = vkinit::writeDescriptorImage(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, texturedMaterial->textureSet, &imageBufferInfo, 0);
+	vkUpdateDescriptorSets(_device, 1, &texture1, 0, nullptr);
 }
 
 FrameData& VulkanEngine::getCurrentFrame()
@@ -912,6 +955,11 @@ void VulkanEngine::loadMeshes()
 	_triangleMesh._vertices[2].color = { 0.f, 1.f, 0.0f }; //pure green
 
 	//we don't care about the vertex normals
+
+	// vertex uv
+	_triangleMesh._vertices[0].uv = { 1.f, 0.f };
+	_triangleMesh._vertices[1].uv = { 0.f, 0.f };
+	_triangleMesh._vertices[2].uv = { 0.5f, 1.f };
 
 	// Register mesh
 	uploadMeshToGPU(_triangleMesh);
@@ -976,7 +1024,7 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first,
 	//
 	// Setup scene camera
 	//
-	glm::vec3 camPos = { 0.0f, -6.0f, -10.0f };
+	glm::vec3 camPos = { 0.0f, -3.0f, -5.0f };
 	glm::mat4 view = glm::translate(glm::mat4(1.0f), camPos);
 	glm::mat4 projection = glm::perspective(
 		glm::radians(70.0f),
@@ -1055,6 +1103,10 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first,
 
 			// Object data descriptor
 			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
+
+			// Singletexture
+			if (object.material->textureSet != VK_NULL_HANDLE)
+				vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipelineLayout, 2, 1, &object.material->textureSet, 0, nullptr);
 		}
 
 		// Push constants

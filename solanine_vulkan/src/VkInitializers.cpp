@@ -223,3 +223,31 @@ VkSubmitInfo vkinit::submitInfo(VkCommandBuffer* cmd)
 	};
 	return info;
 }
+
+VkSamplerCreateInfo vkinit::samplerCreateInfo(VkFilter filters, VkSamplerAddressMode samplerAddressMode)
+{
+	VkSamplerCreateInfo info = {
+		.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+		.pNext = nullptr,
+		.magFilter = filters,
+		.minFilter = filters,
+		.addressModeU = samplerAddressMode,
+		.addressModeV = samplerAddressMode,
+		.addressModeW = samplerAddressMode,
+	};
+	return info;
+}
+
+VkWriteDescriptorSet vkinit::writeDescriptorImage(VkDescriptorType type, VkDescriptorSet dstSet, VkDescriptorImageInfo* imageInfo, uint32_t binding)
+{
+	VkWriteDescriptorSet info = {
+		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+		.pNext = nullptr,
+		.dstSet = dstSet,
+		.dstBinding = binding,
+		.descriptorCount = 1,
+		.descriptorType = type,
+		.pImageInfo = imageInfo,
+	};
+	return info;
+}
