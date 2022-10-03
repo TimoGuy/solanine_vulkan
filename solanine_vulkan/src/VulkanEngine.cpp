@@ -143,8 +143,7 @@ void VulkanEngine::render()
 	// Execute Renderpass
 	//
 	VkClearValue clearValue;
-	float flash = abs(sin(_frameNumber / 120.f));
-	clearValue.color = { { 0.0f, 0.0f, flash, 1.0f } };
+	clearValue.color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
 
 	VkClearValue depthClear;
 	depthClear.depthStencil.depth = 1.0f;
