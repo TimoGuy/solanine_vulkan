@@ -102,6 +102,8 @@ void VulkanEngine::run()
 			}
 		}
 
+		ImGuiIO& io = ImGui::GetIO(); (void)io;
+
 		//
 		// Render
 		//
@@ -110,6 +112,17 @@ void VulkanEngine::run()
 		ImGui::NewFrame();
 
 		ImGui::ShowDemoWindow();
+
+		ImGui::Begin("mywindow");
+		ImGui::Button("Hello");
+		if (ImGui::TreeNode("Jojo me up"))
+		{
+			ImGui::Text("Hi there");
+			ImGui::TreePop();
+		}
+		ImGui::End();
+		
+		ImGui::Render();
 
 		render();
 	}
@@ -140,8 +153,6 @@ void VulkanEngine::cleanup()
 
 void VulkanEngine::render()
 {
-	ImGui::Render();
-
 	const auto& currentFrame = getCurrentFrame();
 
 	// Wait until GPU finishes rendering the previous frame
@@ -981,6 +992,9 @@ void VulkanEngine::initImgui()
 	// Init dear imgui
 	//
 	ImGui::CreateContext();
+	ImGuiIO& io = ImGui::GetIO(); (void)io;
+	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
 	ImGui_ImplSDL2_InitForVulkan(_window);
 
 	ImGui_ImplVulkan_InitInfo initInfo = {
