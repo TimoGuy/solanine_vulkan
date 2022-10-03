@@ -102,6 +102,7 @@ public:
 	uint32_t _frameNumber{ 0 };
 
 	VkExtent2D _windowExtent{ 1920, 1080 };
+	VkExtent2D _windowExtentQueueup{};
 	struct SDL_Window* _window{ nullptr };
 
 	VkInstance _instance;							// Vulkan library handle
@@ -111,7 +112,9 @@ public:
 	VkDevice _device;								// Vulkan device for commands
 	VkSurfaceKHR _surface;							// Vulkan window surface
 
-	DeletionQueue _mainDeletionQueue;
+	DeletionQueue
+		_swapchainDependentDeletionQueue,
+		_mainDeletionQueue;
 
 	VkSwapchainKHR _swapchain;						// The swapchain
 	VkFormat _swapchainImageFormat;					// Image format expected by SDL2
@@ -183,6 +186,8 @@ private:
 	void initDescriptors();
 	void initPipelines();
 	void initScene();
+
+	void recreateSwapchain();
 
 	FrameData _frames[FRAME_OVERLAP];
 	FrameData& getCurrentFrame();

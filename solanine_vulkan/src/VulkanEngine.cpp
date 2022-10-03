@@ -78,9 +78,23 @@ void VulkanEngine::run()
 		//
 		while (SDL_PollEvent(&e) != 0)
 		{
-			if (e.type == SDL_QUIT)
+			switch (e.type)
+			{
+			case SDL_QUIT:
 			{
 				isRunning = false;
+				break;
+			}
+
+			case SDL_WINDOWEVENT:
+			{
+				if (e.window.event == SDL_WINDOWEVENT_RESIZED)
+				{
+					_windowExtentQueueup.width = (uint32_t)e.window.data1;
+					_windowExtentQueueup.height = (uint32_t)e.window.data2;
+				}
+				break;
+			}
 			}
 		}
 
@@ -99,6 +113,7 @@ void VulkanEngine::cleanup()
 		vkDeviceWaitIdle(_device);
 
 		_mainDeletionQueue.flush();
+		_swapchainDependentDeletionQueue.flush();
 
 		vmaDestroyAllocator(_allocator);
 		vkDestroySurfaceKHR(_instance, _surface, nullptr);
@@ -120,7 +135,16 @@ void VulkanEngine::render()
 
 	// Request image from swapchain
 	uint32_t swapchainImageIndex;
-	VK_CHECK(vkAcquireNextImageKHR(_device, _swapchain, TIMEOUT_1_SEC, currentFrame.presentSemaphore, nullptr, &swapchainImageIndex));
+	VkResult result = vkAcquireNextImageKHR(_device, _swapchain, TIMEOUT_1_SEC, currentFrame.presentSemaphore, nullptr, &swapchainImageIndex);
+	if (result == VK_ERROR_OUT_OF_DATE_KHR)
+	{
+		recreateSwapchain();
+		return;
+	}
+	else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
+	{
+		throw std::runtime_error("ERROR: failed to acquire swap chain image!");
+	}
 
 	// After commands finished executing, we can safely resume recording commands
 	VK_CHECK(vkResetCommandBuffer(currentFrame.mainCommandBuffer, 0));
@@ -212,7 +236,15 @@ void VulkanEngine::render()
 		.pImageIndices = &swapchainImageIndex,
 	};
 
-	VK_CHECK(vkQueuePresentKHR(_graphicsQueue, &presentInfo));
+	result = vkQueuePresentKHR(_graphicsQueue, &presentInfo);
+	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
+	{
+		recreateSwapchain();
+	}
+	else if (result != VK_SUCCESS)
+	{
+		throw std::runtime_error("ERROR: failed to present swap chain image!");
+	}
 
 	//
 	// End of frame!
@@ -387,7 +419,7 @@ void VulkanEngine::initSwapchain()
 	_swapchainImageFormat = vkbSwapchain.image_format;
 
 	// Add destroy command for cleanup
-	_mainDeletionQueue.pushFunction([=]() {
+	_swapchainDependentDeletionQueue.pushFunction([=]() {
 		vkDestroySwapchainKHR(_device, _swapchain, nullptr);
 		});
 
@@ -412,7 +444,7 @@ void VulkanEngine::initSwapchain()
 	VK_CHECK(vkCreateImageView(_device, &depthViewInfo, nullptr, &_depthImageView));
 
 	// Add destroy command
-	_mainDeletionQueue.pushFunction([=]() {
+	_swapchainDependentDeletionQueue.pushFunction([=]() {
 		vkDestroyImageView(_device, _depthImageView, nullptr);
 		vmaDestroyImage(_allocator, _depthImage._image, _depthImage._allocation);
 		});
@@ -571,7 +603,7 @@ void VulkanEngine::initFramebuffers()
 		VK_CHECK(vkCreateFramebuffer(_device, &fbInfo, nullptr, &_framebuffers[i]));
 
 		// Add destroy command for cleanup
-		_mainDeletionQueue.pushFunction([=]() {
+		_swapchainDependentDeletionQueue.pushFunction([=]() {
 			vkDestroyFramebuffer(_device, _framebuffers[i], nullptr);
 			vkDestroyImageView(_device, _swapchainImageViews[i], nullptr);
 			});
@@ -748,6 +780,7 @@ void VulkanEngine::initDescriptors()
 		vmaDestroyBuffer(_allocator, _sceneParameterBuffer._buffer, _sceneParameterBuffer._allocation);
 		vkDestroyDescriptorSetLayout(_device, _globalSetLayout, nullptr);
 		vkDestroyDescriptorSetLayout(_device, _objectSetLayout, nullptr);
+		vkDestroyDescriptorSetLayout(_device, _singleTextureSetLayout, nullptr);
 		vkDestroyDescriptorPool(_device, _descriptorPool, nullptr);
 		for (uint32_t i = 0; i < FRAME_OVERLAP; i++)
 		{
@@ -845,7 +878,7 @@ void VulkanEngine::initPipelines()
 	vkDestroyShaderModule(_device, defaultLitFragShader, nullptr);
 
 	// Add destroy command for cleanup
-	_mainDeletionQueue.pushFunction([=]() {
+	_swapchainDependentDeletionQueue.pushFunction([=]() {
 		vkDestroyPipeline(_device, _meshPipeline, nullptr);
 		vkDestroyPipelineLayout(_device, _meshPipelineLayout, nullptr);
 		});
@@ -854,6 +887,7 @@ void VulkanEngine::initPipelines()
 
 void VulkanEngine::initScene()
 {
+	_renderObjects.clear();
 	for (int x = -20; x <= 20; x++)
 		for (int z = -20; z <= 20; z++)
 		{
@@ -875,6 +909,10 @@ void VulkanEngine::initScene()
 	VkSampler wood057Sampler;
 	vkCreateSampler(_device, &samplerInfo, nullptr, &wood057Sampler);
 
+	_swapchainDependentDeletionQueue.pushFunction([=]() {
+		vkDestroySampler(_device, wood057Sampler, nullptr);
+		});
+
 	Material* texturedMaterial = getMaterial("defaultMaterial");
 	VkDescriptorSetAllocateInfo allocInfo = {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
@@ -892,6 +930,20 @@ void VulkanEngine::initScene()
 	};
 	VkWriteDescriptorSet texture1 = vkinit::writeDescriptorImage(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, texturedMaterial->textureSet, &imageBufferInfo, 0);
 	vkUpdateDescriptorSets(_device, 1, &texture1, 0, nullptr);
+}
+
+void VulkanEngine::recreateSwapchain()
+{
+	vkDeviceWaitIdle(_device);
+
+	_swapchainDependentDeletionQueue.flush();
+
+	_windowExtent = _windowExtentQueueup;
+
+	initSwapchain();
+	initFramebuffers();
+	initPipelines();
+	initScene();
 }
 
 FrameData& VulkanEngine::getCurrentFrame()
@@ -1078,8 +1130,8 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first,
 	//
 	// Render all the renderobjects
 	//
-	Mesh* lastMesh = nullptr;
 	Material* lastMaterial = nullptr;
+	Mesh* lastMesh = nullptr;
 	for (size_t i = 0; i < count; i++)
 	{
 		RenderObject& object = first[i];
