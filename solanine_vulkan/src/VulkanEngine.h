@@ -74,6 +74,12 @@ struct DeletionQueue
 	}
 };
 
+struct Texture
+{
+	AllocatedImage image;
+	VkImageView imageView;
+};
+
 struct Material
 {
 	VkPipeline pipeline;
@@ -130,6 +136,12 @@ public:
 	void run();
 	void cleanup();
 	void render();		// @TODO: Why is this public?
+
+	//
+	// Textures
+	//
+	std::unordered_map<std::string, Texture> _loadedTextures;
+	void loadImages();
 
 	//
 	// Render Objects

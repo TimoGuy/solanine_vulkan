@@ -4,6 +4,7 @@
 #include <SDL2/SDL_vulkan.h>
 #include "VkBootstrap.h"
 #include "VkInitializers.h"
+#include "VkTextures.h"
 #include "GLSLToSPIRVHelper.h"
 
 // @NOTE: this is for creation of the VMA function definitions
@@ -52,6 +53,7 @@ void VulkanEngine::init()
 	initDescriptors();
 	initPipelines();
 	loadMeshes();
+	loadImages();
 	initScene();
 
 	_isInitialized = true;
@@ -217,6 +219,17 @@ void VulkanEngine::render()
 	// End of frame!
 	//
 	_frameNumber++;
+}
+
+void VulkanEngine::loadImages()
+{
+	Texture woodFloor057;
+	vkutil::loadImageFromFile(*this, "res/textures/WoodFloor057_1K-JPG/WoodFloor057_1K_Color.jpg", woodFloor057.image);
+
+	VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, woodFloor057.image._image, VK_IMAGE_ASPECT_COLOR_BIT);
+	vkCreateImageView(_device, &imageInfo, nullptr, &woodFloor057.imageView);
+
+	_loadedTextures["WoodFloor057"] = woodFloor057;
 }
 
 Material* VulkanEngine::createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name)
