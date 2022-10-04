@@ -143,6 +143,7 @@
     <ClInclude Include="src\imgui\imstb_truetype.h" />
     <ClInclude Include="src\Imports.h" />
     <ClInclude Include="src\VkBootstrap.h" />
+    <ClInclude Include="src\VkglTFModel.h" />
     <ClInclude Include="src\VkInitializers.h" />
     <ClInclude Include="src\VkMesh.h" />
     <ClInclude Include="src\VkTextures.h" />
@@ -158,6 +159,7 @@
     <ClCompile Include="src\imgui\imgui_widgets.cpp" />
     <ClCompile Include="src\Main.cpp" />
     <ClCompile Include="src\VkBootstrap.cpp" />
+    <ClCompile Include="src\VkglTFModel.cpp" />
     <ClCompile Include="src\VkInitializers.cpp" />
     <ClCompile Include="src\VkMesh.cpp" />
     <ClCompile Include="src\VkTextures.cpp" />

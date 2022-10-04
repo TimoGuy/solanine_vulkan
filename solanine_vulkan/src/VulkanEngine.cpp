@@ -15,18 +15,6 @@
 #include <vma/vk_mem_alloc.h>
 
 
-#define VK_CHECK(x)                                                    \
-	do                                                                 \
-	{                                                                  \
-		VkResult err = x;                                              \
-		if (err)                                                       \
-		{                                                              \
-			std::cout <<"Detected Vulkan error: " << err << std::endl; \
-			abort();                                                   \
-		}                                                              \
-	} while (0)
-
-
 constexpr uint64_t TIMEOUT_1_SEC = 1000000000;
 
 void VulkanEngine::init()
