@@ -102,8 +102,8 @@ public:
 	uint32_t _frameNumber{ 0 };
 
 	VkExtent2D _windowExtent{ 1920, 1080 };
-	VkExtent2D _windowExtentQueueup{};
 	struct SDL_Window* _window{ nullptr };
+	bool _recreateSwapchain = false;
 
 	VkInstance _instance;							// Vulkan library handle
 	VkDebugUtilsMessengerEXT _debugMessenger;		// Vulkan debug output handle

@@ -90,18 +90,14 @@ void VulkanEngine::run()
 				isRunning = false;
 				break;
 			}
-
-			case SDL_WINDOWEVENT:
-			{
-				if (e.window.event == SDL_WINDOWEVENT_RESIZED)
-				{
-					_windowExtentQueueup.width = (uint32_t)e.window.data1;
-					_windowExtentQueueup.height = (uint32_t)e.window.data2;
-				}
-				break;
-			}
 			}
 		}
+
+		//
+		// Recreate swapchain if flagged
+		//
+		if (_recreateSwapchain)
+			recreateSwapchain();
 
 		//
 		// Render
@@ -163,7 +159,7 @@ void VulkanEngine::render()
 	VkResult result = vkAcquireNextImageKHR(_device, _swapchain, TIMEOUT_1_SEC, currentFrame.presentSemaphore, nullptr, &swapchainImageIndex);
 	if (result == VK_ERROR_OUT_OF_DATE_KHR)
 	{
-		recreateSwapchain();
+		_recreateSwapchain = true;
 		return;
 	}
 	else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
@@ -266,7 +262,7 @@ void VulkanEngine::render()
 	result = vkQueuePresentKHR(_graphicsQueue, &presentInfo);
 	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
 	{
-		recreateSwapchain();
+		_recreateSwapchain = true;
 	}
 	else if (result != VK_SUCCESS)
 	{
@@ -1023,16 +1019,25 @@ void VulkanEngine::initImgui()
 
 void VulkanEngine::recreateSwapchain()
 {
+	int w, h;
+	SDL_GetWindowSize(_window, &w, &h);
+
+	if (w <= 0 || h <= 0)
+		return;
+
+	_windowExtent.width = w;
+	_windowExtent.height = h;
+
 	vkDeviceWaitIdle(_device);
 
 	_swapchainDependentDeletionQueue.flush();
-
-	_windowExtent = _windowExtentQueueup;
 
 	initSwapchain();
 	initFramebuffers();
 	initPipelines();
 	initScene();
+
+	_recreateSwapchain = false;
 }
 
 FrameData& VulkanEngine::getCurrentFrame()
