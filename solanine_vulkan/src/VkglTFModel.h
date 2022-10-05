@@ -50,6 +50,7 @@ namespace vkglTF
 		glm::vec3 min;
 		glm::vec3 max;
 		bool valid = false;
+
 		BoundingBox();
 		BoundingBox(glm::vec3 min, glm::vec3 max);
 		BoundingBox getAABB(glm::mat4 m);
@@ -66,7 +67,6 @@ namespace vkglTF
 
 	struct Texture
 	{
-		VulkanEngine* device;
 		VkImage image;
 		VkImageLayout imageLayout;
 		VkDeviceMemory deviceMemory;
@@ -76,9 +76,10 @@ namespace vkglTF
 		uint32_t layerCount;
 		VkDescriptorImageInfo descriptor;
 		VkSampler sampler;
+
 		void updateDescriptor();
 		void destroy();
-		// Load a texture from a glTF image (stored as vector of chars loaded via stb_image) and generate a full mip chaing for it
+		// Load a texture from a glTF image (stored as vector of chars loaded via stb_image) and generate a full mip chain for it
 		void fromglTfImage(tinygltf::Image& gltfimage, TextureSampler textureSampler, VulkanEngine* device, VkQueue copyQueue);
 	};
 
@@ -97,6 +98,7 @@ namespace vkglTF
 		vkglTF::Texture* occlusionTexture;
 		vkglTF::Texture* emissiveTexture;
 		bool doubleSided = false;
+
 		struct TexCoordSets
 		{
 			uint8_t baseColor = 0;
@@ -106,6 +108,7 @@ namespace vkglTF
 			uint8_t occlusion = 0;
 			uint8_t emissive = 0;
 		} texCoordSets;
+
 		struct Extension
 		{
 			vkglTF::Texture* specularGlossinessTexture;
@@ -113,11 +116,13 @@ namespace vkglTF
 			glm::vec4 diffuseFactor = glm::vec4(1.0f);
 			glm::vec3 specularFactor = glm::vec3(0.0f);
 		} extension;
+
 		struct PbrWorkflows
 		{
 			bool metallicRoughness = true;
 			bool specularGlossiness = false;
 		} pbrWorkflows;
+
 		VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
 	};
 
@@ -135,10 +140,10 @@ namespace vkglTF
 
 	struct Mesh
 	{
-		VulkanEngine* device;
 		std::vector<Primitive*> primitives;
 		BoundingBox bb;
 		BoundingBox aabb;
+
 		struct UniformBuffer
 		{
 			VkBuffer buffer;
@@ -147,12 +152,14 @@ namespace vkglTF
 			VkDescriptorSet descriptorSet;
 			void* mapped;
 		} uniformBuffer;
+
 		struct UniformBlock
 		{
 			glm::mat4 matrix;
 			glm::mat4 jointMatrix[MAX_NUM_JOINTS]{};
 			float jointcount{ 0 };
 		} uniformBlock;
+
 		Mesh(VulkanEngine* device, glm::mat4 matrix);
 		~Mesh();
 		void setBoundingBox(glm::vec3 min, glm::vec3 max);
@@ -181,6 +188,7 @@ namespace vkglTF
 		glm::quat rotation{};
 		BoundingBox bvh;
 		BoundingBox aabb;
+
 		glm::mat4 localMatrix();
 		glm::mat4 getMatrix();
 		void update();
@@ -214,8 +222,6 @@ namespace vkglTF
 
 	struct Model
 	{
-		VulkanEngine* device;
-
 		struct Vertex
 		{
 			glm::vec3 pos;
@@ -232,6 +238,7 @@ namespace vkglTF
 			VkBuffer buffer = VK_NULL_HANDLE;
 			VkDeviceMemory memory;
 		} vertices;
+
 		struct Indices
 		{
 			int count;

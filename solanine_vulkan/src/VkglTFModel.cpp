@@ -1088,6 +1088,9 @@ namespace vkglTF
 
 	void Model::loadFromFile(std::string filename, VulkanEngine* device, VkQueue transferQueue, float scale)
 	{
+		//
+		// Load in data from file
+		//
 		tinygltf::Model gltfModel;
 		tinygltf::TinyGLTF gltfContext;
 
@@ -1099,44 +1102,44 @@ namespace vkglTF
 		bool binary = false;
 		size_t extpos = filename.rfind('.', filename.length());
 		if (extpos != std::string::npos)
-		{
 			binary = (filename.substr(extpos + 1, filename.length() - extpos) == "glb");
-		}
 
 		bool fileLoaded = binary ? gltfContext.LoadBinaryFromFile(&gltfModel, &error, &warning, filename.c_str()) : gltfContext.LoadASCIIFromFile(&gltfModel, &error, &warning, filename.c_str());
 
-		LoaderInfo loaderInfo{};
+		LoaderInfo loaderInfo{ };
 		size_t vertexCount = 0;
 		size_t indexCount = 0;
 
 		if (!fileLoaded)
 		{
-			// TODO: throw
 			std::cerr << "Could not load gltf file: " << error << std::endl;
 			return;
 		}
 
-		// Load in the gltf data from the file
+		//
+		// Load gltf data into data structures
+		//
 		loadTextureSamplers(gltfModel);
 		loadTextures(gltfModel, device, transferQueue);
 		loadMaterials(gltfModel);
 
-		const tinygltf::Scene& scene = gltfModel.scenes[gltfModel.defaultScene > -1 ? gltfModel.defaultScene : 0];
+		const tinygltf::Scene& scene = gltfModel.scenes[gltfModel.defaultScene > -1 ? gltfModel.defaultScene : 0];		// TODO: scene handling with no default scene
 
-		// Get vertex and index buffer sizes up-front
+		// Get vertex and index buffer sizes
 		for (size_t i = 0; i < scene.nodes.size(); i++)
-		{
 			getNodeProps(gltfModel.nodes[scene.nodes[i]], gltfModel, vertexCount, indexCount);
-		}
+
 		loaderInfo.vertexBuffer = new Vertex[vertexCount];
 		loaderInfo.indexBuffer = new uint32_t[indexCount];
 
-		// TODO: scene handling with no default scene
+		// Load in vertices and indices
 		for (size_t i = 0; i < scene.nodes.size(); i++)
 		{
 			const tinygltf::Node node = gltfModel.nodes[scene.nodes[i]];
 			loadNode(nullptr, node, scene.nodes[i], gltfModel, loaderInfo, scale);
 		}
+
+		// Load in animations
 		if (gltfModel.animations.size() > 0)
 		{
 			loadAnimations(gltfModel);
