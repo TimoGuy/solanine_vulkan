@@ -9,21 +9,21 @@
 #pragma once
 
 #include "Imports.h"
-//#include <iostream>
-//#include <stdlib.h>
-//#include <string>
-//#include <fstream>
-//#include <vector>
-//
-//#include <vulkan/vulkan.h>
-//#include "VulkanDevice.hpp"
-//
-//#define GLM_FORCE_RADIANS
-//#define GLM_FORCE_DEPTH_ZERO_TO_ONE
-//#include <glm/glm.hpp>
-//#include <glm/gtc/matrix_transform.hpp>
-//#include <glm/gtc/type_ptr.hpp>
-//#include <glm/gtx/string_cast.hpp>
+ //#include <iostream>
+ //#include <stdlib.h>
+ //#include <string>
+ //#include <fstream>
+ //#include <vector>
+ //
+ //#include <vulkan/vulkan.h>
+ //#include "VulkanDevice.hpp"
+ //
+ //#define GLM_FORCE_RADIANS
+ //#define GLM_FORCE_DEPTH_ZERO_TO_ONE
+ //#include <glm/glm.hpp>
+ //#include <glm/gtc/matrix_transform.hpp>
+ //#include <glm/gtc/type_ptr.hpp>
+ //#include <glm/gtx/string_cast.hpp>
 class VulkanEngine;
 
 // ERROR is already defined in wingdi.h and collides with a define in the Draco headers
@@ -45,7 +45,8 @@ namespace vkglTF
 {
 	struct Node;
 
-	struct BoundingBox {
+	struct BoundingBox
+	{
 		glm::vec3 min;
 		glm::vec3 max;
 		bool valid = false;
@@ -54,7 +55,8 @@ namespace vkglTF
 		BoundingBox getAABB(glm::mat4 m);
 	};
 
-	struct TextureSampler {
+	struct TextureSampler
+	{
 		VkFilter magFilter;
 		VkFilter minFilter;
 		VkSamplerAddressMode addressModeU;
@@ -62,7 +64,8 @@ namespace vkglTF
 		VkSamplerAddressMode addressModeW;
 	};
 
-	struct Texture {
+	struct Texture
+	{
 		VulkanEngine* device;
 		VkImage image;
 		VkImageLayout imageLayout;
@@ -79,21 +82,23 @@ namespace vkglTF
 		void fromglTfImage(tinygltf::Image& gltfimage, TextureSampler textureSampler, VulkanEngine* device, VkQueue copyQueue);
 	};
 
-	struct Material {		
-		enum AlphaMode{ ALPHAMODE_OPAQUE, ALPHAMODE_MASK, ALPHAMODE_BLEND };
+	struct Material
+	{
+		enum AlphaMode { ALPHAMODE_OPAQUE, ALPHAMODE_MASK, ALPHAMODE_BLEND };
 		AlphaMode alphaMode = ALPHAMODE_OPAQUE;
 		float alphaCutoff = 1.0f;
 		float metallicFactor = 1.0f;
 		float roughnessFactor = 1.0f;
 		glm::vec4 baseColorFactor = glm::vec4(1.0f);
 		glm::vec4 emissiveFactor = glm::vec4(1.0f);
-		vkglTF::Texture *baseColorTexture;
-		vkglTF::Texture *metallicRoughnessTexture;
-		vkglTF::Texture *normalTexture;
-		vkglTF::Texture *occlusionTexture;
-		vkglTF::Texture *emissiveTexture;
+		vkglTF::Texture* baseColorTexture;
+		vkglTF::Texture* metallicRoughnessTexture;
+		vkglTF::Texture* normalTexture;
+		vkglTF::Texture* occlusionTexture;
+		vkglTF::Texture* emissiveTexture;
 		bool doubleSided = false;
-		struct TexCoordSets {
+		struct TexCoordSets
+		{
 			uint8_t baseColor = 0;
 			uint8_t metallicRoughness = 0;
 			uint8_t specularGlossiness = 0;
@@ -101,43 +106,49 @@ namespace vkglTF
 			uint8_t occlusion = 0;
 			uint8_t emissive = 0;
 		} texCoordSets;
-		struct Extension {
-			vkglTF::Texture *specularGlossinessTexture;
-			vkglTF::Texture *diffuseTexture;
+		struct Extension
+		{
+			vkglTF::Texture* specularGlossinessTexture;
+			vkglTF::Texture* diffuseTexture;
 			glm::vec4 diffuseFactor = glm::vec4(1.0f);
 			glm::vec3 specularFactor = glm::vec3(0.0f);
 		} extension;
-		struct PbrWorkflows {
+		struct PbrWorkflows
+		{
 			bool metallicRoughness = true;
 			bool specularGlossiness = false;
 		} pbrWorkflows;
 		VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
 	};
 
-	struct Primitive {
+	struct Primitive
+	{
 		uint32_t firstIndex;
 		uint32_t indexCount;
 		uint32_t vertexCount;
-		Material &material;
+		Material& material;
 		bool hasIndices;
 		BoundingBox bb;
 		Primitive(uint32_t firstIndex, uint32_t indexCount, uint32_t vertexCount, Material& material);
 		void setBoundingBox(glm::vec3 min, glm::vec3 max);
 	};
 
-	struct Mesh {
+	struct Mesh
+	{
 		VulkanEngine* device;
 		std::vector<Primitive*> primitives;
 		BoundingBox bb;
 		BoundingBox aabb;
-		struct UniformBuffer {
+		struct UniformBuffer
+		{
 			VkBuffer buffer;
 			VkDeviceMemory memory;
 			VkDescriptorBufferInfo descriptor;
 			VkDescriptorSet descriptorSet;
-			void *mapped;
+			void* mapped;
 		} uniformBuffer;
-		struct UniformBlock {
+		struct UniformBlock
+		{
 			glm::mat4 matrix;
 			glm::mat4 jointMatrix[MAX_NUM_JOINTS]{};
 			float jointcount{ 0 };
@@ -147,21 +158,23 @@ namespace vkglTF
 		void setBoundingBox(glm::vec3 min, glm::vec3 max);
 	};
 
-	struct Skin {
+	struct Skin
+	{
 		std::string name;
-		Node *skeletonRoot = nullptr;
+		Node* skeletonRoot = nullptr;
 		std::vector<glm::mat4> inverseBindMatrices;
 		std::vector<Node*> joints;
 	};
 
-	struct Node {
-		Node *parent;
+	struct Node
+	{
+		Node* parent;
 		uint32_t index;
 		std::vector<Node*> children;
 		glm::mat4 matrix;
 		std::string name;
-		Mesh *mesh;
-		Skin *skin;
+		Mesh* mesh;
+		Skin* skin;
 		int32_t skinIndex = -1;
 		glm::vec3 translation{};
 		glm::vec3 scale{ 1.0f };
@@ -174,21 +187,24 @@ namespace vkglTF
 		~Node();
 	};
 
-	struct AnimationChannel {
+	struct AnimationChannel
+	{
 		enum PathType { TRANSLATION, ROTATION, SCALE };
 		PathType path;
-		Node *node;
+		Node* node;
 		uint32_t samplerIndex;
 	};
 
-	struct AnimationSampler {
+	struct AnimationSampler
+	{
 		enum InterpolationType { LINEAR, STEP, CUBICSPLINE };
 		InterpolationType interpolation;
 		std::vector<float> inputs;
 		std::vector<glm::vec4> outputsVec4;
 	};
 
-	struct Animation {
+	struct Animation
+	{
 		std::string name;
 		std::vector<AnimationSampler> samplers;
 		std::vector<AnimationChannel> channels;
@@ -196,10 +212,12 @@ namespace vkglTF
 		float end = std::numeric_limits<float>::min();
 	};
 
-	struct Model {
+	struct Model
+	{
 		VulkanEngine* device;
 
-		struct Vertex {
+		struct Vertex
+		{
 			glm::vec3 pos;
 			glm::vec3 normal;
 			glm::vec2 uv0;
@@ -209,11 +227,13 @@ namespace vkglTF
 			glm::vec4 color;
 		};
 
-		struct Vertices {
+		struct Vertices
+		{
 			VkBuffer buffer = VK_NULL_HANDLE;
 			VkDeviceMemory memory;
 		} vertices;
-		struct Indices {
+		struct Indices
+		{
 			int count;
 			VkBuffer buffer = VK_NULL_HANDLE;
 			VkDeviceMemory memory;
@@ -232,12 +252,14 @@ namespace vkglTF
 		std::vector<Animation> animations;
 		std::vector<std::string> extensions;
 
-		struct Dimensions {
+		struct Dimensions
+		{
 			glm::vec3 min = glm::vec3(FLT_MAX);
 			glm::vec3 max = glm::vec3(-FLT_MAX);
 		} dimensions;
 
-		struct LoaderInfo {
+		struct LoaderInfo
+		{
 			uint32_t* indexBuffer;
 			Vertex* vertexBuffer;
 			size_t indexPos = 0;

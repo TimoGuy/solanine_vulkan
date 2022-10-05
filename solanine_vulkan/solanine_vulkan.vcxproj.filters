@@ -77,9 +77,6 @@
     <ClInclude Include="src\imgui\imgui_impl_vulkan.h">
       <Filter>Header Files\imgui</Filter>
     </ClInclude>
-    <ClInclude Include="src\VkglTFModel.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Main.cpp">
@@ -120,9 +117,6 @@
     </ClCompile>
     <ClCompile Include="src\imgui\imgui_impl_vulkan.cpp">
       <Filter>Source Files\imgui</Filter>
-    </ClCompile>
-    <ClCompile Include="src\VkglTFModel.cpp">
-      <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

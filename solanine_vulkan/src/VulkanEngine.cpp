@@ -859,7 +859,7 @@ void VulkanEngine::initPipelines()
 	pipelineBuilder._vertexInputInfo.pVertexAttributeDescriptions = vertexDescription.attributes.data();
 	pipelineBuilder._vertexInputInfo.vertexAttributeDescriptionCount = vertexDescription.attributes.size();
 	pipelineBuilder._vertexInputInfo.pVertexBindingDescriptions = vertexDescription.bindings.data();
-	pipelineBuilder._vertexInputInfo.vertexBindingDescriptionCount= vertexDescription.bindings.size();
+	pipelineBuilder._vertexInputInfo.vertexBindingDescriptionCount = vertexDescription.bindings.size();
 
 	pipelineBuilder._inputAssembly = vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
 
@@ -1072,40 +1072,50 @@ bool VulkanEngine::loadShaderModule(const char* filePath, VkShaderModule* outSha
 
 void VulkanEngine::loadMeshes()
 {
-	Mesh _triangleMesh;
+	Mesh _quadMesh;
 
-	//make the array 3 vertices long
-	_triangleMesh._vertices.resize(3);
-
+	_quadMesh._vertices.resize(4);
 	//vertex positions
-	_triangleMesh._vertices[0].position = { 1.f, 1.f, 0.0f };
-	_triangleMesh._vertices[1].position = { -1.f, 1.f, 0.0f };
-	_triangleMesh._vertices[2].position = { 0.f,-1.f, 0.0f };
+	_quadMesh._vertices[0].position = { -1.f, 1.f, 0.0f };
+	_quadMesh._vertices[1].position = { 1.f, 1.f, 0.0f };
+	_quadMesh._vertices[2].position = { 1.f,-1.f, 0.0f };
+	_quadMesh._vertices[3].position = { -1.f,-1.f, 0.0f };
 
 	//vertex colors, all green
-	_triangleMesh._vertices[0].color = { 0.f, 1.f, 0.0f }; //pure green
-	_triangleMesh._vertices[1].color = { 0.f, 1.f, 0.0f }; //pure green
-	_triangleMesh._vertices[2].color = { 0.f, 1.f, 0.0f }; //pure green
+	_quadMesh._vertices[0].color = { 0.f, 1.f, 0.0f }; //pure green
+	_quadMesh._vertices[1].color = { 0.f, 1.f, 0.0f }; //pure green
+	_quadMesh._vertices[2].color = { 0.f, 1.f, 0.0f }; //pure green
+	_quadMesh._vertices[3].color = { 0.f, 1.f, 0.0f }; //pure green
 
 	//we don't care about the vertex normals
 
 	// vertex uv
-	_triangleMesh._vertices[0].uv = { 1.f, 0.f };
-	_triangleMesh._vertices[1].uv = { 0.f, 0.f };
-	_triangleMesh._vertices[2].uv = { 0.5f, 1.f };
+	_quadMesh._vertices[0].uv = { 0.f, 0.f };
+	_quadMesh._vertices[1].uv = { 1.f, 0.f };
+	_quadMesh._vertices[2].uv = { 1.f, 1.f };
+	_quadMesh._vertices[3].uv = { 0.f, 1.f };
+
+	// Indices
+	_quadMesh._indices.resize(6);
+	_quadMesh._indices[0] = 0;
+	_quadMesh._indices[1] = 1;
+	_quadMesh._indices[2] = 2;
+	_quadMesh._indices[3] = 2;
+	_quadMesh._indices[4] = 3;
+	_quadMesh._indices[5] = 0;
 
 	// Register mesh
-	uploadMeshToGPU(_triangleMesh);
-	_meshes["triangle"] = _triangleMesh;
+	uploadMeshToGPU(_quadMesh);
+	_meshes["triangle"] = _quadMesh;
 }
 
 void VulkanEngine::uploadMeshToGPU(Mesh& mesh)
 {
-	const size_t bufferSize = mesh._vertices.size() * sizeof(Vertex);
-	VkBufferCreateInfo stagingBufferInfo = {
+	const size_t vertexBufferSize = mesh._vertices.size() * sizeof(Vertex);
+	VkBufferCreateInfo stagingVertexBufferInfo = {
 		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
 		.pNext = nullptr,
-		.size = bufferSize,
+		.size = vertexBufferSize,
 		.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 	};
 	VmaAllocationCreateInfo vmaAllocInfo = {
@@ -1113,20 +1123,20 @@ void VulkanEngine::uploadMeshToGPU(Mesh& mesh)
 	};
 
 	// Create temporary staging buffer
-	AllocatedBuffer stagingBuffer;
-	VK_CHECK(vmaCreateBuffer(_allocator, &stagingBufferInfo, &vmaAllocInfo, &stagingBuffer._buffer, &stagingBuffer._allocation, nullptr));
+	AllocatedBuffer stagingVertexBuffer;
+	VK_CHECK(vmaCreateBuffer(_allocator, &stagingVertexBufferInfo, &vmaAllocInfo, &stagingVertexBuffer._buffer, &stagingVertexBuffer._allocation, nullptr));
 
 	// Copy mesh to staging buffer
 	void* data;
-	vmaMapMemory(_allocator, stagingBuffer._allocation, &data);
-	memcpy(data, mesh._vertices.data(), bufferSize);
-	vmaUnmapMemory(_allocator, stagingBuffer._allocation);
+	vmaMapMemory(_allocator, stagingVertexBuffer._allocation, &data);
+	memcpy(data, mesh._vertices.data(), vertexBufferSize);
+	vmaUnmapMemory(_allocator, stagingVertexBuffer._allocation);
 
 	// Create GPU side buffer
 	VkBufferCreateInfo vertexBufferInfo = {
 		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
 		.pNext = nullptr,
-		.size = bufferSize,
+		.size = vertexBufferSize,
 		.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 	};
 	vmaAllocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
@@ -1138,18 +1148,77 @@ void VulkanEngine::uploadMeshToGPU(Mesh& mesh)
 		VkBufferCopy copy = {
 			.srcOffset = 0,
 			.dstOffset = 0,
-			.size = bufferSize,
+			.size = vertexBufferSize,
 		};
-		vkCmdCopyBuffer(cmd, stagingBuffer._buffer, mesh._vertexBuffer._buffer, 1, &copy);
+		vkCmdCopyBuffer(cmd, stagingVertexBuffer._buffer, mesh._vertexBuffer._buffer, 1, &copy);
 		});
 
-	// Destroy staging buffer
-	vmaDestroyBuffer(_allocator, stagingBuffer._buffer, stagingBuffer._allocation);
+	// Destroy staging buffers
+	vmaDestroyBuffer(_allocator, stagingVertexBuffer._buffer, stagingVertexBuffer._allocation);
 
+	// @NOTE: this is not the ideal way to do cleanup... this should be done by a resource manager
 	// Add destroy command for cleanup
 	_mainDeletionQueue.pushFunction([=]() {
 		vmaDestroyBuffer(_allocator, mesh._vertexBuffer._buffer, mesh._vertexBuffer._allocation);
 		});
+
+	//
+	// Load in indices into the GPU
+	//
+	mesh._hasIndices = (mesh._indices.size() > 0);
+	if (mesh._hasIndices)
+	{
+		const size_t indexBufferSize = mesh._indices.size() * sizeof(uint32_t);
+		VkBufferCreateInfo stagingIndexBufferInfo = {
+			.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+			.pNext = nullptr,
+			.size = indexBufferSize,
+			.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+		};
+		VmaAllocationCreateInfo vmaAllocInfo = {
+			.usage = VMA_MEMORY_USAGE_CPU_ONLY,
+		};
+
+		// Create temporary staging buffer
+		AllocatedBuffer stagingIndexBuffer;
+		VK_CHECK(vmaCreateBuffer(_allocator, &stagingIndexBufferInfo, &vmaAllocInfo, &stagingIndexBuffer._buffer, &stagingIndexBuffer._allocation, nullptr));
+
+		// Copy mesh to staging buffer
+		void* data;
+		vmaMapMemory(_allocator, stagingIndexBuffer._allocation, &data);
+		memcpy(data, mesh._indices.data(), indexBufferSize);
+		vmaUnmapMemory(_allocator, stagingIndexBuffer._allocation);
+
+		// Create GPU side buffer
+		VkBufferCreateInfo indexBufferInfo = {
+			.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+			.pNext = nullptr,
+			.size = indexBufferSize,
+			.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+		};
+		vmaAllocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+
+		VK_CHECK(vmaCreateBuffer(_allocator, &indexBufferInfo, &vmaAllocInfo, &mesh._indexBuffer._buffer, &mesh._indexBuffer._allocation, nullptr));
+
+		// Launch copy command! (staging to GPU)
+		immediateSubmit([=](VkCommandBuffer cmd) {
+			VkBufferCopy copy = {
+				.srcOffset = 0,
+				.dstOffset = 0,
+				.size = indexBufferSize,
+			};
+			vkCmdCopyBuffer(cmd, stagingIndexBuffer._buffer, mesh._indexBuffer._buffer, 1, &copy);
+			});
+
+		// Destroy staging buffers
+		vmaDestroyBuffer(_allocator, stagingIndexBuffer._buffer, stagingIndexBuffer._allocation);
+
+		// @NOTE: this is not the ideal way to do cleanup... this should be done by a resource manager
+		// Add destroy command for cleanup
+		_mainDeletionQueue.pushFunction([=]() {
+			vmaDestroyBuffer(_allocator, mesh._indexBuffer._buffer, mesh._indexBuffer._allocation);
+			});
+	}
 }
 
 void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first, size_t count)
@@ -1253,11 +1322,16 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first,
 			// Bind the new mesh
 			VkDeviceSize offset = 0;
 			vkCmdBindVertexBuffers(cmd, 0, 1, &object.mesh->_vertexBuffer._buffer, &offset);
+			if (object.mesh->_hasIndices)
+				vkCmdBindIndexBuffer(cmd, object.mesh->_indexBuffer._buffer, offset, VK_INDEX_TYPE_UINT32);
 			lastMesh = object.mesh;
 		}
 
 		// Render it out
-		vkCmdDraw(cmd, object.mesh->_vertices.size(), 1, 0, i);
+		if (object.mesh->_hasIndices)
+			vkCmdDrawIndexed(cmd, static_cast<uint32_t>(object.mesh->_indices.size()), 1, 0, 0, i);
+		else
+			vkCmdDraw(cmd, object.mesh->_vertices.size(), 1, 0, i);
 	}
 }
 
