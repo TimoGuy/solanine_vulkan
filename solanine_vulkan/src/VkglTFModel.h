@@ -9,21 +9,6 @@
 #pragma once
 
 #include "Imports.h"
- //#include <iostream>
- //#include <stdlib.h>
- //#include <string>
- //#include <fstream>
- //#include <vector>
- //
- //#include <vulkan/vulkan.h>
- //#include "VulkanDevice.hpp"
- //
- //#define GLM_FORCE_RADIANS
- //#define GLM_FORCE_DEPTH_ZERO_TO_ONE
- //#include <glm/glm.hpp>
- //#include <glm/gtc/matrix_transform.hpp>
- //#include <glm/gtc/type_ptr.hpp>
- //#include <glm/gtx/string_cast.hpp>
 class VulkanEngine;
 
 // ERROR is already defined in wingdi.h and collides with a define in the Draco headers
@@ -283,7 +268,7 @@ namespace vkglTF
 		void loadTextureSamplers(tinygltf::Model& gltfModel);
 		void loadMaterials(tinygltf::Model& gltfModel);
 		void loadAnimations(tinygltf::Model& gltfModel);
-		void loadFromFile(std::string filename, VulkanEngine* device, VkQueue transferQueue, float scale = 1.0f);
+		void loadFromFile(std::string filename, VkQueue transferQueue, float scale = 1.0f);
 		void drawNode(Node* node, VkCommandBuffer commandBuffer);
 		void draw(VkCommandBuffer commandBuffer);
 		void calculateBoundingBox(Node* node, Node* parent);

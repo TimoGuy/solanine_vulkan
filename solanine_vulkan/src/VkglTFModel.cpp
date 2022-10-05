@@ -93,7 +93,8 @@ namespace vkglTF
 			}
 			deleteBuffer = true;
 		}
-		else {
+		else
+		{
 			buffer = &gltfimage.image[0];
 			bufferSize = gltfimage.image.size();
 		}
@@ -398,7 +399,8 @@ namespace vkglTF
 				mesh->uniformBlock.jointcount = (float)numJoints;
 				memcpy(mesh->uniformBuffer.mapped, &mesh->uniformBlock, sizeof(mesh->uniformBlock));
 			}
-			else {
+			else
+			{
 				memcpy(mesh->uniformBuffer.mapped, &m, sizeof(glm::mat4));
 			}
 		}
@@ -632,7 +634,8 @@ namespace vkglTF
 								break;
 							}
 						}
-						else {
+						else
+						{
 							vert.joint0 = glm::vec4(0.0f);
 						}
 						vert.weight0 = hasSkin ? glm::make_vec4(&bufferWeights[v * weightByteStride]) : glm::vec4(0.0f);
@@ -709,7 +712,8 @@ namespace vkglTF
 		{
 			parent->children.push_back(newNode);
 		}
-		else {
+		else
+		{
 			nodes.push_back(newNode);
 		}
 		linearNodes.push_back(newNode);
@@ -791,7 +795,8 @@ namespace vkglTF
 				textureSampler.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
 				textureSampler.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
 			}
-			else {
+			else
+			{
 				textureSampler = textureSamplers[tex.sampler];
 			}
 			vkglTF::Texture texture;
@@ -1086,7 +1091,7 @@ namespace vkglTF
 		}
 	}
 
-	void Model::loadFromFile(std::string filename, VulkanEngine* device, VkQueue transferQueue, float scale)
+	void Model::loadFromFile(std::string filename, VkQueue transferQueue, float scale)
 	{
 		//
 		// Load in data from file
@@ -1096,8 +1101,6 @@ namespace vkglTF
 
 		std::string error;
 		std::string warning;
-
-		this->device = device;
 
 		bool binary = false;
 		size_t extpos = filename.rfind('.', filename.length());
@@ -1141,23 +1144,18 @@ namespace vkglTF
 
 		// Load in animations
 		if (gltfModel.animations.size() > 0)
-		{
 			loadAnimations(gltfModel);
-		}
 		loadSkins(gltfModel);
 
 		for (auto node : linearNodes)
 		{
 			// Assign skins
 			if (node->skinIndex > -1)
-			{
 				node->skin = skins[node->skinIndex];
-			}
+
 			// Initial pose
 			if (node->mesh)
-			{
 				node->update();
-			}
 		}
 
 		extensions = gltfModel.extensionsUsed;
@@ -1168,6 +1166,9 @@ namespace vkglTF
 
 		assert(vertexBufferSize > 0);
 
+		//
+		// Upload vertices and indices to GPU
+		//
 		struct StagingBuffer {
 			VkBuffer buffer;
 			VkDeviceMemory memory;
