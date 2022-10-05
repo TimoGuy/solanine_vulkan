@@ -30,6 +30,33 @@
     <None Include="shader\default_lit.vert">
       <Filter>Shader Files</Filter>
     </None>
+    <None Include="shader\filtercube.vert">
+      <Filter>Shader Files</Filter>
+    </None>
+    <None Include="shader\genbrdflut.frag">
+      <Filter>Shader Files</Filter>
+    </None>
+    <None Include="shader\genbrdflut.vert">
+      <Filter>Shader Files</Filter>
+    </None>
+    <None Include="shader\irradiancecube.frag">
+      <Filter>Shader Files</Filter>
+    </None>
+    <None Include="shader\pbr.vert">
+      <Filter>Shader Files</Filter>
+    </None>
+    <None Include="shader\pbr_khr.frag">
+      <Filter>Shader Files</Filter>
+    </None>
+    <None Include="shader\prefilterenvmap.frag">
+      <Filter>Shader Files</Filter>
+    </None>
+    <None Include="shader\skybox.frag">
+      <Filter>Shader Files</Filter>
+    </None>
+    <None Include="shader\skybox.vert">
+      <Filter>Shader Files</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\Imports.h">
@@ -77,6 +104,9 @@
     <ClInclude Include="src\imgui\imgui_impl_vulkan.h">
       <Filter>Header Files\imgui</Filter>
     </ClInclude>
+    <ClInclude Include="src\VkglTFModel.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Main.cpp">
@@ -117,6 +147,9 @@
     </ClCompile>
     <ClCompile Include="src\imgui\imgui_impl_vulkan.cpp">
       <Filter>Source Files\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\VkglTFModel.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

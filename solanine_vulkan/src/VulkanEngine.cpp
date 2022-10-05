@@ -906,7 +906,7 @@ void VulkanEngine::initScene()
 			glm::mat4 scale = glm::scale(glm::mat4(1.0f), glm::vec3(0.2f));
 
 			RenderObject triangle = {
-				.mesh = getMesh("triangle"),
+				.mesh = getMesh("quad"),
 				.material = getMaterial("defaultMaterial"),
 				.transformMatrix = translation * scale,
 			};
@@ -1098,15 +1098,15 @@ void VulkanEngine::loadMeshes()
 	// Indices
 	_quadMesh._indices.resize(6);
 	_quadMesh._indices[0] = 0;
-	_quadMesh._indices[1] = 1;
-	_quadMesh._indices[2] = 2;
+	_quadMesh._indices[1] = 2;
+	_quadMesh._indices[2] = 1;
 	_quadMesh._indices[3] = 2;
-	_quadMesh._indices[4] = 3;
-	_quadMesh._indices[5] = 0;
+	_quadMesh._indices[4] = 0;
+	_quadMesh._indices[5] = 3;
 
 	// Register mesh
 	uploadMeshToGPU(_quadMesh);
-	_meshes["triangle"] = _quadMesh;
+	_meshes["quad"] = _quadMesh;
 }
 
 void VulkanEngine::uploadMeshToGPU(Mesh& mesh)
@@ -1226,7 +1226,7 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first,
 	//
 	// Setup scene camera
 	//
-	glm::vec3 camPos = { 0.0f, -3.0f, -5.0f };
+	glm::vec3 camPos = { 0.0f, 3.0f, -5.0f };
 	glm::mat4 view = glm::translate(glm::mat4(1.0f), camPos);
 	glm::mat4 projection = glm::perspective(
 		glm::radians(70.0f),
@@ -1234,7 +1234,6 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first,
 		0.1f,
 		200.0f
 	);
-	projection[1][1] *= -1;		// I don't get this  -Timo
 	glm::mat4 projectionView = projection * view;
 
 	// Create and send off cameraData
@@ -1242,6 +1241,7 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first,
 		.view = view,
 		.projection = projection,
 		.projectionView = projectionView,
+		.cameraPosition = camPos,
 	};
 	const auto& currentFrame = getCurrentFrame();
 	void* data;

@@ -130,6 +130,15 @@
   <ItemGroup>
     <None Include="shader\default_lit.frag" />
     <None Include="shader\default_lit.vert" />
+    <None Include="shader\filtercube.vert" />
+    <None Include="shader\genbrdflut.frag" />
+    <None Include="shader\genbrdflut.vert" />
+    <None Include="shader\irradiancecube.frag" />
+    <None Include="shader\pbr.vert" />
+    <None Include="shader\pbr_khr.frag" />
+    <None Include="shader\prefilterenvmap.frag" />
+    <None Include="shader\skybox.frag" />
+    <None Include="shader\skybox.vert" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\GLSLToSPIRVHelper.h" />
@@ -143,6 +152,7 @@
     <ClInclude Include="src\imgui\imstb_truetype.h" />
     <ClInclude Include="src\Imports.h" />
     <ClInclude Include="src\VkBootstrap.h" />
+    <ClInclude Include="src\VkglTFModel.h" />
     <ClInclude Include="src\VkInitializers.h" />
     <ClInclude Include="src\VkMesh.h" />
     <ClInclude Include="src\VkTextures.h" />
@@ -158,6 +168,7 @@
     <ClCompile Include="src\imgui\imgui_widgets.cpp" />
     <ClCompile Include="src\Main.cpp" />
     <ClCompile Include="src\VkBootstrap.cpp" />
+    <ClCompile Include="src\VkglTFModel.cpp" />
     <ClCompile Include="src\VkInitializers.cpp" />
     <ClCompile Include="src\VkMesh.cpp" />
     <ClCompile Include="src\VkTextures.cpp" />
