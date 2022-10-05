@@ -841,12 +841,13 @@ namespace vkglTF
 	{
 		for (tinygltf::Sampler smpl : gltfModel.samplers)
 		{
-			vkglTF::TextureSampler sampler{};
-			sampler.minFilter = getVkFilterMode(smpl.minFilter);
-			sampler.magFilter = getVkFilterMode(smpl.magFilter);
-			sampler.addressModeU = getVkWrapMode(smpl.wrapS);
-			sampler.addressModeV = getVkWrapMode(smpl.wrapT);
-			sampler.addressModeW = sampler.addressModeV;
+			vkglTF::TextureSampler sampler = {
+				.magFilter = getVkFilterMode(smpl.magFilter),
+				.minFilter = getVkFilterMode(smpl.minFilter),
+				.addressModeU = getVkWrapMode(smpl.wrapS),
+				.addressModeV = getVkWrapMode(smpl.wrapT),
+				.addressModeW = sampler.addressModeV,
+			};
 			textureSamplers.push_back(sampler);
 		}
 	}
@@ -855,45 +856,54 @@ namespace vkglTF
 	{
 		for (tinygltf::Material& mat : gltfModel.materials)
 		{
-			vkglTF::Material material{};
+			vkglTF::Material material = {};
 			material.doubleSided = mat.doubleSided;
+
 			if (mat.values.find("baseColorTexture") != mat.values.end())
 			{
 				material.baseColorTexture = &textures[mat.values["baseColorTexture"].TextureIndex()];
 				material.texCoordSets.baseColor = mat.values["baseColorTexture"].TextureTexCoord();
 			}
+
 			if (mat.values.find("metallicRoughnessTexture") != mat.values.end())
 			{
 				material.metallicRoughnessTexture = &textures[mat.values["metallicRoughnessTexture"].TextureIndex()];
 				material.texCoordSets.metallicRoughness = mat.values["metallicRoughnessTexture"].TextureTexCoord();
 			}
+
 			if (mat.values.find("roughnessFactor") != mat.values.end())
 			{
 				material.roughnessFactor = static_cast<float>(mat.values["roughnessFactor"].Factor());
 			}
+
 			if (mat.values.find("metallicFactor") != mat.values.end())
 			{
 				material.metallicFactor = static_cast<float>(mat.values["metallicFactor"].Factor());
 			}
+
 			if (mat.values.find("baseColorFactor") != mat.values.end())
 			{
 				material.baseColorFactor = glm::make_vec4(mat.values["baseColorFactor"].ColorFactor().data());
 			}
+
 			if (mat.additionalValues.find("normalTexture") != mat.additionalValues.end())
 			{
 				material.normalTexture = &textures[mat.additionalValues["normalTexture"].TextureIndex()];
 				material.texCoordSets.normal = mat.additionalValues["normalTexture"].TextureTexCoord();
 			}
+
 			if (mat.additionalValues.find("emissiveTexture") != mat.additionalValues.end())
 			{
 				material.emissiveTexture = &textures[mat.additionalValues["emissiveTexture"].TextureIndex()];
 				material.texCoordSets.emissive = mat.additionalValues["emissiveTexture"].TextureTexCoord();
 			}
+
 			if (mat.additionalValues.find("occlusionTexture") != mat.additionalValues.end())
 			{
 				material.occlusionTexture = &textures[mat.additionalValues["occlusionTexture"].TextureIndex()];
 				material.texCoordSets.occlusion = mat.additionalValues["occlusionTexture"].TextureTexCoord();
 			}
+
 			if (mat.additionalValues.find("alphaMode") != mat.additionalValues.end())
 			{
 				tinygltf::Parameter param = mat.additionalValues["alphaMode"];
@@ -907,10 +917,12 @@ namespace vkglTF
 					material.alphaMode = Material::ALPHAMODE_MASK;
 				}
 			}
+
 			if (mat.additionalValues.find("alphaCutoff") != mat.additionalValues.end())
 			{
 				material.alphaCutoff = static_cast<float>(mat.additionalValues["alphaCutoff"].Factor());
 			}
+
 			if (mat.additionalValues.find("emissiveFactor") != mat.additionalValues.end())
 			{
 				material.emissiveFactor = glm::vec4(glm::make_vec3(mat.additionalValues["emissiveFactor"].ColorFactor().data()), 1.0);
