@@ -618,12 +618,14 @@ namespace vkglTF
 						{
 							switch (jointComponentType)
 							{
-							case TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT: {
+							case TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT:
+							{
 								const uint16_t* buf = static_cast<const uint16_t*>(bufferJoints);
 								vert.joint0 = glm::vec4(glm::make_vec4(&buf[v * jointByteStride]));
 								break;
 							}
-							case TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE: {
+							case TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE:
+							{
 								const uint8_t* buf = static_cast<const uint8_t*>(bufferJoints);
 								vert.joint0 = glm::vec4(glm::make_vec4(&buf[v * jointByteStride]));
 								break;
@@ -659,7 +661,8 @@ namespace vkglTF
 
 					switch (accessor.componentType)
 					{
-					case TINYGLTF_PARAMETER_TYPE_UNSIGNED_INT: {
+					case TINYGLTF_PARAMETER_TYPE_UNSIGNED_INT:
+					{
 						const uint32_t* buf = static_cast<const uint32_t*>(dataPtr);
 						for (size_t index = 0; index < accessor.count; index++)
 						{
@@ -668,7 +671,8 @@ namespace vkglTF
 						}
 						break;
 					}
-					case TINYGLTF_PARAMETER_TYPE_UNSIGNED_SHORT: {
+					case TINYGLTF_PARAMETER_TYPE_UNSIGNED_SHORT:
+					{
 						const uint16_t* buf = static_cast<const uint16_t*>(dataPtr);
 						for (size_t index = 0; index < accessor.count; index++)
 						{
@@ -677,7 +681,8 @@ namespace vkglTF
 						}
 						break;
 					}
-					case TINYGLTF_PARAMETER_TYPE_UNSIGNED_BYTE: {
+					case TINYGLTF_PARAMETER_TYPE_UNSIGNED_BYTE:
+					{
 						const uint8_t* buf = static_cast<const uint8_t*>(dataPtr);
 						for (size_t index = 0; index < accessor.count; index++)
 						{
@@ -786,7 +791,11 @@ namespace vkglTF
 		{
 			tinygltf::Image image = gltfModel.images[tex.source];
 			vkglTF::TextureSampler textureSampler;
-			if (tex.sampler == -1)
+			if (tex.sampler > -1)
+			{
+				textureSampler = textureSamplers[tex.sampler];
+			}
+			else
 			{
 				// No sampler specified, use a default one
 				textureSampler.magFilter = VK_FILTER_LINEAR;
@@ -794,10 +803,6 @@ namespace vkglTF
 				textureSampler.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
 				textureSampler.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
 				textureSampler.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-			}
-			else
-			{
-				textureSampler = textureSamplers[tex.sampler];
 			}
 			vkglTF::Texture texture;
 			texture.fromglTfImage(image, textureSampler, device, transferQueue);
@@ -1041,7 +1046,8 @@ namespace vkglTF
 
 					switch (accessor.type)
 					{
-					case TINYGLTF_TYPE_VEC3: {
+					case TINYGLTF_TYPE_VEC3:
+					{
 						const glm::vec3* buf = static_cast<const glm::vec3*>(dataPtr);
 						for (size_t index = 0; index < accessor.count; index++)
 						{
@@ -1049,7 +1055,8 @@ namespace vkglTF
 						}
 						break;
 					}
-					case TINYGLTF_TYPE_VEC4: {
+					case TINYGLTF_TYPE_VEC4:
+					{
 						const glm::vec4* buf = static_cast<const glm::vec4*>(dataPtr);
 						for (size_t index = 0; index < accessor.count; index++)
 						{
@@ -1057,7 +1064,8 @@ namespace vkglTF
 						}
 						break;
 					}
-					default: {
+					default:
+					{
 						std::cout << "unknown type" << std::endl;
 						break;
 					}
@@ -1367,17 +1375,20 @@ namespace vkglTF
 					{
 						switch (channel.path)
 						{
-						case vkglTF::AnimationChannel::PathType::TRANSLATION: {
+						case vkglTF::AnimationChannel::PathType::TRANSLATION:
+						{
 							glm::vec4 trans = glm::mix(sampler.outputsVec4[i], sampler.outputsVec4[i + 1], u);
 							channel.node->translation = glm::vec3(trans);
 							break;
 						}
-						case vkglTF::AnimationChannel::PathType::SCALE: {
+						case vkglTF::AnimationChannel::PathType::SCALE:
+						{
 							glm::vec4 trans = glm::mix(sampler.outputsVec4[i], sampler.outputsVec4[i + 1], u);
 							channel.node->scale = glm::vec3(trans);
 							break;
 						}
-						case vkglTF::AnimationChannel::PathType::ROTATION: {
+						case vkglTF::AnimationChannel::PathType::ROTATION:
+						{
 							glm::quat q1;
 							q1.x = sampler.outputsVec4[i].x;
 							q1.y = sampler.outputsVec4[i].y;

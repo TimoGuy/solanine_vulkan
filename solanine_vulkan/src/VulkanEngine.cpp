@@ -409,8 +409,13 @@ void VulkanEngine::initVulkan()
 	// Spit out phsyical device properties
 	//
 	std::cout << "[Chosen Physical Device Properties]" << std::endl;
-	std::cout << "DEVICE_NAME\t\t\t" << _gpuProperties.deviceName << std::endl;
-	std::cout << "MINIMUM_BUFFER_ALIGNMENT\t" << _gpuProperties.limits.minUniformBufferOffsetAlignment << std::endl;
+	std::cout << "API_VERSION                 " << VK_API_VERSION_MAJOR(_gpuProperties.apiVersion) << "." << VK_API_VERSION_MINOR(_gpuProperties.apiVersion) << "." << VK_API_VERSION_PATCH(_gpuProperties.apiVersion) << "." << VK_API_VERSION_VARIANT(_gpuProperties.apiVersion) << std::endl;
+	std::cout << "DRIVER_VERSION              " << _gpuProperties.driverVersion << std::endl;
+	std::cout << "VENDOR_ID                   " << _gpuProperties.vendorID << std::endl;
+	std::cout << "DEVICE_ID                   " << _gpuProperties.deviceID << std::endl;
+	std::cout << "DEVICE_TYPE                 " << _gpuProperties.deviceType << std::endl;
+	std::cout << "DEVICE_NAME                 " << _gpuProperties.deviceName << std::endl;
+	std::cout << "MINIMUM_BUFFER_ALIGNMENT    " << _gpuProperties.limits.minUniformBufferOffsetAlignment << std::endl;
 	std::cout << std::endl;
 }
 
