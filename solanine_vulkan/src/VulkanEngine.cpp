@@ -266,9 +266,9 @@ void VulkanEngine::render()
 void VulkanEngine::loadImages()
 {
 	Texture woodFloor057;
-	vkutil::loadImageFromFile(*this, "res/textures/WoodFloor057_1K-JPG/WoodFloor057_1K_Color.jpg", woodFloor057.image);
+	vkutil::loadImageFromFile(*this, "res/textures/WoodFloor057_1K-JPG/WoodFloor057_1K_Color.jpg", 0, woodFloor057.image);
 
-	VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, woodFloor057.image._image, VK_IMAGE_ASPECT_COLOR_BIT);
+	VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, woodFloor057.image._image, VK_IMAGE_ASPECT_COLOR_BIT, woodFloor057.image._mipLevels);
 	vkCreateImageView(_device, &imageInfo, nullptr, &woodFloor057.imageView);
 
 	_mainDeletionQueue.pushFunction([=]() {
@@ -449,14 +449,14 @@ void VulkanEngine::initSwapchain()
 	};
 
 	_depthFormat = VK_FORMAT_D32_SFLOAT;
-	VkImageCreateInfo depthImgInfo = vkinit::imageCreateInfo(_depthFormat, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, depthImgExtent);
+	VkImageCreateInfo depthImgInfo = vkinit::imageCreateInfo(_depthFormat, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, depthImgExtent, 1);
 	VmaAllocationCreateInfo depthImgAllocInfo = {
 		.usage = VMA_MEMORY_USAGE_GPU_ONLY,
 		.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
 	};
 	vmaCreateImage(_allocator, &depthImgInfo, &depthImgAllocInfo, &_depthImage._image, &_depthImage._allocation, nullptr);
 
-	VkImageViewCreateInfo depthViewInfo = vkinit::imageviewCreateInfo(_depthFormat, _depthImage._image, VK_IMAGE_ASPECT_DEPTH_BIT);
+	VkImageViewCreateInfo depthViewInfo = vkinit::imageviewCreateInfo(_depthFormat, _depthImage._image, VK_IMAGE_ASPECT_DEPTH_BIT, 1);
 	VK_CHECK(vkCreateImageView(_device, &depthViewInfo, nullptr, &_depthImageView));
 
 	// Add destroy command

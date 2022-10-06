@@ -3,7 +3,7 @@
 #include "VkInitializers.h"
 
 
-bool vkutil::loadImageFromFile(VulkanEngine& engine, const char* fname, AllocatedImage& outImage)
+bool vkutil::loadImageFromFile(VulkanEngine& engine, const char* fname, uint32_t mipLevels, AllocatedImage& outImage)
 {
 	//
 	// Load image from file
@@ -34,14 +34,23 @@ bool vkutil::loadImageFromFile(VulkanEngine& engine, const char* fname, Allocate
 	//
 	// Create the image in vulkan
 	//
+	const uint32_t maxMipmaps = static_cast<uint32_t>(std::floor(std::log2(std::max(texWidth, texHeight)))) + 1;
+	AllocatedImage newImage;
+	newImage._mipLevels = mipLevels == 0 ? maxMipmaps : std::min(mipLevels, maxMipmaps);
+
 	VkExtent3D imageExtent = {
 		.width = static_cast<uint32_t>(texWidth),
 		.height = static_cast<uint32_t>(texHeight),
 		.depth = 1,
 	};
-	VkImageCreateInfo dImageInfo = vkinit::imageCreateInfo(imageFormat, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, imageExtent);
+	VkImageCreateInfo dImageInfo =
+		vkinit::imageCreateInfo(
+			imageFormat,
+			VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+			imageExtent,
+			newImage._mipLevels
+		);
 
-	AllocatedImage newImage;
 	VmaAllocationCreateInfo dImageAllocInfo = {
 		.usage = VMA_MEMORY_USAGE_GPU_ONLY,
 	};
