@@ -19,9 +19,11 @@ bool vkutil::loadImageFromFile(VulkanEngine& engine, const char* fname, uint32_t
 
 	void* pixelPtr = pixels;
 	VkDeviceSize imageSize = texWidth * texHeight * 4;		// @HARDCODED: bc planning on having the alpha channel in here too
-
 	VkFormat imageFormat = VK_FORMAT_R8G8B8A8_SRGB;		// @HARDCODED: this could easily change
 
+	//
+	// Copy image to CPU-side buffer
+	//
 	AllocatedBuffer stagingBuffer = engine.createBuffer(imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
 
 	void* data;
@@ -32,7 +34,7 @@ bool vkutil::loadImageFromFile(VulkanEngine& engine, const char* fname, uint32_t
 	stbi_image_free(pixels);
 
 	//
-	// Create the image in vulkan
+	// Create GPU-side buffer
 	//
 	const uint32_t maxMipmaps = static_cast<uint32_t>(std::floor(std::log2(std::max(texWidth, texHeight)))) + 1;
 	AllocatedImage newImage;
@@ -43,31 +45,24 @@ bool vkutil::loadImageFromFile(VulkanEngine& engine, const char* fname, uint32_t
 		.height = static_cast<uint32_t>(texHeight),
 		.depth = 1,
 	};
-	VkImageCreateInfo dImageInfo =
+	VkImageCreateInfo dstImageInfo =
 		vkinit::imageCreateInfo(
 			imageFormat,
-			VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+			VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
 			imageExtent,
 			newImage._mipLevels
 		);
 
-	VmaAllocationCreateInfo dImageAllocInfo = {
+	VmaAllocationCreateInfo dstImageAllocInfo = {
 		.usage = VMA_MEMORY_USAGE_GPU_ONLY,
 	};
-	vmaCreateImage(engine._allocator, &dImageInfo, &dImageAllocInfo, &newImage._image, &newImage._allocation, nullptr);
+	vmaCreateImage(engine._allocator, &dstImageInfo, &dstImageAllocInfo, &newImage._image, &newImage._allocation, nullptr);
 
 	//
-	// Copy image data into created image
+	// Copy image data to GPU
 	//
 	engine.immediateSubmit([&](VkCommandBuffer cmd) {
 		// Image layout for copying optimal
-		VkImageSubresourceRange range = {
-			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-			.baseMipLevel = 0,
-			.levelCount = 1,
-			.baseArrayLayer = 0,
-			.layerCount = 1,
-		};
 		VkImageMemoryBarrier imageBarrierToTransfer = {
 			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
 			.srcAccessMask = 0,
@@ -75,9 +70,20 @@ bool vkutil::loadImageFromFile(VulkanEngine& engine, const char* fname, uint32_t
 			.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
 			.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 			.image = newImage._image,
-			.subresourceRange = range,
+			.subresourceRange = {
+				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+				.baseMipLevel = 0,
+				.levelCount = newImage._mipLevels,
+				.baseArrayLayer = 0,
+				.layerCount = 1,
+			},
 		};
-		vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &imageBarrierToTransfer);
+		vkCmdPipelineBarrier(cmd,
+			VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+			0, nullptr,
+			0, nullptr,
+			1, &imageBarrierToTransfer
+		);
 
 		// Copy pixel data into image
 		VkBufferImageCopy copyRegion = {
@@ -94,17 +100,121 @@ bool vkutil::loadImageFromFile(VulkanEngine& engine, const char* fname, uint32_t
 		};
 		vkCmdCopyBufferToImage(cmd, stagingBuffer._buffer, newImage._image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
 
-		// Image layout for shader access optimal
-		VkImageMemoryBarrier imageBarrierToReadable = {
+		// @NOTE: the transform to SHADER_READ_ONLY_OPTIMAL is missing bc the next part
+		// when mipmapping is generated is when the transformation will happen  -Timo
+		});
+
+	//
+	// Check if linear blitting is supported for mipmap generation
+	//
+	VkFormatProperties formatProperties;
+	vkGetPhysicalDeviceFormatProperties(engine._chosenGPU, imageFormat, &formatProperties);
+	if (!(formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT))
+	{
+		std::cerr << "ERROR: texture image format doesn't support linear blitting" << std::endl;
+		return false;
+	}
+
+	//
+	// Loop thru and upload mips to GPU
+	//
+	engine.immediateSubmit([&](VkCommandBuffer cmd) {
+		VkImageMemoryBarrier imageBarrier = {
 			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-			.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
-			.dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
-			.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-			.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			.srcAccessMask = 0,
+			.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+			.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+			.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
 			.image = newImage._image,
-			.subresourceRange = range,
+			.subresourceRange = {
+				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+				.baseMipLevel = 0,
+				.levelCount = 1,
+				.baseArrayLayer = 0,
+				.layerCount = 1,
+			},
 		};
-		vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &imageBarrierToReadable);
+
+		int32_t mipWidth = texWidth;
+		int32_t mipHeight = texHeight;
+
+		for (uint32_t mipLevel = 1; mipLevel < newImage._mipLevels; mipLevel++)		// @NOTE: start at mipLevel=1 bc the first mipLevel (0) gets copied into the buffer instead of blitted like in this section
+		{
+			// Pipeline barrier for changing prev mip to a src optimal image
+			imageBarrier.subresourceRange.baseMipLevel = mipLevel - 1;
+			imageBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+			imageBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+			imageBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+			imageBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+			vkCmdPipelineBarrier(
+				cmd,
+				VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+				0, nullptr,
+				0, nullptr,
+				1, &imageBarrier
+			);
+
+			// Blit image to next mip (blitted img ends up being DST_OPTIMAL layout)
+			VkImageBlit blitRegion = {
+				.srcSubresource = {
+					.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+					.mipLevel = mipLevel - 1,
+					.baseArrayLayer = 0,
+					.layerCount = 1,
+				},
+				.srcOffsets = {
+					{ 0, 0, 0 },
+					{ mipWidth, mipHeight, 1 },
+				},
+				.dstSubresource = {
+					.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+					.mipLevel = mipLevel,
+					.baseArrayLayer = 0,
+					.layerCount = 1,
+				},
+				.dstOffsets = {
+					{ 0, 0, 0 },
+					{ mipWidth > 1 ? mipWidth / 2 : 1, mipHeight > 1 ? mipHeight / 2 : 1, 1 },
+				},
+			};
+			vkCmdBlitImage(cmd,
+				newImage._image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+				newImage._image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+				1, &blitRegion,
+				VK_FILTER_LINEAR
+			);
+
+			// Pipeline barrier for changing prev mip to shader reading optimal image
+			imageBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+			imageBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			imageBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+			imageBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+			vkCmdPipelineBarrier(
+				cmd,
+				VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+				0, nullptr,
+				0, nullptr,
+				1, &imageBarrier
+			);
+
+			// Update mip sizes
+			if (mipWidth > 1) mipWidth /= 2;
+			if (mipHeight > 1) mipHeight /= 2;
+		}
+
+		// Pipeline barrier for changing FINAL prev mip to shader reading optimal image
+		imageBarrier.subresourceRange.baseMipLevel = newImage._mipLevels - 1;
+		imageBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		imageBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		imageBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+		imageBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+		vkCmdPipelineBarrier(
+			cmd,
+			VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+			0, nullptr,
+			0, nullptr,
+			1, &imageBarrier
+		);
 		});
 
 	//

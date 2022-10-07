@@ -375,6 +375,11 @@ void VulkanEngine::initVulkan()
 	vkb::PhysicalDevice physicalDevice = selector
 		.set_minimum_version(1, 3)
 		.set_surface(_surface)
+		.set_required_features({
+			// @NOTE: @FEATURES: Enable required features right here
+			.depthClamp = VK_TRUE,				// @NOTE: for shadow maps, this is really nice
+			.samplerAnisotropy = VK_TRUE,
+			})
 		.select()
 		.value();
 
@@ -415,7 +420,14 @@ void VulkanEngine::initVulkan()
 	std::cout << "DEVICE_ID                   " << _gpuProperties.deviceID << std::endl;
 	std::cout << "DEVICE_TYPE                 " << _gpuProperties.deviceType << std::endl;
 	std::cout << "DEVICE_NAME                 " << _gpuProperties.deviceName << std::endl;
+	std::cout << "MAX_IMAGE_DIMENSION_1D      " << _gpuProperties.limits.maxImageDimension1D << std::endl;
+	std::cout << "MAX_IMAGE_DIMENSION_2D      " << _gpuProperties.limits.maxImageDimension2D << std::endl;
+	std::cout << "MAX_IMAGE_DIMENSION_3D      " << _gpuProperties.limits.maxImageDimension3D << std::endl;
+	std::cout << "MAX_IMAGE_DIMENSION_CUBE    " << _gpuProperties.limits.maxImageDimensionCube << std::endl;
+	std::cout << "MAX_IMAGE_ARRAY_LAYERS      " << _gpuProperties.limits.maxImageArrayLayers << std::endl;
+	std::cout << "MAX_SAMPLER_ANISOTROPY      " << _gpuProperties.limits.maxSamplerAnisotropy << std::endl;
 	std::cout << "MINIMUM_BUFFER_ALIGNMENT    " << _gpuProperties.limits.minUniformBufferOffsetAlignment << std::endl;
+	std::cout << "MAX_COLOR_ATTACHMENTS       " << _gpuProperties.limits.maxColorAttachments << std::endl;
 	std::cout << std::endl;
 }
 
@@ -921,7 +933,25 @@ void VulkanEngine::initScene()
 	//
 	// Load in sampler for the texture
 	//
-	VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(VK_FILTER_NEAREST);
+	VkSamplerCreateInfo samplerInfo = {		//vkinit::samplerCreateInfo(VK_FILTER_NEAREST);
+		.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+		.pNext = nullptr,
+		.magFilter = VK_FILTER_LINEAR,
+		.minFilter = VK_FILTER_LINEAR,
+		.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+		.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+		.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+		.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+		.mipLodBias = 0.0f,
+		.anisotropyEnable = VK_TRUE,
+		.maxAnisotropy = _gpuProperties.limits.maxSamplerAnisotropy,
+		.compareEnable = VK_FALSE,
+		.compareOp = VK_COMPARE_OP_ALWAYS,
+		.minLod = 0.0f,
+		.maxLod = static_cast<float_t>(_loadedTextures["WoodFloor057"].image._mipLevels),
+		.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
+		.unnormalizedCoordinates = VK_FALSE,
+	};
 	VkSampler wood057Sampler;
 	vkCreateSampler(_device, &samplerInfo, nullptr, &wood057Sampler);
 
