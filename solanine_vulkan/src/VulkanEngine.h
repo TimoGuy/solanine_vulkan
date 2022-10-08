@@ -205,14 +205,26 @@ private:
 	struct FreeCamMode
 	{
 		bool enabled = false;
+		bool keyUpPressed = false,
+			keyDownPressed = false,
+			keyLeftPressed = false,
+			keyRightPressed = false,
+			keyWorldUpPressed = false,
+			keyWorldDownPressed = false,
+			keyShiftPressed = false;
 		glm::ivec2 savedMousePosition;
 		float sensitivity = 100.0f;
 	} _freeCamMode;
 
-	struct SceneCameraProps
+	struct SceneCamera
 	{
-		/// @TODO: TODO TODO TODO TODO RESUME HERE... but maybe you can just use the GPUCameraData Structu....
-	} _sceneCameraProps;
+		glm::vec3 facingDirection = { 0.0f, 0.0f, 1.0f };
+		float_t fov = glm::radians(70.0f);
+		float_t aspect;
+		float_t zNear = 0.1f;
+		float_t zFar = 200.0f;
+		GPUCameraData gpuCameraData;
+	} _sceneCamera;
 
 #ifdef _DEVELOP
 	struct ResourceToWatch

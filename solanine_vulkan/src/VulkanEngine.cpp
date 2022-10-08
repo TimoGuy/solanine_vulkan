@@ -53,12 +53,27 @@ void VulkanEngine::init()
 
 void VulkanEngine::run()
 {
-	SDL_Event e;
-	bool isRunning = true;
+	//
+	// Initialize Scene Camera
+	//
+	const glm::vec3 worldUp = { 0.0f, 1.0f, 0.0f };
+	_sceneCamera.aspect = (float_t)_windowExtent.width / (float_t)_windowExtent.height;
+	_sceneCamera.gpuCameraData.cameraPosition = { 0.0f, 3.0f, -5.0f };
+	glm::mat4 view = glm::lookAt(_sceneCamera.gpuCameraData.cameraPosition, _sceneCamera.gpuCameraData.cameraPosition + _sceneCamera.facingDirection, worldUp);
+	glm::mat4 projection = glm::perspective(_sceneCamera.fov, _sceneCamera.aspect, _sceneCamera.zNear, _sceneCamera.zFar);
+	projection[1][1] *= -1.0f;
+	_sceneCamera.gpuCameraData.view = view;
+	_sceneCamera.gpuCameraData.projection = projection;
+	_sceneCamera.gpuCameraData.projectionView = projection * view;
 
 	//
 	// Main Loop
 	//
+	SDL_Event e;
+	bool isRunning = true;
+
+	uint64_t lastFrame = SDL_GetTicks64();
+
 	while (isRunning)
 	{
 #ifdef _DEVELOP
@@ -95,26 +110,84 @@ void VulkanEngine::run()
 				}
 				break;
 			}
+
+			case SDL_KEYDOWN:
+			case SDL_KEYUP:
+			{
+				if (e.key.keysym.sym == SDLK_w)                                           _freeCamMode.keyUpPressed = (e.key.type == SDL_KEYDOWN);
+				if (e.key.keysym.sym == SDLK_s)                                           _freeCamMode.keyDownPressed = (e.key.type == SDL_KEYDOWN);
+				if (e.key.keysym.sym == SDLK_a)                                           _freeCamMode.keyLeftPressed = (e.key.type == SDL_KEYDOWN);
+				if (e.key.keysym.sym == SDLK_d)                                           _freeCamMode.keyRightPressed = (e.key.type == SDL_KEYDOWN);
+				if (e.key.keysym.sym == SDLK_q)                                           _freeCamMode.keyWorldDownPressed = (e.key.type == SDL_KEYDOWN);
+				if (e.key.keysym.sym == SDLK_e)                                           _freeCamMode.keyWorldUpPressed = (e.key.type == SDL_KEYDOWN);
+				if (e.key.keysym.sym == SDLK_LSHIFT || e.key.keysym.sym == SDLK_RSHIFT)   _freeCamMode.keyShiftPressed = (e.key.type == SDL_KEYDOWN);
+				break;
+			}
 			}
 		}
+
+		//
+		// Update DeltaTime
+		//
+		uint64_t currentFrame = SDL_GetTicks64();
+		const float deltaTime = (float_t)(currentFrame - lastFrame) * 0.001f;
+		lastFrame = currentFrame;
 
 		//
 		// Free Cam
 		//
 		if (_freeCamMode.enabled)
 		{
-			// @NOTE: the mouse cursor gets reset by imgui every frame
-			ImGui::SetMouseCursor(ImGuiMouseCursor_None);
+			ImGui::SetMouseCursor(ImGuiMouseCursor_None);    // @NOTE: the mouse cursor gets reset by imgui every frame
 
 			glm::ivec2 newMousePosition{ 0, 0 };
 			SDL_GetMouseState(&newMousePosition.x, &newMousePosition.y);
 
 			glm::vec2 mousePositionDelta = newMousePosition - _freeCamMode.savedMousePosition;
 			mousePositionDelta = mousePositionDelta / (float_t)_windowExtent.height * _freeCamMode.sensitivity;
+			_freeCamMode.savedMousePosition = newMousePosition;		// @NOTE: trying to reset the mouse position with SDL2 doesn't do so well bc the cursor position is returned as an int instead of a double so it's inaccurate and leads to very choppy movement... hence why we're just updating the previous/saved mouse position.
 
-			if (glm::length(mousePositionDelta) > 0.0f)
+			glm::vec2 inputToVelocity(0.0f);
+			inputToVelocity.x += _freeCamMode.keyLeftPressed ? -1.0f : 0.0f;
+			inputToVelocity.x += _freeCamMode.keyRightPressed ? 1.0f : 0.0f;
+			inputToVelocity.y += _freeCamMode.keyUpPressed ? 1.0f : 0.0f;
+			inputToVelocity.y += _freeCamMode.keyDownPressed ? -1.0f : 0.0f;
+
+			float_t worldUpVelocity = 0.0f;
+			worldUpVelocity += _freeCamMode.keyWorldUpPressed ? 1.0f : 0.0f;
+			worldUpVelocity += _freeCamMode.keyWorldDownPressed ? -1.0f : 0.0f;
+
+			if (glm::length(mousePositionDelta) > 0.0f || glm::length(inputToVelocity) > 0.0f || glm::abs(worldUpVelocity) > 0.0f)
 			{
+				// Update camera facing direction with mouse input
+				glm::vec3 newCamFacingDirection =
+					glm::rotate(
+						_sceneCamera.facingDirection,
+						glm::radians(-mousePositionDelta.y),
+						glm::normalize(glm::cross(_sceneCamera.facingDirection, worldUp))
+					);
+				if (glm::angle(newCamFacingDirection, worldUp) > glm::radians(5.0f) &&
+					glm::angle(newCamFacingDirection, -worldUp) > glm::radians(5.0f))
+					_sceneCamera.facingDirection = newCamFacingDirection;
+				_sceneCamera.facingDirection = glm::rotate(_sceneCamera.facingDirection, glm::radians(-mousePositionDelta.x), worldUp);
+
+				// Update camera position with keyboard input
+				float speedMultiplier = _freeCamMode.keyShiftPressed ? 10.0f : 5.0f;
+				inputToVelocity *= speedMultiplier * deltaTime;
+				worldUpVelocity *= speedMultiplier * deltaTime;
+
+				_sceneCamera.gpuCameraData.cameraPosition +=
+					inputToVelocity.y * _sceneCamera.facingDirection +
+					inputToVelocity.x * glm::normalize(glm::cross(_sceneCamera.facingDirection, worldUp)) +
+					glm::vec3(0.0f, worldUpVelocity, 0.0f);
+
 				// Update the scene camera information
+				glm::mat4 view = glm::lookAt(_sceneCamera.gpuCameraData.cameraPosition, _sceneCamera.gpuCameraData.cameraPosition + _sceneCamera.facingDirection, worldUp);
+				glm::mat4 projection = glm::perspective(_sceneCamera.fov, _sceneCamera.aspect, _sceneCamera.zNear, _sceneCamera.zFar);
+				projection[1][1] *= -1.0f;
+				_sceneCamera.gpuCameraData.view = view;
+				_sceneCamera.gpuCameraData.projection = projection;
+				_sceneCamera.gpuCameraData.projectionView = projection * view;
 			}
 		}
 
@@ -238,12 +311,13 @@ void VulkanEngine::render()
 		.pClearValues = &clearValues[0],
 	};
 
+	// Begin renderpass
 	vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
 	renderRenderObjects(cmd, _renderObjects.data(), _renderObjects.size());
-
 	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
 
+	// End renderpass
 	vkCmdEndRenderPass(cmd);
 	VK_CHECK(vkEndCommandBuffer(cmd));
 
@@ -473,7 +547,7 @@ void VulkanEngine::initSwapchain()
 	vkb::SwapchainBuilder swapchainBuilder{ _chosenGPU, _device, _surface };
 	vkb::Swapchain vkbSwapchain = swapchainBuilder
 		.use_default_format_selection()
-		.set_desired_present_mode(VK_PRESENT_MODE_FIFO_KHR)		// @NOTE: this is "soft" v-sync, where it won't go above the monitor hertz, but it won't immediately go down to 1/2 the framerate if dips below.
+		.set_desired_present_mode(VK_PRESENT_MODE_MAILBOX_KHR)		// @NOTE: this is "soft" v-sync, where it won't go above the monitor hertz, but it won't immediately go down to 1/2 the framerate if dips below.
 		.set_desired_extent(_windowExtent.width, _windowExtent.height)
 		.build()
 		.value();
@@ -1295,30 +1369,14 @@ void VulkanEngine::uploadMeshToGPU(Mesh& mesh)
 
 void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first, size_t count)
 {
-	//
-	// Setup scene camera
-	//
-	glm::vec3 camPos = { 0.0f, 3.0f, -5.0f };
-	glm::mat4 view = glm::translate(glm::mat4(1.0f), camPos);
-	glm::mat4 projection = glm::perspective(
-		glm::radians(70.0f),
-		(float_t)_windowExtent.width / (float_t)_windowExtent.height,
-		0.1f,
-		200.0f
-	);
-	glm::mat4 projectionView = projection * view;
-
-	// Create and send off cameraData
-	GPUCameraData cameraData = {
-		.view = view,
-		.projection = projection,
-		.projectionView = projectionView,
-		.cameraPosition = camPos,
-	};
 	const auto& currentFrame = getCurrentFrame();
+
+	//
+	// Upload Camera Data to GPU
+	//
 	void* data;
 	vmaMapMemory(_allocator, currentFrame.cameraBuffer._allocation, &data);
-	memcpy(data, &cameraData, sizeof(GPUCameraData));
+	memcpy(data, &_sceneCamera.gpuCameraData, sizeof(GPUCameraData));
 	vmaUnmapMemory(_allocator, currentFrame.cameraBuffer._allocation);
 
 	//
