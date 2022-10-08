@@ -71,13 +71,50 @@ void VulkanEngine::run()
 		while (SDL_PollEvent(&e) != 0)
 		{
 			ImGui_ImplSDL2_ProcessEvent(&e);
+
 			switch (e.type)
 			{
 			case SDL_QUIT:
 			{
+				// Exit program
 				isRunning = false;
 				break;
 			}
+
+			case SDL_MOUSEBUTTONDOWN:
+			case SDL_MOUSEBUTTONUP:
+			{
+				if (e.button.button == SDL_BUTTON_RIGHT)
+				{
+					// Right click to control free camera
+					_freeCamMode.enabled = (e.button.type == SDL_MOUSEBUTTONDOWN);
+					SDL_GetMouseState(
+						&_freeCamMode.savedMousePosition.x,
+						&_freeCamMode.savedMousePosition.y
+					);
+				}
+				break;
+			}
+			}
+		}
+
+		//
+		// Free Cam
+		//
+		if (_freeCamMode.enabled)
+		{
+			// @NOTE: the mouse cursor gets reset by imgui every frame
+			ImGui::SetMouseCursor(ImGuiMouseCursor_None);
+
+			glm::ivec2 newMousePosition{ 0, 0 };
+			SDL_GetMouseState(&newMousePosition.x, &newMousePosition.y);
+
+			glm::vec2 mousePositionDelta = newMousePosition - _freeCamMode.savedMousePosition;
+			mousePositionDelta = mousePositionDelta / (float_t)_windowExtent.height * _freeCamMode.sensitivity;
+
+			if (glm::length(mousePositionDelta) > 0.0f)
+			{
+				// Update the scene camera information
 			}
 		}
 
@@ -266,7 +303,7 @@ void VulkanEngine::render()
 void VulkanEngine::loadImages()
 {
 	Texture woodFloor057;
-	vkutil::loadImageFromFile(*this, "res/textures/WoodFloor057_1K-JPG/WoodFloor057_1K_Color.jpg", 0, woodFloor057.image);
+	vkutil::loadImageFromFile(*this, "res/textures/WoodFloor057_1K-JPG/WoodFloor057_1K_Color.jpg", 1, woodFloor057.image);
 
 	VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, woodFloor057.image._image, VK_IMAGE_ASPECT_COLOR_BIT, woodFloor057.image._mipLevels);
 	vkCreateImageView(_device, &imageInfo, nullptr, &woodFloor057.imageView);

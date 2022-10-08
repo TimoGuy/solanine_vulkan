@@ -201,6 +201,19 @@ private:
 
 	void renderRenderObjects(VkCommandBuffer cmd, RenderObject* first, size_t count);
 
+	// Moving Free cam
+	struct FreeCamMode
+	{
+		bool enabled = false;
+		glm::ivec2 savedMousePosition;
+		float sensitivity = 100.0f;
+	} _freeCamMode;
+
+	struct SceneCameraProps
+	{
+		/// @TODO: TODO TODO TODO TODO RESUME HERE... but maybe you can just use the GPUCameraData Structu....
+	} _sceneCameraProps;
+
 #ifdef _DEVELOP
 	struct ResourceToWatch
 	{
