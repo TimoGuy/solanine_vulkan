@@ -554,6 +554,7 @@ void VulkanEngine::initVulkan()
 	std::cout << "MAX_IMAGE_DIMENSION_CUBE    " << _gpuProperties.limits.maxImageDimensionCube << std::endl;
 	std::cout << "MAX_IMAGE_ARRAY_LAYERS      " << _gpuProperties.limits.maxImageArrayLayers << std::endl;
 	std::cout << "MAX_SAMPLER_ANISOTROPY      " << _gpuProperties.limits.maxSamplerAnisotropy << std::endl;
+	std::cout << "MAX_BOUND_DESCRIPTOR_SETS   " << _gpuProperties.limits.maxBoundDescriptorSets << std::endl;
 	std::cout << "MINIMUM_BUFFER_ALIGNMENT    " << _gpuProperties.limits.minUniformBufferOffsetAlignment << std::endl;
 	std::cout << "MAX_COLOR_ATTACHMENTS       " << _gpuProperties.limits.maxColorAttachments << std::endl;
 	std::cout << std::endl;
@@ -1044,8 +1045,8 @@ void VulkanEngine::initPipelines()
 void VulkanEngine::initScene()
 {
 	_renderObjects.clear();
-	for (int x = -20; x <= 20; x++)
-		for (int z = -20; z <= 20; z++)
+	for (int x = -10; x <= 10; x++)
+		for (int z = -10; z <= 10; z++)
 		{
 			glm::mat4 translation = glm::translate(glm::mat4(1.0f), glm::vec3(x, 0, z));
 			glm::mat4 scale = glm::scale(glm::mat4(1.0f), glm::vec3(0.2f));
