@@ -19,7 +19,9 @@ constexpr uint64_t TIMEOUT_1_SEC = 1000000000;
 
 void VulkanEngine::init()
 {
+	//
 	// Read build number for window title
+	//
 	std::ifstream buildNumberFile;
 	buildNumberFile.open("build_number.txt", std::ios::in);
 	std::string buildNumber;
@@ -31,7 +33,9 @@ void VulkanEngine::init()
 	if (!buildNumber.empty())
 		buildNumber = " - Build " + buildNumber;		// Prepend a good looking tag to the build number
 
-	// Create Window
+	//
+	// Initialization routine
+	//
 	SDL_Init(SDL_INIT_VIDEO);
 	SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
 
