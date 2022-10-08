@@ -6,13 +6,9 @@
  * This code is licensed under the MIT license (MIT) (http://opensource.org/licenses/MIT)
  */
 
-//#define TINYGLTF_IMPLEMENTATION
-//#define TINYGLTF_NO_STB_IMAGE_WRITE
-//#define STB_IMAGE_IMPLEMENTATION
-//#define STBI_MSC_SECURE_CRT
-
 #include "VkglTFModel.h"
 #include "VulkanEngine.h"
+#include "VkMesh.h"
 
 namespace vkglTF
 {
@@ -610,10 +606,11 @@ namespace vkglTF
 					for (size_t v = 0; v < posAccessor.count; v++)
 					{
 						Vertex& vert = loaderInfo.vertexBuffer[loaderInfo.vertexPos];
-						vert.pos = glm::vec4(glm::make_vec3(&bufferPos[v * posByteStride]), 1.0f);
+						//vert.pos = glm::vec4(glm::make_vec3(&bufferPos[v * posByteStride]), 1.0f);
+						vert.position = glm::vec4(glm::make_vec3(&bufferPos[v * posByteStride]), 1.0f);
 						vert.normal = glm::normalize(glm::vec3(bufferNormals ? glm::make_vec3(&bufferNormals[v * normByteStride]) : glm::vec3(0.0f)));
-						vert.uv0 = bufferTexCoordSet0 ? glm::make_vec2(&bufferTexCoordSet0[v * uv0ByteStride]) : glm::vec3(0.0f);
-						vert.uv1 = bufferTexCoordSet1 ? glm::make_vec2(&bufferTexCoordSet1[v * uv1ByteStride]) : glm::vec3(0.0f);
+						//vert.uv0 = bufferTexCoordSet0 ? glm::make_vec2(&bufferTexCoordSet0[v * uv0ByteStride]) : glm::vec3(0.0f);
+						//vert.uv1 = bufferTexCoordSet1 ? glm::make_vec2(&bufferTexCoordSet1[v * uv1ByteStride]) : glm::vec3(0.0f);
 						vert.color = bufferColorSet0 ? glm::make_vec4(&bufferColorSet0[v * color0ByteStride]) : glm::vec4(1.0f);
 
 						if (hasSkin)
@@ -623,13 +620,13 @@ namespace vkglTF
 							case TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT:
 							{
 								const uint16_t* buf = static_cast<const uint16_t*>(bufferJoints);
-								vert.joint0 = glm::vec4(glm::make_vec4(&buf[v * jointByteStride]));
+								//vert.joint0 = glm::vec4(glm::make_vec4(&buf[v * jointByteStride]));
 								break;
 							}
 							case TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE:
 							{
 								const uint8_t* buf = static_cast<const uint8_t*>(bufferJoints);
-								vert.joint0 = glm::vec4(glm::make_vec4(&buf[v * jointByteStride]));
+								//vert.joint0 = glm::vec4(glm::make_vec4(&buf[v * jointByteStride]));
 								break;
 							}
 							default:
@@ -640,14 +637,14 @@ namespace vkglTF
 						}
 						else
 						{
-							vert.joint0 = glm::vec4(0.0f);
+							//vert.joint0 = glm::vec4(0.0f);
 						}
-						vert.weight0 = hasSkin ? glm::make_vec4(&bufferWeights[v * weightByteStride]) : glm::vec4(0.0f);
+						//vert.weight0 = hasSkin ? glm::make_vec4(&bufferWeights[v * weightByteStride]) : glm::vec4(0.0f);
 						// Fix for all zero weights
-						if (glm::length(vert.weight0) == 0.0f)
-						{
-							vert.weight0 = glm::vec4(1.0f, 0.0f, 0.0f, 0.0f);
-						}
+						//if (glm::length(vert.weight0) == 0.0f)
+						//{
+						//	vert.weight0 = glm::vec4(1.0f, 0.0f, 0.0f, 0.0f);
+						//}
 						loaderInfo.vertexPos++;
 					}
 				}

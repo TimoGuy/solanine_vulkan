@@ -10,6 +10,7 @@
 
 #include "Imports.h"
 class VulkanEngine;
+struct Vertex;
 
 // ERROR is already defined in wingdi.h and collides with a define in the Draco headers
 #if defined(_WIN32) && defined(ERROR) && defined(TINYGLTF_ENABLE_DRACO) 
@@ -209,16 +210,17 @@ namespace vkglTF
 
 	struct Model
 	{
-		struct Vertex
-		{
-			glm::vec3 pos;
-			glm::vec3 normal;
-			glm::vec2 uv0;
-			glm::vec2 uv1;
-			glm::vec4 joint0;
-			glm::vec4 weight0;
-			glm::vec4 color;
-		};
+		// @HACK: @TODO: @FIXME: fix this and use this as the vert shader and VkVertexInputAttributeDescription format!!!!!!
+		//struct Vertex
+		//{
+		//	glm::vec3 pos;
+		//	glm::vec3 normal;
+		//	glm::vec2 uv0;
+		//	glm::vec2 uv1;
+		//	glm::vec4 joint0;
+		//	glm::vec4 weight0;
+		//	glm::vec4 color;
+		//};
 
 		struct Vertices
 		{
