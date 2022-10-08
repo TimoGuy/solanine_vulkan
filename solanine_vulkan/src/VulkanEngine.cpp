@@ -1068,7 +1068,8 @@ void VulkanEngine::initScene()
 			_renderObjects.push_back(triangle);
 		}
 
-	modelSkybox.loadFromFile(this, "res/models/Box.gltf", 0);
+	modelSkybox.loadFromFile(this, "res/models/SlimeGirl.glb", 0);
+	//modelSkybox.loadFromFile(this, "res/models/Box.gltf", 0);
 	_swapchainDependentDeletionQueue.pushFunction([=]() {
 		modelSkybox.destroy(_allocator);
 		});
