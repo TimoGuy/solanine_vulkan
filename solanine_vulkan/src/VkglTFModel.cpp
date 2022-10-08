@@ -6,10 +6,10 @@
  * This code is licensed under the MIT license (MIT) (http://opensource.org/licenses/MIT)
  */
 
-#define TINYGLTF_IMPLEMENTATION
-#define TINYGLTF_NO_STB_IMAGE_WRITE
-#define STB_IMAGE_IMPLEMENTATION
-#define STBI_MSC_SECURE_CRT
+//#define TINYGLTF_IMPLEMENTATION
+//#define TINYGLTF_NO_STB_IMAGE_WRITE
+//#define STB_IMAGE_IMPLEMENTATION
+//#define STBI_MSC_SECURE_CRT
 
 #include "VkglTFModel.h"
 #include "VulkanEngine.h"
@@ -328,25 +328,27 @@ namespace vkglTF
 	//
 	// Mesh
 	//
-	Mesh::Mesh(VulkanEngine* device, glm::mat4 matrix)
+	Mesh::Mesh(VulkanEngine* engine, glm::mat4 matrix)
 	{
-		this->device = device;
+		this->engine = engine;
 		this->uniformBlock.matrix = matrix;
-		VK_CHECK(device->createBuffer(
-			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			sizeof(uniformBlock),
-			&uniformBuffer.buffer,
-			&uniformBuffer.memory,
-			&uniformBlock));
-		VK_CHECK(vkMapMemory(device->_device, uniformBuffer.memory, 0, sizeof(uniformBlock), 0, &uniformBuffer.mapped));
+		AllocatedBuffer temp =
+			engine->createBuffer(
+				sizeof(uniformBlock),
+				VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+				VMA_MEMORY_USAGE_CPU_ONLY
+			);
+		uniformBuffer.buffer = temp._buffer;
+		uniformBuffer.allocation = temp._allocation;
+		vmaMapMemory(engine->_allocator, uniformBuffer.allocation, &uniformBuffer.mapped);
 		uniformBuffer.descriptor = { uniformBuffer.buffer, 0, sizeof(uniformBlock) };
 	};
 
 	Mesh::~Mesh()
 	{
-		vkDestroyBuffer(device->_device, uniformBuffer.buffer, nullptr);
-		vkFreeMemory(device->_device, uniformBuffer.memory, nullptr);
+		vmaUnmapMemory(engine->_allocator, uniformBuffer.allocation);
+		vmaDestroyBuffer(engine->_allocator, uniformBuffer.buffer, uniformBuffer.allocation);
+
 		for (Primitive* p : primitives)
 			delete p;
 	}
@@ -426,18 +428,18 @@ namespace vkglTF
 	//
 	// Model
 	//
-	void Model::destroy(VkDevice device)
+	void Model::destroy(VmaAllocator allocator)
 	{
 		if (vertices.buffer != VK_NULL_HANDLE)
 		{
-			vkDestroyBuffer(device, vertices.buffer, nullptr);
-			vkFreeMemory(device, vertices.memory, nullptr);
+			vmaUnmapMemory(allocator, vertices.allocation);
+			vmaDestroyBuffer(allocator, vertices.buffer, vertices.allocation);
 			vertices.buffer = VK_NULL_HANDLE;
 		}
 		if (indices.buffer != VK_NULL_HANDLE)
 		{
-			vkDestroyBuffer(device, indices.buffer, nullptr);
-			vkFreeMemory(device, indices.memory, nullptr);
+			vmaUnmapMemory(allocator, indices.allocation);
+			vmaDestroyBuffer(allocator, indices.buffer, indices.allocation);
 			indices.buffer = VK_NULL_HANDLE;
 		}
 		/*for (auto texture : textures)
@@ -462,7 +464,7 @@ namespace vkglTF
 		skins.resize(0);
 	};
 
-	void Model::loadNode(vkglTF::Node* parent, const tinygltf::Node& node, uint32_t nodeIndex, const tinygltf::Model& model, LoaderInfo& loaderInfo, float globalscale)
+	void Model::loadNode(VulkanEngine* engine, vkglTF::Node* parent, const tinygltf::Node& node, uint32_t nodeIndex, const tinygltf::Model& model, LoaderInfo& loaderInfo, float globalscale)
 	{
 		vkglTF::Node* newNode = new Node{};
 		newNode->index = nodeIndex;
@@ -500,7 +502,7 @@ namespace vkglTF
 		{
 			for (size_t i = 0; i < node.children.size(); i++)
 			{
-				loadNode(newNode, model.nodes[node.children[i]], node.children[i], model, loaderInfo, globalscale);
+				loadNode(engine, newNode, model.nodes[node.children[i]], node.children[i], model, loaderInfo, globalscale);
 			}
 		}
 
@@ -508,7 +510,7 @@ namespace vkglTF
 		if (node.mesh > -1)
 		{
 			const tinygltf::Mesh mesh = model.meshes[node.mesh];
-			Mesh* newMesh = new Mesh(device, newNode->matrix);
+			Mesh* newMesh = new Mesh(engine, newNode->matrix);
 			for (size_t j = 0; j < mesh.primitives.size(); j++)
 			{
 				const tinygltf::Primitive& primitive = mesh.primitives[j];
@@ -1111,7 +1113,7 @@ namespace vkglTF
 		}
 	}
 
-	void Model::loadFromFile(std::string filename, VkQueue transferQueue, float scale)
+	void Model::loadFromFile(VulkanEngine* engine, std::string filename, VkQueue transferQueue, float scale)
 	{
 		//
 		// Load in data from file
@@ -1159,7 +1161,7 @@ namespace vkglTF
 		for (size_t i = 0; i < scene.nodes.size(); i++)
 		{
 			const tinygltf::Node node = gltfModel.nodes[scene.nodes[i]];
-			loadNode(nullptr, node, scene.nodes[i], gltfModel, loaderInfo, scale);
+			loadNode(engine, nullptr, node, scene.nodes[i], gltfModel, loaderInfo, scale);
 		}
 
 		// Load in animations
@@ -1189,73 +1191,83 @@ namespace vkglTF
 		//
 		// Upload vertices and indices to GPU
 		//
-		struct StagingBuffer {
-			VkBuffer buffer;
-			VkDeviceMemory memory;
-		} vertexStaging, indexStaging;
+		AllocatedBuffer vertexStaging, indexStaging;
 
 		// Create staging buffers
 		// Vertex data
-		VK_CHECK(device->createBuffer(
-			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			vertexBufferSize,
-			&vertexStaging.buffer,
-			&vertexStaging.memory,
-			loaderInfo.vertexBuffer));
+		vertexStaging =
+			engine->createBuffer(
+				vertexBufferSize,
+				VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+				VMA_MEMORY_USAGE_CPU_ONLY
+			);
+
+		// Copy mesh to vertex staging buffer
+		void* data;
+		vmaMapMemory(engine->_allocator, vertexStaging._allocation, &data);
+		memcpy(data, loaderInfo.vertexBuffer, vertexBufferSize);
+		vmaUnmapMemory(engine->_allocator, vertexStaging._allocation);
+
 		// Index data
 		if (indexBufferSize > 0)
 		{
-			VK_CHECK(device->createBuffer(
-				VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-				indexBufferSize,
-				&indexStaging.buffer,
-				&indexStaging.memory,
-				loaderInfo.indexBuffer));
+			indexStaging =
+				engine->createBuffer(
+					indexBufferSize,
+					VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+					VMA_MEMORY_USAGE_CPU_ONLY
+				);
+
+			// Copy indices to index staging buffer
+			vmaMapMemory(engine->_allocator, indexStaging._allocation, &data);
+			memcpy(data, loaderInfo.indexBuffer, indexBufferSize);
+			vmaUnmapMemory(engine->_allocator, indexStaging._allocation);
 		}
 
-		// Create device local buffers
+		// Create GPU side buffers
 		// Vertex buffer
-		VK_CHECK(device->createBuffer(
-			VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-			vertexBufferSize,
-			&vertices.buffer,
-			&vertices.memory));
+		AllocatedBuffer vertexGPUSide =
+			engine->createBuffer(
+				vertexBufferSize,
+				VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+				VMA_MEMORY_USAGE_GPU_ONLY
+			);
+		vertices.buffer = vertexGPUSide._buffer;
+		vertices.allocation = vertexGPUSide._allocation;
+
 		// Index buffer
 		if (indexBufferSize > 0)
 		{
-			VK_CHECK(device->createBuffer(
-				VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-				indexBufferSize,
-				&indices.buffer,
-				&indices.memory));
+			AllocatedBuffer indexGPUSide =
+				engine->createBuffer(
+					indexBufferSize,
+					VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+					VMA_MEMORY_USAGE_GPU_ONLY
+				);
+			indices.buffer = indexGPUSide._buffer;
+			indices.allocation = indexGPUSide._allocation;
 		}
 
-		// Copy from staging buffers
-		device->immediateSubmit([&](VkCommandBuffer cmd)
+		// Copy from staging buffers to GPU
+		engine->immediateSubmit([&](VkCommandBuffer cmd)
 			{
 				VkBufferCopy copyRegion = {
+					.srcOffset = 0,
+					.dstOffset = 0,
 					.size = vertexBufferSize,
 				};
-				vkCmdCopyBuffer(cmd, vertexStaging.buffer, vertices.buffer, 1, &copyRegion);
+				vkCmdCopyBuffer(cmd, vertexStaging._buffer, vertices.buffer, 1, &copyRegion);
 
 				if (indexBufferSize > 0)
 				{
 					copyRegion.size = indexBufferSize;
-					vkCmdCopyBuffer(cmd, indexStaging.buffer, indices.buffer, 1, &copyRegion);
+					vkCmdCopyBuffer(cmd, indexStaging._buffer, indices.buffer, 1, &copyRegion);
 				}
 			});
 
-		vkDestroyBuffer(device->_device, vertexStaging.buffer, nullptr);
-		vkFreeMemory(device->_device, vertexStaging.memory, nullptr);
+		vmaDestroyBuffer(engine->_allocator, vertexStaging._buffer, vertexStaging._allocation);
 		if (indexBufferSize > 0)
-		{
-			vkDestroyBuffer(device->_device, indexStaging.buffer, nullptr);
-			vkFreeMemory(device->_device, indexStaging.memory, nullptr);
-		}
+			vmaDestroyBuffer(engine->_allocator, indexStaging._buffer, indexStaging._allocation);
 
 		delete[] loaderInfo.vertexBuffer;
 		delete[] loaderInfo.indexBuffer;

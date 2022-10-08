@@ -2,6 +2,7 @@
 
 #include "Imports.h"
 #include "VkMesh.h"
+#include "VkglTFModel.h"
 
 
 struct GPUCameraData
@@ -201,6 +202,15 @@ private:
 
 	void renderRenderObjects(VkCommandBuffer cmd, RenderObject* first, size_t count);
 
+
+
+
+
+
+
+	vkglTF::Model modelSkybox;  // @NOCHECKIN
+
+
 	// Moving Free cam
 	struct FreeCamMode
 	{
@@ -213,6 +223,7 @@ private:
 			keyWorldDownPressed = false,
 			keyShiftPressed = false;
 		glm::ivec2 savedMousePosition;
+		glm::ivec2 mouseDelta;
 		float sensitivity = 100.0f;
 	} _freeCamMode;
 

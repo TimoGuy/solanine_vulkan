@@ -113,6 +113,16 @@ void VulkanEngine::run()
 				break;
 			}
 
+			case SDL_MOUSEMOTION:
+			{
+				if (_freeCamMode.enabled)
+				{
+					_freeCamMode.mouseDelta.x = e.motion.xrel;
+					_freeCamMode.mouseDelta.y = e.motion.yrel;
+				}
+				break;
+			}
+
 			case SDL_MOUSEBUTTONDOWN:
 			case SDL_MOUSEBUTTONUP:
 			{
@@ -120,10 +130,15 @@ void VulkanEngine::run()
 				{
 					// Right click to control free camera
 					_freeCamMode.enabled = (e.button.type == SDL_MOUSEBUTTONDOWN);
-					SDL_GetMouseState(
-						&_freeCamMode.savedMousePosition.x,
-						&_freeCamMode.savedMousePosition.y
-					);
+					SDL_SetRelativeMouseMode(_freeCamMode.enabled ?SDL_TRUE : SDL_FALSE);		// @NOTE: this causes cursor to disappear and not leave window boundaries
+					
+					if (_freeCamMode.enabled)
+						SDL_GetMouseState(
+							&_freeCamMode.savedMousePosition.x,
+							&_freeCamMode.savedMousePosition.y
+						);
+					else
+						SDL_WarpMouseInWindow(_window, _freeCamMode.savedMousePosition.x, _freeCamMode.savedMousePosition.y);
 				}
 				break;
 			}
@@ -155,14 +170,8 @@ void VulkanEngine::run()
 		//
 		if (_freeCamMode.enabled)
 		{
-			ImGui::SetMouseCursor(ImGuiMouseCursor_None);    // @NOTE: the mouse cursor gets reset by imgui every frame
-
-			glm::ivec2 newMousePosition{ 0, 0 };
-			SDL_GetMouseState(&newMousePosition.x, &newMousePosition.y);
-
-			glm::vec2 mousePositionDelta = newMousePosition - _freeCamMode.savedMousePosition;
-			mousePositionDelta = mousePositionDelta / (float_t)_windowExtent.height * _freeCamMode.sensitivity;
-			_freeCamMode.savedMousePosition = newMousePosition;		// @NOTE: trying to reset the mouse position with SDL2 doesn't do so well bc the cursor position is returned as an int instead of a double so it's inaccurate and leads to very choppy movement... hence why we're just updating the previous/saved mouse position.
+			glm::vec2 mousePositionDeltaCooked = (glm::vec2)_freeCamMode.mouseDelta / (float_t)_windowExtent.height * _freeCamMode.sensitivity;
+			_freeCamMode.mouseDelta = glm::ivec2(0);		// Reset the mouseDelta
 
 			glm::vec2 inputToVelocity(0.0f);
 			inputToVelocity.x += _freeCamMode.keyLeftPressed ? -1.0f : 0.0f;
@@ -174,19 +183,19 @@ void VulkanEngine::run()
 			worldUpVelocity += _freeCamMode.keyWorldUpPressed ? 1.0f : 0.0f;
 			worldUpVelocity += _freeCamMode.keyWorldDownPressed ? -1.0f : 0.0f;
 
-			if (glm::length(mousePositionDelta) > 0.0f || glm::length(inputToVelocity) > 0.0f || glm::abs(worldUpVelocity) > 0.0f)
+			if (glm::length(mousePositionDeltaCooked) > 0.0f || glm::length(inputToVelocity) > 0.0f || glm::abs(worldUpVelocity) > 0.0f)
 			{
 				// Update camera facing direction with mouse input
 				glm::vec3 newCamFacingDirection =
 					glm::rotate(
 						_sceneCamera.facingDirection,
-						glm::radians(-mousePositionDelta.y),
+						glm::radians(-mousePositionDeltaCooked.y),
 						glm::normalize(glm::cross(_sceneCamera.facingDirection, worldUp))
 					);
 				if (glm::angle(newCamFacingDirection, worldUp) > glm::radians(5.0f) &&
 					glm::angle(newCamFacingDirection, -worldUp) > glm::radians(5.0f))
 					_sceneCamera.facingDirection = newCamFacingDirection;
-				_sceneCamera.facingDirection = glm::rotate(_sceneCamera.facingDirection, glm::radians(-mousePositionDelta.x), worldUp);
+				_sceneCamera.facingDirection = glm::rotate(_sceneCamera.facingDirection, glm::radians(-mousePositionDeltaCooked.x), worldUp);
 
 				// Update camera position with keyboard input
 				float speedMultiplier = _freeCamMode.keyShiftPressed ? 10.0f : 5.0f;
@@ -394,7 +403,7 @@ void VulkanEngine::render()
 void VulkanEngine::loadImages()
 {
 	Texture woodFloor057;
-	vkutil::loadImageFromFile(*this, "res/textures/WoodFloor057_1K-JPG/WoodFloor057_1K_Color.jpg", 1, woodFloor057.image);
+	vkutil::loadImageFromFile(*this, "res/textures/WoodFloor057_1K-JPG/WoodFloor057_1K_Color.jpg", 0, woodFloor057.image);
 
 	VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, woodFloor057.image._image, VK_IMAGE_ASPECT_COLOR_BIT, woodFloor057.image._mipLevels);
 	vkCreateImageView(_device, &imageInfo, nullptr, &woodFloor057.imageView);
@@ -1059,6 +1068,11 @@ void VulkanEngine::initScene()
 			_renderObjects.push_back(triangle);
 		}
 
+	modelSkybox.loadFromFile(this, "res/models/Box.gltf", 0);
+	_swapchainDependentDeletionQueue.pushFunction([=]() {
+		modelSkybox.destroy(_allocator);
+		});
+
 	//
 	// Load in sampler for the texture
 	//
@@ -1481,6 +1495,8 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first,
 		else
 			vkCmdDraw(cmd, object.mesh->_vertices.size(), 1, 0, i);
 	}
+
+	modelSkybox.draw(cmd);
 }
 
 #ifdef _DEVELOP

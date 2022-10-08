@@ -126,6 +126,7 @@ namespace vkglTF
 
 	struct Mesh
 	{
+		VulkanEngine* engine;
 		std::vector<Primitive*> primitives;
 		BoundingBox bb;
 		BoundingBox aabb;
@@ -133,7 +134,7 @@ namespace vkglTF
 		struct UniformBuffer
 		{
 			VkBuffer buffer;
-			VkDeviceMemory memory;
+			VmaAllocation allocation;
 			VkDescriptorBufferInfo descriptor;
 			VkDescriptorSet descriptorSet;
 			void* mapped;
@@ -146,7 +147,7 @@ namespace vkglTF
 			float jointcount{ 0 };
 		} uniformBlock;
 
-		Mesh(VulkanEngine* device, glm::mat4 matrix);
+		Mesh(VulkanEngine* engine, glm::mat4 matrix);
 		~Mesh();
 		void setBoundingBox(glm::vec3 min, glm::vec3 max);
 	};
@@ -222,14 +223,14 @@ namespace vkglTF
 		struct Vertices
 		{
 			VkBuffer buffer = VK_NULL_HANDLE;
-			VkDeviceMemory memory;
+			VmaAllocation allocation;
 		} vertices;
 
 		struct Indices
 		{
 			int count;
 			VkBuffer buffer = VK_NULL_HANDLE;
-			VkDeviceMemory memory;
+			VmaAllocation allocation;
 		} indices;
 
 		glm::mat4 aabb;
@@ -259,8 +260,8 @@ namespace vkglTF
 			size_t vertexPos = 0;
 		};
 
-		void destroy(VkDevice device);
-		void loadNode(vkglTF::Node* parent, const tinygltf::Node& node, uint32_t nodeIndex, const tinygltf::Model& model, LoaderInfo& loaderInfo, float globalscale);
+		void destroy(VmaAllocator allocator);
+		void loadNode(VulkanEngine* engine, vkglTF::Node* parent, const tinygltf::Node& node, uint32_t nodeIndex, const tinygltf::Model& model, LoaderInfo& loaderInfo, float globalscale);
 		void getNodeProps(const tinygltf::Node& node, const tinygltf::Model& model, size_t& vertexCount, size_t& indexCount);
 		void loadSkins(tinygltf::Model& gltfModel);
 		//void loadTextures(tinygltf::Model& gltfModel, VulkanEngine* device, VkQueue transferQueue);
@@ -269,7 +270,7 @@ namespace vkglTF
 		//void loadTextureSamplers(tinygltf::Model& gltfModel);
 		//void loadMaterials(tinygltf::Model& gltfModel);
 		void loadAnimations(tinygltf::Model& gltfModel);
-		void loadFromFile(std::string filename, VkQueue transferQueue, float scale = 1.0f);
+		void loadFromFile(VulkanEngine* engine, std::string filename, VkQueue transferQueue, float scale = 1.0f);
 		void drawNode(Node* node, VkCommandBuffer commandBuffer);
 		void draw(VkCommandBuffer commandBuffer);
 		void calculateBoundingBox(Node* node, Node* parent);
