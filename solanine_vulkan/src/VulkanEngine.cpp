@@ -1277,11 +1277,11 @@ void VulkanEngine::loadMeshes()
 	// Indices
 	_quadMesh._indices.resize(6);
 	_quadMesh._indices[0] = 0;
-	_quadMesh._indices[1] = 2;
-	_quadMesh._indices[2] = 1;
+	_quadMesh._indices[1] = 1;
+	_quadMesh._indices[2] = 2;
 	_quadMesh._indices[3] = 2;
-	_quadMesh._indices[4] = 0;
-	_quadMesh._indices[5] = 3;
+	_quadMesh._indices[4] = 3;
+	_quadMesh._indices[5] = 0;
 
 	// Register mesh
 	uploadMeshToGPU(_quadMesh);

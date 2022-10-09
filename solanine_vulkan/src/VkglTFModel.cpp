@@ -443,12 +443,12 @@ namespace vkglTF
 			texture.destroy();
 		}
 		textures.resize(0);
-		textureSamplers.resize(0);
+		textureSamplers.resize(0);*/
 		for (auto node : nodes)
 		{
 			delete node;
 		}
-		materials.resize(0);*/
+		//materials.resize(0);
 		animations.resize(0);
 		nodes.resize(0);
 		linearNodes.resize(0);
