@@ -9,6 +9,7 @@
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_sdl.h"
 #include "imgui/imgui_impl_vulkan.h"
+#include "imgui/implot.h"
 
 // @NOTE: this is for creation of the VMA function definitions
 #define VMA_IMPLEMENTATION
@@ -89,7 +90,8 @@ void VulkanEngine::run()
 	SDL_Event e;
 	bool isRunning = true;
 
-	uint64_t lastFrame = SDL_GetTicks64();
+	float_t ticksFrequency = 1.0f / (float_t)SDL_GetPerformanceFrequency();
+	uint64_t lastFrame = SDL_GetPerformanceCounter();
 
 	while (isRunning)
 	{
@@ -161,8 +163,8 @@ void VulkanEngine::run()
 		//
 		// Update DeltaTime
 		//
-		uint64_t currentFrame = SDL_GetTicks64();
-		const float deltaTime = (float_t)(currentFrame - lastFrame) * 0.001f;
+		uint64_t currentFrame = SDL_GetPerformanceCounter();
+		const float deltaTime = (float_t)(currentFrame - lastFrame) * ticksFrequency;
 		lastFrame = currentFrame;
 
 		//
@@ -218,6 +220,29 @@ void VulkanEngine::run()
 		}
 
 		//
+		// Collect debug stats
+		//
+		_debugStats.currentFPS = std::roundf(1.0f / deltaTime);
+		_debugStats.renderTimesMSHeadIndex = std::fmodf(_debugStats.renderTimesMSHeadIndex + 1, _debugStats.renderTimesMSCount);
+
+		// Find what the highest render time is
+		float_t renderTime = deltaTime * 1000.0f;
+		if (renderTime > _debugStats.highestRenderTime)
+			_debugStats.highestRenderTime = renderTime;
+		else if (_debugStats.renderTimesMS[_debugStats.renderTimesMSHeadIndex] == _debugStats.highestRenderTime)     // Former highest render time about to be overwritten
+		{
+			float_t nextHighestRenderTime = renderTime;
+			for (size_t i = _debugStats.renderTimesMSHeadIndex + 1; i < _debugStats.renderTimesMSHeadIndex + _debugStats.renderTimesMSCount; i++)
+					nextHighestRenderTime = std::max(nextHighestRenderTime, _debugStats.renderTimesMS[i]);
+			_debugStats.highestRenderTime = nextHighestRenderTime;
+		}
+
+		// Apply render time to buffer
+		_debugStats.renderTimesMS[_debugStats.renderTimesMSHeadIndex] =
+			_debugStats.renderTimesMS[_debugStats.renderTimesMSHeadIndex + _debugStats.renderTimesMSCount] =
+			renderTime;
+
+		//
 		// Recreate swapchain if flagged
 		//
 		if (_recreateSwapchain)
@@ -232,12 +257,18 @@ void VulkanEngine::run()
 
 		ImGui::ShowDemoWindow();
 
-		ImGui::Begin("mywindow");
-		ImGui::Button("Hello");
-		if (ImGui::TreeNode("Jojo me up"))
+		ImPlot::ShowDemoWindow();
+
+		// Debug Stats window
+		ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Once);
+		ImGui::Begin("##Debug Statistics", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs);
 		{
-			ImGui::Text("Hi there");
-			ImGui::TreePop();
+			ImGui::Text((std::to_string(_debugStats.currentFPS) + " FPS").c_str());
+			ImGui::Text((std::format("{:.2f}", _debugStats.renderTimesMS[_debugStats.renderTimesMSHeadIndex]) + "ms").c_str());
+			ImGui::Text(("Frame : " + std::to_string(_frameNumber)).c_str());
+
+			ImGui::Text(("Render Times :     [0, " + std::format("{:.2f}", _debugStats.highestRenderTime) + "]").c_str());
+			ImGui::PlotHistogram("##Render Times Histogram", _debugStats.renderTimesMS, _debugStats.renderTimesMSCount, _debugStats.renderTimesMSHeadIndex, "", 0.0f, _debugStats.highestRenderTime, ImVec2(256, 24.0f));
 		}
 		ImGui::End();
 		
@@ -1068,10 +1099,10 @@ void VulkanEngine::initScene()
 			_renderObjects.push_back(triangle);
 		}
 
-	modelSkybox.loadFromFile(this, "res/models/SlimeGirl.glb", 0);
-	//modelSkybox.loadFromFile(this, "res/models/Box.gltf", 0);
+	_pbrRendering.modelSkybox.loadFromFile(this, "res/models/SlimeGirl.glb", 0);
+	//_pbrRendering.modelSkybox.loadFromFile(this, "res/models/Box.gltf", 0);
 	_swapchainDependentDeletionQueue.pushFunction([=]() {
-		modelSkybox.destroy(_allocator);
+		_pbrRendering.modelSkybox.destroy(_allocator);
 		});
 
 	//
@@ -1154,6 +1185,7 @@ void VulkanEngine::initImgui()
 	// Init dear imgui
 	//
 	ImGui::CreateContext();
+	ImPlot::CreateContext();
 	ImGuiIO& io = ImGui::GetIO(); (void)io;
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
@@ -1181,6 +1213,8 @@ void VulkanEngine::initImgui()
 	_mainDeletionQueue.pushFunction([=]() {
 		vkDestroyDescriptorPool(_device, imguiPool, nullptr);
 		ImGui_ImplVulkan_Shutdown();
+		ImPlot::DestroyContext();
+		ImGui::DestroyContext();
 		});
 }
 
@@ -1497,7 +1531,7 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first,
 			vkCmdDraw(cmd, object.mesh->_vertices.size(), 1, 0, i);
 	}
 
-	modelSkybox.draw(cmd);
+	_pbrRendering.modelSkybox.draw(cmd);
 }
 
 #ifdef _DEVELOP

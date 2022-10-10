@@ -202,16 +202,42 @@ private:
 
 	void renderRenderObjects(VkCommandBuffer cmd, RenderObject* first, size_t count);
 
+	//
+	// PBR rendering
+	//
+	struct PBRRendering
+	{
+		// Pipelines
+		VkPipeline skybox;
+		VkPipeline pbr;
+		VkPipeline pbrDoubleSided;
+		VkPipeline pbrAlphaBlend;
 
+		VkPipeline currentBoundPipeline = VK_NULL_HANDLE;
 
+		// Models
+		vkglTF::Model modelSkybox;
+	} _pbrRendering;
 
+	enum PBRWorkflows { PBR_WORKFLOW_METALLIC_ROUGHNESS = 0, PBR_WORKFLOW_SPECULAR_GLOSINESS = 1 };
 
+	//
+	// Scene Camera
+	//
+	struct SceneCamera
+	{
+		glm::vec3 facingDirection = { 0.0f, 0.0f, 1.0f };
+		float_t fov = glm::radians(70.0f);
+		float_t aspect;
+		float_t zNear = 0.1f;
+		float_t zFar = 200.0f;
+		GPUCameraData gpuCameraData;
+	} _sceneCamera;
 
-
-	vkglTF::Model modelSkybox;  // @NOCHECKIN
-
-
+#ifdef _DEVELOP
+	//
 	// Moving Free cam
+	//
 	struct FreeCamMode
 	{
 		bool enabled = false;
@@ -224,20 +250,25 @@ private:
 			keyShiftPressed = false;
 		glm::ivec2 savedMousePosition;
 		glm::ivec2 mouseDelta;
-		float sensitivity = 100.0f;
+		float_t sensitivity = 100.0f;
 	} _freeCamMode;
 
-	struct SceneCamera
+	//
+	// Debug Statistics
+	//
+	struct DebugStats
 	{
-		glm::vec3 facingDirection = { 0.0f, 0.0f, 1.0f };
-		float_t fov = glm::radians(70.0f);
-		float_t aspect;
-		float_t zNear = 0.1f;
-		float_t zFar = 200.0f;
-		GPUCameraData gpuCameraData;
-	} _sceneCamera;
+		uint32_t currentFPS;
 
-#ifdef _DEVELOP
+		size_t renderTimesMSHeadIndex = 0;
+		size_t renderTimesMSCount = 256;
+		float_t renderTimesMS[256 * 2];
+		float_t highestRenderTime = -1.0f;
+	} _debugStats;
+
+	//
+	// Hot-swappable resources system
+	//
 	struct ResourceToWatch
 	{
 		std::filesystem::path path;
