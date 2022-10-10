@@ -1089,12 +1089,6 @@ void VulkanEngine::initScene()
 			_renderObjects.push_back(triangle);
 		}
 
-	//_pbrRendering.modelSkybox.loadFromFile(this, "res/models/SlimeGirl.glb", 0);
-	_pbrRendering.modelSkybox.loadFromFile(this, "res/models/Box.gltf", 0);
-	_swapchainDependentDeletionQueue.pushFunction([=]() {
-		_pbrRendering.modelSkybox.destroy(_allocator);
-		});
-
 	//
 	// Load in sampler for the texture
 	//
@@ -1229,7 +1223,7 @@ void VulkanEngine::recreateSwapchain()
 	initFramebuffers();
 	initDescriptors();    // Recreates descriptor pool to get new allocation for descriptorsets
 	initPipelines();
-	initScene();		// @NOTE: @TODO: you don't need to reload everything, just propagate the new pipelines (as materials) and reallocate the descriptorsets. This could be cleaned up so much more with this line...  -Timo
+	initScene();		// @NOTE: @TODO: you don't need to recreate all the renderobjects, just propagate the new pipelines (as materials) and reallocate the descriptorsets. This could be cleaned up so much more with this line...  -Timo
 
 	recalculateSceneCamera();
 
@@ -1315,6 +1309,15 @@ void VulkanEngine::loadMeshes()
 	// Register mesh
 	uploadMeshToGPU(_quadMesh);
 	_meshes["quad"] = _quadMesh;
+
+	//
+	// glTF model
+	//
+	_pbrRendering.modelSkybox.loadFromFile(this, "res/models/SlimeGirl.glb", 0);
+	//_pbrRendering.modelSkybox.loadFromFile(this, "res/models/Box.gltf", 0);
+	_mainDeletionQueue.pushFunction([=]() {
+		_pbrRendering.modelSkybox.destroy(_allocator);
+		});
 }
 
 void VulkanEngine::uploadMeshToGPU(Mesh& mesh)
