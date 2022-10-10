@@ -74,15 +74,9 @@ void VulkanEngine::run()
 	//
 	// Initialize Scene Camera
 	//
-	const glm::vec3 worldUp = { 0.0f, 1.0f, 0.0f };
 	_sceneCamera.aspect = (float_t)_windowExtent.width / (float_t)_windowExtent.height;
 	_sceneCamera.gpuCameraData.cameraPosition = { 0.0f, 3.0f, -5.0f };
-	glm::mat4 view = glm::lookAt(_sceneCamera.gpuCameraData.cameraPosition, _sceneCamera.gpuCameraData.cameraPosition + _sceneCamera.facingDirection, worldUp);
-	glm::mat4 projection = glm::perspective(_sceneCamera.fov, _sceneCamera.aspect, _sceneCamera.zNear, _sceneCamera.zFar);
-	projection[1][1] *= -1.0f;
-	_sceneCamera.gpuCameraData.view = view;
-	_sceneCamera.gpuCameraData.projection = projection;
-	_sceneCamera.gpuCameraData.projectionView = projection * view;
+	recalculateSceneCamera();
 
 	//
 	// Main Loop
@@ -187,6 +181,8 @@ void VulkanEngine::run()
 
 			if (glm::length(mousePositionDeltaCooked) > 0.0f || glm::length(inputToVelocity) > 0.0f || glm::abs(worldUpVelocity) > 0.0f)
 			{
+				constexpr glm::vec3 worldUp = { 0.0f, 1.0f, 0.0f };
+
 				// Update camera facing direction with mouse input
 				glm::vec3 newCamFacingDirection =
 					glm::rotate(
@@ -209,13 +205,8 @@ void VulkanEngine::run()
 					inputToVelocity.x * glm::normalize(glm::cross(_sceneCamera.facingDirection, worldUp)) +
 					glm::vec3(0.0f, worldUpVelocity, 0.0f);
 
-				// Update the scene camera information
-				glm::mat4 view = glm::lookAt(_sceneCamera.gpuCameraData.cameraPosition, _sceneCamera.gpuCameraData.cameraPosition + _sceneCamera.facingDirection, worldUp);
-				glm::mat4 projection = glm::perspective(_sceneCamera.fov, _sceneCamera.aspect, _sceneCamera.zNear, _sceneCamera.zFar);
-				projection[1][1] *= -1.0f;
-				_sceneCamera.gpuCameraData.view = view;
-				_sceneCamera.gpuCameraData.projection = projection;
-				_sceneCamera.gpuCameraData.projectionView = projection * view;
+				// Recalculate camera
+				recalculateSceneCamera();
 			}
 		}
 
@@ -769,7 +760,7 @@ void VulkanEngine::initDefaultRenderpass()
 	VK_CHECK(vkCreateRenderPass(_device, &renderPassInfo, nullptr, &_renderPass));
 
 	// Add destroy command for cleanup
-	_mainDeletionQueue.pushFunction([=]() {
+	_swapchainDependentDeletionQueue.pushFunction([=]() {
 		vkDestroyRenderPass(_device, _renderPass, nullptr);
 		});
 }
@@ -973,7 +964,7 @@ void VulkanEngine::initDescriptors()
 	}
 
 	// Add destroy command for cleanup
-	_mainDeletionQueue.pushFunction([=]() {
+	_swapchainDependentDeletionQueue.pushFunction([=]() {
 		vmaDestroyBuffer(_allocator, _sceneParameterBuffer._buffer, _sceneParameterBuffer._allocation);
 		vkDestroyDescriptorSetLayout(_device, _globalSetLayout, nullptr);
 		vkDestroyDescriptorSetLayout(_device, _objectSetLayout, nullptr);
@@ -1079,7 +1070,6 @@ void VulkanEngine::initPipelines()
 		vkDestroyPipeline(_device, _meshPipeline, nullptr);
 		vkDestroyPipelineLayout(_device, _meshPipelineLayout, nullptr);
 		});
-	
 }
 
 void VulkanEngine::initScene()
@@ -1099,8 +1089,8 @@ void VulkanEngine::initScene()
 			_renderObjects.push_back(triangle);
 		}
 
-	_pbrRendering.modelSkybox.loadFromFile(this, "res/models/SlimeGirl.glb", 0);
-	//_pbrRendering.modelSkybox.loadFromFile(this, "res/models/Box.gltf", 0);
+	//_pbrRendering.modelSkybox.loadFromFile(this, "res/models/SlimeGirl.glb", 0);
+	_pbrRendering.modelSkybox.loadFromFile(this, "res/models/Box.gltf", 0);
 	_swapchainDependentDeletionQueue.pushFunction([=]() {
 		_pbrRendering.modelSkybox.destroy(_allocator);
 		});
@@ -1228,15 +1218,20 @@ void VulkanEngine::recreateSwapchain()
 
 	_windowExtent.width = w;
 	_windowExtent.height = h;
+	_sceneCamera.aspect = (float_t)w / (float_t)h;
 
 	vkDeviceWaitIdle(_device);
 
 	_swapchainDependentDeletionQueue.flush();
 
 	initSwapchain();
+	initDefaultRenderpass();
 	initFramebuffers();
+	initDescriptors();    // Recreates descriptor pool to get new allocation for descriptorsets
 	initPipelines();
-	initScene();
+	initScene();		// @NOTE: @TODO: you don't need to reload everything, just propagate the new pipelines (as materials) and reallocate the descriptorsets. This could be cleaned up so much more with this line...  -Timo
+
+	recalculateSceneCamera();
 
 	_recreateSwapchain = false;
 }
@@ -1532,6 +1527,16 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first,
 	}
 
 	_pbrRendering.modelSkybox.draw(cmd);
+}
+
+void VulkanEngine::recalculateSceneCamera()
+{
+	glm::mat4 view = glm::lookAt(_sceneCamera.gpuCameraData.cameraPosition, _sceneCamera.gpuCameraData.cameraPosition + _sceneCamera.facingDirection, { 0.0f, 1.0f, 0.0f });
+	glm::mat4 projection = glm::perspective(_sceneCamera.fov, _sceneCamera.aspect, _sceneCamera.zNear, _sceneCamera.zFar);
+	projection[1][1] *= -1.0f;
+	_sceneCamera.gpuCameraData.view = view;
+	_sceneCamera.gpuCameraData.projection = projection;
+	_sceneCamera.gpuCameraData.projectionView = projection * view;
 }
 
 #ifdef _DEVELOP

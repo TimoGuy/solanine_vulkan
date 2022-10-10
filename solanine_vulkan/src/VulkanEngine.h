@@ -233,6 +233,7 @@ private:
 		float_t zFar = 200.0f;
 		GPUCameraData gpuCameraData;
 	} _sceneCamera;
+	void recalculateSceneCamera();
 
 #ifdef _DEVELOP
 	//
