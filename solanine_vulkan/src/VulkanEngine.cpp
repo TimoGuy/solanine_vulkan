@@ -1223,7 +1223,7 @@ void VulkanEngine::recreateSwapchain()
 	initFramebuffers();
 	initDescriptors();    // Recreates descriptor pool to get new allocation for descriptorsets
 	initPipelines();
-	initScene();		// @NOTE: @TODO: you don't need to recreate all the renderobjects, just propagate the new pipelines (as materials) and reallocate the descriptorsets. This could be cleaned up so much more with this line...  -Timo
+	initScene();		// @NOTE: @TODO: you don't need to recreate all the renderobjects, just propagate the new pipelines (as materials) and reallocate the descriptorsets.  -Timo
 
 	recalculateSceneCamera();
 
