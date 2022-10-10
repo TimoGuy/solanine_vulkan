@@ -1210,11 +1210,11 @@ void VulkanEngine::recreateSwapchain()
 	if (w <= 0 || h <= 0)
 		return;
 
+	vkDeviceWaitIdle(_device);
+
 	_windowExtent.width = w;
 	_windowExtent.height = h;
 	_sceneCamera.aspect = (float_t)w / (float_t)h;
-
-	vkDeviceWaitIdle(_device);
 
 	_swapchainDependentDeletionQueue.flush();
 
