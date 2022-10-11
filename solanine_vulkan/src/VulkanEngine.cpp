@@ -1025,6 +1025,26 @@ void VulkanEngine::initPipelines()
 		std::cout << "Default lit frag shader SUCCESS" << std::endl;
 	}
 
+	VkShaderModule skyboxVertShader;
+	if (!loadShaderModule("shader/skybox.vert.spv", &skyboxVertShader))
+	{
+		std::cout << "ERROR: building skyboxVert shader" << std::endl;
+	}
+	else
+	{
+		std::cout << "skyboxVert shader SUCCESS" << std::endl;
+	}
+
+	VkShaderModule skyboxFragShader;
+	if (!loadShaderModule("shader/skybox.frag.spv", &skyboxFragShader))
+	{
+		std::cout << "ERROR: building skyboxFrag shader" << std::endl;
+	}
+	else
+	{
+		std::cout << "skyboxFrag shader SUCCESS" << std::endl;
+	}
+
 	//
 	// Mesh Pipeline
 	//
@@ -1082,15 +1102,46 @@ void VulkanEngine::initPipelines()
 	createMaterial(_meshPipeline, _meshPipelineLayout, "defaultMaterial");
 
 	//
+	// Skybox pipeline
+	//
+	VkPipelineLayoutCreateInfo skyboxPipelineLayoutInfo = meshPipelineLayoutInfo;
+	skyboxPipelineLayoutInfo.pPushConstantRanges = nullptr;
+	skyboxPipelineLayoutInfo.pushConstantRangeCount = 0;
+
+	VkDescriptorSetLayout setLayouts2[] = { _globalSetLayout, _singleTextureSetLayout };
+	meshPipelineLayoutInfo.pSetLayouts = setLayouts2;
+	meshPipelineLayoutInfo.setLayoutCount = 2;
+
+	VkPipelineLayout _skyboxPipelineLayout;
+	VK_CHECK(vkCreatePipelineLayout(_device, &skyboxPipelineLayoutInfo, nullptr, &_skyboxPipelineLayout));
+
+	pipelineBuilder._shaderStages.clear();
+	pipelineBuilder._shaderStages.push_back(
+		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, skyboxVertShader));
+	pipelineBuilder._shaderStages.push_back(
+		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, skyboxFragShader));
+
+	auto _skyboxPipeline = pipelineBuilder.buildPipeline(_device, _renderPass);
+
+	_renderObjectModels.skyboxMaterial = {
+		.pipeline = _skyboxPipeline,
+		.pipelineLayout = _skyboxPipelineLayout,
+	};
+
+	//
 	// Cleanup
 	//
 	vkDestroyShaderModule(_device, defaultLitVertShader, nullptr);
 	vkDestroyShaderModule(_device, defaultLitFragShader, nullptr);
+	vkDestroyShaderModule(_device, skyboxVertShader, nullptr);
+	vkDestroyShaderModule(_device, skyboxFragShader, nullptr);
 
 	// Add destroy command for cleanup
 	_swapchainDependentDeletionQueue.pushFunction([=]() {
 		vkDestroyPipeline(_device, _meshPipeline, nullptr);
 		vkDestroyPipelineLayout(_device, _meshPipelineLayout, nullptr);
+		vkDestroyPipeline(_device, _skyboxPipeline, nullptr);
+		vkDestroyPipelineLayout(_device, _skyboxPipelineLayout, nullptr);
 		});
 }
 
@@ -1114,7 +1165,7 @@ void VulkanEngine::initScene()
 	//
 	// Load in sampler for the texture
 	//
-	VkSamplerCreateInfo samplerInfo = {		//vkinit::samplerCreateInfo(VK_FILTER_NEAREST);
+	VkSamplerCreateInfo samplerInfo = {
 		.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
 		.pNext = nullptr,
 		.magFilter = VK_FILTER_LINEAR,
@@ -1127,7 +1178,7 @@ void VulkanEngine::initScene()
 		.anisotropyEnable = VK_TRUE,
 		.maxAnisotropy = _gpuProperties.limits.maxSamplerAnisotropy,
 		.compareEnable = VK_FALSE,
-		.compareOp = VK_COMPARE_OP_ALWAYS,
+		.compareOp = VK_COMPARE_OP_NEVER,
 		.minLod = 0.0f,
 		.maxLod = static_cast<float_t>(_loadedTextures["WoodFloor057"].image._mipLevels),
 		.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
@@ -1136,10 +1187,19 @@ void VulkanEngine::initScene()
 	VkSampler wood057Sampler;
 	vkCreateSampler(_device, &samplerInfo, nullptr, &wood057Sampler);
 
+	samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	samplerInfo.maxLod = static_cast<float_t>(_loadedTextures["CubemapSkybox"].image._mipLevels);
+	VkSampler cubemapSkyboxSampler;
+	vkCreateSampler(_device, &samplerInfo, nullptr, &cubemapSkyboxSampler);
+
 	_swapchainDependentDeletionQueue.pushFunction([=]() {
 		vkDestroySampler(_device, wood057Sampler, nullptr);
+		vkDestroySampler(_device, cubemapSkyboxSampler, nullptr);
 		});
 
+	// Update defaultMaterial		@TODO: @FIXME: likely we should just have the material get updated with the textures on pipeline creation, not here... plus pipelines are recreated when the screen resizes too so it should be done then.
 	Material* texturedMaterial = getMaterial("defaultMaterial");
 	VkDescriptorSetAllocateInfo allocInfo = {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
@@ -1155,7 +1215,31 @@ void VulkanEngine::initScene()
 		.imageView = _loadedTextures["WoodFloor057"].imageView,
 		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 	};
-	VkWriteDescriptorSet texture1 = vkinit::writeDescriptorImage(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, texturedMaterial->textureSet, &imageBufferInfo, 0);
+	VkWriteDescriptorSet texture1 =
+		vkinit::writeDescriptorImage(
+			VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+			texturedMaterial->textureSet,
+			&imageBufferInfo,
+			0
+		);
+	vkUpdateDescriptorSets(_device, 1, &texture1, 0, nullptr);
+
+
+
+
+
+	// Update cubemapskybox material
+	vkAllocateDescriptorSets(_device, &allocInfo, &_renderObjectModels.skyboxMaterial.textureSet);
+
+	imageBufferInfo.sampler = cubemapSkyboxSampler;
+	imageBufferInfo.imageView = _loadedTextures["CubemapSkybox"].imageView;
+	texture1 =
+		vkinit::writeDescriptorImage(
+			VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+			_renderObjectModels.skyboxMaterial.textureSet,
+			&imageBufferInfo,
+			0
+		);
 	vkUpdateDescriptorSets(_device, 1, &texture1, 0, nullptr);
 }
 
@@ -1296,8 +1380,8 @@ bool VulkanEngine::loadShaderModule(const char* filePath, VkShaderModule* outSha
 
 void VulkanEngine::loadMeshes()
 {
-	_renderObjectModels.skybox.loadFromFile(this, "res/models/SlimeGirl.glb", 0);
-	//_renderObjectModels.modelSkybox.loadFromFile(this, "res/models/Box.gltf", 0);
+	//_renderObjectModels.skybox.loadFromFile(this, "res/models/SlimeGirl.glb", 0);
+	_renderObjectModels.skybox.loadFromFile(this, "res/models/Box.gltf", 0);
 	_mainDeletionQueue.pushFunction([=]() {
 		_renderObjectModels.skybox.destroy(_allocator);
 		});
@@ -1346,10 +1430,14 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first,
 
 	//
 	// Render Skybox
+	// @TODO: fix this weird organization!!!
 	//
-	//vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[i].skybox, 0, nullptr);
-	//vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines.skybox);
-	_renderObjectModels.skybox.draw(cmd, 0);
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _renderObjectModels.skyboxMaterial.pipeline);
+	uint32_t uniformOffset = padUniformBufferSize(sizeof(GPUSceneData)) * frameIndex;		// @COPYPASTA @TODO: figure out how to integrate scene-level objects that aren't necessarily gonna be in the renderobject list.
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _renderObjectModels.skyboxMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 1, &uniformOffset);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _renderObjectModels.skyboxMaterial.pipelineLayout, 1, 1, &_renderObjectModels.skyboxMaterial.textureSet, 0, nullptr);
+	_renderObjectModels.skybox.bind(cmd);
+	_renderObjectModels.skybox.draw(cmd, 0);		// @FIXME: it looks like the pipeline or pipelinelayout is incorrect???? Look at the validation layers eh!
 
 	//
 	// Render all the renderobjects

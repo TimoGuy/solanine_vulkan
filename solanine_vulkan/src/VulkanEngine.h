@@ -156,6 +156,7 @@ public:
 	struct RenderObjectModels
 	{
 		vkglTF::Model skybox;
+		Material skyboxMaterial;  // @FIXME: this shouldn't be here... reorganize....!!!!
 	} _renderObjectModels;
 
 	Material* createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name);
