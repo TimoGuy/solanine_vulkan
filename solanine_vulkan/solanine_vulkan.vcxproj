@@ -159,7 +159,6 @@ set /A BuildNumberForSolanine+=1
     <ClInclude Include="src\VkBootstrap.h" />
     <ClInclude Include="src\VkglTFModel.h" />
     <ClInclude Include="src\VkInitializers.h" />
-    <ClInclude Include="src\VkMesh.h" />
     <ClInclude Include="src\VkTextures.h" />
     <ClInclude Include="src\VulkanEngine.h" />
   </ItemGroup>
@@ -178,7 +177,6 @@ set /A BuildNumberForSolanine+=1
     <ClCompile Include="src\VkBootstrap.cpp" />
     <ClCompile Include="src\VkglTFModel.cpp" />
     <ClCompile Include="src\VkInitializers.cpp" />
-    <ClCompile Include="src\VkMesh.cpp" />
     <ClCompile Include="src\VkTextures.cpp" />
     <ClCompile Include="src\VulkanEngine.cpp" />
   </ItemGroup>

@@ -1,7 +1,6 @@
 #pragma once
 
 #include "Imports.h"
-#include "VkMesh.h"
 #include "VkglTFModel.h"
 
 
@@ -91,7 +90,7 @@ struct Material
 
 struct RenderObject
 {
-	Mesh* mesh;
+	vkglTF::Model* model;
 	Material* material;
 	glm::mat4 transformMatrix;
 };
@@ -154,11 +153,13 @@ public:
 	//
 	std::vector<RenderObject> _renderObjects;
 	std::unordered_map<std::string, Material> _materials;
-	std::unordered_map<std::string, Mesh> _meshes;
+	struct RenderObjectModels
+	{
+		vkglTF::Model skybox;
+	} _renderObjectModels;
 
 	Material* createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name);
 	Material* getMaterial(const std::string& name);
-	Mesh* getMesh(const std::string& name);
 
 	//
 	// Descriptor Sets
@@ -198,7 +199,6 @@ private:
 	bool loadShaderModule(const char* filePath, VkShaderModule* outShaderModule);
 
 	void loadMeshes();
-	void uploadMeshToGPU(Mesh& mesh);
 
 	void renderRenderObjects(VkCommandBuffer cmd, RenderObject* first, size_t count);
 
@@ -214,9 +214,6 @@ private:
 		VkPipeline pbrAlphaBlend;
 
 		VkPipeline currentBoundPipeline = VK_NULL_HANDLE;
-
-		// Models
-		vkglTF::Model modelSkybox;
 	} _pbrRendering;
 
 	enum PBRWorkflows { PBR_WORKFLOW_METALLIC_ROUGHNESS = 0, PBR_WORKFLOW_SPECULAR_GLOSINESS = 1 };

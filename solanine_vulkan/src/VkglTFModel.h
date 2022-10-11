@@ -208,19 +208,26 @@ namespace vkglTF
 		float end = std::numeric_limits<float>::min();
 	};
 
+	struct VertexInputDescription
+	{
+		std::vector<VkVertexInputBindingDescription> bindings;
+		std::vector<VkVertexInputAttributeDescription> attributes;
+		VkPipelineVertexInputStateCreateFlags flags = 0;
+	};
+
 	struct Model
 	{
-		// @HACK: @TODO: @FIXME: fix this and use this as the vert shader and VkVertexInputAttributeDescription format!!!!!!
-		//struct Vertex
-		//{
-		//	glm::vec3 pos;
-		//	glm::vec3 normal;
-		//	glm::vec2 uv0;
-		//	glm::vec2 uv1;
-		//	glm::vec4 joint0;
-		//	glm::vec4 weight0;
-		//	glm::vec4 color;
-		//};
+		struct Vertex
+		{
+			glm::vec3 pos;
+			glm::vec3 normal;
+			glm::vec2 uv0;
+			glm::vec2 uv1;
+			glm::vec4 joint0;
+			glm::vec4 weight0;
+			glm::vec4 color;
+			static VertexInputDescription getVertexDescription();
+		};
 
 		struct Vertices
 		{
@@ -273,8 +280,9 @@ namespace vkglTF
 		//void loadMaterials(tinygltf::Model& gltfModel);
 		void loadAnimations(tinygltf::Model& gltfModel);
 		void loadFromFile(VulkanEngine* engine, std::string filename, VkQueue transferQueue, float scale = 1.0f);
-		void drawNode(Node* node, VkCommandBuffer commandBuffer);
-		void draw(VkCommandBuffer commandBuffer);
+		void bind(VkCommandBuffer commandBuffer);
+		void draw(VkCommandBuffer commandBuffer, uint32_t transformID);
+		void drawNode(Node* node, VkCommandBuffer commandBuffer, uint32_t transformID);
 		void calculateBoundingBox(Node* node, Node* parent);
 		void getSceneDimensions();
 		void updateAnimation(uint32_t index, float time);

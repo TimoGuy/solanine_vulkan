@@ -424,17 +424,47 @@ void VulkanEngine::render()
 
 void VulkanEngine::loadImages()
 {
-	Texture woodFloor057;
-	vkutil::loadImageFromFile(*this, "res/textures/WoodFloor057_1K-JPG/WoodFloor057_1K_Color.jpg", 0, woodFloor057.image);
+	// Load woodFloor057
+	{
+		Texture woodFloor057;
+		vkutil::loadImageFromFile(*this, "res/textures/WoodFloor057_1K-JPG/WoodFloor057_1K_Color.jpg", 0, woodFloor057.image);
 
-	VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, woodFloor057.image._image, VK_IMAGE_ASPECT_COLOR_BIT, woodFloor057.image._mipLevels);
-	vkCreateImageView(_device, &imageInfo, nullptr, &woodFloor057.imageView);
+		VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, woodFloor057.image._image, VK_IMAGE_ASPECT_COLOR_BIT, woodFloor057.image._mipLevels);
+		vkCreateImageView(_device, &imageInfo, nullptr, &woodFloor057.imageView);
 
-	_mainDeletionQueue.pushFunction([=]() {
-		vkDestroyImageView(_device, woodFloor057.imageView, nullptr);
-		});
+		_mainDeletionQueue.pushFunction([=]() {
+			vkDestroyImageView(_device, woodFloor057.imageView, nullptr);
+			});
 
-	_loadedTextures["WoodFloor057"] = woodFloor057;
+		_loadedTextures["WoodFloor057"] = woodFloor057;
+	}
+
+	// Load cubemapSkybox
+	{
+		Texture cubemapSkybox;
+		vkutil::loadImageCubemapFromFile(
+			*this,
+			{
+				"res/textures/CubemapSkybox/right.png",
+				"res/textures/CubemapSkybox/left.png",
+				"res/textures/CubemapSkybox/top.png",
+				"res/textures/CubemapSkybox/bottom.png",
+				"res/textures/CubemapSkybox/back.png",
+				"res/textures/CubemapSkybox/front.png",
+			},
+			1,
+			cubemapSkybox.image
+		);
+
+		VkImageViewCreateInfo imageInfo = vkinit::imageviewCubemapCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, cubemapSkybox.image._image, VK_IMAGE_ASPECT_COLOR_BIT, cubemapSkybox.image._mipLevels);
+		vkCreateImageView(_device, &imageInfo, nullptr, &cubemapSkybox.imageView);
+
+		_mainDeletionQueue.pushFunction([=]() {
+			vkDestroyImageView(_device, cubemapSkybox.imageView, nullptr);
+			});
+
+		_loadedTextures["CubemapSkybox"] = cubemapSkybox;
+	}
 }
 
 Material* VulkanEngine::createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name)
@@ -451,14 +481,6 @@ Material* VulkanEngine::getMaterial(const std::string& name)
 {
 	auto it = _materials.find(name);
 	if (it == _materials.end())
-		return nullptr;
-	return &it->second;
-}
-
-Mesh* VulkanEngine::getMesh(const std::string& name)
-{
-	auto it = _meshes.find(name);
-	if (it == _meshes.end())
 		return nullptr;
 	return &it->second;
 }
@@ -1023,7 +1045,7 @@ void VulkanEngine::initPipelines()
 	VkPipelineLayout _meshPipelineLayout;
 	VK_CHECK(vkCreatePipelineLayout(_device, &meshPipelineLayoutInfo, nullptr, &_meshPipelineLayout));
 
-	VertexInputDescription vertexDescription = Vertex::getVertexDescription();
+	vkglTF::VertexInputDescription vertexDescription = vkglTF::Model::Vertex::getVertexDescription();
 
 	PipelineBuilder pipelineBuilder;
 	pipelineBuilder._shaderStages.clear();
@@ -1082,7 +1104,7 @@ void VulkanEngine::initScene()
 			glm::mat4 scale = glm::scale(glm::mat4(1.0f), glm::vec3(0.2f));
 
 			RenderObject triangle = {
-				.mesh = getMesh("quad"),
+				.model = &_renderObjectModels.skybox,
 				.material = getMaterial("defaultMaterial"),
 				.transformMatrix = translation * scale,
 			};
@@ -1274,162 +1296,11 @@ bool VulkanEngine::loadShaderModule(const char* filePath, VkShaderModule* outSha
 
 void VulkanEngine::loadMeshes()
 {
-	Mesh _quadMesh;
-
-	_quadMesh._vertices.resize(4);
-	//vertex positions
-	_quadMesh._vertices[0].position = { -1.f, 1.f, 0.0f };
-	_quadMesh._vertices[1].position = { 1.f, 1.f, 0.0f };
-	_quadMesh._vertices[2].position = { 1.f,-1.f, 0.0f };
-	_quadMesh._vertices[3].position = { -1.f,-1.f, 0.0f };
-
-	//vertex colors, all green
-	_quadMesh._vertices[0].color = { 0.f, 1.f, 0.0f }; //pure green
-	_quadMesh._vertices[1].color = { 0.f, 1.f, 0.0f }; //pure green
-	_quadMesh._vertices[2].color = { 0.f, 1.f, 0.0f }; //pure green
-	_quadMesh._vertices[3].color = { 0.f, 1.f, 0.0f }; //pure green
-
-	//we don't care about the vertex normals
-
-	// vertex uv
-	_quadMesh._vertices[0].uv = { 0.f, 0.f };
-	_quadMesh._vertices[1].uv = { 1.f, 0.f };
-	_quadMesh._vertices[2].uv = { 1.f, 1.f };
-	_quadMesh._vertices[3].uv = { 0.f, 1.f };
-
-	// Indices
-	_quadMesh._indices.resize(6);
-	_quadMesh._indices[0] = 0;
-	_quadMesh._indices[1] = 1;
-	_quadMesh._indices[2] = 2;
-	_quadMesh._indices[3] = 2;
-	_quadMesh._indices[4] = 3;
-	_quadMesh._indices[5] = 0;
-
-	// Register mesh
-	uploadMeshToGPU(_quadMesh);
-	_meshes["quad"] = _quadMesh;
-
-	//
-	// glTF model
-	//
-	_pbrRendering.modelSkybox.loadFromFile(this, "res/models/SlimeGirl.glb", 0);
-	//_pbrRendering.modelSkybox.loadFromFile(this, "res/models/Box.gltf", 0);
+	_renderObjectModels.skybox.loadFromFile(this, "res/models/SlimeGirl.glb", 0);
+	//_renderObjectModels.modelSkybox.loadFromFile(this, "res/models/Box.gltf", 0);
 	_mainDeletionQueue.pushFunction([=]() {
-		_pbrRendering.modelSkybox.destroy(_allocator);
+		_renderObjectModels.skybox.destroy(_allocator);
 		});
-}
-
-void VulkanEngine::uploadMeshToGPU(Mesh& mesh)
-{
-	const size_t vertexBufferSize = mesh._vertices.size() * sizeof(Vertex);
-	VkBufferCreateInfo stagingVertexBufferInfo = {
-		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-		.pNext = nullptr,
-		.size = vertexBufferSize,
-		.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-	};
-	VmaAllocationCreateInfo vmaAllocInfo = {
-		.usage = VMA_MEMORY_USAGE_CPU_ONLY,
-	};
-
-	// Create temporary staging buffer
-	AllocatedBuffer stagingVertexBuffer;
-	VK_CHECK(vmaCreateBuffer(_allocator, &stagingVertexBufferInfo, &vmaAllocInfo, &stagingVertexBuffer._buffer, &stagingVertexBuffer._allocation, nullptr));
-
-	// Copy mesh to staging buffer
-	void* data;
-	vmaMapMemory(_allocator, stagingVertexBuffer._allocation, &data);
-	memcpy(data, mesh._vertices.data(), vertexBufferSize);
-	vmaUnmapMemory(_allocator, stagingVertexBuffer._allocation);
-
-	// Create GPU side buffer
-	VkBufferCreateInfo vertexBufferInfo = {
-		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-		.pNext = nullptr,
-		.size = vertexBufferSize,
-		.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-	};
-	vmaAllocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
-
-	VK_CHECK(vmaCreateBuffer(_allocator, &vertexBufferInfo, &vmaAllocInfo, &mesh._vertexBuffer._buffer, &mesh._vertexBuffer._allocation, nullptr));
-
-	// Launch copy command! (staging to GPU)
-	immediateSubmit([=](VkCommandBuffer cmd) {
-		VkBufferCopy copy = {
-			.srcOffset = 0,
-			.dstOffset = 0,
-			.size = vertexBufferSize,
-		};
-		vkCmdCopyBuffer(cmd, stagingVertexBuffer._buffer, mesh._vertexBuffer._buffer, 1, &copy);
-		});
-
-	// Destroy staging buffers
-	vmaDestroyBuffer(_allocator, stagingVertexBuffer._buffer, stagingVertexBuffer._allocation);
-
-	// @NOTE: this is not the ideal way to do cleanup... this should be done by a resource manager
-	// Add destroy command for cleanup
-	_mainDeletionQueue.pushFunction([=]() {
-		vmaDestroyBuffer(_allocator, mesh._vertexBuffer._buffer, mesh._vertexBuffer._allocation);
-		});
-
-	//
-	// Load in indices into the GPU
-	//
-	mesh._hasIndices = (mesh._indices.size() > 0);
-	if (mesh._hasIndices)
-	{
-		const size_t indexBufferSize = mesh._indices.size() * sizeof(uint32_t);
-		VkBufferCreateInfo stagingIndexBufferInfo = {
-			.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-			.pNext = nullptr,
-			.size = indexBufferSize,
-			.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-		};
-		VmaAllocationCreateInfo vmaAllocInfo = {
-			.usage = VMA_MEMORY_USAGE_CPU_ONLY,
-		};
-
-		// Create temporary staging buffer
-		AllocatedBuffer stagingIndexBuffer;
-		VK_CHECK(vmaCreateBuffer(_allocator, &stagingIndexBufferInfo, &vmaAllocInfo, &stagingIndexBuffer._buffer, &stagingIndexBuffer._allocation, nullptr));
-
-		// Copy mesh to staging buffer
-		void* data;
-		vmaMapMemory(_allocator, stagingIndexBuffer._allocation, &data);
-		memcpy(data, mesh._indices.data(), indexBufferSize);
-		vmaUnmapMemory(_allocator, stagingIndexBuffer._allocation);
-
-		// Create GPU side buffer
-		VkBufferCreateInfo indexBufferInfo = {
-			.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-			.pNext = nullptr,
-			.size = indexBufferSize,
-			.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-		};
-		vmaAllocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
-
-		VK_CHECK(vmaCreateBuffer(_allocator, &indexBufferInfo, &vmaAllocInfo, &mesh._indexBuffer._buffer, &mesh._indexBuffer._allocation, nullptr));
-
-		// Launch copy command! (staging to GPU)
-		immediateSubmit([=](VkCommandBuffer cmd) {
-			VkBufferCopy copy = {
-				.srcOffset = 0,
-				.dstOffset = 0,
-				.size = indexBufferSize,
-			};
-			vkCmdCopyBuffer(cmd, stagingIndexBuffer._buffer, mesh._indexBuffer._buffer, 1, &copy);
-			});
-
-		// Destroy staging buffers
-		vmaDestroyBuffer(_allocator, stagingIndexBuffer._buffer, stagingIndexBuffer._allocation);
-
-		// @NOTE: this is not the ideal way to do cleanup... this should be done by a resource manager
-		// Add destroy command for cleanup
-		_mainDeletionQueue.pushFunction([=]() {
-			vmaDestroyBuffer(_allocator, mesh._indexBuffer._buffer, mesh._indexBuffer._allocation);
-			});
-	}
 }
 
 void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first, size_t count)
@@ -1474,15 +1345,22 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first,
 	vmaUnmapMemory(_allocator, currentFrame.objectBuffer._allocation);
 
 	//
+	// Render Skybox
+	//
+	//vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[i].skybox, 0, nullptr);
+	//vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines.skybox);
+	_renderObjectModels.skybox.draw(cmd, 0);
+
+	//
 	// Render all the renderobjects
 	//
 	Material* lastMaterial = nullptr;
-	Mesh* lastMesh = nullptr;
+	vkglTF::Model* lastModel = nullptr;
 	for (size_t i = 0; i < count; i++)
 	{
 		RenderObject& object = first[i];
 
-		if (!object.material || !object.mesh)	// @NOTE: Subdue a warning that a possible nullptr could be dereferenced
+		if (!object.material || !object.model)	// @NOTE: Subdue a warning that a possible nullptr could be dereferenced
 		{
 			std::cerr << "ERROR: object material and/or mesh are NULL" << std::endl;
 			continue;
@@ -1512,24 +1390,16 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first,
 		};		
 		vkCmdPushConstants(cmd, object.material->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(MeshPushConstants), &constants);
 
-		if (object.mesh != lastMesh)
+		if (object.model != lastModel)
 		{
 			// Bind the new mesh
-			VkDeviceSize offset = 0;
-			vkCmdBindVertexBuffers(cmd, 0, 1, &object.mesh->_vertexBuffer._buffer, &offset);
-			if (object.mesh->_hasIndices)
-				vkCmdBindIndexBuffer(cmd, object.mesh->_indexBuffer._buffer, offset, VK_INDEX_TYPE_UINT32);
-			lastMesh = object.mesh;
+			object.model->bind(cmd);
+			lastModel = object.model;
 		}
 
 		// Render it out
-		if (object.mesh->_hasIndices)
-			vkCmdDrawIndexed(cmd, static_cast<uint32_t>(object.mesh->_indices.size()), 1, 0, 0, i);
-		else
-			vkCmdDraw(cmd, object.mesh->_vertices.size(), 1, 0, i);
+		object.model->draw(cmd, i);
 	}
-
-	_pbrRendering.modelSkybox.draw(cmd);
 }
 
 void VulkanEngine::recalculateSceneCamera()

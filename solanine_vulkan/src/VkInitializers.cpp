@@ -134,6 +134,25 @@ VkImageCreateInfo vkinit::imageCreateInfo(VkFormat format, VkImageUsageFlags usa
 	return info;
 }
 
+VkImageCreateInfo vkinit::imageCubemapCreateInfo(VkFormat format, VkImageUsageFlags usageFlags, VkExtent3D extent, uint32_t mipLevels)
+{
+	VkImageCreateInfo info = {
+		.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+		.pNext = nullptr,
+		.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT,
+		.imageType = VK_IMAGE_TYPE_2D,
+		.format = format,
+		.extent = extent,
+		.mipLevels = mipLevels,
+		.arrayLayers = 6,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		.tiling = VK_IMAGE_TILING_OPTIMAL,
+		.usage = usageFlags
+	};
+
+	return info;
+}
+
 VkImageViewCreateInfo vkinit::imageviewCreateInfo(VkFormat format, VkImage image, VkImageAspectFlags aspectFlags, uint32_t mipLevels)
 {
 	VkImageViewCreateInfo info = {
@@ -148,6 +167,26 @@ VkImageViewCreateInfo vkinit::imageviewCreateInfo(VkFormat format, VkImage image
 			.levelCount = mipLevels,
 			.baseArrayLayer = 0,
 			.layerCount = 1
+		}
+	};
+
+	return info;
+}
+
+VkImageViewCreateInfo vkinit::imageviewCubemapCreateInfo(VkFormat format, VkImage image, VkImageAspectFlags aspectFlags, uint32_t mipLevels)
+{
+	VkImageViewCreateInfo info = {
+		.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+		.pNext = nullptr,
+		.image = image,
+		.viewType = VK_IMAGE_VIEW_TYPE_CUBE,
+		.format = format,
+		.subresourceRange = {
+			.aspectMask = aspectFlags,
+			.baseMipLevel = 0,
+			.levelCount = mipLevels,
+			.baseArrayLayer = 0,
+			.layerCount = 6
 		}
 	};
 

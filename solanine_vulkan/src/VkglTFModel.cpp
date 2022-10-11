@@ -8,7 +8,6 @@
 
 #include "VkglTFModel.h"
 #include "VulkanEngine.h"
-#include "VkMesh.h"
 
 namespace vkglTF
 {
@@ -422,6 +421,79 @@ namespace vkglTF
 	}
 
 	//
+	// Vertex
+	//
+	VertexInputDescription Model::Vertex::getVertexDescription()
+	{
+		VertexInputDescription description;
+
+		//
+		// 1 vertex buffer binding
+		//
+		VkVertexInputBindingDescription mainBinding = {
+			.binding = 0,
+			.stride = sizeof(Vertex),
+			.inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+		};
+		description.bindings.push_back(mainBinding);
+
+		//
+		// Attributes
+		//
+		VkVertexInputAttributeDescription posAttribute = {
+			.location = 0,
+			.binding = 0,
+			.format = VK_FORMAT_R32G32B32_SFLOAT,
+			.offset = offsetof(Vertex, pos),
+		};
+		VkVertexInputAttributeDescription normalAttribute = {
+			.location = 1,
+			.binding = 0,
+			.format = VK_FORMAT_R32G32B32_SFLOAT,
+			.offset = offsetof(Vertex, normal),
+		};
+		VkVertexInputAttributeDescription uv0Attribute = {
+			.location = 2,
+			.binding = 0,
+			.format = VK_FORMAT_R32G32_SFLOAT,
+			.offset = offsetof(Vertex, uv0),
+		};
+		VkVertexInputAttributeDescription uv1Attribute = {
+			.location = 3,
+			.binding = 0,
+			.format = VK_FORMAT_R32G32_SFLOAT,
+			.offset = offsetof(Vertex, uv1),
+		};
+		VkVertexInputAttributeDescription joint0Attribute = {
+			.location = 4,
+			.binding = 0,
+			.format = VK_FORMAT_R32G32B32A32_SFLOAT,
+			.offset = offsetof(Vertex, joint0),
+		};
+		VkVertexInputAttributeDescription weight0Attribute = {
+			.location = 5,
+			.binding = 0,
+			.format = VK_FORMAT_R32G32B32A32_SFLOAT,
+			.offset = offsetof(Vertex, weight0),
+		};
+		VkVertexInputAttributeDescription colorAttribute = {
+			.location = 6,
+			.binding = 0,
+			.format = VK_FORMAT_R32G32B32A32_SFLOAT,
+			.offset = offsetof(Vertex, color),
+		};
+
+		description.attributes.push_back(posAttribute);
+		description.attributes.push_back(normalAttribute);
+		description.attributes.push_back(uv0Attribute);
+		description.attributes.push_back(uv1Attribute);
+		description.attributes.push_back(joint0Attribute);
+		description.attributes.push_back(weight0Attribute);
+		description.attributes.push_back(colorAttribute);
+		return description;
+	}
+
+	//
 	// Model
 	//
 	void Model::destroy(VmaAllocator allocator)
@@ -606,11 +678,10 @@ namespace vkglTF
 					for (size_t v = 0; v < posAccessor.count; v++)
 					{
 						Vertex& vert = loaderInfo.vertexBuffer[loaderInfo.vertexPos];
-						//vert.pos = glm::vec4(glm::make_vec3(&bufferPos[v * posByteStride]), 1.0f);
-						vert.position = glm::vec4(glm::make_vec3(&bufferPos[v * posByteStride]), 1.0f);
+						vert.pos = glm::vec4(glm::make_vec3(&bufferPos[v * posByteStride]), 1.0f);
 						vert.normal = glm::normalize(glm::vec3(bufferNormals ? glm::make_vec3(&bufferNormals[v * normByteStride]) : glm::vec3(0.0f)));
-						//vert.uv0 = bufferTexCoordSet0 ? glm::make_vec2(&bufferTexCoordSet0[v * uv0ByteStride]) : glm::vec3(0.0f);
-						//vert.uv1 = bufferTexCoordSet1 ? glm::make_vec2(&bufferTexCoordSet1[v * uv1ByteStride]) : glm::vec3(0.0f);
+						vert.uv0 = bufferTexCoordSet0 ? glm::make_vec2(&bufferTexCoordSet0[v * uv0ByteStride]) : glm::vec3(0.0f);
+						vert.uv1 = bufferTexCoordSet1 ? glm::make_vec2(&bufferTexCoordSet1[v * uv1ByteStride]) : glm::vec3(0.0f);
 						vert.color = bufferColorSet0 ? glm::make_vec4(&bufferColorSet0[v * color0ByteStride]) : glm::vec4(1.0f);
 
 						if (hasSkin)
@@ -620,13 +691,13 @@ namespace vkglTF
 							case TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT:
 							{
 								const uint16_t* buf = static_cast<const uint16_t*>(bufferJoints);
-								//vert.joint0 = glm::vec4(glm::make_vec4(&buf[v * jointByteStride]));
+								vert.joint0 = glm::vec4(glm::make_vec4(&buf[v * jointByteStride]));
 								break;
 							}
 							case TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE:
 							{
 								const uint8_t* buf = static_cast<const uint8_t*>(bufferJoints);
-								//vert.joint0 = glm::vec4(glm::make_vec4(&buf[v * jointByteStride]));
+								vert.joint0 = glm::vec4(glm::make_vec4(&buf[v * jointByteStride]));
 								break;
 							}
 							default:
@@ -637,14 +708,14 @@ namespace vkglTF
 						}
 						else
 						{
-							//vert.joint0 = glm::vec4(0.0f);
+							vert.joint0 = glm::vec4(0.0f);
 						}
-						//vert.weight0 = hasSkin ? glm::make_vec4(&bufferWeights[v * weightByteStride]) : glm::vec4(0.0f);
+						vert.weight0 = hasSkin ? glm::make_vec4(&bufferWeights[v * weightByteStride]) : glm::vec4(0.0f);
 						// Fix for all zero weights
-						//if (glm::length(vert.weight0) == 0.0f)
-						//{
-						//	vert.weight0 = glm::vec4(1.0f, 0.0f, 0.0f, 0.0f);
-						//}
+						if (glm::length(vert.weight0) == 0.0f)
+						{
+							vert.weight0 = glm::vec4(1.0f, 0.0f, 0.0f, 0.0f);
+						}
 						loaderInfo.vertexPos++;
 					}
 				}
@@ -1272,29 +1343,33 @@ namespace vkglTF
 		getSceneDimensions();
 	}
 
-	void Model::drawNode(Node* node, VkCommandBuffer commandBuffer)
+	void Model::bind(VkCommandBuffer commandBuffer)
+	{
+		const VkDeviceSize offsets[1] = { 0 };
+		vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vertices.buffer, offsets);
+		vkCmdBindIndexBuffer(commandBuffer, indices.buffer, 0, VK_INDEX_TYPE_UINT32);
+	}
+
+	void Model::draw(VkCommandBuffer commandBuffer, uint32_t transformID)
+	{
+		for (auto& node : nodes)
+		{
+			drawNode(node, commandBuffer, transformID);
+		}
+	}
+
+	void Model::drawNode(Node* node, VkCommandBuffer commandBuffer, uint32_t transformID)
 	{
 		if (node->mesh)
 		{
 			for (Primitive* primitive : node->mesh->primitives)
 			{
-				vkCmdDrawIndexed(commandBuffer, primitive->indexCount, 1, primitive->firstIndex, 0, 0);
+				vkCmdDrawIndexed(commandBuffer, primitive->indexCount, 1, primitive->firstIndex, 0, transformID);
 			}
 		}
 		for (auto& child : node->children)
 		{
-			drawNode(child, commandBuffer);
-		}
-	}
-
-	void Model::draw(VkCommandBuffer commandBuffer)
-	{
-		const VkDeviceSize offsets[1] = { 0 };
-		vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vertices.buffer, offsets);
-		vkCmdBindIndexBuffer(commandBuffer, indices.buffer, 0, VK_INDEX_TYPE_UINT32);
-		for (auto& node : nodes)
-		{
-			drawNode(node, commandBuffer);
+			drawNode(child, commandBuffer, transformID);
 		}
 	}
 

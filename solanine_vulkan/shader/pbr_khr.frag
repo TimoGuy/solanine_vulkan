@@ -2,7 +2,7 @@
 // See https://github.com/KhronosGroup/glTF-WebGL-PBR
 // Supports both metallic roughness and specular glossiness inputs
 
-#version 450
+#version 460
 
 layout (location = 0) in vec3 inWorldPos;
 layout (location = 1) in vec3 inNormal;
@@ -10,15 +10,17 @@ layout (location = 2) in vec2 inUV0;
 layout (location = 3) in vec2 inUV1;
 layout (location = 4) in vec4 inColor0;
 
+layout (location = 0) out vec4 outColor;
+
 // Scene bindings
 
-layout (set = 0, binding = 0) uniform UBO
+layout(set = 0, binding = 0) uniform CameraBuffer
 {
-	mat4 projection;
-	mat4 model;
 	mat4 view;
-	vec3 camPos;
-} ubo;
+	mat4 projection;
+	mat4 projectionView;
+	vec3 cameraPosition;
+} cameraData;
 
 layout (set = 0, binding = 1) uniform UBOParams
 {
@@ -60,8 +62,6 @@ layout (push_constant) uniform Material
 	float alphaMask;	
 	float alphaMaskCutoff;
 } material;
-
-layout (location = 0) out vec4 outColor;
 
 // Encapsulate the various inputs used by the various functions in the shading equation
 // We store values in this struct to simplify the integration of alternative implementations
@@ -321,7 +321,7 @@ void main()
 	vec3 specularEnvironmentR90 = vec3(1.0, 1.0, 1.0) * reflectance90;
 
 	vec3 n = (material.normalTextureSet > -1) ? getNormal() : normalize(inNormal);
-	vec3 v = normalize(ubo.camPos - inWorldPos);    // Vector from surface point to camera
+	vec3 v = normalize(cameraData.cameraPosition - inWorldPos);    // Vector from surface point to camera
 	vec3 l = normalize(uboParams.lightDir.xyz);     // Vector from surface point to light
 	vec3 h = normalize(l+v);                        // Half vector between both l and v
 	vec3 reflection = -normalize(reflect(v, n));

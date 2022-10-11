@@ -14,7 +14,9 @@ namespace vkinit
 	VkPipelineColorBlendAttachmentState colorBlendAttachmentState();
 	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo();
 	VkImageCreateInfo imageCreateInfo(VkFormat format, VkImageUsageFlags usageFlags, VkExtent3D extent, uint32_t mipLevels);
+	VkImageCreateInfo imageCubemapCreateInfo(VkFormat format, VkImageUsageFlags usageFlags, VkExtent3D extent, uint32_t mipLevels);
 	VkImageViewCreateInfo imageviewCreateInfo(VkFormat format, VkImage image, VkImageAspectFlags aspectFlags, uint32_t mipLevels);
+	VkImageViewCreateInfo imageviewCubemapCreateInfo(VkFormat format, VkImage image, VkImageAspectFlags aspectFlags, uint32_t mipLevels);
 	VkPipelineDepthStencilStateCreateInfo depthStencilCreateInfo(bool doDepthTest, bool doDepthWrite, VkCompareOp compareOp);
 	VkDescriptorSetLayoutBinding descriptorSetLayoutBinding(VkDescriptorType type, VkShaderStageFlags stageFlags, uint32_t binding);
 	VkWriteDescriptorSet writeDescriptorBuffer(VkDescriptorType type, VkDescriptorSet dstSet, VkDescriptorBufferInfo* bufferInfo, uint32_t binding);

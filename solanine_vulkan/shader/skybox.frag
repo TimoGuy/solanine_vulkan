@@ -1,16 +1,17 @@
-#version 450
+#version 460
 
-layout (binding = 2) uniform samplerCube samplerEnv;
+layout (location = 0) in vec3 inUVW;
 
-layout (set = 0, location = 0) in vec3 inUVW;
-
-layout (set = 0, location = 0) out vec4 outColor;
+layout (location = 0) out vec4 outColor;
 
 layout (set = 0, binding = 1) uniform UBOParams {
 	vec4 _pad0;
 	float exposure;
 	float gamma;
 } uboParams;
+
+layout (set = 2, binding = 2) uniform samplerCube samplerEnv;
+
 
 // From http://filmicworlds.com/blog/filmic-tonemapping-operators/
 vec3 Uncharted2Tonemap(vec3 color)
@@ -49,8 +50,8 @@ vec4 SRGBtoLINEAR(vec4 srgbIn)
 	#endif //MANUAL_SRGB
 }
 
-void main() 
+void main()
 {
-	vec3 color = SRGBtoLINEAR(tonemap(textureLod(samplerEnv, inUVW, 1.5))).rgb;	
+	vec3 color = SRGBtoLINEAR(tonemap(textureLod(samplerEnv, inUVW, 1.5))).rgb;
 	outColor = vec4(color * 1.0, 1.0);
 }
