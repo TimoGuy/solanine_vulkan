@@ -359,6 +359,7 @@ bool vkutil::loadImageCubemapFromFile(VulkanEngine& engine, std::vector<const ch
 				.imageExtent = imageExtent,
 			};
 			copyRegions.push_back(copyRegion);
+			copyOffset += imageSizes[face];
 		}
 		vkCmdCopyBufferToImage(
 			cmd,
@@ -400,7 +401,7 @@ bool vkutil::loadImageCubemapFromFile(VulkanEngine& engine, std::vector<const ch
 				.baseMipLevel = 0,
 				.levelCount = 1,
 				.baseArrayLayer = 0,
-				.layerCount = 1,
+				.layerCount = 6,
 			},
 		};
 

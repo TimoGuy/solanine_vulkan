@@ -156,6 +156,7 @@ public:
 	struct RenderObjectModels
 	{
 		vkglTF::Model skybox;
+		vkglTF::Model slimeGirl;
 		Material skyboxMaterial;  // @FIXME: this shouldn't be here... reorganize....!!!!
 	} _renderObjectModels;
 

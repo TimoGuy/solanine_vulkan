@@ -10,15 +10,15 @@ layout (location = 0) out vec4 outColor;
 //	float gamma;
 //} uboParams;
 
-layout (set = 0, binding = 1) uniform SceneData
-{
-	vec4 fogColor;
-	vec4 fogDistances;
-	vec4 ambientColor;
-	vec4 sunlightDirection;
-	vec4 sunlightColor;
-} sceneData;
-
+//////////////////layout (set = 0, binding = 1) uniform SceneData
+//////////////////{
+//////////////////	vec4 fogColor;
+//////////////////	vec4 fogDistances;
+//////////////////	vec4 ambientColor;
+//////////////////	vec4 sunlightDirection;
+//////////////////	vec4 sunlightColor;
+//////////////////} sceneData;
+//////////////////
 layout (set = 1, binding = 0) uniform samplerCube samplerEnv;
 
 

@@ -445,10 +445,10 @@ void VulkanEngine::loadImages()
 		vkutil::loadImageCubemapFromFile(
 			*this,
 			{
-				"res/textures/CubemapSkybox/right.png",
 				"res/textures/CubemapSkybox/left.png",
-				"res/textures/CubemapSkybox/top.png",
-				"res/textures/CubemapSkybox/bottom.png",
+				"res/textures/CubemapSkybox/right.png",
+				"res/textures/CubemapSkybox/top.png",       // @NOTE: had to be 180deg rotated
+				"res/textures/CubemapSkybox/bottom.png",    // @NOTE: had to be 180deg rotated
 				"res/textures/CubemapSkybox/back.png",
 				"res/textures/CubemapSkybox/front.png",
 			},
@@ -680,7 +680,7 @@ void VulkanEngine::initCommands()
 	}
 
 	//
-	// Create Pool dfasdf;lkj
+	// Create Command Pool
 	//
 	VkCommandPoolCreateInfo uploadCommandPoolInfo = vkinit::commandPoolCreateInfo(_graphicsQueueFamily);
 	VK_CHECK(vkCreateCommandPool(_device, &uploadCommandPoolInfo, nullptr, &_uploadContext.commandPool));
@@ -691,7 +691,6 @@ void VulkanEngine::initCommands()
 		});
 
 	VkCommandBufferAllocateInfo cmdAllocInfo = vkinit::commandBufferAllocateInfo(_uploadContext.commandPool, 1);
-	VkCommandBuffer cmd;		// ?????????? @NOTE
 	VK_CHECK(vkAllocateCommandBuffers(_device, &cmdAllocInfo, &_uploadContext.commandBuffer));
 }
 
@@ -1092,7 +1091,7 @@ void VulkanEngine::initPipelines()
 	pipelineBuilder._scissor.offset = { 0, 0 };
 	pipelineBuilder._scissor.extent = _windowExtent;
 
-	pipelineBuilder._rasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL);
+	pipelineBuilder._rasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT);
 	pipelineBuilder._colorBlendAttachment = vkinit::colorBlendAttachmentState();
 	pipelineBuilder._multisampling = vkinit::multisamplingStateCreateInfo();
 	pipelineBuilder._pipelineLayout = _meshPipelineLayout;
@@ -1109,8 +1108,8 @@ void VulkanEngine::initPipelines()
 	skyboxPipelineLayoutInfo.pushConstantRangeCount = 0;
 
 	VkDescriptorSetLayout setLayouts2[] = { _globalSetLayout, _singleTextureSetLayout };
-	meshPipelineLayoutInfo.pSetLayouts = setLayouts2;
-	meshPipelineLayoutInfo.setLayoutCount = 2;
+	skyboxPipelineLayoutInfo.pSetLayouts = setLayouts2;
+	skyboxPipelineLayoutInfo.setLayoutCount = 2;
 
 	VkPipelineLayout _skyboxPipelineLayout;
 	VK_CHECK(vkCreatePipelineLayout(_device, &skyboxPipelineLayoutInfo, nullptr, &_skyboxPipelineLayout));
@@ -1120,6 +1119,10 @@ void VulkanEngine::initPipelines()
 		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, skyboxVertShader));
 	pipelineBuilder._shaderStages.push_back(
 		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, skyboxFragShader));
+
+	pipelineBuilder._rasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_FRONT_BIT);    // Bc we're rendering a box inside-out
+	pipelineBuilder._depthStencil = vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_NEVER);
+	pipelineBuilder._pipelineLayout = _skyboxPipelineLayout;		// @NOTE: EFFING DON'T FORGET THIS LINE BC THAT'S WHAT CAUSED ME A BUTT TON OF GRIEF!!!!!
 
 	auto _skyboxPipeline = pipelineBuilder.buildPipeline(_device, _renderPass);
 
@@ -1155,7 +1158,7 @@ void VulkanEngine::initScene()
 			glm::mat4 scale = glm::scale(glm::mat4(1.0f), glm::vec3(0.2f));
 
 			RenderObject triangle = {
-				.model = &_renderObjectModels.skybox,
+				.model = &_renderObjectModels.slimeGirl,
 				.material = getMaterial("defaultMaterial"),
 				.transformMatrix = translation * scale,
 			};
@@ -1380,10 +1383,12 @@ bool VulkanEngine::loadShaderModule(const char* filePath, VkShaderModule* outSha
 
 void VulkanEngine::loadMeshes()
 {
-	//_renderObjectModels.skybox.loadFromFile(this, "res/models/SlimeGirl.glb", 0);
 	_renderObjectModels.skybox.loadFromFile(this, "res/models/Box.gltf", 0);
+	_renderObjectModels.slimeGirl.loadFromFile(this, "res/models/SlimeGirl.glb", 0);
+
 	_mainDeletionQueue.pushFunction([=]() {
 		_renderObjectModels.skybox.destroy(_allocator);
+		_renderObjectModels.slimeGirl.destroy(_allocator);
 		});
 }
 
@@ -1475,7 +1480,7 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first,
 		// Push constants
 		MeshPushConstants constants = {
 			.renderMatrix = object.transformMatrix,
-		};		
+		};
 		vkCmdPushConstants(cmd, object.material->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(MeshPushConstants), &constants);
 
 		if (object.model != lastModel)

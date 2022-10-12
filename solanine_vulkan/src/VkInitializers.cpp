@@ -55,18 +55,18 @@ VkPipelineInputAssemblyStateCreateInfo vkinit::inputAssemblyCreateInfo(VkPrimiti
 	return info;
 }
 
-VkPipelineRasterizationStateCreateInfo vkinit::rasterizationStateCreateInfo(VkPolygonMode polygonMode)
+VkPipelineRasterizationStateCreateInfo vkinit::rasterizationStateCreateInfo(VkPolygonMode polygonMode, VkCullModeFlags cullMode)
 {
 	VkPipelineRasterizationStateCreateInfo info = {};
 	info.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
 	info.pNext = nullptr;
 
 	info.depthClampEnable = VK_FALSE;	// @NOTE: note this... bc you'll need it for shadow rendering yo!  -Timo
-	info.rasterizerDiscardEnable = VK_FALSE;	// IDK what the functionality of this is... like why is it ever VK_TRUE?
+	info.rasterizerDiscardEnable = VK_FALSE;	// IDK what the functionality of this is... like why is it ever VK_TRUE?    OHHHHHH, I realized it's the `discard;` keyword in the shaders! "Is it going to work?" Type thingo.
 	info.polygonMode = polygonMode;
 	info.lineWidth = 1.0f;
 
-	info.cullMode = VK_CULL_MODE_BACK_BIT;
+	info.cullMode = cullMode;
 	info.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 
 	info.depthBiasEnable = VK_FALSE;
