@@ -511,9 +511,7 @@ namespace vkglTF
 			indices.buffer = VK_NULL_HANDLE;
 		}
 		/*for (auto texture : textures)
-		{
 			texture.destroy();
-		}
 		textures.resize(0);
 		textureSamplers.resize(0);*/
 		for (auto node : nodes)
