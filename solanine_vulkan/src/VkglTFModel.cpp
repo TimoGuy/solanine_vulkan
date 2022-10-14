@@ -329,22 +329,45 @@ namespace vkglTF
 	{
 		this->engine = engine;
 		this->uniformBlock.matrix = matrix;
-		AllocatedBuffer temp =
+
+		//
+		// @TODO: make this sync up when recreateSwapchain() is executed on vkengine... this will get
+		//        destroyed since the descriptorpool gets destroyed there.... maybe make some kind of init
+		//        function that sets up these descriptorbuffers? That could be good.  -Timo
+		//
+		uniformBuffer.descriptorBuffer =
 			engine->createBuffer(
 				sizeof(uniformBlock),
 				VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-				VMA_MEMORY_USAGE_CPU_ONLY
+				VMA_MEMORY_USAGE_CPU_TO_GPU
 			);
-		uniformBuffer.buffer = temp._buffer;
-		uniformBuffer.allocation = temp._allocation;
-		vmaMapMemory(engine->_allocator, uniformBuffer.allocation, &uniformBuffer.mapped);
-		uniformBuffer.descriptor = { uniformBuffer.buffer, 0, sizeof(uniformBlock) };
+		vmaMapMemory(engine->_allocator, uniformBuffer.descriptorBuffer._allocation, &uniformBuffer.mapped);    // So we can just grab a pointer and hit memcpy() tons of times per frame!
+
+		VkDescriptorSetAllocateInfo skeletalAnimationSetAllocInfo = {
+			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+			.pNext = nullptr,
+			.descriptorPool = engine->_descriptorPool,
+			.descriptorSetCount = 1,
+			.pSetLayouts = &engine->_skeletalAnimationSetLayout,
+		};
+		vkAllocateDescriptorSets(engine->_device, &skeletalAnimationSetAllocInfo, &uniformBuffer.descriptorSet);
+
+		VkDescriptorBufferInfo bufferInfo = {
+			.buffer = uniformBuffer.descriptorBuffer._buffer,
+			.offset = 0,
+			.range = sizeof(uniformBlock),
+		};
+		VkWriteDescriptorSet writeDescriptorSet = vkinit::writeDescriptorBuffer(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, uniformBuffer.descriptorSet, &bufferInfo, 0);
+		vkUpdateDescriptorSets(engine->_device, 1, &writeDescriptorSet, 0, nullptr);
+
+		
+		// @TODO: make sure all this stuff is in the descructor too!!!
 	};
 
 	Mesh::~Mesh()
 	{
-		vmaUnmapMemory(engine->_allocator, uniformBuffer.allocation);
-		vmaDestroyBuffer(engine->_allocator, uniformBuffer.buffer, uniformBuffer.allocation);
+		vmaUnmapMemory(engine->_allocator, uniformBuffer.descriptorBuffer._allocation);
+		vmaDestroyBuffer(engine->_allocator, uniformBuffer.descriptorBuffer._buffer, uniformBuffer.descriptorBuffer._allocation);
 
 		for (Primitive* p : primitives)
 			delete p;
@@ -1255,8 +1278,8 @@ namespace vkglTF
 		//
 		// Load gltf data into data structures
 		//
-		loadTextureSamplers(gltfModel);
-		loadTextures(gltfModel, engine);
+		////////loadTextureSamplers(gltfModel);		// @TODO: RE-ENABLE THESE. THESE ARE ALREADY IMPLEMENTED BUT THEY ARE SLOW
+		////////loadTextures(gltfModel, engine);		// @TODO: RE-ENABLE THESE. THESE ARE ALREADY IMPLEMENTED BUT THEY ARE SLOW
 		//loadMaterials(gltfModel);
 
 		const tinygltf::Scene& scene = gltfModel.scenes[gltfModel.defaultScene > -1 ? gltfModel.defaultScene : 0];		// TODO: scene handling with no default scene
@@ -1393,18 +1416,22 @@ namespace vkglTF
 		vkCmdBindIndexBuffer(commandBuffer, indices.buffer, 0, VK_INDEX_TYPE_UINT32);
 	}
 
-	void Model::draw(VkCommandBuffer commandBuffer, uint32_t transformID)
+	void Model::draw(VkCommandBuffer commandBuffer, VkPipelineLayout pipelineLayout, uint32_t transformID)
 	{
 		for (auto& node : nodes)
 		{
-			drawNode(node, commandBuffer, transformID);
+			drawNode(node, commandBuffer, pipelineLayout, transformID);
 		}
 	}
 
-	void Model::drawNode(Node* node, VkCommandBuffer commandBuffer, uint32_t transformID)
+	void Model::drawNode(Node* node, VkCommandBuffer commandBuffer, VkPipelineLayout pipelineLayout, uint32_t transformID)
 	{
 		if (node->mesh)
 		{
+			// @TEMPORARY: Bind joint descriptor set
+			if (pipelineLayout)
+				vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 3, 1, &node->mesh->uniformBuffer.descriptorSet, 0, nullptr);
+
 			for (Primitive* primitive : node->mesh->primitives)
 			{
 				vkCmdDrawIndexed(commandBuffer, primitive->indexCount, 1, primitive->firstIndex, 0, transformID);
@@ -1412,7 +1439,7 @@ namespace vkglTF
 		}
 		for (auto& child : node->children)
 		{
-			drawNode(child, commandBuffer, transformID);
+			drawNode(child, commandBuffer, pipelineLayout, transformID);
 		}
 	}
 

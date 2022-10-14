@@ -162,6 +162,16 @@ void VulkanEngine::run()
 		lastFrame = currentFrame;
 
 		//
+		// Play Slimegirl Idle_hip animation
+		//
+		static uint32_t animationIndex = 19;    // @NOTE: this is Slimegirl's Idle_Hip. Classic.
+		static float animationTimer = 0.0f;
+		animationTimer += deltaTime;
+		if (animationTimer > _renderObjectModels.slimeGirl.animations[animationIndex].end)    // Loop animation
+			animationTimer -= _renderObjectModels.slimeGirl.animations[animationIndex].end;
+		_renderObjectModels.slimeGirl.updateAnimation(animationIndex, animationTimer);
+
+		//
 		// Free Cam
 		//
 		if (_freeCamMode.enabled)
@@ -873,15 +883,15 @@ void VulkanEngine::initDescriptors()
 	// Create Descriptor Pool
 	//
 	std::vector<VkDescriptorPoolSize> sizes = {
-		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 10 },
-		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 10 },
-		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 10 },
-		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 10 },
+		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 100 },
+		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 100 },
+		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 100 },
+		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 100 },
 	};
 	VkDescriptorPoolCreateInfo poolInfo = {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
 		.flags = 0,
-		.maxSets = 10,
+		.maxSets = 100,													// @NOTE: I need a better descriptorpool allocator... @TODO: @FIXME: crate teh one that's in the vkguide extra chapter
 		.poolSizeCount = (uint32_t)sizes.size(),
 		.pPoolSizes = sizes.data(),
 	};
@@ -930,6 +940,32 @@ void VulkanEngine::initDescriptors()
 		.pBindings = &singleTextureBufferBinding,
 	};
 	vkCreateDescriptorSetLayout(_device, &setInfo3, nullptr, &_singleTextureSetLayout);
+
+	//
+	// Create Descriptor Set Layout for skeletal animation joint matrices
+	//
+	VkDescriptorSetLayoutBinding skeletalAnimationBinding = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT, 0);
+	VkDescriptorSetLayoutCreateInfo setInfo4 = {
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+		.pNext = nullptr,
+		.flags = 0,
+		.bindingCount = 1,
+		.pBindings = &skeletalAnimationBinding,
+	};
+	vkCreateDescriptorSetLayout(_device, &setInfo4, nullptr, &_skeletalAnimationSetLayout);
+
+	//
+	// NOTE: The supposed guaranteed maximum number of bindable descriptor sets is 4... so here we are at 3.
+	// Start thinking/studying about what these descriptor sets really mean and how I can consolidate them...
+	// 
+	// Either way, it likely isn't a problem bc it's just the pbr shader that will have the maximum bindable descriptor
+	// sets so it could just be that it will be fine? Kitto. And I'm sure it will be just fine. Will just have to be
+	// careful... plus I haven't found a device that has that few allowed descriptor sets to be bound. The lowest I
+	// found was 32 even for intel hd 4000 it's 32... weird. And I'd think that that would for sure be 4 bc it's such
+	// a low-end chip.
+	// 
+	// Lmk know, future me!  -Timo
+	//
 
 	//
 	// Create buffers
@@ -990,6 +1026,7 @@ void VulkanEngine::initDescriptors()
 		vkDestroyDescriptorSetLayout(_device, _globalSetLayout, nullptr);
 		vkDestroyDescriptorSetLayout(_device, _objectSetLayout, nullptr);
 		vkDestroyDescriptorSetLayout(_device, _singleTextureSetLayout, nullptr);
+		vkDestroyDescriptorSetLayout(_device, _skeletalAnimationSetLayout, nullptr);
 		vkDestroyDescriptorPool(_device, _descriptorPool, nullptr);
 		for (uint32_t i = 0; i < FRAME_OVERLAP; i++)
 		{
@@ -1057,9 +1094,9 @@ void VulkanEngine::initPipelines()
 	meshPipelineLayoutInfo.pPushConstantRanges = &pushConstant;
 	meshPipelineLayoutInfo.pushConstantRangeCount = 1;
 
-	VkDescriptorSetLayout setLayouts[] = { _globalSetLayout, _objectSetLayout, _singleTextureSetLayout };
+	VkDescriptorSetLayout setLayouts[] = { _globalSetLayout, _objectSetLayout, _singleTextureSetLayout, _skeletalAnimationSetLayout };
 	meshPipelineLayoutInfo.pSetLayouts = setLayouts;
-	meshPipelineLayoutInfo.setLayoutCount = 3;
+	meshPipelineLayoutInfo.setLayoutCount = 4;
 
 	VkPipelineLayout _meshPipelineLayout;
 	VK_CHECK(vkCreatePipelineLayout(_device, &meshPipelineLayoutInfo, nullptr, &_meshPipelineLayout));
@@ -1151,8 +1188,9 @@ void VulkanEngine::initPipelines()
 void VulkanEngine::initScene()
 {
 	_renderObjects.clear();
-	for (int x = -10; x <= 10; x++)
-		for (int z = -10; z <= 10; z++)
+	//for (int x = -10; x <= 10; x++)
+	//	for (int z = -10; z <= 10; z++)
+	int x = 0, z = 0;
 		{
 			glm::mat4 translation = glm::translate(glm::mat4(1.0f), glm::vec3(x, 0, z));
 			glm::mat4 scale = glm::scale(glm::mat4(1.0f), glm::vec3(0.2f));
@@ -1442,7 +1480,7 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first,
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _renderObjectModels.skyboxMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 1, &uniformOffset);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _renderObjectModels.skyboxMaterial.pipelineLayout, 1, 1, &_renderObjectModels.skyboxMaterial.textureSet, 0, nullptr);
 	_renderObjectModels.skybox.bind(cmd);
-	_renderObjectModels.skybox.draw(cmd, 0);		// @FIXME: it looks like the pipeline or pipelinelayout is incorrect???? Look at the validation layers eh!
+	_renderObjectModels.skybox.draw(cmd, NULL, 0);    // @TODO: I'll need a better way to pass in the pipelinelayout. Sending NULL to ignore it seems like a good idea for now however.
 
 	//
 	// Render all the renderobjects
@@ -1491,7 +1529,7 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first,
 		}
 
 		// Render it out
-		object.model->draw(cmd, i);
+		object.model->draw(cmd, object.material->pipelineLayout, i);
 	}
 }
 
@@ -1520,10 +1558,11 @@ void VulkanEngine::buildResourceList()
 			path.extension().compare(".log") == 0)
 			continue;		// @NOTE: ignore compiled SPIRV shader files, logs
 
-		resourcesToWatch.push_back({
-			path,
-			std::filesystem::last_write_time(path)
-			});
+		ResourceToWatch resource = {
+			.path = path,
+			.lastWriteTime = std::filesystem::last_write_time(path),
+		};
+		resourcesToWatch.push_back(resource);
 
 		// Compile glsl shader if corresponding .spv file isn't up to date
 		const auto& ext = path.extension();

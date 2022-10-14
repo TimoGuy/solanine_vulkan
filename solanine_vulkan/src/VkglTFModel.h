@@ -136,9 +136,7 @@ namespace vkglTF
 
 		struct UniformBuffer
 		{
-			VkBuffer buffer;
-			VmaAllocation allocation;
-			VkDescriptorBufferInfo descriptor;
+			AllocatedBuffer descriptorBuffer;
 			VkDescriptorSet descriptorSet;
 			void* mapped;
 		} uniformBuffer;
@@ -283,8 +281,8 @@ namespace vkglTF
 		void loadAnimations(tinygltf::Model& gltfModel);
 		void loadFromFile(VulkanEngine* engine, std::string filename, float scale = 1.0f);
 		void bind(VkCommandBuffer commandBuffer);
-		void draw(VkCommandBuffer commandBuffer, uint32_t transformID);
-		void drawNode(Node* node, VkCommandBuffer commandBuffer, uint32_t transformID);
+		void draw(VkCommandBuffer commandBuffer, VkPipelineLayout pipelineLayout, uint32_t transformID);
+		void drawNode(Node* node, VkCommandBuffer commandBuffer, VkPipelineLayout pipelineLayout, uint32_t transformID);
 		void calculateBoundingBox(Node* node, Node* parent);
 		void getSceneDimensions();
 		void updateAnimation(uint32_t index, float time);
