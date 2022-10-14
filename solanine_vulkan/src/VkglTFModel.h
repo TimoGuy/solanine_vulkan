@@ -10,6 +10,7 @@
 
 #include "Imports.h"
 class VulkanEngine;
+class Texture;
 struct Vertex;
 
 // ERROR is already defined in wingdi.h and collides with a define in the Draco headers
@@ -42,16 +43,16 @@ namespace vkglTF
 		BoundingBox getAABB(glm::mat4 m);
 	};
 
-	// @TODO: these aren't quite ready yet... bc the pbr pipeline should get created first, however, in the near future pls!
-	//struct TextureSampler
-	//{
-	//	VkFilter magFilter;
-	//	VkFilter minFilter;
-	//	VkSamplerAddressMode addressModeU;
-	//	VkSamplerAddressMode addressModeV;
-	//	VkSamplerAddressMode addressModeW;
-	//};
+	struct TextureSampler
+	{
+		VkFilter magFilter;
+		VkFilter minFilter;
+		VkSamplerAddressMode addressModeU;
+		VkSamplerAddressMode addressModeV;
+		VkSamplerAddressMode addressModeW;
+	};
 
+	// @TODO: these aren't quite ready yet... bc the pbr pipeline should get created first, however, in the near future pls!
 	//struct Texture
 	//{
 	//	VkImage image;
@@ -70,48 +71,49 @@ namespace vkglTF
 	//	void fromglTfImage(tinygltf::Image& gltfimage, TextureSampler textureSampler, VulkanEngine* device, VkQueue copyQueue);
 	//};
 
-	//struct Material
-	//{
-	//	enum AlphaMode { ALPHAMODE_OPAQUE, ALPHAMODE_MASK, ALPHAMODE_BLEND };
-	//	AlphaMode alphaMode = ALPHAMODE_OPAQUE;
-	//	float alphaCutoff = 1.0f;
-	//	float metallicFactor = 1.0f;
-	//	float roughnessFactor = 1.0f;
-	//	glm::vec4 baseColorFactor = glm::vec4(1.0f);
-	//	glm::vec4 emissiveFactor = glm::vec4(1.0f);
-	//	vkglTF::Texture* baseColorTexture;
-	//	vkglTF::Texture* metallicRoughnessTexture;
-	//	vkglTF::Texture* normalTexture;
-	//	vkglTF::Texture* occlusionTexture;
-	//	vkglTF::Texture* emissiveTexture;
-	//	bool doubleSided = false;
-	//
-	//	struct TexCoordSets
-	//	{
-	//		uint8_t baseColor = 0;
-	//		uint8_t metallicRoughness = 0;
-	//		uint8_t specularGlossiness = 0;
-	//		uint8_t normal = 0;
-	//		uint8_t occlusion = 0;
-	//		uint8_t emissive = 0;
-	//	} texCoordSets;
-	//
-	//	struct Extension
-	//	{
-	//		vkglTF::Texture* specularGlossinessTexture;
-	//		vkglTF::Texture* diffuseTexture;
-	//		glm::vec4 diffuseFactor = glm::vec4(1.0f);
-	//		glm::vec3 specularFactor = glm::vec3(0.0f);
-	//	} extension;
-	//
-	//	struct PbrWorkflows
-	//	{
-	//		bool metallicRoughness = true;
-	//		bool specularGlossiness = false;
-	//	} pbrWorkflows;
-	//
-	//	VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
-	//};
+	// @TODO: renamed to PBRMaterial (from Material), need to implement this into the gltf model stuff
+	struct PBRMaterial
+	{
+		enum AlphaMode { ALPHAMODE_OPAQUE, ALPHAMODE_MASK, ALPHAMODE_BLEND };
+		AlphaMode alphaMode = ALPHAMODE_OPAQUE;
+		float alphaCutoff = 1.0f;
+		float metallicFactor = 1.0f;
+		float roughnessFactor = 1.0f;
+		glm::vec4 baseColorFactor = glm::vec4(1.0f);
+		glm::vec4 emissiveFactor = glm::vec4(1.0f);
+		Texture* baseColorTexture;
+		Texture* metallicRoughnessTexture;
+		Texture* normalTexture;
+		Texture* occlusionTexture;
+		Texture* emissiveTexture;
+		bool doubleSided = false;
+	
+		struct TexCoordSets
+		{
+			uint8_t baseColor = 0;
+			uint8_t metallicRoughness = 0;
+			uint8_t specularGlossiness = 0;
+			uint8_t normal = 0;
+			uint8_t occlusion = 0;
+			uint8_t emissive = 0;
+		} texCoordSets;
+	
+		struct Extension
+		{
+			Texture* specularGlossinessTexture;
+			Texture* diffuseTexture;
+			glm::vec4 diffuseFactor = glm::vec4(1.0f);
+			glm::vec3 specularFactor = glm::vec3(0.0f);
+		} extension;
+	
+		struct PbrWorkflows
+		{
+			bool metallicRoughness = true;
+			bool specularGlossiness = false;
+		} pbrWorkflows;
+	
+		VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
+	};
 
 	struct Primitive
 	{
@@ -249,8 +251,8 @@ namespace vkglTF
 
 		std::vector<Skin*> skins;
 
-		//std::vector<Texture> textures;
-		//std::vector<TextureSampler> textureSamplers;
+		std::vector<Texture> textures;
+		std::vector<TextureSampler> textureSamplers;
 		//std::vector<Material> materials;
 		std::vector<Animation> animations;
 		std::vector<std::string> extensions;
@@ -273,13 +275,13 @@ namespace vkglTF
 		void loadNode(VulkanEngine* engine, vkglTF::Node* parent, const tinygltf::Node& node, uint32_t nodeIndex, const tinygltf::Model& model, LoaderInfo& loaderInfo, float globalscale);
 		void getNodeProps(const tinygltf::Node& node, const tinygltf::Model& model, size_t& vertexCount, size_t& indexCount);
 		void loadSkins(tinygltf::Model& gltfModel);
-		//void loadTextures(tinygltf::Model& gltfModel, VulkanEngine* device, VkQueue transferQueue);
-		//VkSamplerAddressMode getVkWrapMode(int32_t wrapMode);
-		//VkFilter getVkFilterMode(int32_t filterMode);
-		//void loadTextureSamplers(tinygltf::Model& gltfModel);
+		void loadTextures(tinygltf::Model& gltfModel, VulkanEngine* engine);
+		VkSamplerAddressMode getVkWrapMode(int32_t wrapMode);
+		VkFilter getVkFilterMode(int32_t filterMode);
+		void loadTextureSamplers(tinygltf::Model& gltfModel);
 		//void loadMaterials(tinygltf::Model& gltfModel);
 		void loadAnimations(tinygltf::Model& gltfModel);
-		void loadFromFile(VulkanEngine* engine, std::string filename, VkQueue transferQueue, float scale = 1.0f);
+		void loadFromFile(VulkanEngine* engine, std::string filename, float scale = 1.0f);
 		void bind(VkCommandBuffer commandBuffer);
 		void draw(VkCommandBuffer commandBuffer, uint32_t transformID);
 		void drawNode(Node* node, VkCommandBuffer commandBuffer, uint32_t transformID);

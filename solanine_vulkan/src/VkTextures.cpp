@@ -21,6 +21,16 @@ bool vkutil::loadImageFromFile(VulkanEngine& engine, const char* fname, uint32_t
 	VkDeviceSize imageSize = texWidth * texHeight * 4;		// @HARDCODED: bc planning on having the alpha channel in here too
 	VkFormat imageFormat = VK_FORMAT_R8G8B8A8_SRGB;		// @HARDCODED: this could easily change
 
+	bool ret = loadImageFromBuffer(engine, texWidth, texHeight, imageSize, imageFormat, pixelPtr, mipLevels, outImage);
+	stbi_image_free(pixels);
+
+	std::cout << "Texture (mips=" << mipLevels << ")" << std::endl << "\t" << fname << std::endl << "\tloaded successfully" << std::endl;
+
+	return ret;
+}
+
+bool vkutil::loadImageFromBuffer(VulkanEngine& engine, int texWidth, int texHeight, VkDeviceSize imageSize, VkFormat imageFormat, void* pixels, uint32_t mipLevels, AllocatedImage& outImage)
+{
 	//
 	// Copy image to CPU-side buffer
 	//
@@ -28,10 +38,8 @@ bool vkutil::loadImageFromFile(VulkanEngine& engine, const char* fname, uint32_t
 
 	void* data;
 	vmaMapMemory(engine._allocator, stagingBuffer._allocation, &data);
-	memcpy(data, pixelPtr, static_cast<size_t>(imageSize));
+	memcpy(data, pixels, static_cast<size_t>(imageSize));
 	vmaUnmapMemory(engine._allocator, stagingBuffer._allocation);
-
-	stbi_image_free(pixels);
 
 	//
 	// Create GPU-side buffer
@@ -224,8 +232,6 @@ bool vkutil::loadImageFromFile(VulkanEngine& engine, const char* fname, uint32_t
 		vmaDestroyImage(engine._allocator, newImage._image, newImage._allocation);
 		});
 	vmaDestroyBuffer(engine._allocator, stagingBuffer._buffer, stagingBuffer._allocation);
-
-	std::cout << "Texture (mips=" << newImage._mipLevels << ")" << std::endl << "\t" << fname << std::endl << "\tloaded successfully" << std::endl;
 
 	outImage = newImage;
 	return true;
