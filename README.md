@@ -15,6 +15,12 @@
      - Unoptimized code, level editor
    - `Checked`
      - Identical to `Debug`, however, the libraries being used are `Release` or `Checked` level (i.e. Nvidia PhysX has the `Checked` build configuration)
+     > NOTE: we might just nuke this one bc plan to use Bullet physics instead of Nvidia PhysX (Reason being that the Nvidia implementation is too slow)
    - `Release`
      - Removes the editor and just leaves the game as if for release
 5. Click the green play button
+
+## Screenshots
+
+![Pipelines, importing gltf models, skinning gltf models, and skyboxes](etc/Solanine\ Prealpha\ -\ Vulkan\ -\ Build\ 227\ 10_15_2022\ 13_14_52.png)
+*Pipelines, importing gltf models, skinning gltf models, and skyboxes*
