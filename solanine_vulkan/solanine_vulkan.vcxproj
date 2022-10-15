@@ -95,7 +95,6 @@ set /A BuildNumberForSolanine+=1
   </ItemDefinitionGroup>
   <ItemGroup>
     <None Include="shader\default_lit.frag" />
-    <None Include="shader\default_lit.vert" />
     <None Include="shader\filtercube.vert" />
     <None Include="shader\genbrdflut.frag" />
     <None Include="shader\genbrdflut.vert" />

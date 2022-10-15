@@ -191,6 +191,7 @@ private:
 	void initSyncStructures();
 	void initDescriptors();
 	void initPipelines();
+	void generateBRDFLUT();
 	void initScene();
 	void initImgui();
 

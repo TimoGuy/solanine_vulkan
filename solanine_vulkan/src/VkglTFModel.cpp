@@ -1569,7 +1569,7 @@ namespace vkglTF
 							q2.y = sampler.outputsVec4[i + 1].y;
 							q2.z = sampler.outputsVec4[i + 1].z;
 							q2.w = sampler.outputsVec4[i + 1].w;
-							channel.node->rotation = glm::normalize(glm::slerp(q1, q2, u));
+							channel.node->rotation = glm::normalize(glm::slerp(q1, q2, u));    // @NOTE: by using slerp instead of nlerp, you eat tenth's of a millisecond. So take from it what you will. This is more expensive, HOWEVER, I don't know how to implement nlerp correctly atm so that's something to possibly change in the future bc there's a way to do it that I don't really understand  -Timo
 							break;
 						}
 						}

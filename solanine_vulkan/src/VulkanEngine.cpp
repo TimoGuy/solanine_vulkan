@@ -63,6 +63,7 @@ void VulkanEngine::init()
 	initPipelines();
 	loadMeshes();
 	loadImages();
+	generateBRDFLUT();
 	initScene();
 	initImgui();
 
@@ -164,7 +165,7 @@ void VulkanEngine::run()
 		//
 		// Play Slimegirl Idle_hip animation
 		//
-		static uint32_t animationIndex = 19;    // @NOTE: this is Slimegirl's Idle_Hip. Classic.
+		static uint32_t animationIndex = 31;    // @NOTE: this is Slimegirl's running inmotion animation
 		static float animationTimer = 0.0f;
 		animationTimer += deltaTime;
 		if (animationTimer > _renderObjectModels.slimeGirl.animations[animationIndex].end)    // Loop animation
@@ -1041,45 +1042,15 @@ void VulkanEngine::initPipelines()
 	//
 	// Load shader modules
 	//
-	VkShaderModule defaultLitVertShader;
-	if (!loadShaderModule("shader/default_lit.vert.spv", &defaultLitVertShader))
-	{
-		std::cout << "ERROR: building default lit vert shader" << std::endl;
-	}
-	else
-	{
-		std::cout << "Default lit vert shader SUCCESS" << std::endl;
-	}
+	VkShaderModule defaultLitVertShader,
+					defaultLitFragShader;
+	loadShaderModule("shader/pbr.vert.spv", &defaultLitVertShader);
+	loadShaderModule("shader/default_lit.frag.spv", &defaultLitFragShader);
 
-	VkShaderModule defaultLitFragShader;
-	if (!loadShaderModule("shader/default_lit.frag.spv", &defaultLitFragShader))
-	{
-		std::cout << "ERROR: building default lit frag shader" << std::endl;
-	}
-	else
-	{
-		std::cout << "Default lit frag shader SUCCESS" << std::endl;
-	}
-
-	VkShaderModule skyboxVertShader;
-	if (!loadShaderModule("shader/skybox.vert.spv", &skyboxVertShader))
-	{
-		std::cout << "ERROR: building skyboxVert shader" << std::endl;
-	}
-	else
-	{
-		std::cout << "skyboxVert shader SUCCESS" << std::endl;
-	}
-
-	VkShaderModule skyboxFragShader;
-	if (!loadShaderModule("shader/skybox.frag.spv", &skyboxFragShader))
-	{
-		std::cout << "ERROR: building skyboxFrag shader" << std::endl;
-	}
-	else
-	{
-		std::cout << "skyboxFrag shader SUCCESS" << std::endl;
-	}
+	VkShaderModule skyboxVertShader,
+					skyboxFragShader;
+	loadShaderModule("shader/skybox.vert.spv", &skyboxVertShader);
+	loadShaderModule("shader/skybox.frag.spv", &skyboxFragShader);
 
 	//
 	// Mesh Pipeline
@@ -1183,6 +1154,279 @@ void VulkanEngine::initPipelines()
 		vkDestroyPipeline(_device, _skyboxPipeline, nullptr);
 		vkDestroyPipelineLayout(_device, _skyboxPipelineLayout, nullptr);
 		});
+}
+
+void VulkanEngine::generateBRDFLUT()
+{
+	//
+	// @NOTE: this function was copied and very slightly modified from Sascha Willem's Vulkan-glTF-PBR example.
+	//
+	auto tStart = std::chrono::high_resolution_clock::now();
+
+	//
+	// Setup
+	//
+	const VkFormat format = VK_FORMAT_R16G16_SFLOAT;
+	const int32_t dim = 512;
+
+	// Image
+	VkImageCreateInfo imageCI{};
+	imageCI.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+	imageCI.imageType = VK_IMAGE_TYPE_2D;
+	imageCI.format = format;
+	imageCI.extent.width = dim;
+	imageCI.extent.height = dim;
+	imageCI.extent.depth = 1;
+	imageCI.mipLevels = 1;
+	imageCI.arrayLayers = 1;
+	imageCI.samples = VK_SAMPLE_COUNT_1_BIT;
+	imageCI.tiling = VK_IMAGE_TILING_OPTIMAL;
+	imageCI.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+	VmaAllocationCreateInfo imageAllocInfo = {
+		.usage = VMA_MEMORY_USAGE_GPU_ONLY,
+	};
+	Texture brdfLUTTexture;
+	vmaCreateImage(_allocator, &imageCI, &imageAllocInfo, &brdfLUTTexture.image._image, &brdfLUTTexture.image._allocation, nullptr);
+
+	// ImageView
+	VkImageViewCreateInfo viewCI{};
+	viewCI.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	viewCI.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	viewCI.format = format;
+	viewCI.subresourceRange = {};
+	viewCI.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	viewCI.subresourceRange.levelCount = 1;
+	viewCI.subresourceRange.layerCount = 1;
+	viewCI.image = brdfLUTTexture.image._image;
+	VK_CHECK(vkCreateImageView(_device, &viewCI, nullptr, &brdfLUTTexture.imageView));
+
+	// Sampler
+	VkSamplerCreateInfo samplerCI = {
+		.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+		.magFilter = VK_FILTER_LINEAR,
+		.minFilter = VK_FILTER_LINEAR,
+		.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+		.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+		.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+		.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+		.maxAnisotropy = 1.0f,
+		.minLod = 0.0f,
+		.maxLod = 1.0f,
+		.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE,
+	};
+	VkSampler brdfLUTSampler;
+	VK_CHECK(vkCreateSampler(_device, &samplerCI, nullptr, &brdfLUTSampler));
+
+	// FB, Att, RP, Pipe, etc.
+	VkAttachmentDescription attDesc{};
+	// Color attachment
+	attDesc.format = format;
+	attDesc.samples = VK_SAMPLE_COUNT_1_BIT;
+	attDesc.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	attDesc.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	attDesc.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	attDesc.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	attDesc.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	attDesc.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	VkAttachmentReference colorReference = { 0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL };
+
+	VkSubpassDescription subpassDescription{};
+	subpassDescription.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+	subpassDescription.colorAttachmentCount = 1;
+	subpassDescription.pColorAttachments = &colorReference;
+
+	// Use subpass dependencies for layout transitions
+	std::array<VkSubpassDependency, 2> dependencies;
+	dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+	dependencies[0].dstSubpass = 0;
+	dependencies[0].srcStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+	dependencies[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	dependencies[0].srcAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+	dependencies[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	dependencies[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+	dependencies[1].srcSubpass = 0;
+	dependencies[1].dstSubpass = VK_SUBPASS_EXTERNAL;
+	dependencies[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	dependencies[1].dstStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+	dependencies[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	dependencies[1].dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+	dependencies[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+	// Create the actual renderpass
+	VkRenderPassCreateInfo renderPassCI{};
+	renderPassCI.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+	renderPassCI.attachmentCount = 1;
+	renderPassCI.pAttachments = &attDesc;
+	renderPassCI.subpassCount = 1;
+	renderPassCI.pSubpasses = &subpassDescription;
+	renderPassCI.dependencyCount = 2;
+	renderPassCI.pDependencies = dependencies.data();
+
+	VkRenderPass renderpass;
+	VK_CHECK(vkCreateRenderPass(_device, &renderPassCI, nullptr, &renderpass));
+
+	VkFramebufferCreateInfo framebufferCI{};
+	framebufferCI.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+	framebufferCI.renderPass = renderpass;
+	framebufferCI.attachmentCount = 1;
+	framebufferCI.pAttachments = &brdfLUTTexture.imageView;
+	framebufferCI.width = dim;
+	framebufferCI.height = dim;
+	framebufferCI.layers = 1;
+
+	VkFramebuffer framebuffer;
+	VK_CHECK(vkCreateFramebuffer(_device, &framebufferCI, nullptr, &framebuffer));
+
+	// Desriptors
+	VkDescriptorSetLayout descriptorsetlayout;
+	VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCI{};
+	descriptorSetLayoutCI.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	VK_CHECK(vkCreateDescriptorSetLayout(_device, &descriptorSetLayoutCI, nullptr, &descriptorsetlayout));
+
+	// Pipeline layout
+	VkPipelineLayout pipelinelayout;
+	VkPipelineLayoutCreateInfo pipelineLayoutCI{};
+	pipelineLayoutCI.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	pipelineLayoutCI.setLayoutCount = 1;
+	pipelineLayoutCI.pSetLayouts = &descriptorsetlayout;
+	VK_CHECK(vkCreatePipelineLayout(_device, &pipelineLayoutCI, nullptr, &pipelinelayout));
+
+	// Pipeline
+	VkPipelineInputAssemblyStateCreateInfo inputAssemblyStateCI{};
+	inputAssemblyStateCI.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+	inputAssemblyStateCI.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+	VkPipelineRasterizationStateCreateInfo rasterizationStateCI{};
+	rasterizationStateCI.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+	rasterizationStateCI.polygonMode = VK_POLYGON_MODE_FILL;
+	rasterizationStateCI.cullMode = VK_CULL_MODE_NONE;
+	rasterizationStateCI.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+	rasterizationStateCI.lineWidth = 1.0f;
+
+	VkPipelineColorBlendAttachmentState blendAttachmentState{};
+	blendAttachmentState.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+	blendAttachmentState.blendEnable = VK_FALSE;
+
+	VkPipelineColorBlendStateCreateInfo colorBlendStateCI{};
+	colorBlendStateCI.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+	colorBlendStateCI.attachmentCount = 1;
+	colorBlendStateCI.pAttachments = &blendAttachmentState;
+
+	VkPipelineDepthStencilStateCreateInfo depthStencilStateCI{};
+	depthStencilStateCI.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+	depthStencilStateCI.depthTestEnable = VK_FALSE;
+	depthStencilStateCI.depthWriteEnable = VK_FALSE;
+	depthStencilStateCI.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+	depthStencilStateCI.front = depthStencilStateCI.back;
+	depthStencilStateCI.back.compareOp = VK_COMPARE_OP_ALWAYS;
+
+	VkPipelineViewportStateCreateInfo viewportStateCI{};
+	viewportStateCI.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+	viewportStateCI.viewportCount = 1;
+	viewportStateCI.scissorCount = 1;
+
+	VkPipelineMultisampleStateCreateInfo multisampleStateCI{};
+	multisampleStateCI.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+	multisampleStateCI.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+	std::vector<VkDynamicState> dynamicStateEnables = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+	VkPipelineDynamicStateCreateInfo dynamicStateCI{};
+	dynamicStateCI.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+	dynamicStateCI.pDynamicStates = dynamicStateEnables.data();
+	dynamicStateCI.dynamicStateCount = static_cast<uint32_t>(dynamicStateEnables.size());
+
+	VkPipelineVertexInputStateCreateInfo emptyInputStateCI{};
+	emptyInputStateCI.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+
+	VkShaderModule genBrdfLUTVertShader,
+					genBrdfLUTFragShader;
+	loadShaderModule("shader/genbrdflut.vert.spv", &genBrdfLUTVertShader);
+	loadShaderModule("shader/genbrdflut.frag.spv", &genBrdfLUTFragShader);
+
+	std::array<VkPipelineShaderStageCreateInfo, 2> shaderStages = {
+		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, genBrdfLUTVertShader),
+		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, genBrdfLUTFragShader),
+	};
+
+	VkGraphicsPipelineCreateInfo pipelineCI{};
+	pipelineCI.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+	pipelineCI.layout = pipelinelayout;
+	pipelineCI.renderPass = renderpass;
+	pipelineCI.pInputAssemblyState = &inputAssemblyStateCI;
+	pipelineCI.pVertexInputState = &emptyInputStateCI;
+	pipelineCI.pRasterizationState = &rasterizationStateCI;
+	pipelineCI.pColorBlendState = &colorBlendStateCI;
+	pipelineCI.pMultisampleState = &multisampleStateCI;
+	pipelineCI.pViewportState = &viewportStateCI;
+	pipelineCI.pDepthStencilState = &depthStencilStateCI;
+	pipelineCI.pDynamicState = &dynamicStateCI;
+	pipelineCI.stageCount = 2;
+	pipelineCI.pStages = shaderStages.data();
+
+	// Look-up-table (from BRDF) pipeline
+	VkPipeline pipeline;
+	VK_CHECK(vkCreateGraphicsPipelines(_device, VK_NULL_HANDLE, 1, &pipelineCI, nullptr, &pipeline));
+	for (auto shaderStage : shaderStages)
+		vkDestroyShaderModule(_device, shaderStage.module, nullptr);
+
+	//
+	// Render
+	//
+	VkClearValue clearValues[1];
+	clearValues[0].color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
+
+	VkRenderPassBeginInfo renderPassBeginInfo{};
+	renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+	renderPassBeginInfo.renderPass = renderpass;
+	renderPassBeginInfo.renderArea.extent.width = dim;
+	renderPassBeginInfo.renderArea.extent.height = dim;
+	renderPassBeginInfo.clearValueCount = 1;
+	renderPassBeginInfo.pClearValues = clearValues;
+	renderPassBeginInfo.framebuffer = framebuffer;
+
+	immediateSubmit([&](VkCommandBuffer cmd) {
+		vkCmdBeginRenderPass(cmd, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+		VkViewport viewport{};
+		viewport.width = (float)dim;
+		viewport.height = (float)dim;
+		viewport.minDepth = 0.0f;
+		viewport.maxDepth = 1.0f;
+
+		VkRect2D scissor{};
+		scissor.extent.width = dim;
+		scissor.extent.height = dim;
+
+		vkCmdSetViewport(cmd, 0, 1, &viewport);
+		vkCmdSetScissor(cmd, 0, 1, &scissor);
+		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+		vkCmdDraw(cmd, 3, 1, 0, 0);
+
+		vkCmdEndRenderPass(cmd);
+		});
+
+	//
+	// Cleanup
+	//
+	vkQueueWaitIdle(_graphicsQueue);
+
+	vkDestroyPipeline(_device, pipeline, nullptr);
+	vkDestroyPipelineLayout(_device, pipelinelayout, nullptr);
+	vkDestroyRenderPass(_device, renderpass, nullptr);
+	vkDestroyFramebuffer(_device, framebuffer, nullptr);
+	vkDestroyDescriptorSetLayout(_device, descriptorsetlayout, nullptr);
+
+	// @TODO: add in the thingos to delete as cleanup is run!!!
+
+	//textures.lutBrdf.descriptor.imageView = textures.lutBrdf.view;
+	//textures.lutBrdf.descriptor.sampler = textures.lutBrdf.sampler;
+	//textures.lutBrdf.descriptor.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	//textures.lutBrdf.device = vulkanDevice;
+
+	// Report time it took
+	auto tEnd = std::chrono::high_resolution_clock::now();
+	auto tDiff = std::chrono::duration<double, std::milli>(tEnd - tStart).count();
+	std::cout << "[Generating BRDF LUT]" << std::endl << "took " << tDiff << " ms" << std::endl;
 }
 
 void VulkanEngine::initScene()
@@ -1384,10 +1628,15 @@ FrameData& VulkanEngine::getCurrentFrame()
 
 bool VulkanEngine::loadShaderModule(const char* filePath, VkShaderModule* outShaderModule)
 {
+	std::cout << "[LOAD SHADER MODULE]" << std::endl;
+
 	// Open SPIRV file
 	std::ifstream file(filePath, std::ios::ate | std::ios::binary);
 	if (!file.is_open())
+	{
+		std::cerr << "ERROR: could not open file " << filePath << std::endl;
 		return false;
+	}
 
 	//
 	// Get the filesize and copy the whole thing into the correct sized buffer
@@ -1411,11 +1660,14 @@ bool VulkanEngine::loadShaderModule(const char* filePath, VkShaderModule* outSha
 	VkShaderModule shaderModule;
 	if (vkCreateShaderModule(_device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS)
 	{
+		std::cerr << "ERROR: could not create shader module for shader file " << filePath << std::endl;
 		return false;
 	}
 
 	// Successful shader creation!
 	*outShaderModule = shaderModule;
+
+	std::cout << "Successfully created shader module for shader file " << filePath << std::endl;
 	return true;
 }
 
@@ -1485,7 +1737,7 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first,
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _renderObjectModels.skyboxMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 1, &uniformOffset);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _renderObjectModels.skyboxMaterial.pipelineLayout, 1, 1, &_renderObjectModels.skyboxMaterial.textureSet, 0, nullptr);
 	_renderObjectModels.skybox.bind(cmd);
-	_renderObjectModels.skybox.draw(cmd, NULL, 0);    // @TODO: I'll need a better way to pass in the pipelinelayout. Sending NULL to ignore it seems like a good idea for now however.
+	_renderObjectModels.skybox.draw(cmd, NULL, 0);    // @TODO: I'll need a better way to pass in the pipelinelayout. Sending NULL to ignore it is an ... okay idea for now however.
 
 	//
 	// Render all the renderobjects
