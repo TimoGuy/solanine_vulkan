@@ -192,6 +192,7 @@ private:
 	void initDescriptors();
 	void initPipelines();
 	void generateBRDFLUT();
+	void generatePBRCubemaps();
 	void initScene();
 	void initImgui();
 
