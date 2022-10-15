@@ -22,5 +22,5 @@
 
 ## Screenshots
 
-![Pipelines, importing gltf models, skinning gltf models, and skyboxes](etc/Solanine\ Prealpha\ -\ Vulkan\ -\ Build\ 227\ 10_15_2022\ 13_14_52.png)
+![Pipelines, importing gltf models, skinning gltf models, and skyboxes](etc/Solanine%20Prealpha%20-%20Vulkan%20-%20Build%20227%2010_15_2022%2013_14_52.png)
 *Pipelines, importing gltf models, skinning gltf models, and skyboxes*
