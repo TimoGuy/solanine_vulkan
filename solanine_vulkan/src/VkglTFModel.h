@@ -177,6 +177,7 @@ namespace vkglTF
 		BoundingBox bvh;
 		BoundingBox aabb;
 
+		void generateCalculateJointMatrixTaskflow(tf::Taskflow& taskflow, tf::Task* taskPrerequisite);
 		glm::mat4 localMatrix();
 		glm::mat4 getMatrix();
 		void update();
@@ -288,5 +289,9 @@ namespace vkglTF
 		void updateAnimation(uint32_t index, float time);
 		Node* findNode(Node* parent, uint32_t index);
 		Node* nodeFromIndex(uint32_t index);
+
+	private:
+		tf::Taskflow _calculateJointMatricesTaskflow;
+		tf::Executor _taskflowExecutor;
 	};
 }

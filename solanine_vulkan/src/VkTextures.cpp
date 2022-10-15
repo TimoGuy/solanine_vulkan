@@ -228,7 +228,7 @@ bool vkutil::loadImageFromBuffer(VulkanEngine& engine, int texWidth, int texHeig
 	//
 	// Cleanup
 	//
-	engine._mainDeletionQueue.pushFunction([=]() {
+	engine._mainDeletionQueue.pushFunction([&]() {
 		vmaDestroyImage(engine._allocator, newImage._image, newImage._allocation);
 		});
 	vmaDestroyBuffer(engine._allocator, stagingBuffer._buffer, stagingBuffer._allocation);
@@ -431,7 +431,7 @@ bool vkutil::loadImageCubemapFromFile(VulkanEngine& engine, std::vector<const ch
 	//
 	// Cleanup
 	//
-	engine._mainDeletionQueue.pushFunction([=]() {
+	engine._mainDeletionQueue.pushFunction([&]() {
 		vmaDestroyImage(engine._allocator, newImage._image, newImage._allocation);
 		});
 	vmaDestroyBuffer(engine._allocator, stagingBuffer._buffer, stagingBuffer._allocation);

@@ -11,6 +11,7 @@
 #include "VkTextures.h"
 #include "VkInitializers.h"
 
+
 namespace vkglTF
 {
 	//
@@ -360,7 +361,7 @@ namespace vkglTF
 		VkWriteDescriptorSet writeDescriptorSet = vkinit::writeDescriptorBuffer(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, uniformBuffer.descriptorSet, &bufferInfo, 0);
 		vkUpdateDescriptorSets(engine->_device, 1, &writeDescriptorSet, 0, nullptr);
 
-		
+
 		// @TODO: make sure all this stuff is in the descructor too!!!
 	};
 
@@ -383,6 +384,21 @@ namespace vkglTF
 	//
 	// Node
 	//
+	void Node::generateCalculateJointMatrixTaskflow(tf::Taskflow& taskflow, tf::Task* taskPrerequisite)
+	{
+		auto smolTask = taskflow.emplace([&]() {
+			update();
+			});
+
+		if (taskPrerequisite != nullptr)
+			smolTask.succeed(*taskPrerequisite);
+
+		for (auto& child : children)
+		{
+			child->generateCalculateJointMatrixTaskflow(taskflow, &smolTask);
+		}
+	}
+
 	glm::mat4 Node::localMatrix()
 	{
 		return glm::translate(glm::mat4(1.0f), translation) * glm::mat4(rotation) * glm::scale(glm::mat4(1.0f), scale) * matrix;
@@ -425,11 +441,6 @@ namespace vkglTF
 			{
 				memcpy(mesh->uniformBuffer.mapped, &m, sizeof(glm::mat4));
 			}
-		}
-
-		for (auto& child : children)
-		{
-			child->update();
 		}
 	}
 
@@ -1308,11 +1319,15 @@ namespace vkglTF
 			// Assign skins
 			if (node->skinIndex > -1)
 				node->skin = skins[node->skinIndex];
-
-			// Initial pose
-			if (node->mesh)
-				node->update();
 		}
+
+		// Build animation joint matrices calculation taskflow
+		_calculateJointMatricesTaskflow.clear();
+		for (auto& node : nodes)
+		{
+			node->generateCalculateJointMatrixTaskflow(_calculateJointMatricesTaskflow, nullptr);
+		}
+		_taskflowExecutor.run(_calculateJointMatricesTaskflow).wait();    // Calculate Initial Pose
 
 		extensions = gltfModel.extensionsUsed;
 
@@ -1509,6 +1524,7 @@ namespace vkglTF
 			std::cout << "No animation with index " << index << std::endl;
 			return;
 		}
+
 		Animation& animation = animations[index];
 
 		bool updated = false;
@@ -1522,7 +1538,7 @@ namespace vkglTF
 
 			for (size_t i = 0; i < sampler.inputs.size() - 1; i++)
 			{
-				if ((time >= sampler.inputs[i]) && (time <= sampler.inputs[i + 1]))
+				if (time >= sampler.inputs[i] && time <= sampler.inputs[i + 1])
 				{
 					float u = std::max(0.0f, time - sampler.inputs[i]) / (sampler.inputs[i + 1] - sampler.inputs[i]);
 					if (u <= 1.0f)
@@ -1531,14 +1547,14 @@ namespace vkglTF
 						{
 						case vkglTF::AnimationChannel::PathType::TRANSLATION:
 						{
-							glm::vec4 trans = glm::mix(sampler.outputsVec4[i], sampler.outputsVec4[i + 1], u);
-							channel.node->translation = glm::vec3(trans);
+							glm::vec4 translation = glm::mix(sampler.outputsVec4[i], sampler.outputsVec4[i + 1], u);
+							channel.node->translation = glm::vec3(translation);
 							break;
 						}
 						case vkglTF::AnimationChannel::PathType::SCALE:
 						{
-							glm::vec4 trans = glm::mix(sampler.outputsVec4[i], sampler.outputsVec4[i + 1], u);
-							channel.node->scale = glm::vec3(trans);
+							glm::vec4 scale = glm::mix(sampler.outputsVec4[i], sampler.outputsVec4[i + 1], u);
+							channel.node->scale = glm::vec3(scale);
 							break;
 						}
 						case vkglTF::AnimationChannel::PathType::ROTATION:
@@ -1564,10 +1580,7 @@ namespace vkglTF
 		}
 		if (updated)
 		{
-			for (auto& node : nodes)
-			{
-				node->update();
-			}
+			_taskflowExecutor.run(_calculateJointMatricesTaskflow).wait();
 		}
 	}
 
