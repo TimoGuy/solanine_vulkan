@@ -8,6 +8,16 @@ layout (location = 4) in vec4 inColor0;
 
 layout (location = 0) out vec4 outFragColor;
 
+// Scene Bindings
+
+layout(set = 0, binding = 0) uniform CameraBuffer
+{
+	mat4 view;
+	mat4 projection;
+	mat4 projectionView;
+	vec3 cameraPosition;
+} cameraData;
+
 layout (set = 0, binding = 1) uniform SceneData
 {
 	vec4 fogColor;

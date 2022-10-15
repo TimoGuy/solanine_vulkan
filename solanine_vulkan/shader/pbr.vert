@@ -14,6 +14,8 @@ layout (location = 2) out vec2 outUV0;
 layout (location = 3) out vec2 outUV1;
 layout (location = 4) out vec4 outColor0;
 
+
+// Camera Props
 layout(set = 0, binding = 0) uniform CameraBuffer
 {
 	mat4 view;
@@ -22,6 +24,8 @@ layout(set = 0, binding = 0) uniform CameraBuffer
 	vec3 cameraPosition;
 } cameraData;
 
+
+// All Object Matrices
 struct ObjectData
 {
 	mat4 modelMatrix;
@@ -32,8 +36,10 @@ layout(std140, set = 1, binding = 0) readonly buffer ObjectBuffer
 	ObjectData objects[];
 } objectBuffer;
 
+
+// Skeletal Animation/Skinning
 #define MAX_NUM_JOINTS 128
-layout (set = 2, binding = 0) uniform UBONode
+layout (set = 3, binding = 0) uniform SkeletonAnimationNode
 {
 	mat4 matrix;
 	mat4 jointMatrix[MAX_NUM_JOINTS];
@@ -41,16 +47,17 @@ layout (set = 2, binding = 0) uniform UBONode
 } node;
 
 
-void main() 
+void main()
 {
-	outColor0 = inColor0;
-
+	//
+	// Skin mesh
+	//
 	mat4 modelMatrix = objectBuffer.objects[gl_BaseInstance].modelMatrix;
 	vec4 locPos;
 	if (node.jointCount > 0.0)
 	{
 		// Is skinned
-		mat4 skinMat = 
+		mat4 skinMat =
 			inWeight0.x * node.jointMatrix[int(inJoint0.x)] +
 			inWeight0.y * node.jointMatrix[int(inJoint0.y)] +
 			inWeight0.z * node.jointMatrix[int(inJoint0.z)] +
@@ -66,9 +73,9 @@ void main()
 		outNormal = normalize(transpose(inverse(mat3(modelMatrix * node.matrix))) * inNormal);
 	}
 
-	locPos.y = -locPos.y;
 	outWorldPos = locPos.xyz / locPos.w;
 	outUV0 = inUV0;
 	outUV1 = inUV1;
-	gl_Position =  cameraData.projection * cameraData.view * vec4(outWorldPos, 1.0);
+	outColor0 = inColor0;
+	gl_Position =  cameraData.projectionView * vec4(outWorldPos, 1.0);
 }
