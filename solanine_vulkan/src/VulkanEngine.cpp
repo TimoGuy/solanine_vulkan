@@ -945,6 +945,19 @@ void VulkanEngine::initDescriptors()
 	vkCreateDescriptorSetLayout(_device, &setInfo3, nullptr, &_singleTextureSetLayout);
 
 	//
+	// Create Descriptor Set Layout for singletexture buffer
+	//
+	VkDescriptorSetLayoutBinding singleTextureBufferBinding = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 0);
+	VkDescriptorSetLayoutCreateInfo setInfo3 = {
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+		.pNext = nullptr,
+		.flags = 0,
+		.bindingCount = 1,
+		.pBindings = &singleTextureBufferBinding,
+	};
+	vkCreateDescriptorSetLayout(_device, &setInfo3, nullptr, &_pbrTexturesSetLayout);
+
+	//
 	// Create Descriptor Set Layout for skeletal animation joint matrices
 	//
 	VkDescriptorSetLayoutBinding skeletalAnimationBinding = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT, 0);
@@ -1072,7 +1085,7 @@ void VulkanEngine::initPipelines()
 	meshPipelineLayoutInfo.pPushConstantRanges = &pushConstant;
 	meshPipelineLayoutInfo.pushConstantRangeCount = 1;
 
-	VkDescriptorSetLayout setLayouts[] = { _globalSetLayout, _objectSetLayout, _singleTextureSetLayout, _skeletalAnimationSetLayout };
+	VkDescriptorSetLayout setLayouts[] = { _globalSetLayout, _objectSetLayout, _pbrTexturesSetLayout, _skeletalAnimationSetLayout };
 	meshPipelineLayoutInfo.pSetLayouts = setLayouts;
 	meshPipelineLayoutInfo.setLayoutCount = 4;
 
@@ -1106,7 +1119,7 @@ void VulkanEngine::initPipelines()
 	pipelineBuilder._scissor.offset = { 0, 0 };
 	pipelineBuilder._scissor.extent = _windowExtent;
 
-	pipelineBuilder._rasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT);
+	pipelineBuilder._rasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT, true);
 	pipelineBuilder._colorBlendAttachment = vkinit::colorBlendAttachmentState();
 	pipelineBuilder._multisampling = vkinit::multisamplingStateCreateInfo();
 	pipelineBuilder._pipelineLayout = _meshPipelineLayout;
@@ -1135,7 +1148,7 @@ void VulkanEngine::initPipelines()
 	pipelineBuilder._shaderStages.push_back(
 		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, skyboxFragShader));
 
-	pipelineBuilder._rasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_FRONT_BIT);    // Bc we're rendering a box inside-out
+	pipelineBuilder._rasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_FRONT_BIT, false);    // Bc we're rendering a box inside-out
 	pipelineBuilder._depthStencil = vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_NEVER);
 	pipelineBuilder._pipelineLayout = _skyboxPipelineLayout;		// @NOTE: EFFING DON'T FORGET THIS LINE BC THAT'S WHAT CAUSED ME A BUTT TON OF GRIEF!!!!!
 
@@ -2336,6 +2349,7 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first,
 	//
 	// Upload pbr shading props to GPU
 	//
+	_pbrRendering.gpuSceneShadingProps.lightDir = glm::normalize(glm::vec4(0.432f, -0.864f, 0.259f, 0.0f));    // @HACK: @HARDCODED: Need to put this in a better spot honestly. Man what the heck.  -Timo
 	vmaMapMemory(_allocator, currentFrame.pbrShadingPropsBuffer._allocation, &data);
 	memcpy(data, &_pbrRendering.gpuSceneShadingProps, sizeof(GPUPBRShadingProps));
 	vmaUnmapMemory(_allocator, currentFrame.pbrShadingPropsBuffer._allocation);

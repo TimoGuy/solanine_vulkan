@@ -54,12 +54,12 @@ layout (push_constant) uniform Material
 	float workflow;
 	int baseColorTextureSet;
 	int physicalDescriptorTextureSet;
-	int normalTextureSet;	
+	int normalTextureSet;
 	int occlusionTextureSet;
 	int emissiveTextureSet;
-	float metallicFactor;	
-	float roughnessFactor;	
-	float alphaMask;	
+	float metallicFactor;
+	float roughnessFactor;
+	float alphaMask;
 	float alphaMaskCutoff;
 } material;
 

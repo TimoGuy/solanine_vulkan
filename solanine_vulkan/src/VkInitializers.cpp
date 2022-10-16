@@ -55,14 +55,14 @@ VkPipelineInputAssemblyStateCreateInfo vkinit::inputAssemblyCreateInfo(VkPrimiti
 	return info;
 }
 
-VkPipelineRasterizationStateCreateInfo vkinit::rasterizationStateCreateInfo(VkPolygonMode polygonMode, VkCullModeFlags cullMode)
+VkPipelineRasterizationStateCreateInfo vkinit::rasterizationStateCreateInfo(VkPolygonMode polygonMode, VkCullModeFlags cullMode, bool enableDiscard)
 {
 	VkPipelineRasterizationStateCreateInfo info = {};
 	info.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
 	info.pNext = nullptr;
 
 	info.depthClampEnable = VK_FALSE;	// @NOTE: note this... bc you'll need it for shadow rendering yo!  -Timo
-	info.rasterizerDiscardEnable = VK_FALSE;	// IDK what the functionality of this is... like why is it ever VK_TRUE?    OHHHHHH, I realized it's the `discard;` keyword in the shaders! "Is it going to work?" Type thingo.
+	info.rasterizerDiscardEnable = enableDiscard ? VK_TRUE : VK_FALSE;	// @NOTE: this is the `discard;` keyword in GLSL. Disabling it wherever possible will allow the rasterizer to perform much quicker.
 	info.polygonMode = polygonMode;
 	info.lineWidth = 1.0f;
 
