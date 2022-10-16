@@ -24,3 +24,6 @@
 
 ![Pipelines, importing gltf models, skinning gltf models, and skyboxes](etc/Solanine%20Prealpha%20-%20Vulkan%20-%20Build%20227%2010_15_2022%2013_14_52.png)
 *Pipelines, importing gltf models, skinning gltf models, and skyboxes*
+
+![Renderdoc showing that the irradiance and prefilter maps were generated and connected to the shader (if you scroll just a little further down the input textures you would've seen the brdf lut map too)](etc/RenderDoc%20v1.21%2010_16_2022%2001_05_22.png)
+*Renderdoc showing that the irradiance and prefilter maps were generated and connected to the shader (if you scroll just a little further down the input textures you would've seen the brdf lut map too)*
