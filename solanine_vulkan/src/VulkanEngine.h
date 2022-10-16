@@ -165,8 +165,11 @@ public:
 	struct PBRSceneTextureSet
 	{
 		Texture brdfLUTTexture;
+		VkSampler brdfLUTSampler;
 		Texture irradianceCubemap;
+		VkSampler irradianceSampler;
 		Texture prefilteredCubemap;
+		VkSampler prefilteredSampler;
 	} _pbrSceneTextureSet;
 
 	struct PBRShadingProps

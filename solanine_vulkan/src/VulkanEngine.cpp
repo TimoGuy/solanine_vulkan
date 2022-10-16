@@ -1461,7 +1461,7 @@ void VulkanEngine::generateBRDFLUT()
 	pipelineCI.pViewportState = &viewportStateCI;
 	pipelineCI.pDepthStencilState = &depthStencilStateCI;
 	pipelineCI.pDynamicState = &dynamicStateCI;
-	pipelineCI.stageCount = 2;
+	pipelineCI.stageCount = static_cast<uint32_t>(shaderStages.size());
 	pipelineCI.pStages = shaderStages.data();
 
 	// Look-up-table (from BRDF) pipeline
@@ -1517,9 +1517,21 @@ void VulkanEngine::generateBRDFLUT()
 	vkDestroyFramebuffer(_device, framebuffer, nullptr);
 	vkDestroyDescriptorSetLayout(_device, descriptorsetlayout, nullptr);
 
-	// @TODO: add in the thingos to delete as cleanup is run!!!
+	_mainDeletionQueue.pushFunction([=]() {
+		vkDestroySampler(_device, brdfLUTSampler, nullptr);
+		vkDestroyImageView(_device, brdfLUTTexture.imageView, nullptr);
+		vmaDestroyImage(_allocator, brdfLUTTexture.image._image, brdfLUTTexture.image._allocation);
+		});
 
 	// @TODO: assign the generated image to a global level image
+
+	
+	
+	
+	/*_pbrSceneTextureSet.brdfLUTTexture = brdfLUTTexture;
+	_pbrSceneTextureSet.brdfLUTSampler = brdfLUTSampler;*/
+
+
 
 	//textures.lutBrdf.descriptor.imageView = textures.lutBrdf.view;
 	//textures.lutBrdf.descriptor.sampler = textures.lutBrdf.sampler;
@@ -1576,55 +1588,54 @@ void VulkanEngine::generatePBRCubemaps()
 		const uint32_t numMips = static_cast<uint32_t>(floor(log2(dim))) + 1;
 
 		// Create target cubemap
-		{
-			// Image
-			VkImageCreateInfo imageCI{};
-			imageCI.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-			imageCI.imageType = VK_IMAGE_TYPE_2D;
-			imageCI.format = format;
-			imageCI.extent.width = dim;
-			imageCI.extent.height = dim;
-			imageCI.extent.depth = 1;
-			imageCI.mipLevels = numMips;
-			imageCI.arrayLayers = 6;
-			imageCI.samples = VK_SAMPLE_COUNT_1_BIT;
-			imageCI.tiling = VK_IMAGE_TILING_OPTIMAL;
-			imageCI.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-			imageCI.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
-			VmaAllocationCreateInfo imageAllocInfo = {
-				.usage = VMA_MEMORY_USAGE_GPU_ONLY,
-			};
-			vmaCreateImage(_allocator, &imageCI, &imageAllocInfo, &cubemapTexture.image._image, &cubemapTexture.image._allocation, nullptr);
 
-			// View
-			VkImageViewCreateInfo viewCI{};
-			viewCI.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-			viewCI.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
-			viewCI.format = format;
-			viewCI.subresourceRange = {};
-			viewCI.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-			viewCI.subresourceRange.levelCount = numMips;
-			viewCI.subresourceRange.layerCount = 6;
-			viewCI.image = cubemapTexture.image._image;
-			VK_CHECK(vkCreateImageView(_device, &viewCI, nullptr, &cubemapTexture.imageView));
+		// Image
+		VkImageCreateInfo imageCI{};
+		imageCI.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+		imageCI.imageType = VK_IMAGE_TYPE_2D;
+		imageCI.format = format;
+		imageCI.extent.width = dim;
+		imageCI.extent.height = dim;
+		imageCI.extent.depth = 1;
+		imageCI.mipLevels = numMips;
+		imageCI.arrayLayers = 6;
+		imageCI.samples = VK_SAMPLE_COUNT_1_BIT;
+		imageCI.tiling = VK_IMAGE_TILING_OPTIMAL;
+		imageCI.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+		imageCI.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+		VmaAllocationCreateInfo imageAllocInfo = {
+			.usage = VMA_MEMORY_USAGE_GPU_ONLY,
+		};
+		vmaCreateImage(_allocator, &imageCI, &imageAllocInfo, &cubemapTexture.image._image, &cubemapTexture.image._allocation, nullptr);
 
-			// Sampler
-			VkSamplerCreateInfo samplerCI = {
-				.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-				.magFilter = VK_FILTER_LINEAR,
-				.minFilter = VK_FILTER_LINEAR,
-				.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
-				.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-				.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-				.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-				.maxAnisotropy = 1.0f,
-				.minLod = 0.0f,
-				.maxLod = static_cast<float>(numMips),
-				.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE,
-			};
-			VkSampler cubemapSampler;
-			VK_CHECK(vkCreateSampler(_device, &samplerCI, nullptr, &cubemapSampler));
-		}
+		// View
+		VkImageViewCreateInfo viewCI{};
+		viewCI.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+		viewCI.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
+		viewCI.format = format;
+		viewCI.subresourceRange = {};
+		viewCI.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		viewCI.subresourceRange.levelCount = numMips;
+		viewCI.subresourceRange.layerCount = 6;
+		viewCI.image = cubemapTexture.image._image;
+		VK_CHECK(vkCreateImageView(_device, &viewCI, nullptr, &cubemapTexture.imageView));
+
+		// Sampler
+		VkSamplerCreateInfo samplerCI = {
+			.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+			.magFilter = VK_FILTER_LINEAR,
+			.minFilter = VK_FILTER_LINEAR,
+			.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+			.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			.maxAnisotropy = 1.0f,
+			.minLod = 0.0f,
+			.maxLod = static_cast<float_t>(numMips),
+			.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE,
+		};
+		VkSampler cubemapSampler;
+		VK_CHECK(vkCreateSampler(_device, &samplerCI, nullptr, &cubemapSampler));
 
 		// FB, Att, RP, Pipe, etc.
 		VkAttachmentDescription attDesc{};
@@ -1780,21 +1791,22 @@ void VulkanEngine::generatePBRCubemaps()
 		struct PushBlockIrradiance
 		{
 			glm::mat4 mvp;
-			float deltaPhi = (2.0f * float(M_PI)) / 180.0f;
-			float deltaTheta = (0.5f * float(M_PI)) / 64.0f;
+			float_t deltaPhi = (2.0f * float_t(M_PI)) / 180.0f;
+			float_t deltaTheta = (0.5f * float_t(M_PI)) / 64.0f;
 		} pushBlockIrradiance;
 
 		struct PushBlockPrefilterEnv
 		{
 			glm::mat4 mvp;
-			float roughness;
+			float_t roughness;
 			uint32_t numSamples = 32u;
 		} pushBlockPrefilterEnv;
 
 		// Pipeline layout
 		VkPipelineLayout pipelinelayout;
-		VkPushConstantRange pushConstantRange{};
-		pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+		VkPushConstantRange pushConstantRange = {
+			.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+		};
 
 		switch (target)
 		{
@@ -1936,8 +1948,8 @@ void VulkanEngine::generatePBRCubemaps()
 		};
 
 		VkViewport viewport{};
-		viewport.width = (float)dim;
-		viewport.height = (float)dim;
+		viewport.width = (float_t)dim;
+		viewport.height = (float_t)dim;
 		viewport.minDepth = 0.0f;
 		viewport.maxDepth = 1.0f;
 
@@ -1970,8 +1982,8 @@ void VulkanEngine::generatePBRCubemaps()
 			for (uint32_t f = 0; f < 6; f++)
 			{
 				immediateSubmit([&](VkCommandBuffer cmd) {
-					viewport.width = static_cast<float>(dim * std::pow(0.5f, m));
-					viewport.height = static_cast<float>(dim * std::pow(0.5f, m));
+					viewport.width = static_cast<float_t>(dim * std::pow(0.5f, m));
+					viewport.height = static_cast<float_t>(dim * std::pow(0.5f, m));
 					vkCmdSetViewport(cmd, 0, 1, &viewport);
 					vkCmdSetScissor(cmd, 0, 1, &scissor);
 
@@ -1981,12 +1993,12 @@ void VulkanEngine::generatePBRCubemaps()
 					// Pass parameters for current pass using a push constant block
 					switch (target) {
 					case IRRADIANCE:
-						pushBlockIrradiance.mvp = glm::perspective((float)(M_PI / 2.0), 1.0f, 0.1f, 512.0f) * matrices[f];
+						pushBlockIrradiance.mvp = glm::perspective((float_t)(M_PI / 2.0), 1.0f, 0.1f, 512.0f) * matrices[f];
 						vkCmdPushConstants(cmd, pipelinelayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushBlockIrradiance), &pushBlockIrradiance);
 						break;
 					case PREFILTEREDENV:
-						pushBlockPrefilterEnv.mvp = glm::perspective((float)(M_PI / 2.0), 1.0f, 0.1f, 512.0f) * matrices[f];
-						pushBlockPrefilterEnv.roughness = (float)m / (float)(numMips - 1);
+						pushBlockPrefilterEnv.mvp = glm::perspective((float_t)(M_PI / 2.0), 1.0f, 0.1f, 512.0f) * matrices[f];
+						pushBlockPrefilterEnv.roughness = (float_t)m / (float_t)(numMips - 1);
 						vkCmdPushConstants(cmd, pipelinelayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushBlockPrefilterEnv), &pushBlockPrefilterEnv);
 						break;
 					};
@@ -2086,6 +2098,12 @@ void VulkanEngine::generatePBRCubemaps()
 		vkDestroyDescriptorSetLayout(_device, descriptorsetlayout, nullptr);
 		vkDestroyPipeline(_device, pipeline, nullptr);
 		vkDestroyPipelineLayout(_device, pipelinelayout, nullptr);
+
+		_mainDeletionQueue.pushFunction([=]() {
+			vkDestroySampler(_device, cubemapSampler, nullptr);
+			vkDestroyImageView(_device, cubemapTexture.imageView, nullptr);
+			vmaDestroyImage(_allocator, cubemapTexture.image._image, cubemapTexture.image._allocation);
+			});
 
 
 		// @TODO: assign the cubemaps to a global level image 
