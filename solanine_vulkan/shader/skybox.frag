@@ -4,21 +4,13 @@ layout (location = 0) in vec3 inUVW;
 
 layout (location = 0) out vec4 outColor;
 
-//layout (set = 0, binding = 1) uniform UBOParams {
-//	vec4 _pad0;
-//	float exposure;
-//	float gamma;
-//} uboParams;
+layout (set = 0, binding = 1) uniform UBOParams
+{
+	vec4 _pad0;
+	float exposure;
+	float gamma;
+} uboParams;
 
-//////////////////layout (set = 0, binding = 1) uniform SceneData
-//////////////////{
-//////////////////	vec4 fogColor;
-//////////////////	vec4 fogDistances;
-//////////////////	vec4 ambientColor;
-//////////////////	vec4 sunlightDirection;
-//////////////////	vec4 sunlightColor;
-//////////////////} sceneData;
-//////////////////
 layout (set = 1, binding = 0) uniform samplerCube samplerEnv;
 
 
@@ -37,12 +29,9 @@ vec3 Uncharted2Tonemap(vec3 color)
 
 vec4 tonemap(vec4 color)
 {
-	//vec3 outcol = Uncharted2Tonemap(color.rgb * uboParams.exposure);
-	//outcol = outcol * (1.0f / Uncharted2Tonemap(vec3(11.2f)));
-	//return vec4(pow(outcol, vec3(1.0f / uboParams.gamma)), color.a);
-	vec3 outcol = Uncharted2Tonemap(color.rgb * 1.0);
-	outcol = outcol * (1.0f / Uncharted2Tonemap(vec3(11.2f)));	
-	return vec4(pow(outcol, vec3(1.0f / 2.2)), color.a);
+	vec3 outcol = Uncharted2Tonemap(color.rgb * uboParams.exposure);
+	outcol = outcol * (1.0f / Uncharted2Tonemap(vec3(11.2f)));
+	return vec4(pow(outcol, vec3(1.0f / uboParams.gamma)), color.a);
 }
 
 #define MANUAL_SRGB 1

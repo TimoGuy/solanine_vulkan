@@ -27,7 +27,7 @@ layout (set = 0, binding = 1) uniform UBOParams
 	vec4 lightDir;
 	float exposure;
 	float gamma;
-	float prefilteredCubeMipLevels;
+	float prefilteredCubemapMipLevels;
 	float scaleIBLAmbient;
 	float debugViewInputs;
 	float debugViewEquation;
@@ -149,7 +149,7 @@ vec3 getNormal()
 // See our README.md on Environment Maps [3] for additional discussion.
 vec3 getIBLContribution(PBRInfo pbrInputs, vec3 n, vec3 reflection)
 {
-	float lod = (pbrInputs.perceptualRoughness * uboParams.prefilteredCubeMipLevels);
+	float lod = (pbrInputs.perceptualRoughness * uboParams.prefilteredCubemapMipLevels);
 	// retrieve a scale and bias to F0. See [1], Figure 3
 	vec3 brdf = (texture(samplerBRDFLUT, vec2(pbrInputs.NdotV, 1.0 - pbrInputs.perceptualRoughness))).rgb;
 	vec3 diffuseLight = SRGBtoLINEAR(tonemap(texture(samplerIrradiance, n))).rgb;

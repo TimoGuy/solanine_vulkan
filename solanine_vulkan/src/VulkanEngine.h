@@ -12,13 +12,15 @@ struct GPUCameraData
 	glm::vec3 cameraPosition;
 };
 
-struct GPUSceneData
+struct GPUPBRShadingProps
 {
-	glm::vec4 fogColor;
-	glm::vec4 fogDistances;
-	glm::vec4 ambientColor;
-	glm::vec4 sunlightDirection;
-	glm::vec4 sunlightColor;
+	glm::vec4 lightDir;
+	float_t exposure = 4.5f;
+	float_t gamma = 2.2f;
+	float_t prefilteredCubemapMipLevels;
+	float_t scaleIBLAmbient = 1.0f;
+	float_t debugViewInputs = 0;
+	float_t debugViewEquation = 0;
 };
 
 struct GPUObjectData
@@ -35,6 +37,7 @@ struct FrameData
 	VkCommandBuffer mainCommandBuffer;
 
 	AllocatedBuffer cameraBuffer;
+	AllocatedBuffer pbrShadingPropsBuffer;
 	VkDescriptorSet globalDescriptor;
 
 	AllocatedBuffer objectBuffer;
@@ -164,24 +167,13 @@ public:
 
 	struct PBRSceneTextureSet
 	{
-		Texture brdfLUTTexture;
-		VkSampler brdfLUTSampler;
 		Texture irradianceCubemap;
 		VkSampler irradianceSampler;
 		Texture prefilteredCubemap;
 		VkSampler prefilteredSampler;
+		Texture brdfLUTTexture;
+		VkSampler brdfLUTSampler;
 	} _pbrSceneTextureSet;
-
-	struct PBRShadingProps
-	{
-		glm::vec4 lightDir;
-		float_t exposure = 4.5f;
-		float_t gamma = 2.2f;
-		float_t prefilteredCubemapMipLevels;
-		float_t scaleIBLAmbient = 1.0f;
-		float_t debugViewInputs = 0;
-		float_t debugViewEquation = 0;
-	} _pbrShadingProps;
 
 	Material* createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name);
 	Material* getMaterial(const std::string& name);
@@ -195,11 +187,8 @@ public:
 	VkDescriptorSetLayout _skeletalAnimationSetLayout;    // @NOTE: for this one, descriptor sets are created inside of the vkglTFModels themselves, they're not global
 	VkDescriptorPool _descriptorPool;
 
-	GPUSceneData _sceneParameters;
-	AllocatedBuffer _sceneParameterBuffer;
-
 	AllocatedBuffer createBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
-	size_t padUniformBufferSize(size_t originalSize);
+	size_t padUniformBufferSize(size_t originalSize);    // @NOTE: this is unused, but it's useful for dynamic uniform buffers
 
 	// Upload context
 	UploadContext _uploadContext;
@@ -215,8 +204,9 @@ private:
 	void initDescriptors();
 	void initPipelines();
 	void initScene();
-	void generateBRDFLUT();
 	void generatePBRCubemaps();
+	void generateBRDFLUT();
+	void attachPBRDescriptors();
 	void initImgui();
 
 	void recreateSwapchain();
@@ -231,22 +221,6 @@ private:
 	void renderRenderObjects(VkCommandBuffer cmd, RenderObject* first, size_t count);
 
 	//
-	// PBR rendering
-	//
-	struct PBRRendering
-	{
-		// Pipelines
-		VkPipeline skybox;
-		VkPipeline pbr;
-		VkPipeline pbrDoubleSided;
-		VkPipeline pbrAlphaBlend;
-
-		VkPipeline currentBoundPipeline = VK_NULL_HANDLE;
-	} _pbrRendering;
-
-	enum PBRWorkflows { PBR_WORKFLOW_METALLIC_ROUGHNESS = 0, PBR_WORKFLOW_SPECULAR_GLOSINESS = 1 };
-
-	//
 	// Scene Camera
 	//
 	struct SceneCamera
@@ -259,6 +233,24 @@ private:
 		GPUCameraData gpuCameraData;
 	} _sceneCamera;
 	void recalculateSceneCamera();
+
+	//
+	// PBR rendering
+	//
+	struct PBRRendering
+	{
+		// Pipelines
+		VkPipeline skybox;
+		VkPipeline pbr;
+		VkPipeline pbrDoubleSided;
+		VkPipeline pbrAlphaBlend;
+
+		VkPipeline currentBoundPipeline = VK_NULL_HANDLE;
+
+		GPUPBRShadingProps gpuSceneShadingProps;
+	} _pbrRendering;
+
+	enum PBRWorkflows { PBR_WORKFLOW_METALLIC_ROUGHNESS = 0, PBR_WORKFLOW_SPECULAR_GLOSINESS = 1 };
 
 #ifdef _DEVELOP
 	//
