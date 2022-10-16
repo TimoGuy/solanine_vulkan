@@ -903,12 +903,18 @@ void VulkanEngine::initDescriptors()
 	//
 	// Create Descriptor Set Layout for camera buffers
 	//
-	VkDescriptorSetLayoutBinding cameraBufferBinding = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0);
-	VkDescriptorSetLayoutBinding shadingPropsBufferBinding = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT, 1);
-	VkDescriptorSetLayoutBinding pbrIrradianceTextureBinding = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 2);
-	VkDescriptorSetLayoutBinding pbrPrefilteredTextureBinding = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 3);
-	VkDescriptorSetLayoutBinding pbrBRDFLUTTextureBinding = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 4);
-	VkDescriptorSetLayoutBinding bindings[] = { cameraBufferBinding, shadingPropsBufferBinding, pbrIrradianceTextureBinding, pbrPrefilteredTextureBinding, pbrBRDFLUTTextureBinding };
+	VkDescriptorSetLayoutBinding cameraBufferBinding              = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0);
+	VkDescriptorSetLayoutBinding shadingPropsBufferBinding        = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         VK_SHADER_STAGE_FRAGMENT_BIT,                              1);
+	VkDescriptorSetLayoutBinding pbrIrradianceTextureBinding      = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT,                              2);
+	VkDescriptorSetLayoutBinding pbrPrefilteredTextureBinding     = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT,                              3);
+	VkDescriptorSetLayoutBinding pbrBRDFLUTTextureBinding         = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT,                              4);
+	VkDescriptorSetLayoutBinding bindings[] = {
+		cameraBufferBinding,
+		shadingPropsBufferBinding,
+		pbrIrradianceTextureBinding,
+		pbrPrefilteredTextureBinding,
+		pbrBRDFLUTTextureBinding,
+	};
 	VkDescriptorSetLayoutCreateInfo setInfo = {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
 		.pNext = nullptr,
@@ -933,6 +939,8 @@ void VulkanEngine::initDescriptors()
 
 	//
 	// Create Descriptor Set Layout for singletexture buffer
+	// @NOTE: these will be allocated and actual buffers created
+	//        on a material basis (i.e. it's not allocated here)
 	//
 	VkDescriptorSetLayoutBinding singleTextureBufferBinding = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 0);
 	VkDescriptorSetLayoutCreateInfo setInfo3 = {
@@ -945,17 +953,28 @@ void VulkanEngine::initDescriptors()
 	vkCreateDescriptorSetLayout(_device, &setInfo3, nullptr, &_singleTextureSetLayout);
 
 	//
-	// Create Descriptor Set Layout for singletexture buffer
+	// Create Descriptor Set Layout for pbr textures set buffer
 	//
-	VkDescriptorSetLayoutBinding singleTextureBufferBinding = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 0);
-	VkDescriptorSetLayoutCreateInfo setInfo3 = {
+	VkDescriptorSetLayoutBinding pbrColorMapBufferBinding                  = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 0);
+	VkDescriptorSetLayoutBinding pbrPhysicalDescriptorMapBufferBinding     = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 1);
+	VkDescriptorSetLayoutBinding pbrNormalMapBufferBinding                 = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 2);
+	VkDescriptorSetLayoutBinding pbrAOMapBufferBinding                     = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 3);
+	VkDescriptorSetLayoutBinding pbrEmissiveMapBufferBinding               = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 4);
+	VkDescriptorSetLayoutBinding pbrTexturesBufferBindings[] = {
+		pbrColorMapBufferBinding,
+		pbrPhysicalDescriptorMapBufferBinding,
+		pbrNormalMapBufferBinding,
+		pbrAOMapBufferBinding,
+		pbrEmissiveMapBufferBinding,
+	};
+	VkDescriptorSetLayoutCreateInfo setInfo4 = {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
 		.pNext = nullptr,
 		.flags = 0,
-		.bindingCount = 1,
-		.pBindings = &singleTextureBufferBinding,
+		.bindingCount = 5,
+		.pBindings = pbrTexturesBufferBindings,
 	};
-	vkCreateDescriptorSetLayout(_device, &setInfo3, nullptr, &_pbrTexturesSetLayout);
+	vkCreateDescriptorSetLayout(_device, &setInfo4, nullptr, &_pbrTexturesSetLayout);
 
 	//
 	// Create Descriptor Set Layout for skeletal animation joint matrices
@@ -1045,6 +1064,7 @@ void VulkanEngine::initDescriptors()
 		vkDestroyDescriptorSetLayout(_device, _globalSetLayout, nullptr);
 		vkDestroyDescriptorSetLayout(_device, _objectSetLayout, nullptr);
 		vkDestroyDescriptorSetLayout(_device, _singleTextureSetLayout, nullptr);
+		vkDestroyDescriptorSetLayout(_device, _pbrTexturesSetLayout, nullptr);
 		vkDestroyDescriptorSetLayout(_device, _skeletalAnimationSetLayout, nullptr);
 		vkDestroyDescriptorPool(_device, _descriptorPool, nullptr);
 
