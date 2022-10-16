@@ -939,8 +939,6 @@ void VulkanEngine::initDescriptors()
 
 	//
 	// Create Descriptor Set Layout for singletexture buffer
-	// @NOTE: these will be allocated and actual buffers created
-	//        on a material basis (i.e. it's not allocated here)
 	//
 	VkDescriptorSetLayoutBinding singleTextureBufferBinding = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 0);
 	VkDescriptorSetLayoutCreateInfo setInfo3 = {
@@ -954,6 +952,8 @@ void VulkanEngine::initDescriptors()
 
 	//
 	// Create Descriptor Set Layout for pbr textures set buffer
+	// @NOTE: these will be allocated and actual buffers created
+	//        on a material basis (i.e. it's not allocated here)
 	//
 	VkDescriptorSetLayoutBinding pbrColorMapBufferBinding                  = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 0);
 	VkDescriptorSetLayoutBinding pbrPhysicalDescriptorMapBufferBinding     = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 1);
@@ -978,16 +978,19 @@ void VulkanEngine::initDescriptors()
 
 	//
 	// Create Descriptor Set Layout for skeletal animation joint matrices
+	// @NOTE: similar to teh pbr textures set buffer, these skeletal joint
+	//        buffers will be created on a mesh basis (@TODO: actually, on
+	//        an animator basis that will own a pointer to a mesh)
 	//
 	VkDescriptorSetLayoutBinding skeletalAnimationBinding = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT, 0);
-	VkDescriptorSetLayoutCreateInfo setInfo4 = {
+	VkDescriptorSetLayoutCreateInfo setInfo5 = {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
 		.pNext = nullptr,
 		.flags = 0,
 		.bindingCount = 1,
 		.pBindings = &skeletalAnimationBinding,
 	};
-	vkCreateDescriptorSetLayout(_device, &setInfo4, nullptr, &_skeletalAnimationSetLayout);
+	vkCreateDescriptorSetLayout(_device, &setInfo5, nullptr, &_skeletalAnimationSetLayout);
 
 	//
 	// NOTE: The supposed guaranteed maximum number of bindable descriptor sets is 4... so here we are at 3.

@@ -1260,6 +1260,8 @@ namespace vkglTF
 
 	void Model::loadFromFile(VulkanEngine* engine, std::string filename, float scale)
 	{
+		auto tStart = std::chrono::high_resolution_clock::now();
+
 		//
 		// Load in data from file
 		//
@@ -1289,8 +1291,8 @@ namespace vkglTF
 		//
 		// Load gltf data into data structures
 		//
-		////////loadTextureSamplers(gltfModel);		// @TODO: RE-ENABLE THESE. THESE ARE ALREADY IMPLEMENTED BUT THEY ARE SLOW
-		////////loadTextures(gltfModel, engine);		// @TODO: RE-ENABLE THESE. THESE ARE ALREADY IMPLEMENTED BUT THEY ARE SLOW
+		loadTextureSamplers(gltfModel);		// @TODO: RE-ENABLE THESE. THESE ARE ALREADY IMPLEMENTED BUT THEY ARE SLOW
+		loadTextures(gltfModel, engine);		// @TODO: RE-ENABLE THESE. THESE ARE ALREADY IMPLEMENTED BUT THEY ARE SLOW
 		//loadMaterials(gltfModel);
 
 		const tinygltf::Scene& scene = gltfModel.scenes[gltfModel.defaultScene > -1 ? gltfModel.defaultScene : 0];		// TODO: scene handling with no default scene
@@ -1422,6 +1424,19 @@ namespace vkglTF
 		delete[] loaderInfo.indexBuffer;
 
 		getSceneDimensions();
+
+		// Report time it took to load
+		auto tEnd = std::chrono::high_resolution_clock::now();
+		auto tDiff = std::chrono::duration<double, std::milli>(tEnd - tStart).count();
+		std::cout << "[LOAD glTF MODEL FROM FILE]" << std::endl
+			<< "filename:           " << filename << std::endl
+			<< "meshes:             " << gltfModel.meshes.size() << std::endl
+			<< "animations:         " << gltfModel.animations.size() << std::endl
+			<< "materials:          " << gltfModel.materials.size() << std::endl
+			<< "images:             " << gltfModel.images.size() << std::endl
+			<< "total vertices:     " << vertexCount << std::endl
+			<< "total indices:      " << indexCount << std::endl
+			<< "execution duration: " << tDiff << " ms" << std::endl;
 	}
 
 	void Model::bind(VkCommandBuffer commandBuffer)

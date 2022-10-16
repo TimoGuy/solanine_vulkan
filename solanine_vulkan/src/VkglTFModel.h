@@ -72,7 +72,7 @@ namespace vkglTF
 	//};
 
 	// @TODO: renamed to PBRMaterial (from Material), need to implement this into the gltf model stuff
-	struct PBRMaterial
+	struct PBRMaterial    // @NOTE: this uses the vulkan engine's _pbrTexturesSetLayout
 	{
 		enum AlphaMode { ALPHAMODE_OPAQUE, ALPHAMODE_MASK, ALPHAMODE_BLEND };
 		AlphaMode alphaMode = ALPHAMODE_OPAQUE;
