@@ -153,12 +153,32 @@ public:
 	//
 	std::vector<RenderObject> _renderObjects;
 	std::unordered_map<std::string, Material> _materials;
+
 	struct RenderObjectModels
 	{
 		vkglTF::Model skybox;
 		vkglTF::Model slimeGirl;
 		Material skyboxMaterial;  // @FIXME: this shouldn't be here... reorganize....!!!!
+		VkDescriptorImageInfo environmentCubeDescriptor;	// @FIXME: This shouldn't be here... reorg!!!! PLEASEEEE!!!!
 	} _renderObjectModels;
+
+	struct PBRSceneTextureSet
+	{
+		Texture brdfLUTTexture;
+		Texture irradianceCubemap;
+		Texture prefilteredCubemap;
+	} _pbrSceneTextureSet;
+
+	struct PBRShadingProps
+	{
+		glm::vec4 lightDir;
+		float_t exposure = 4.5f;
+		float_t gamma = 2.2f;
+		float_t prefilteredCubemapMipLevels;
+		float_t scaleIBLAmbient = 1.0f;
+		float_t debugViewInputs = 0;
+		float_t debugViewEquation = 0;
+	} _pbrShadingProps;
 
 	Material* createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name);
 	Material* getMaterial(const std::string& name);
@@ -191,9 +211,9 @@ private:
 	void initSyncStructures();
 	void initDescriptors();
 	void initPipelines();
+	void initScene();
 	void generateBRDFLUT();
 	void generatePBRCubemaps();
-	void initScene();
 	void initImgui();
 
 	void recreateSwapchain();

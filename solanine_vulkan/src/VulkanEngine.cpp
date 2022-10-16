@@ -63,9 +63,9 @@ void VulkanEngine::init()
 	initPipelines();
 	loadMeshes();
 	loadImages();
+	initScene();
 	generateBRDFLUT();
 	generatePBRCubemaps();
-	initScene();
 	initImgui();
 
 	_isInitialized = true;
@@ -1157,6 +1157,106 @@ void VulkanEngine::initPipelines()
 		});
 }
 
+void VulkanEngine::initScene()
+{
+	_renderObjects.clear();
+	//for (int x = -10; x <= 10; x++)
+	//	for (int z = -10; z <= 10; z++)
+	int x = 0, z = 0;
+	{
+		glm::mat4 translation = glm::translate(glm::mat4(1.0f), glm::vec3(x, 0, z));
+		glm::mat4 scale = glm::scale(glm::mat4(1.0f), glm::vec3(0.2f));
+
+		RenderObject triangle = {
+			.model = &_renderObjectModels.slimeGirl,
+			.material = getMaterial("defaultMaterial"),
+			.transformMatrix = translation * scale,
+		};
+		_renderObjects.push_back(triangle);
+	}
+
+	//
+	// Load in sampler for the texture
+	//
+	VkSamplerCreateInfo samplerInfo = {
+		.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+		.pNext = nullptr,
+		.magFilter = VK_FILTER_LINEAR,
+		.minFilter = VK_FILTER_LINEAR,
+		.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+		.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+		.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+		.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+		.mipLodBias = 0.0f,
+		.anisotropyEnable = VK_TRUE,
+		.maxAnisotropy = _gpuProperties.limits.maxSamplerAnisotropy,
+		.compareEnable = VK_FALSE,
+		.compareOp = VK_COMPARE_OP_NEVER,
+		.minLod = 0.0f,
+		.maxLod = static_cast<float_t>(_loadedTextures["WoodFloor057"].image._mipLevels),
+		.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
+		.unnormalizedCoordinates = VK_FALSE,
+	};
+	VkSampler wood057Sampler;
+	vkCreateSampler(_device, &samplerInfo, nullptr, &wood057Sampler);
+
+	samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	samplerInfo.maxLod = static_cast<float_t>(_loadedTextures["CubemapSkybox"].image._mipLevels);
+	VkSampler cubemapSkyboxSampler;
+	vkCreateSampler(_device, &samplerInfo, nullptr, &cubemapSkyboxSampler);
+
+	_swapchainDependentDeletionQueue.pushFunction([=]() {
+		vkDestroySampler(_device, wood057Sampler, nullptr);
+		vkDestroySampler(_device, cubemapSkyboxSampler, nullptr);
+		});
+
+	// Update defaultMaterial		@TODO: @FIXME: likely we should just have the material get updated with the textures on pipeline creation, not here... plus pipelines are recreated when the screen resizes too so it should be done then.
+	Material* texturedMaterial = getMaterial("defaultMaterial");
+	VkDescriptorSetAllocateInfo allocInfo = {
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+		.pNext = nullptr,
+		.descriptorPool = _descriptorPool,
+		.descriptorSetCount = 1,
+		.pSetLayouts = &_singleTextureSetLayout,
+	};
+	vkAllocateDescriptorSets(_device, &allocInfo, &texturedMaterial->textureSet);
+
+	VkDescriptorImageInfo imageBufferInfo = {
+		.sampler = wood057Sampler,
+		.imageView = _loadedTextures["WoodFloor057"].imageView,
+		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	};
+	VkWriteDescriptorSet texture1 =
+		vkinit::writeDescriptorImage(
+			VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+			texturedMaterial->textureSet,
+			&imageBufferInfo,
+			0
+		);
+	vkUpdateDescriptorSets(_device, 1, &texture1, 0, nullptr);
+
+
+
+
+
+	// Update cubemapskybox material
+	vkAllocateDescriptorSets(_device, &allocInfo, &_renderObjectModels.skyboxMaterial.textureSet);
+
+	imageBufferInfo.sampler = cubemapSkyboxSampler;
+	imageBufferInfo.imageView = _loadedTextures["CubemapSkybox"].imageView;
+	_renderObjectModels.environmentCubeDescriptor = imageBufferInfo;		// @FIXME: @REORGANIZE: This is soooo hacky
+	texture1 =
+		vkinit::writeDescriptorImage(
+			VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+			_renderObjectModels.skyboxMaterial.textureSet,
+			&imageBufferInfo,
+			0
+		);
+	vkUpdateDescriptorSets(_device, 1, &texture1, 0, nullptr);
+}
+
 void VulkanEngine::generateBRDFLUT()
 {
 	//
@@ -1674,7 +1774,7 @@ void VulkanEngine::generatePBRCubemaps()
 		writeDescriptorSet.descriptorCount = 1;
 		writeDescriptorSet.dstSet = descriptorset;
 		writeDescriptorSet.dstBinding = 0;
-		writeDescriptorSet.pImageInfo = &textures.environmentCube.descriptor;    // @TODO: implement the correct descriptor for this.
+		writeDescriptorSet.pImageInfo = &_renderObjectModels.environmentCubeDescriptor;    // @TODO: @HACK: implement a proper system to get the environment cubemap!
 		vkUpdateDescriptorSets(_device, 1, &writeDescriptorSet, 0, nullptr);
 
 		struct PushBlockIrradiance
@@ -1780,6 +1880,9 @@ void VulkanEngine::generatePBRCubemaps()
 		case PREFILTEREDENV:
 			loadShaderModule("shader/prefilterenvmap.frag.spv", &filtercubeFragShader);
 			break;
+		default:
+			filtercubeFragShader = VK_NULL_HANDLE;
+			break;
 		};
 
 		std::array<VkPipelineShaderStageCreateInfo, 2> shaderStages = {
@@ -1812,7 +1915,7 @@ void VulkanEngine::generatePBRCubemaps()
 		// Render cubemap
 		//
 		VkClearValue clearValues[1];
-		clearValues[0].color = { { 0.0f, 0.0f, 0.2f, 0.0f } };
+		clearValues[0].color = { { 0.0f, 0.0f, 0.2f, 0.0f } };    // @NOTE: the viewport doesn't resize, so when you see this clearcolor in renderdoc don't worry about it  -Timo
 
 		VkRenderPassBeginInfo renderPassBeginInfo{};
 		renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -1893,6 +1996,7 @@ void VulkanEngine::generatePBRCubemaps()
 
 					VkDeviceSize offsets[1] = { 0 };
 
+					_renderObjectModels.skybox.bind(cmd);
 					_renderObjectModels.skybox.draw(cmd, NULL, 0);
 
 					vkCmdEndRenderPass(cmd);
@@ -1996,12 +2100,12 @@ void VulkanEngine::generatePBRCubemaps()
 		{
 		case IRRADIANCE:
 			cubemapTypeName = "irradiance";
-			textures.irradianceCube = cubemap;
+			_pbrSceneTextureSet.irradianceCubemap = cubemapTexture;
 			break;
 		case PREFILTEREDENV:
 			cubemapTypeName = "prefilter";
-			textures.prefilteredCube = cubemap;
-			shaderValuesParams.prefilteredCubeMipLevels = static_cast<float>(numMips);
+			_pbrSceneTextureSet.prefilteredCubemap = cubemapTexture;
+			_pbrShadingProps.prefilteredCubemapMipLevels = static_cast<float_t>(numMips);
 			break;
 		};
 
@@ -2012,105 +2116,6 @@ void VulkanEngine::generatePBRCubemaps()
 			<< "mip levels:         " << numMips << std::endl
 			<< "execution duration: " << tDiff << " ms" << std::endl;
 	}
-}
-
-void VulkanEngine::initScene()
-{
-	_renderObjects.clear();
-	//for (int x = -10; x <= 10; x++)
-	//	for (int z = -10; z <= 10; z++)
-	int x = 0, z = 0;
-		{
-			glm::mat4 translation = glm::translate(glm::mat4(1.0f), glm::vec3(x, 0, z));
-			glm::mat4 scale = glm::scale(glm::mat4(1.0f), glm::vec3(0.2f));
-
-			RenderObject triangle = {
-				.model = &_renderObjectModels.slimeGirl,
-				.material = getMaterial("defaultMaterial"),
-				.transformMatrix = translation * scale,
-			};
-			_renderObjects.push_back(triangle);
-		}
-
-	//
-	// Load in sampler for the texture
-	//
-	VkSamplerCreateInfo samplerInfo = {
-		.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-		.pNext = nullptr,
-		.magFilter = VK_FILTER_LINEAR,
-		.minFilter = VK_FILTER_LINEAR,
-		.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
-		.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
-		.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
-		.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
-		.mipLodBias = 0.0f,
-		.anisotropyEnable = VK_TRUE,
-		.maxAnisotropy = _gpuProperties.limits.maxSamplerAnisotropy,
-		.compareEnable = VK_FALSE,
-		.compareOp = VK_COMPARE_OP_NEVER,
-		.minLod = 0.0f,
-		.maxLod = static_cast<float_t>(_loadedTextures["WoodFloor057"].image._mipLevels),
-		.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
-		.unnormalizedCoordinates = VK_FALSE,
-	};
-	VkSampler wood057Sampler;
-	vkCreateSampler(_device, &samplerInfo, nullptr, &wood057Sampler);
-
-	samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-	samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-	samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-	samplerInfo.maxLod = static_cast<float_t>(_loadedTextures["CubemapSkybox"].image._mipLevels);
-	VkSampler cubemapSkyboxSampler;
-	vkCreateSampler(_device, &samplerInfo, nullptr, &cubemapSkyboxSampler);
-
-	_swapchainDependentDeletionQueue.pushFunction([=]() {
-		vkDestroySampler(_device, wood057Sampler, nullptr);
-		vkDestroySampler(_device, cubemapSkyboxSampler, nullptr);
-		});
-
-	// Update defaultMaterial		@TODO: @FIXME: likely we should just have the material get updated with the textures on pipeline creation, not here... plus pipelines are recreated when the screen resizes too so it should be done then.
-	Material* texturedMaterial = getMaterial("defaultMaterial");
-	VkDescriptorSetAllocateInfo allocInfo = {
-		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-		.pNext = nullptr,
-		.descriptorPool = _descriptorPool,
-		.descriptorSetCount = 1,
-		.pSetLayouts = &_singleTextureSetLayout,
-	};
-	vkAllocateDescriptorSets(_device, &allocInfo, &texturedMaterial->textureSet);
-
-	VkDescriptorImageInfo imageBufferInfo = {
-		.sampler = wood057Sampler,
-		.imageView = _loadedTextures["WoodFloor057"].imageView,
-		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-	};
-	VkWriteDescriptorSet texture1 =
-		vkinit::writeDescriptorImage(
-			VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-			texturedMaterial->textureSet,
-			&imageBufferInfo,
-			0
-		);
-	vkUpdateDescriptorSets(_device, 1, &texture1, 0, nullptr);
-
-
-
-
-
-	// Update cubemapskybox material
-	vkAllocateDescriptorSets(_device, &allocInfo, &_renderObjectModels.skyboxMaterial.textureSet);
-
-	imageBufferInfo.sampler = cubemapSkyboxSampler;
-	imageBufferInfo.imageView = _loadedTextures["CubemapSkybox"].imageView;
-	texture1 =
-		vkinit::writeDescriptorImage(
-			VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-			_renderObjectModels.skyboxMaterial.textureSet,
-			&imageBufferInfo,
-			0
-		);
-	vkUpdateDescriptorSets(_device, 1, &texture1, 0, nullptr);
 }
 
 void VulkanEngine::initImgui()
