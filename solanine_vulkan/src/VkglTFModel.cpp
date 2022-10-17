@@ -1561,109 +1561,30 @@ namespace vkglTF
 	void Model::draw(VkCommandBuffer commandBuffer)
 	{
 		// Just an overload that fills out all the garbage for you :)
-		//draw(commandBuffer, 0, [](vkglTF::Primitive*, vkglTF::Node*) {});
-		draw(commandBuffer, 0, false, 0, 0);
+		draw(commandBuffer, 0, [](vkglTF::Primitive*, vkglTF::Node*) {});
 	}
 
-	void Model::draw(VkCommandBuffer commandBuffer, uint32_t transformID, bool jojo, VkDescriptorSet glob, VkDescriptorSet obj)//std::function<void(Primitive* primitive, Node* node)>&& perPrimitiveFunction)
+	void Model::draw(VkCommandBuffer commandBuffer, uint32_t transformID, std::function<void(Primitive* primitive, Node* node)>&& perPrimitiveFunction)
 	{
 		for (auto& node : nodes)
 		{
-			drawNode(node, commandBuffer, transformID, jojo, glob, obj); //std::move(perPrimitiveFunction));
+			drawNode(node, commandBuffer, transformID, std::move(perPrimitiveFunction));
 		}
 	}
 
-	void Model::drawNode(Node* node, VkCommandBuffer commandBuffer, uint32_t transformID, bool jojo, VkDescriptorSet glob, VkDescriptorSet obj)//std::function<void(Primitive* primitive, Node* node)>&& perPrimitiveFunction)
+	void Model::drawNode(Node* node, VkCommandBuffer commandBuffer, uint32_t transformID, std::function<void(Primitive* primitive, Node* node)>&& perPrimitiveFunction)
 	{
 		if (node->mesh)
 		{
 			for (Primitive* primitive : node->mesh->primitives)
 			{
-				//perPrimitiveFunction(primitive, node);
-				if (jojo)
-				{
-					Material* lastMaterial = nullptr;
-					VkDescriptorSet* lastJointDescriptor = nullptr;   // @HARDCODE to do a proof of concept
-
-
-					vkglTF::PBRMaterial& pbr = primitive->material;
-					Material& primMat = pbr.calculatedMaterial;
-
-					if (lastMaterial != &primMat)
-					{
-						// Bind new material
-						vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, primMat.pipeline);
-						lastMaterial = &primMat;
-
-						// Global data descriptor (set = 0)
-						vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, primMat.pipelineLayout, 0, 1, &glob, 0, nullptr);
-
-						// Object data descriptor (set = 1)
-						vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, primMat.pipelineLayout, 1, 1, &obj, 0, nullptr);
-
-						// PBR data descriptor    (set = 2)
-						vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, primMat.pipelineLayout, 2, 1, &primMat.textureSet, 0, nullptr);
-
-						// Undo flag for joint descriptor to force rebinding
-						lastJointDescriptor = nullptr;
-					}
-
-					VkDescriptorSet* jointDescriptor = &node->mesh->uniformBuffer.descriptorSet;
-					if (lastJointDescriptor != jointDescriptor)
-					{
-						// Joint Descriptor (set = 3) (i.e. skeletal animations)
-						// 
-						// @NOTE: this doesn't have to be bound every primitive. Every mesh will
-						// have a single joint descriptor, hence having its own binding flag.
-						vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, primMat.pipelineLayout, 3, 1, jointDescriptor, 0, nullptr);
-						lastJointDescriptor = jointDescriptor;
-					}
-
-					//
-					// PBR Material push constant data
-					//
-					VulkanEngine::PBRMaterialPushConstBlock pc = {};
-					pc.emissiveFactor = pbr.emissiveFactor;
-					// To save push constant space, availabilty and texture coordinates set are combined
-					// -1 = texture not used for this material, >= 0 texture used and index of texture coordinate set
-					pc.colorTextureSet = pbr.baseColorTexture != nullptr ? pbr.texCoordSets.baseColor : -1;
-					pc.normalTextureSet = pbr.normalTexture != nullptr ? pbr.texCoordSets.normal : -1;
-					pc.occlusionTextureSet = pbr.occlusionTexture != nullptr ? pbr.texCoordSets.occlusion : -1;
-					pc.emissiveTextureSet = pbr.emissiveTexture != nullptr ? pbr.texCoordSets.emissive : -1;
-					pc.alphaMask = static_cast<float>(pbr.alphaMode == vkglTF::PBRMaterial::ALPHAMODE_MASK);
-					pc.alphaMaskCutoff = pbr.alphaCutoff;
-
-					// TODO: glTF specs states that metallic roughness should be preferred, even if specular glossiness is present
-
-					if (pbr.pbrWorkflows.metallicRoughness)
-					{
-						// Metallic roughness workflow
-						pc.workflow = static_cast<float>(VulkanEngine::PBR_WORKFLOW_METALLIC_ROUGHNESS);
-						pc.baseColorFactor = pbr.baseColorFactor;
-						pc.metallicFactor = pbr.metallicFactor;
-						pc.roughnessFactor = pbr.roughnessFactor;
-						pc.PhysicalDescriptorTextureSet = pbr.metallicRoughnessTexture != nullptr ? pbr.texCoordSets.metallicRoughness : -1;
-						pc.colorTextureSet = pbr.baseColorTexture != nullptr ? pbr.texCoordSets.baseColor : -1;
-					}
-
-					if (pbr.pbrWorkflows.specularGlossiness)
-					{
-						// Specular glossiness workflow
-						pc.workflow = static_cast<float>(VulkanEngine::PBR_WORKFLOW_SPECULAR_GLOSINESS);
-						pc.PhysicalDescriptorTextureSet = pbr.extension.specularGlossinessTexture != nullptr ? pbr.texCoordSets.specularGlossiness : -1;
-						pc.colorTextureSet = pbr.extension.diffuseTexture != nullptr ? pbr.texCoordSets.baseColor : -1;
-						pc.diffuseFactor = pbr.extension.diffuseFactor;
-						pc.specularFactor = glm::vec4(pbr.extension.specularFactor, 1.0f);
-					}
-
-					vkCmdPushConstants(commandBuffer, primMat.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(VulkanEngine::PBRMaterialPushConstBlock), &pc);
-				}
+				perPrimitiveFunction(primitive, node);
 				vkCmdDrawIndexed(commandBuffer, primitive->indexCount, 1, primitive->firstIndex, 0, transformID);
 			}
 		}
 		for (auto& child : node->children)
 		{
-			drawNode(child, commandBuffer, transformID, jojo, glob, obj);//std::move(perPrimitiveFunction));
+			drawNode(child, commandBuffer, transformID, std::move(perPrimitiveFunction));
 		}
 	}
 

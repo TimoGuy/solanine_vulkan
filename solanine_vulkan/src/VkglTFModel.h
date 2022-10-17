@@ -283,8 +283,8 @@ namespace vkglTF
 		void loadFromFile(VulkanEngine* engine, std::string filename, float scale = 1.0f);
 		void bind(VkCommandBuffer commandBuffer);
 		void draw(VkCommandBuffer commandBuffer);
-		void draw(VkCommandBuffer commandBuffer, uint32_t transformID, bool jojo, VkDescriptorSet glob, VkDescriptorSet obj);//std::function<void(Primitive* primitive, Node* node)>&& perPrimitiveFunction);    // You know, I wonder about the overhead of including a lambda per primitive
-		void drawNode(Node* node, VkCommandBuffer commandBuffer, uint32_t transformID, bool jojo, VkDescriptorSet glob, VkDescriptorSet obj);//std::function<void(Primitive* primitive, Node* node)>&& perPrimitiveFunction);
+		void draw(VkCommandBuffer commandBuffer, uint32_t transformID, std::function<void(Primitive* primitive, Node* node)>&& perPrimitiveFunction);    // You know, I wonder about the overhead of including a lambda per primitive
+		void drawNode(Node* node, VkCommandBuffer commandBuffer, uint32_t transformID, std::function<void(Primitive* primitive, Node* node)>&& perPrimitiveFunction);
 		void calculateBoundingBox(Node* node, Node* parent);
 		void getSceneDimensions();
 		void updateAnimation(uint32_t index, float time);
