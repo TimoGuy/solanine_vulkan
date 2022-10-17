@@ -28,5 +28,5 @@
 ![Renderdoc showing that the irradiance and prefilter maps were generated and connected to the shader (if you scroll just a little further down the input textures you would've seen the brdf lut map too)](etc/RenderDoc%20v1.21%2010_16_2022%2001_05_22.png)
 *Renderdoc showing that the irradiance and prefilter maps were generated and connected to the shader (if you scroll just a little further down the input textures you would've seen the brdf lut map too)*
 
-![First PBR! It uses the textures packed in the gltf model](etc/Solanine%20Prealpha%20-%20Vulkan%20-%20Build%20256%2010_17_2022%2002_43_46.png)
-*First PBR! It uses the textures packed in the gltf model*
+![First PBR! It uses the textures packed in the gltf model (also, using a night space skybox probs wasn't the best for generating the irradiance and prefiltered maps. At least it's a little noticable)](etc/Solanine%20Prealpha%20-%20Vulkan%20-%20Build%20256%2010_17_2022%2002_43_46.png)
+*First PBR! It uses the textures packed in the gltf model (also, using a night space skybox probs wasn't the best for generating the irradiance and prefiltered maps. At least it's a little noticable)*
