@@ -44,12 +44,6 @@ struct FrameData
 	VkDescriptorSet objectDescriptor;
 };
 
-struct MeshPushConstants
-{
-	glm::vec4 data;
-	glm::mat4 renderMatrix;
-};
-
 struct UploadContext
 {
 	VkFence uploadFence;
@@ -81,7 +75,6 @@ struct DeletionQueue
 struct RenderObject
 {
 	vkglTF::Model* model;
-	Material* material;
 	glm::mat4 transformMatrix;
 };
 
@@ -235,7 +228,27 @@ private:
 		GPUPBRShadingProps gpuSceneShadingProps;
 	} _pbrRendering;
 
+public:
 	enum PBRWorkflows { PBR_WORKFLOW_METALLIC_ROUGHNESS = 0, PBR_WORKFLOW_SPECULAR_GLOSINESS = 1 };
+
+	struct PBRMaterialPushConstBlock
+	{
+		glm::vec4 baseColorFactor;
+		glm::vec4 emissiveFactor;
+		glm::vec4 diffuseFactor;
+		glm::vec4 specularFactor;
+		float workflow;
+		int colorTextureSet;
+		int PhysicalDescriptorTextureSet;
+		int normalTextureSet;
+		int occlusionTextureSet;
+		int emissiveTextureSet;
+		float metallicFactor;
+		float roughnessFactor;
+		float alphaMask;
+		float alphaMaskCutoff;
+	};
+private:
 
 #ifdef _DEVELOP
 	//

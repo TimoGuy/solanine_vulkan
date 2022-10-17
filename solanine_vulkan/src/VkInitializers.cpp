@@ -57,14 +57,14 @@ VkPipelineInputAssemblyStateCreateInfo vkinit::inputAssemblyCreateInfo(VkPrimiti
 	return info;
 }
 
-VkPipelineRasterizationStateCreateInfo vkinit::rasterizationStateCreateInfo(VkPolygonMode polygonMode, VkCullModeFlags cullMode, bool enableDiscard)
+VkPipelineRasterizationStateCreateInfo vkinit::rasterizationStateCreateInfo(VkPolygonMode polygonMode, VkCullModeFlags cullMode)
 {
 	VkPipelineRasterizationStateCreateInfo info = {};
 	info.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
 	info.pNext = nullptr;
 
 	info.depthClampEnable = VK_FALSE;	// @NOTE: note this... bc you'll need it for shadow rendering yo!  -Timo
-	info.rasterizerDiscardEnable = enableDiscard ? VK_TRUE : VK_FALSE;	// @NOTE: this is the `discard;` keyword in GLSL. Disabling it wherever possible will allow the rasterizer to perform much quicker.
+	info.rasterizerDiscardEnable = VK_FALSE;	// @NOTE: this is NOT the `discard;` keyword in GLSL. I misunderstood (https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/vkCmdSetRasterizerDiscardEnableEXT.html)
 	info.polygonMode = polygonMode;
 	info.lineWidth = 1.0f;
 

@@ -1174,7 +1174,7 @@ void VulkanEngine::initPipelines()
 	VkShaderModule defaultLitVertShader,
 					defaultLitFragShader;
 	loadShaderModule("shader/pbr.vert.spv", &defaultLitVertShader);
-	loadShaderModule("shader/default_lit.frag.spv", &defaultLitFragShader);
+	loadShaderModule("shader/pbr_khr.frag.spv", &defaultLitFragShader);
 
 	VkShaderModule skyboxVertShader,
 					skyboxFragShader;
@@ -1187,9 +1187,9 @@ void VulkanEngine::initPipelines()
 	VkPipelineLayoutCreateInfo meshPipelineLayoutInfo = vkinit::pipelineLayoutCreateInfo();
 
 	VkPushConstantRange pushConstant = {
-		.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+		.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
 		.offset = 0,
-		.size = sizeof(MeshPushConstants)
+		.size = sizeof(PBRMaterialPushConstBlock)
 	};
 	meshPipelineLayoutInfo.pPushConstantRanges = &pushConstant;
 	meshPipelineLayoutInfo.pushConstantRangeCount = 1;
@@ -1228,7 +1228,7 @@ void VulkanEngine::initPipelines()
 	pipelineBuilder._scissor.offset = { 0, 0 };
 	pipelineBuilder._scissor.extent = _windowExtent;
 
-	pipelineBuilder._rasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT, true);
+	pipelineBuilder._rasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT);
 	pipelineBuilder._colorBlendAttachment = vkinit::colorBlendAttachmentState();
 	pipelineBuilder._multisampling = vkinit::multisamplingStateCreateInfo();
 	pipelineBuilder._pipelineLayout = _meshPipelineLayout;
@@ -1257,7 +1257,7 @@ void VulkanEngine::initPipelines()
 	pipelineBuilder._shaderStages.push_back(
 		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, skyboxFragShader));
 
-	pipelineBuilder._rasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_FRONT_BIT, false);    // Bc we're rendering a box inside-out
+	pipelineBuilder._rasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_FRONT_BIT);    // Bc we're rendering a box inside-out
 	pipelineBuilder._depthStencil = vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_NEVER);
 	pipelineBuilder._pipelineLayout = _skyboxPipelineLayout;		// @NOTE: EFFING DON'T FORGET THIS LINE BC THAT'S WHAT CAUSED ME A BUTT TON OF GRIEF!!!!!
 
@@ -1297,7 +1297,6 @@ void VulkanEngine::initScene()
 
 		RenderObject triangle = {
 			.model = &_renderObjectModels.slimeGirl,
-			.material = getMaterial("defaultMaterial"),
 			.transformMatrix = translation * scale,
 		};
 		_renderObjects.push_back(triangle);
@@ -1814,7 +1813,7 @@ void VulkanEngine::generatePBRCubemaps()
 					VkDeviceSize offsets[1] = { 0 };
 
 					_renderObjectModels.skybox.bind(cmd);
-					_renderObjectModels.skybox.draw(cmd, NULL, 0);
+					_renderObjectModels.skybox.draw(cmd);
 
 					vkCmdEndRenderPass(cmd);
 
@@ -2418,7 +2417,7 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first,
 	//
 	// Upload pbr shading props to GPU
 	//
-	_pbrRendering.gpuSceneShadingProps.lightDir = glm::normalize(glm::vec4(0.432f, -0.864f, 0.259f, 0.0f));    // @HACK: @HARDCODED: Need to put this in a better spot honestly. Man what the heck.  -Timo
+	_pbrRendering.gpuSceneShadingProps.lightDir = glm::normalize(glm::vec4(0.432f, 0.864f, 0.259f, 0.0f));    // @HACK: @HARDCODED: Need to put this in a better spot honestly. Man what the heck.  -Timo
 	vmaMapMemory(_allocator, currentFrame.pbrShadingPropsBuffer._allocation, &data);
 	memcpy(data, &_pbrRendering.gpuSceneShadingProps, sizeof(GPUPBRShadingProps));
 	vmaUnmapMemory(_allocator, currentFrame.pbrShadingPropsBuffer._allocation);
@@ -2446,45 +2445,44 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first,
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _renderObjectModels.skyboxMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _renderObjectModels.skyboxMaterial.pipelineLayout, 1, 1, &_renderObjectModels.skyboxMaterial.textureSet, 0, nullptr);
 	_renderObjectModels.skybox.bind(cmd);
-	_renderObjectModels.skybox.draw(cmd, NULL, 0);    // @TODO: I'll need a better way to pass in the pipelinelayout. Sending NULL to ignore it is an ... okay idea for now however.
+	_renderObjectModels.skybox.draw(cmd);
 
 	//
 	// Render all the renderobjects
 	//
-	Material* lastMaterial = nullptr;
 	vkglTF::Model* lastModel = nullptr;
 	for (size_t i = 0; i < count; i++)
 	{
 		RenderObject& object = first[i];
 
-		if (!object.material || !object.model)	// @NOTE: Subdue a warning that a possible nullptr could be dereferenced
+		if (!object.model)	// @NOTE: Subdue a warning that a possible nullptr could be dereferenced
 		{
-			std::cerr << "ERROR: object material and/or mesh are NULL" << std::endl;
+			std::cerr << "ERROR: object model are NULL" << std::endl;
 			continue;
 		}
 
-		if (object.material != lastMaterial)
-		{
-			// Bind the new material
-			vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipeline);
-			lastMaterial = object.material;
-
-			// Global data descriptor
-			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
-
-			// Object data descriptor
-			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
-
-			// Singletexture
-			if (object.material->textureSet != VK_NULL_HANDLE)
-				vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipelineLayout, 2, 1, &object.material->textureSet, 0, nullptr);
-		}
-
-		// Push constants
-		MeshPushConstants constants = {
-			.renderMatrix = object.transformMatrix,
-		};
-		vkCmdPushConstants(cmd, object.material->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(MeshPushConstants), &constants);
+		//if (object.material != lastMaterial)
+		//{
+		//	// Bind the new material
+		//	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipeline);
+		//	lastMaterial = object.material;
+		//
+		//	// Global data descriptor
+		//	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
+		//
+		//	// Object data descriptor
+		//	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
+		//
+		//	// Singletexture
+		//	if (object.material->textureSet != VK_NULL_HANDLE)
+		//		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipelineLayout, 2, 1, &object.material->textureSet, 0, nullptr);
+		//}
+		//
+		//// Push constants
+		//MeshPushConstants constants = {
+		//	.renderMatrix = object.transformMatrix,
+		//};
+		//vkCmdPushConstants(cmd, object.material->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(MeshPushConstants), &constants);
 
 		if (object.model != lastModel)
 		{
@@ -2493,8 +2491,92 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first,
 			lastModel = object.model;
 		}
 
+		//
 		// Render it out
-		object.model->draw(cmd, object.material->pipelineLayout, i);
+		//
+		Material* lastMaterial = nullptr;
+		VkDescriptorSet* lastJointDescriptor = nullptr;
+		object.model->draw(
+			cmd,
+			i,
+			true,
+			currentFrame.globalDescriptor,
+			currentFrame.objectDescriptor
+			//[&](vkglTF::Primitive* primitive, vkglTF::Node* node) {
+			//
+			//	vkglTF::PBRMaterial& pbr = primitive->material;
+			//	Material& primMat = pbr.calculatedMaterial;
+			//
+			//	if (lastMaterial != &primMat)
+			//	{
+			//		// Bind new material
+			//		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, primMat.pipeline);
+			//		lastMaterial = &primMat;
+			//
+			//		// Global data descriptor (set = 0)
+			//		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, primMat.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
+			//
+			//		// Object data descriptor (set = 1)
+			//		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, primMat.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
+			//
+			//		// PBR data descriptor    (set = 2)
+			//		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, primMat.pipelineLayout, 2, 1, &primMat.textureSet, 0, nullptr);
+			//
+			//		// Undo flag for joint descriptor to force rebinding
+			//		lastJointDescriptor = nullptr;
+			//	}
+			//
+			//	VkDescriptorSet* jointDescriptor = &node->mesh->uniformBuffer.descriptorSet;
+			//	if (lastJointDescriptor != jointDescriptor)
+			//	{
+			//		// Joint Descriptor (set = 3) (i.e. skeletal animations)
+			//		// 
+			//		// @NOTE: this doesn't have to be bound every primitive. Every mesh will
+			//		// have a single joint descriptor, hence having its own binding flag.
+			//		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, primMat.pipelineLayout, 3, 1, jointDescriptor, 0, nullptr);
+			//		lastJointDescriptor = jointDescriptor;
+			//	}
+			//
+			//	//
+			//	// PBR Material push constant data
+			//	//
+			//	PBRMaterialPushConstBlock pc = {};
+			//	pc.emissiveFactor = pbr.emissiveFactor;
+			//	// To save push constant space, availabilty and texture coordinates set are combined
+			//	// -1 = texture not used for this material, >= 0 texture used and index of texture coordinate set
+			//	pc.colorTextureSet = pbr.baseColorTexture != nullptr ? pbr.texCoordSets.baseColor : -1;
+			//	pc.normalTextureSet = pbr.normalTexture != nullptr ? pbr.texCoordSets.normal : -1;
+			//	pc.occlusionTextureSet = pbr.occlusionTexture != nullptr ? pbr.texCoordSets.occlusion : -1;
+			//	pc.emissiveTextureSet = pbr.emissiveTexture != nullptr ? pbr.texCoordSets.emissive : -1;
+			//	pc.alphaMask = static_cast<float>(pbr.alphaMode == vkglTF::PBRMaterial::ALPHAMODE_MASK);
+			//	pc.alphaMaskCutoff = pbr.alphaCutoff;
+			//
+			//	// TODO: glTF specs states that metallic roughness should be preferred, even if specular glossiness is present
+			//
+			//	if (pbr.pbrWorkflows.metallicRoughness)
+			//	{
+			//		// Metallic roughness workflow
+			//		pc.workflow = static_cast<float>(PBR_WORKFLOW_METALLIC_ROUGHNESS);
+			//		pc.baseColorFactor = pbr.baseColorFactor;
+			//		pc.metallicFactor = pbr.metallicFactor;
+			//		pc.roughnessFactor = pbr.roughnessFactor;
+			//		pc.PhysicalDescriptorTextureSet = pbr.metallicRoughnessTexture != nullptr ? pbr.texCoordSets.metallicRoughness : -1;
+			//		pc.colorTextureSet = pbr.baseColorTexture != nullptr ? pbr.texCoordSets.baseColor : -1;
+			//	}
+			//
+			//	if (pbr.pbrWorkflows.specularGlossiness)
+			//	{
+			//		// Specular glossiness workflow
+			//		pc.workflow = static_cast<float>(PBR_WORKFLOW_SPECULAR_GLOSINESS);
+			//		pc.PhysicalDescriptorTextureSet = pbr.extension.specularGlossinessTexture != nullptr ? pbr.texCoordSets.specularGlossiness : -1;
+			//		pc.colorTextureSet = pbr.extension.diffuseTexture != nullptr ? pbr.texCoordSets.baseColor : -1;
+			//		pc.diffuseFactor = pbr.extension.diffuseFactor;
+			//		pc.specularFactor = glm::vec4(pbr.extension.specularFactor, 1.0f);
+			//	}
+			//
+			//	vkCmdPushConstants(cmd, primMat.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PBRMaterialPushConstBlock), &pc);
+			//}
+		);
 	}
 }
 

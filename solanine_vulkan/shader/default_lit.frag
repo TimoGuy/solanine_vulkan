@@ -41,6 +41,24 @@ layout (set = 2, binding = 2) uniform sampler2D normalMap;
 layout (set = 2, binding = 3) uniform sampler2D aoMap;
 layout (set = 2, binding = 4) uniform sampler2D emissiveMap;
 
+layout (push_constant) uniform Material
+{
+	vec4 baseColorFactor;
+	vec4 emissiveFactor;
+	vec4 diffuseFactor;
+	vec4 specularFactor;
+	float workflow;
+	int baseColorTextureSet;
+	int physicalDescriptorTextureSet;
+	int normalTextureSet;
+	int occlusionTextureSet;
+	int emissiveTextureSet;
+	float metallicFactor;
+	float roughnessFactor;
+	float alphaMask;
+	float alphaMaskCutoff;
+} material;
+
 
 void main()
 {
@@ -54,8 +72,8 @@ void main()
 	float v = texture(samplerBRDFLUT, vec2(0.5, 0.5)).x;
 	float e = l+o+v;
 	// Call me Dmitri
-
-
+	
+	
 	vec3 color = texture(colorMap, inUV0).xyz;
 	outFragColor = vec4(color, 1.0);
 }

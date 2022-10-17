@@ -10,7 +10,7 @@ layout (location = 2) in vec2 inUV0;
 layout (location = 3) in vec2 inUV1;
 layout (location = 4) in vec4 inColor0;
 
-layout (location = 0) out vec4 outColor;
+layout (location = 0) out vec4 outFragColor;
 
 // Scene bindings
 
@@ -39,11 +39,11 @@ layout (set = 0, binding = 4) uniform sampler2D samplerBRDFLUT;
 
 // Material bindings
 
-layout (set = 1, binding = 0) uniform sampler2D colorMap;
-layout (set = 1, binding = 1) uniform sampler2D physicalDescriptorMap;
-layout (set = 1, binding = 2) uniform sampler2D normalMap;
-layout (set = 1, binding = 3) uniform sampler2D aoMap;
-layout (set = 1, binding = 4) uniform sampler2D emissiveMap;
+layout (set = 2, binding = 0) uniform sampler2D colorMap;
+layout (set = 2, binding = 1) uniform sampler2D physicalDescriptorMap;
+layout (set = 2, binding = 2) uniform sampler2D normalMap;
+layout (set = 2, binding = 3) uniform sampler2D aoMap;
+layout (set = 2, binding = 4) uniform sampler2D emissiveMap;
 
 layout (push_constant) uniform Material
 {
@@ -381,7 +381,7 @@ void main()
 		color += emissive;
 	}
 	
-	outColor = vec4(color, baseColor.a);
+	outFragColor = vec4(color, baseColor.a);
 
 	// Shader inputs debug visualization
 	if (uboParams.debugViewInputs > 0.0)
@@ -390,25 +390,25 @@ void main()
 		switch (index)
 		{
 			case 1:
-				outColor.rgba = material.baseColorTextureSet > -1 ? texture(colorMap, material.baseColorTextureSet == 0 ? inUV0 : inUV1) : vec4(1.0f);
+				outFragColor.rgba = material.baseColorTextureSet > -1 ? texture(colorMap, material.baseColorTextureSet == 0 ? inUV0 : inUV1) : vec4(1.0f);
 				break;
 			case 2:
-				outColor.rgb = (material.normalTextureSet > -1) ? texture(normalMap, material.normalTextureSet == 0 ? inUV0 : inUV1).rgb : normalize(inNormal);
+				outFragColor.rgb = (material.normalTextureSet > -1) ? texture(normalMap, material.normalTextureSet == 0 ? inUV0 : inUV1).rgb : normalize(inNormal);
 				break;
 			case 3:
-				outColor.rgb = (material.occlusionTextureSet > -1) ? texture(aoMap, material.occlusionTextureSet == 0 ? inUV0 : inUV1).rrr : vec3(0.0f);
+				outFragColor.rgb = (material.occlusionTextureSet > -1) ? texture(aoMap, material.occlusionTextureSet == 0 ? inUV0 : inUV1).rrr : vec3(0.0f);
 				break;
 			case 4:
-				outColor.rgb = (material.emissiveTextureSet > -1) ? texture(emissiveMap, material.emissiveTextureSet == 0 ? inUV0 : inUV1).rgb : vec3(0.0f);
+				outFragColor.rgb = (material.emissiveTextureSet > -1) ? texture(emissiveMap, material.emissiveTextureSet == 0 ? inUV0 : inUV1).rgb : vec3(0.0f);
 				break;
 			case 5:
-				outColor.rgb = texture(physicalDescriptorMap, inUV0).bbb;
+				outFragColor.rgb = texture(physicalDescriptorMap, inUV0).bbb;
 				break;
 			case 6:
-				outColor.rgb = texture(physicalDescriptorMap, inUV0).ggg;
+				outFragColor.rgb = texture(physicalDescriptorMap, inUV0).ggg;
 				break;
 		}
-		outColor = SRGBtoLINEAR(outColor);
+		outFragColor = SRGBtoLINEAR(outFragColor);
 	}
 
 	// PBR equation debug visualization
@@ -419,19 +419,19 @@ void main()
 		switch (index)
 		{
 			case 1:
-				outColor.rgb = diffuseContrib;
+				outFragColor.rgb = diffuseContrib;
 				break;
 			case 2:
-				outColor.rgb = F;
+				outFragColor.rgb = F;
 				break;
 			case 3:
-				outColor.rgb = vec3(G);
+				outFragColor.rgb = vec3(G);
 				break;
 			case 4: 
-				outColor.rgb = vec3(D);
+				outFragColor.rgb = vec3(D);
 				break;
 			case 5:
-				outColor.rgb = specContrib;
+				outFragColor.rgb = specContrib;
 				break;				
 		}
 	}
