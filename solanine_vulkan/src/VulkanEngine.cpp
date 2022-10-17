@@ -61,8 +61,8 @@ void VulkanEngine::init()
 	initSyncStructures();
 	initDescriptors();
 	initPipelines();
-	loadMeshes();
 	loadImages();
+	loadMeshes();
 	initScene();
 	generatePBRCubemaps();
 	generateBRDFLUT();
@@ -437,15 +437,74 @@ void VulkanEngine::render()
 
 void VulkanEngine::loadImages()
 {
+	// Load empty
+	{
+		Texture empty;
+		vkutil::loadImageFromFile(*this, "res/textures/empty.png", VK_FORMAT_R8G8B8A8_UNORM, 1, empty.image);
+
+		VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_UNORM, empty.image._image, VK_IMAGE_ASPECT_COLOR_BIT, empty.image._mipLevels);
+		vkCreateImageView(_device, &imageInfo, nullptr, &empty.imageView);
+
+		VkSamplerCreateInfo samplerInfo = {
+			.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+			.pNext = nullptr,
+			.magFilter = VK_FILTER_NEAREST,
+			.minFilter = VK_FILTER_NEAREST,
+			.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST,
+			.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			.mipLodBias = 0.0f,
+			.anisotropyEnable = VK_TRUE,
+			.maxAnisotropy = _gpuProperties.limits.maxSamplerAnisotropy,
+			.compareEnable = VK_FALSE,
+			.compareOp = VK_COMPARE_OP_NEVER,
+			.minLod = 0.0f,
+			.maxLod = static_cast<float_t>(empty.image._mipLevels),
+			.borderColor = VK_BORDER_COLOR_INT_OPAQUE_WHITE,
+			.unnormalizedCoordinates = VK_FALSE,
+		};
+		vkCreateSampler(_device, &samplerInfo, nullptr, &empty.sampler);
+
+		_mainDeletionQueue.pushFunction([=]() {
+			vkDestroySampler(_device, empty.sampler, nullptr);
+			vkDestroyImageView(_device, empty.imageView, nullptr);
+			});
+
+		_loadedTextures["empty"] = empty;
+	}
+
 	// Load woodFloor057
 	{
 		Texture woodFloor057;
-		vkutil::loadImageFromFile(*this, "res/textures/WoodFloor057_1K-JPG/WoodFloor057_1K_Color.jpg", 0, woodFloor057.image);
+		vkutil::loadImageFromFile(*this, "res/textures/WoodFloor057_1K-JPG/WoodFloor057_1K_Color.jpg", VK_FORMAT_R8G8B8A8_SRGB, 0, woodFloor057.image);
 
 		VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, woodFloor057.image._image, VK_IMAGE_ASPECT_COLOR_BIT, woodFloor057.image._mipLevels);
 		vkCreateImageView(_device, &imageInfo, nullptr, &woodFloor057.imageView);
 
+		VkSamplerCreateInfo samplerInfo = {
+			.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+			.pNext = nullptr,
+			.magFilter = VK_FILTER_LINEAR,
+			.minFilter = VK_FILTER_LINEAR,
+			.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+			.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+			.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+			.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+			.mipLodBias = 0.0f,
+			.anisotropyEnable = VK_TRUE,
+			.maxAnisotropy = _gpuProperties.limits.maxSamplerAnisotropy,
+			.compareEnable = VK_FALSE,
+			.compareOp = VK_COMPARE_OP_NEVER,
+			.minLod = 0.0f,
+			.maxLod = static_cast<float_t>(woodFloor057.image._mipLevels),
+			.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
+			.unnormalizedCoordinates = VK_FALSE,
+		};
+		vkCreateSampler(_device, &samplerInfo, nullptr, &woodFloor057.sampler);
+
 		_mainDeletionQueue.pushFunction([=]() {
+			vkDestroySampler(_device, woodFloor057.sampler, nullptr);
 			vkDestroyImageView(_device, woodFloor057.imageView, nullptr);
 			});
 
@@ -465,6 +524,7 @@ void VulkanEngine::loadImages()
 				"res/textures/CubemapSkybox/back.png",
 				"res/textures/CubemapSkybox/front.png",
 			},
+			VK_FORMAT_R8G8B8A8_SRGB,
 			1,
 			cubemapSkybox.image
 		);
@@ -472,12 +532,38 @@ void VulkanEngine::loadImages()
 		VkImageViewCreateInfo imageInfo = vkinit::imageviewCubemapCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, cubemapSkybox.image._image, VK_IMAGE_ASPECT_COLOR_BIT, cubemapSkybox.image._mipLevels);
 		vkCreateImageView(_device, &imageInfo, nullptr, &cubemapSkybox.imageView);
 
+		VkSamplerCreateInfo samplerInfo = {
+			.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+			.pNext = nullptr,
+			.magFilter = VK_FILTER_LINEAR,
+			.minFilter = VK_FILTER_LINEAR,
+			.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+			.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			.mipLodBias = 0.0f,
+			.anisotropyEnable = VK_TRUE,
+			.maxAnisotropy = _gpuProperties.limits.maxSamplerAnisotropy,
+			.compareEnable = VK_FALSE,
+			.compareOp = VK_COMPARE_OP_NEVER,
+			.minLod = 0.0f,
+			.maxLod = static_cast<float_t>(cubemapSkybox.image._mipLevels),
+			.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
+			.unnormalizedCoordinates = VK_FALSE,
+		};
+		vkCreateSampler(_device, &samplerInfo, nullptr, &cubemapSkybox.sampler);
+
 		_mainDeletionQueue.pushFunction([=]() {
+			vkDestroySampler(_device, cubemapSkybox.sampler, nullptr);
 			vkDestroyImageView(_device, cubemapSkybox.imageView, nullptr);
 			});
 
 		_loadedTextures["CubemapSkybox"] = cubemapSkybox;
 	}
+
+	//
+	// @TODO: add a thing to destroy all the loaded images from _loadedTextures hashmap
+	//
 }
 
 Material* VulkanEngine::createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name)
@@ -886,16 +972,16 @@ void VulkanEngine::initDescriptors()
 	// Create Descriptor Pool
 	//
 	std::vector<VkDescriptorPoolSize> sizes = {
-		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 100 },
-		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 100 },
-		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 100 },
-		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 100 },
+		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 10000 },
+		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 10000 },
+		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 10000 },
+		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 10000 },
 	};
 	VkDescriptorPoolCreateInfo poolInfo = {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
 		.flags = 0,
-		.maxSets = 100,													// @NOTE: I need a better descriptorpool allocator... @TODO: @FIXME: crate teh one that's in the vkguide extra chapter
-		.poolSizeCount = (uint32_t)sizes.size(),
+		.maxSets = 10000,										// @NOTE: for the new/better descriptorpool, there NEEDS to be one for all of the information that will be recreated when the window is resized and then one that's different that will be just for shader inputs etc. bc afaik removing those descriptors isn't necessary.   @NOTE: I need a better descriptorpool allocator... @TODO: @FIXME: crate teh one that's in the vkguide extra chapter
+		.poolSizeCount = (uint32_t)sizes.size(),				//        @REPLY: and... I think only the pipelines (specifically the rasterizers in the pipelines which have the viewport & scissors fields) are the only things that need to get recreated upon resizing (and of course the textures that are backing up those pipelines), so perhaps a deallocation of the descriptorsets is needed only and then reallocate the necessary descriptorsets (maybe it means that the descriptorset needs to be destroyed too... Idk... I guess it all depends on what the vulkan spec requires eh!)
 		.pPoolSizes = sizes.data(),
 	};
 	vkCreateDescriptorPool(_device, &poolInfo, nullptr, &_descriptorPool);
@@ -1201,7 +1287,7 @@ void VulkanEngine::initPipelines()
 
 void VulkanEngine::initScene()
 {
-	_renderObjects.clear();
+	_renderObjects.clear();   // For when it resets, so that correct materials are grabbed (@TODO: make a new material grabbing system for when the pipeline is recreated... BUT! Make sure whether you actually need that or not, bc it could be that it's not needed). Bc the pipelines will get recreated but it could just be a different situation with reliance on the gltf materials too idk really!
 	//for (int x = -10; x <= 10; x++)
 	//	for (int z = -10; z <= 10; z++)
 	int x = 0, z = 0;
@@ -1218,43 +1304,8 @@ void VulkanEngine::initScene()
 	}
 
 	//
-	// Load in sampler for the texture
-	//
-	VkSamplerCreateInfo samplerInfo = {
-		.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-		.pNext = nullptr,
-		.magFilter = VK_FILTER_LINEAR,
-		.minFilter = VK_FILTER_LINEAR,
-		.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
-		.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
-		.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
-		.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
-		.mipLodBias = 0.0f,
-		.anisotropyEnable = VK_TRUE,
-		.maxAnisotropy = _gpuProperties.limits.maxSamplerAnisotropy,
-		.compareEnable = VK_FALSE,
-		.compareOp = VK_COMPARE_OP_NEVER,
-		.minLod = 0.0f,
-		.maxLod = static_cast<float_t>(_loadedTextures["WoodFloor057"].image._mipLevels),
-		.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
-		.unnormalizedCoordinates = VK_FALSE,
-	};
-	VkSampler wood057Sampler;
-	vkCreateSampler(_device, &samplerInfo, nullptr, &wood057Sampler);
-
-	samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-	samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-	samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-	samplerInfo.maxLod = static_cast<float_t>(_loadedTextures["CubemapSkybox"].image._mipLevels);
-	VkSampler cubemapSkyboxSampler;
-	vkCreateSampler(_device, &samplerInfo, nullptr, &cubemapSkyboxSampler);
-
-	_swapchainDependentDeletionQueue.pushFunction([=]() {
-		vkDestroySampler(_device, wood057Sampler, nullptr);
-		vkDestroySampler(_device, cubemapSkyboxSampler, nullptr);
-		});
-
 	// Update defaultMaterial		@TODO: @FIXME: likely we should just have the material get updated with the textures on pipeline creation, not here... plus pipelines are recreated when the screen resizes too so it should be done then.
+	//
 	Material* texturedMaterial = getMaterial("defaultMaterial");
 	VkDescriptorSetAllocateInfo allocInfo = {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
@@ -1266,7 +1317,7 @@ void VulkanEngine::initScene()
 	vkAllocateDescriptorSets(_device, &allocInfo, &texturedMaterial->textureSet);
 
 	VkDescriptorImageInfo imageBufferInfo = {
-		.sampler = wood057Sampler,
+		.sampler = _loadedTextures["WoodFloor057"].sampler,
 		.imageView = _loadedTextures["WoodFloor057"].imageView,
 		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 	};
@@ -1279,14 +1330,12 @@ void VulkanEngine::initScene()
 		);
 	vkUpdateDescriptorSets(_device, 1, &texture1, 0, nullptr);
 
-
-
-
-
+	//
 	// Update cubemapskybox material
+	//
 	vkAllocateDescriptorSets(_device, &allocInfo, &_renderObjectModels.skyboxMaterial.textureSet);
 
-	imageBufferInfo.sampler = cubemapSkyboxSampler;
+	imageBufferInfo.sampler = _loadedTextures["CubemapSkybox"].sampler;
 	imageBufferInfo.imageView = _loadedTextures["CubemapSkybox"].imageView;
 	_renderObjectModels.environmentCubeDescriptor = imageBufferInfo;		// @FIXME: @REORGANIZE: This is soooo hacky
 	texture1 =
@@ -1297,6 +1346,8 @@ void VulkanEngine::initScene()
 			0
 		);
 	vkUpdateDescriptorSets(_device, 1, &texture1, 0, nullptr);
+
+	// @TODO: figure out if there's a way to edit descriptor sets or if they need to be destroyed and then recreated.
 }
 
 void VulkanEngine::generatePBRCubemaps()
@@ -1389,8 +1440,7 @@ void VulkanEngine::generatePBRCubemaps()
 			.maxLod = static_cast<float_t>(numMips),
 			.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE,
 		};
-		VkSampler cubemapSampler;
-		VK_CHECK(vkCreateSampler(_device, &samplerCI, nullptr, &cubemapSampler));
+		VK_CHECK(vkCreateSampler(_device, &samplerCI, nullptr, &cubemapTexture.sampler));
 
 		// FB, Att, RP, Pipe, etc.
 		VkAttachmentDescription attDesc{};
@@ -1855,7 +1905,7 @@ void VulkanEngine::generatePBRCubemaps()
 		vkDestroyPipelineLayout(_device, pipelinelayout, nullptr);
 
 		_mainDeletionQueue.pushFunction([=]() {
-			vkDestroySampler(_device, cubemapSampler, nullptr);
+			vkDestroySampler(_device, cubemapTexture.sampler, nullptr);
 			vkDestroyImageView(_device, cubemapTexture.imageView, nullptr);
 			vmaDestroyImage(_allocator, cubemapTexture.image._image, cubemapTexture.image._allocation);
 			});
@@ -1867,13 +1917,11 @@ void VulkanEngine::generatePBRCubemaps()
 		case IRRADIANCE:
 			cubemapTypeName = "irradiance";
 			_pbrSceneTextureSet.irradianceCubemap = cubemapTexture;
-			_pbrSceneTextureSet.irradianceSampler = cubemapSampler;
 			break;
 		case PREFILTEREDENV:
 			cubemapTypeName = "prefilter";
 			_pbrRendering.gpuSceneShadingProps.prefilteredCubemapMipLevels = static_cast<float_t>(numMips);
 			_pbrSceneTextureSet.prefilteredCubemap = cubemapTexture;
-			_pbrSceneTextureSet.prefilteredSampler = cubemapSampler;
 			break;
 		};
 
@@ -1945,8 +1993,7 @@ void VulkanEngine::generateBRDFLUT()
 		.maxLod = 1.0f,
 		.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE,
 	};
-	VkSampler brdfLUTSampler;
-	VK_CHECK(vkCreateSampler(_device, &samplerCI, nullptr, &brdfLUTSampler));
+	VK_CHECK(vkCreateSampler(_device, &samplerCI, nullptr, &brdfLUTTexture.sampler));
 
 	// FB, Att, RP, Pipe, etc.
 	VkAttachmentDescription attDesc{};
@@ -2148,14 +2195,13 @@ void VulkanEngine::generateBRDFLUT()
 	vkDestroyDescriptorSetLayout(_device, descriptorsetlayout, nullptr);
 
 	_mainDeletionQueue.pushFunction([=]() {
-		vkDestroySampler(_device, brdfLUTSampler, nullptr);
+		vkDestroySampler(_device, brdfLUTTexture.sampler, nullptr);
 		vkDestroyImageView(_device, brdfLUTTexture.imageView, nullptr);
 		vmaDestroyImage(_allocator, brdfLUTTexture.image._image, brdfLUTTexture.image._allocation);
 		});
 
 	// Apply the created texture/sampler to global scene
 	_pbrSceneTextureSet.brdfLUTTexture = brdfLUTTexture;
-	_pbrSceneTextureSet.brdfLUTSampler = brdfLUTSampler;
 
 	// Report time it took
 	auto tEnd = std::chrono::high_resolution_clock::now();
@@ -2171,17 +2217,17 @@ void VulkanEngine::attachPBRDescriptors()
 	// the combined sampled texture bind point
 	//
 	VkDescriptorImageInfo irradianceDescriptor = {
-		.sampler = _pbrSceneTextureSet.irradianceSampler,
+		.sampler = _pbrSceneTextureSet.irradianceCubemap.sampler,
 		.imageView = _pbrSceneTextureSet.irradianceCubemap.imageView,
 		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 	};
 	VkDescriptorImageInfo prefilteredDescriptor = {
-		.sampler = _pbrSceneTextureSet.prefilteredSampler,
+		.sampler = _pbrSceneTextureSet.prefilteredCubemap.sampler,
 		.imageView = _pbrSceneTextureSet.prefilteredCubemap.imageView,
 		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 	};
 	VkDescriptorImageInfo brdfLUTDescriptor = {
-		.sampler = _pbrSceneTextureSet.brdfLUTSampler,
+		.sampler = _pbrSceneTextureSet.brdfLUTTexture.sampler,
 		.imageView = _pbrSceneTextureSet.brdfLUTTexture.imageView,
 		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 	};

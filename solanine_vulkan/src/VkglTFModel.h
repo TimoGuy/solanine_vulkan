@@ -10,8 +10,6 @@
 
 #include "Imports.h"
 class VulkanEngine;
-class Texture;
-struct Vertex;
 
 // ERROR is already defined in wingdi.h and collides with a define in the Draco headers
 #if defined(_WIN32) && defined(ERROR) && defined(TINYGLTF_ENABLE_DRACO) 
@@ -47,6 +45,7 @@ namespace vkglTF
 	{
 		VkFilter magFilter;
 		VkFilter minFilter;
+		VkSamplerMipmapMode mipmapMode;
 		VkSamplerAddressMode addressModeU;
 		VkSamplerAddressMode addressModeV;
 		VkSamplerAddressMode addressModeW;
@@ -112,7 +111,7 @@ namespace vkglTF
 			bool specularGlossiness = false;
 		} pbrWorkflows;
 	
-		VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
+		Material calculatedMaterial;    // @NOTE: this will contain the pbr pipeline, the pbr pipeline layout, and the texture descriptorset for this pbrmaterial instance
 	};
 
 	struct Primitive
@@ -120,10 +119,10 @@ namespace vkglTF
 		uint32_t firstIndex;
 		uint32_t indexCount;
 		uint32_t vertexCount;
-		//Material& material;
+		PBRMaterial& material;
 		bool hasIndices;
 		BoundingBox bb;
-		Primitive(uint32_t firstIndex, uint32_t indexCount, uint32_t vertexCount/*, Material& material*/);
+		Primitive(uint32_t firstIndex, uint32_t indexCount, uint32_t vertexCount, PBRMaterial& material);
 		void setBoundingBox(glm::vec3 min, glm::vec3 max);
 	};
 
@@ -252,7 +251,7 @@ namespace vkglTF
 
 		std::vector<Texture> textures;
 		std::vector<TextureSampler> textureSamplers;
-		//std::vector<Material> materials;
+		std::vector<PBRMaterial> materials;
 		std::vector<Animation> animations;
 		std::vector<std::string> extensions;
 
@@ -277,8 +276,9 @@ namespace vkglTF
 		void loadTextures(tinygltf::Model& gltfModel, VulkanEngine* engine);
 		VkSamplerAddressMode getVkWrapMode(int32_t wrapMode);
 		VkFilter getVkFilterMode(int32_t filterMode);
+		VkSamplerMipmapMode getVkMipmapModeMode(int32_t filterMode);
 		void loadTextureSamplers(tinygltf::Model& gltfModel);
-		//void loadMaterials(tinygltf::Model& gltfModel);
+		void loadMaterials(tinygltf::Model& gltfModel, VulkanEngine* engine);    // @NOTE: someday it might be beneficial to have some kind of material override for any model.  -Timo
 		void loadAnimations(tinygltf::Model& gltfModel);
 		void loadFromFile(VulkanEngine* engine, std::string filename, float scale = 1.0f);
 		void bind(VkCommandBuffer commandBuffer);

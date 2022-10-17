@@ -78,19 +78,6 @@ struct DeletionQueue
 	}
 };
 
-struct Texture
-{
-	AllocatedImage image;
-	VkImageView imageView;
-};
-
-struct Material
-{
-	VkDescriptorSet textureSet{ VK_NULL_HANDLE };	// Texture is defaulted to NULL
-	VkPipeline pipeline;
-	VkPipelineLayout pipelineLayout;
-};
-
 struct RenderObject
 {
 	vkglTF::Model* model;
@@ -165,14 +152,11 @@ public:
 		VkDescriptorImageInfo environmentCubeDescriptor;	// @FIXME: This shouldn't be here... reorg!!!! PLEASEEEE!!!!
 	} _renderObjectModels;
 
-	struct PBRSceneTextureSet
+	struct PBRSceneTextureSet    // @NOTE: these are the textures that are needed for any type of pbr scene (i.e. the irradiance, prefilter, and brdf maps)
 	{
 		Texture irradianceCubemap;
-		VkSampler irradianceSampler;
 		Texture prefilteredCubemap;
-		VkSampler prefilteredSampler;
 		Texture brdfLUTTexture;
-		VkSampler brdfLUTSampler;
 	} _pbrSceneTextureSet;
 
 	Material* createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name);

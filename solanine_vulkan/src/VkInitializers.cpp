@@ -1,5 +1,7 @@
 #include "VkInitializers.h"
 
+#include "VulkanEngine.h"
+
 
 VkCommandPoolCreateInfo vkinit::commandPoolCreateInfo(uint32_t queueFamilyIndex, VkCommandPoolCreateFlags flags)
 {
@@ -273,6 +275,16 @@ VkSamplerCreateInfo vkinit::samplerCreateInfo(VkFilter filters, VkSamplerAddress
 		.addressModeU = samplerAddressMode,
 		.addressModeV = samplerAddressMode,
 		.addressModeW = samplerAddressMode,
+	};
+	return info;
+}
+
+VkDescriptorImageInfo vkinit::textureToDescriptorImageInfo(const Texture* texture)
+{
+	VkDescriptorImageInfo info = {
+		.sampler = texture->sampler,
+		.imageView = texture->imageView,
+		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 	};
 	return info;
 }

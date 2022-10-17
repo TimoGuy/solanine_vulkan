@@ -5,7 +5,7 @@
 
 namespace vkutil
 {
-	bool loadImageFromFile(VulkanEngine& engine, const char* fname, uint32_t mipLevels, AllocatedImage& outImage);		// @NOTE: mipLevels set to 0 will generate all mipmaps
+	bool loadImageFromFile(VulkanEngine& engine, const char* fname, VkFormat imageFormat, uint32_t mipLevels, AllocatedImage& outImage);		// @NOTE: mipLevels set to 0 will generate all mipmaps
 	bool loadImageFromBuffer(VulkanEngine& engine, int texWidth, int texHeight, VkDeviceSize imageSize, VkFormat imageFormat, void* pixels, uint32_t mipLevels, AllocatedImage& outImage);
-	bool loadImageCubemapFromFile(VulkanEngine& engine, std::vector<const char*> fnames, uint32_t mipLevels, AllocatedImage& outImage);		// @NOTE: fnames order is ...
+	bool loadImageCubemapFromFile(VulkanEngine& engine, std::vector<const char*> fnames, VkFormat imageFormat, uint32_t mipLevels, AllocatedImage& outImage);		// @NOTE: fnames order is ...
 }

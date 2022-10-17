@@ -1,5 +1,7 @@
 #pragma once
+
 #include "Imports.h"
+struct Texture;
 
 
 namespace vkinit
@@ -23,5 +25,6 @@ namespace vkinit
 	VkCommandBufferBeginInfo commandBufferBeginInfo(VkCommandBufferUsageFlags flags = 0);
 	VkSubmitInfo submitInfo(VkCommandBuffer* cmd);
 	VkSamplerCreateInfo samplerCreateInfo(VkFilter filters, VkSamplerAddressMode samplerAddressMode = VK_SAMPLER_ADDRESS_MODE_REPEAT);
+	VkDescriptorImageInfo textureToDescriptorImageInfo(const Texture* texture);
 	VkWriteDescriptorSet writeDescriptorImage(VkDescriptorType type, VkDescriptorSet dstSet, VkDescriptorImageInfo* imageInfo, uint32_t binding);
 }

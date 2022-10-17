@@ -311,10 +311,10 @@ namespace vkglTF
 	//
 	// Primitive
 	//
-	Primitive::Primitive(uint32_t firstIndex, uint32_t indexCount, uint32_t vertexCount/*, Material& material*/) : firstIndex(firstIndex), indexCount(indexCount), vertexCount(vertexCount)/*, material(material)*/
+	Primitive::Primitive(uint32_t firstIndex, uint32_t indexCount, uint32_t vertexCount, PBRMaterial& material) : firstIndex(firstIndex), indexCount(indexCount), vertexCount(vertexCount), material(material)
 	{
 		hasIndices = indexCount > 0;
-	};
+	}
 
 	void Primitive::setBoundingBox(glm::vec3 min, glm::vec3 max)
 	{
@@ -798,7 +798,7 @@ namespace vkglTF
 						return;
 					}
 				}
-				Primitive* newPrimitive = new Primitive(indexStart, indexCount, vertexCount/*, primitive.material > -1 ? materials[primitive.material] : materials.back()*/);
+				Primitive* newPrimitive = new Primitive(indexStart, indexCount, vertexCount, primitive.material > -1 ? materials[primitive.material] : materials.back());
 				newPrimitive->setBoundingBox(posMin, posMax);
 				newMesh->primitives.push_back(newPrimitive);
 			}
@@ -902,6 +902,7 @@ namespace vkglTF
 				// No sampler specified, use a default one
 				textureSampler.magFilter = VK_FILTER_LINEAR;
 				textureSampler.minFilter = VK_FILTER_LINEAR;
+				textureSampler.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
 				textureSampler.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
 				textureSampler.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
 				textureSampler.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
@@ -949,6 +950,27 @@ namespace vkglTF
 			VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(format, texture.image._image, VK_IMAGE_ASPECT_COLOR_BIT, texture.image._mipLevels);
 			vkCreateImageView(engine->_device, &imageInfo, nullptr, &texture.imageView);
 
+			VkSamplerCreateInfo samplerInfo = {
+				.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+				.pNext = nullptr,
+				.magFilter = textureSampler.magFilter,
+				.minFilter = textureSampler.minFilter,
+				.mipmapMode = textureSampler.mipmapMode,
+				.addressModeU = textureSampler.addressModeU,
+				.addressModeV = textureSampler.addressModeV,
+				.addressModeW = textureSampler.addressModeW,
+				.mipLodBias = 0.0f,
+				.anisotropyEnable = VK_TRUE,
+				.maxAnisotropy = engine->_gpuProperties.limits.maxSamplerAnisotropy,
+				.compareEnable = VK_FALSE,
+				.compareOp = VK_COMPARE_OP_NEVER,
+				.minLod = 0.0f,
+				.maxLod = static_cast<float_t>(texture.image._mipLevels),
+				.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
+				.unnormalizedCoordinates = VK_FALSE,
+			};
+			vkCreateSampler(engine->_device, &samplerInfo, nullptr, &texture.sampler);
+
 			engine->_mainDeletionQueue.pushFunction([=]() {
 				vkDestroyImageView(engine->_device, texture.imageView, nullptr);
 				});
@@ -989,6 +1011,14 @@ namespace vkglTF
 		}
 	}
 
+	VkSamplerMipmapMode Model::getVkMipmapModeMode(int32_t filterMode)
+	{
+		VkFilter filterModeEnum = getVkFilterMode(filterMode);
+		if (filterModeEnum == VK_FILTER_NEAREST)
+			return VK_SAMPLER_MIPMAP_MODE_NEAREST;
+		return VK_SAMPLER_MIPMAP_MODE_LINEAR;   // @NOTE: it's only these two options for mipmaps, so the outlier of the VkFilter enum is the NEAREST option.
+	}
+
 	void Model::loadTextureSamplers(tinygltf::Model& gltfModel)
 	{
 		for (tinygltf::Sampler smpl : gltfModel.samplers)
@@ -996,6 +1026,7 @@ namespace vkglTF
 			vkglTF::TextureSampler sampler = {
 				.magFilter = getVkFilterMode(smpl.magFilter),
 				.minFilter = getVkFilterMode(smpl.minFilter),
+				.mipmapMode = getVkMipmapModeMode(smpl.minFilter),
 				.addressModeU = getVkWrapMode(smpl.wrapS),
 				.addressModeV = getVkWrapMode(smpl.wrapT),
 				.addressModeW = sampler.addressModeV,
@@ -1004,125 +1035,197 @@ namespace vkglTF
 		}
 	}
 
-	//void Model::loadMaterials(tinygltf::Model& gltfModel)
-	//{
-	//	for (tinygltf::Material& mat : gltfModel.materials)
-	//	{
-	//		vkglTF::Material material = {};
-	//		material.doubleSided = mat.doubleSided;
+	void Model::loadMaterials(tinygltf::Model& gltfModel, VulkanEngine* engine)
+	{
+		//
+		// Create PBRMaterials with the properties
+		// of the pbr workflow in the gltf model's materials
+		//
+		for (tinygltf::Material& mat : gltfModel.materials)
+		{
+			vkglTF::PBRMaterial material = {};
+			material.doubleSided = mat.doubleSided;
 
-	//		if (mat.values.find("baseColorTexture") != mat.values.end())
-	//		{
-	//			material.baseColorTexture = &textures[mat.values["baseColorTexture"].TextureIndex()];
-	//			material.texCoordSets.baseColor = mat.values["baseColorTexture"].TextureTexCoord();
-	//		}
+			if (mat.values.find("baseColorTexture") != mat.values.end())
+			{
+				material.baseColorTexture = &textures[mat.values["baseColorTexture"].TextureIndex()];
+				material.texCoordSets.baseColor = mat.values["baseColorTexture"].TextureTexCoord();
+			}
 
-	//		if (mat.values.find("metallicRoughnessTexture") != mat.values.end())
-	//		{
-	//			material.metallicRoughnessTexture = &textures[mat.values["metallicRoughnessTexture"].TextureIndex()];
-	//			material.texCoordSets.metallicRoughness = mat.values["metallicRoughnessTexture"].TextureTexCoord();
-	//		}
+			if (mat.values.find("metallicRoughnessTexture") != mat.values.end())
+			{
+				material.metallicRoughnessTexture = &textures[mat.values["metallicRoughnessTexture"].TextureIndex()];
+				material.texCoordSets.metallicRoughness = mat.values["metallicRoughnessTexture"].TextureTexCoord();
+			}
 
-	//		if (mat.values.find("roughnessFactor") != mat.values.end())
-	//		{
-	//			material.roughnessFactor = static_cast<float>(mat.values["roughnessFactor"].Factor());
-	//		}
+			if (mat.values.find("roughnessFactor") != mat.values.end())
+			{
+				material.roughnessFactor = static_cast<float>(mat.values["roughnessFactor"].Factor());
+			}
 
-	//		if (mat.values.find("metallicFactor") != mat.values.end())
-	//		{
-	//			material.metallicFactor = static_cast<float>(mat.values["metallicFactor"].Factor());
-	//		}
+			if (mat.values.find("metallicFactor") != mat.values.end())
+			{
+				material.metallicFactor = static_cast<float>(mat.values["metallicFactor"].Factor());
+			}
 
-	//		if (mat.values.find("baseColorFactor") != mat.values.end())
-	//		{
-	//			material.baseColorFactor = glm::make_vec4(mat.values["baseColorFactor"].ColorFactor().data());
-	//		}
+			if (mat.values.find("baseColorFactor") != mat.values.end())
+			{
+				material.baseColorFactor = glm::make_vec4(mat.values["baseColorFactor"].ColorFactor().data());
+			}
 
-	//		if (mat.additionalValues.find("normalTexture") != mat.additionalValues.end())
-	//		{
-	//			material.normalTexture = &textures[mat.additionalValues["normalTexture"].TextureIndex()];
-	//			material.texCoordSets.normal = mat.additionalValues["normalTexture"].TextureTexCoord();
-	//		}
+			if (mat.additionalValues.find("normalTexture") != mat.additionalValues.end())
+			{
+				material.normalTexture = &textures[mat.additionalValues["normalTexture"].TextureIndex()];
+				material.texCoordSets.normal = mat.additionalValues["normalTexture"].TextureTexCoord();
+			}
 
-	//		if (mat.additionalValues.find("emissiveTexture") != mat.additionalValues.end())
-	//		{
-	//			material.emissiveTexture = &textures[mat.additionalValues["emissiveTexture"].TextureIndex()];
-	//			material.texCoordSets.emissive = mat.additionalValues["emissiveTexture"].TextureTexCoord();
-	//		}
+			if (mat.additionalValues.find("emissiveTexture") != mat.additionalValues.end())
+			{
+				material.emissiveTexture = &textures[mat.additionalValues["emissiveTexture"].TextureIndex()];
+				material.texCoordSets.emissive = mat.additionalValues["emissiveTexture"].TextureTexCoord();
+			}
 
-	//		if (mat.additionalValues.find("occlusionTexture") != mat.additionalValues.end())
-	//		{
-	//			material.occlusionTexture = &textures[mat.additionalValues["occlusionTexture"].TextureIndex()];
-	//			material.texCoordSets.occlusion = mat.additionalValues["occlusionTexture"].TextureTexCoord();
-	//		}
+			if (mat.additionalValues.find("occlusionTexture") != mat.additionalValues.end())
+			{
+				material.occlusionTexture = &textures[mat.additionalValues["occlusionTexture"].TextureIndex()];
+				material.texCoordSets.occlusion = mat.additionalValues["occlusionTexture"].TextureTexCoord();
+			}
 
-	//		if (mat.additionalValues.find("alphaMode") != mat.additionalValues.end())
-	//		{
-	//			tinygltf::Parameter param = mat.additionalValues["alphaMode"];
-	//			if (param.string_value == "BLEND")
-	//			{
-	//				material.alphaMode = Material::ALPHAMODE_BLEND;
-	//			}
-	//			if (param.string_value == "MASK")
-	//			{
-	//				material.alphaCutoff = 0.5f;
-	//				material.alphaMode = Material::ALPHAMODE_MASK;
-	//			}
-	//		}
+			if (mat.additionalValues.find("alphaMode") != mat.additionalValues.end())
+			{
+				tinygltf::Parameter param = mat.additionalValues["alphaMode"];
+				if (param.string_value == "BLEND")
+				{
+					material.alphaMode = PBRMaterial::ALPHAMODE_BLEND;
+				}
+				if (param.string_value == "MASK")
+				{
+					material.alphaCutoff = 0.5f;
+					material.alphaMode = PBRMaterial::ALPHAMODE_MASK;
+				}
+			}
 
-	//		if (mat.additionalValues.find("alphaCutoff") != mat.additionalValues.end())
-	//		{
-	//			material.alphaCutoff = static_cast<float>(mat.additionalValues["alphaCutoff"].Factor());
-	//		}
+			if (mat.additionalValues.find("alphaCutoff") != mat.additionalValues.end())
+			{
+				material.alphaCutoff = static_cast<float>(mat.additionalValues["alphaCutoff"].Factor());
+			}
 
-	//		if (mat.additionalValues.find("emissiveFactor") != mat.additionalValues.end())
-	//		{
-	//			material.emissiveFactor = glm::vec4(glm::make_vec3(mat.additionalValues["emissiveFactor"].ColorFactor().data()), 1.0);
-	//		}
+			if (mat.additionalValues.find("emissiveFactor") != mat.additionalValues.end())
+			{
+				material.emissiveFactor = glm::vec4(glm::make_vec3(mat.additionalValues["emissiveFactor"].ColorFactor().data()), 1.0);
+			}
 
-	//		// Extensions
-	//		// @TODO: Find out if there is a nicer way of reading these properties with recent tinygltf headers
-	//		if (mat.extensions.find("KHR_materials_pbrSpecularGlossiness") != mat.extensions.end())
-	//		{
-	//			auto ext = mat.extensions.find("KHR_materials_pbrSpecularGlossiness");
-	//			if (ext->second.Has("specularGlossinessTexture"))
-	//			{
-	//				auto index = ext->second.Get("specularGlossinessTexture").Get("index");
-	//				material.extension.specularGlossinessTexture = &textures[index.Get<int>()];
-	//				auto texCoordSet = ext->second.Get("specularGlossinessTexture").Get("texCoord");
-	//				material.texCoordSets.specularGlossiness = texCoordSet.Get<int>();
-	//				material.pbrWorkflows.specularGlossiness = true;
-	//			}
-	//			if (ext->second.Has("diffuseTexture"))
-	//			{
-	//				auto index = ext->second.Get("diffuseTexture").Get("index");
-	//				material.extension.diffuseTexture = &textures[index.Get<int>()];
-	//			}
-	//			if (ext->second.Has("diffuseFactor"))
-	//			{
-	//				auto factor = ext->second.Get("diffuseFactor");
-	//				for (uint32_t i = 0; i < factor.ArrayLen(); i++)
-	//				{
-	//					auto val = factor.Get(i);
-	//					material.extension.diffuseFactor[i] = val.IsNumber() ? (float)val.Get<double>() : (float)val.Get<int>();
-	//				}
-	//			}
-	//			if (ext->second.Has("specularFactor"))
-	//			{
-	//				auto factor = ext->second.Get("specularFactor");
-	//				for (uint32_t i = 0; i < factor.ArrayLen(); i++)
-	//				{
-	//					auto val = factor.Get(i);
-	//					material.extension.specularFactor[i] = val.IsNumber() ? (float)val.Get<double>() : (float)val.Get<int>();
-	//				}
-	//			}
-	//		}
+			// Extensions
+			// @TODO: Find out if there is a nicer way of reading these properties with recent tinygltf headers
+			if (mat.extensions.find("KHR_materials_pbrSpecularGlossiness") != mat.extensions.end())
+			{
+				auto ext = mat.extensions.find("KHR_materials_pbrSpecularGlossiness");
+				if (ext->second.Has("specularGlossinessTexture"))
+				{
+					auto index = ext->second.Get("specularGlossinessTexture").Get("index");
+					material.extension.specularGlossinessTexture = &textures[index.Get<int>()];
+					auto texCoordSet = ext->second.Get("specularGlossinessTexture").Get("texCoord");
+					material.texCoordSets.specularGlossiness = texCoordSet.Get<int>();
+					material.pbrWorkflows.specularGlossiness = true;
+				}
+				if (ext->second.Has("diffuseTexture"))
+				{
+					auto index = ext->second.Get("diffuseTexture").Get("index");
+					material.extension.diffuseTexture = &textures[index.Get<int>()];
+				}
+				if (ext->second.Has("diffuseFactor"))
+				{
+					auto factor = ext->second.Get("diffuseFactor");
+					for (uint32_t i = 0; i < factor.ArrayLen(); i++)
+					{
+						auto val = factor.Get(i);
+						material.extension.diffuseFactor[i] = val.IsNumber() ? (float)val.Get<double>() : (float)val.Get<int>();
+					}
+				}
+				if (ext->second.Has("specularFactor"))
+				{
+					auto factor = ext->second.Get("specularFactor");
+					for (uint32_t i = 0; i < factor.ArrayLen(); i++)
+					{
+						auto val = factor.Get(i);
+						material.extension.specularFactor[i] = val.IsNumber() ? (float)val.Get<double>() : (float)val.Get<int>();
+					}
+				}
+			}
 
-	//		materials.push_back(material);
-	//	}
-	//	// Push a default material at the end of the list for meshes with no material assigned
-	//	materials.push_back(Material());
-	//}
+			materials.push_back(material);
+		}
+		// Push a default material at the end of the list for meshes with no material assigned
+		materials.push_back(PBRMaterial());
+
+		//
+		// Create descriptorsets per material
+		// (NOTE: the materials are the created PBRMaterials, not the gltf materials)
+		// 
+		// @TODO: This is a @FEATURE for the future, however, it'd be really
+		//        nice for there to be a way to create and override materials
+		//        for a model.  -Timo
+		//
+		for (PBRMaterial& material : materials)
+		{
+			// Allocate descriptor set for holding pbr texture info
+			VkDescriptorSetAllocateInfo descriptorSetAllocInfo = {
+				.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+				.descriptorPool = engine->_descriptorPool,    // @TODO: @NOTE: since in the future there will be separate descriptor pools, there might need to be a different system and not directly refer to these descriptor pools
+				.descriptorSetCount = 1,
+				.pSetLayouts = &engine->_pbrTexturesSetLayout,
+			};
+			VK_CHECK(vkAllocateDescriptorSets(engine->_device, &descriptorSetAllocInfo, &material.calculatedMaterial.textureSet));    // @TODO: @NOTE: this could fail, fyi. So that's why having that abstraction would be really great.  -Timo
+
+			//
+			// Write image descriptors
+			//
+			std::array<Texture*, 5> pbrTextures = {
+				&engine->_loadedTextures["empty"],
+				&engine->_loadedTextures["empty"],
+				material.normalTexture    ? material.normalTexture    : &engine->_loadedTextures["empty"],
+				material.occlusionTexture ? material.occlusionTexture : &engine->_loadedTextures["empty"],
+				material.emissiveTexture  ? material.emissiveTexture  : &engine->_loadedTextures["empty"],
+			};
+
+			// TODO: glTF specs states that metallic roughness should be preferred, even if specular glossiness is present
+
+			if (material.pbrWorkflows.metallicRoughness)
+			{
+				if (material.baseColorTexture)
+					pbrTextures[0] = material.baseColorTexture;
+				if (material.metallicRoughnessTexture)
+					pbrTextures[1] = material.metallicRoughnessTexture;
+			}
+
+			if (material.pbrWorkflows.specularGlossiness)
+			{
+				if (material.extension.diffuseTexture)
+					pbrTextures[0] = material.extension.diffuseTexture;
+				if (material.extension.specularGlossinessTexture)
+					pbrTextures[1] = material.extension.specularGlossinessTexture;
+			}
+
+			// Convert to VkDescriptorImageInfo
+			std::array<VkDescriptorImageInfo, 5> imageDescriptors{};
+			for (size_t i = 0; i < pbrTextures.size(); i++)
+				imageDescriptors[i] =
+					vkinit::textureToDescriptorImageInfo(pbrTextures[i]);
+
+			// Convert to VkWriteDescriptorSet
+			std::array<VkWriteDescriptorSet, 5> writeDescriptorSets{};
+			for (size_t i = 0; i < imageDescriptors.size(); i++)
+				writeDescriptorSets[i] =
+					vkinit::writeDescriptorImage(
+						VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+						material.calculatedMaterial.textureSet,
+						&imageDescriptors[i],
+						static_cast<uint32_t>(i)
+					);
+
+			vkUpdateDescriptorSets(engine->_device, static_cast<uint32_t>(writeDescriptorSets.size()), writeDescriptorSets.data(), 0, nullptr);
+		}
+	}
 
 	void Model::loadAnimations(tinygltf::Model& gltfModel)
 	{
@@ -1293,7 +1396,7 @@ namespace vkglTF
 		//
 		loadTextureSamplers(gltfModel);		// @TODO: RE-ENABLE THESE. THESE ARE ALREADY IMPLEMENTED BUT THEY ARE SLOW
 		loadTextures(gltfModel, engine);		// @TODO: RE-ENABLE THESE. THESE ARE ALREADY IMPLEMENTED BUT THEY ARE SLOW
-		//loadMaterials(gltfModel);
+		loadMaterials(gltfModel, engine);
 
 		const tinygltf::Scene& scene = gltfModel.scenes[gltfModel.defaultScene > -1 ? gltfModel.defaultScene : 0];		// TODO: scene handling with no default scene
 

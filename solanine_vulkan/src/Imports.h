@@ -42,3 +42,17 @@ struct AllocatedImage
 	VkImage _image;
 	VmaAllocation _allocation;
 };
+
+struct Texture
+{
+	AllocatedImage image;
+	VkImageView imageView;
+	VkSampler sampler;    // @NOTE: It actually isn't necessary to have a 1-to-1 with samplers and textures, however, this is for simplicity.  -Timo
+};
+
+struct Material
+{
+	VkDescriptorSet textureSet{ VK_NULL_HANDLE };	// Texture is defaulted to NULL
+	VkPipeline pipeline;    // @NOTE: in the case of PBR MATERIAL, there is going to be one pipeline, one pipelinelayout and many many texture set descriptorsets for the PBR Material  -Timo
+	VkPipelineLayout pipelineLayout;
+};

@@ -3,7 +3,7 @@
 #include "VkInitializers.h"
 
 
-bool vkutil::loadImageFromFile(VulkanEngine& engine, const char* fname, uint32_t mipLevels, AllocatedImage& outImage)
+bool vkutil::loadImageFromFile(VulkanEngine& engine, const char* fname, VkFormat imageFormat, uint32_t mipLevels, AllocatedImage& outImage)
 {
 	//
 	// Load image from file
@@ -19,12 +19,12 @@ bool vkutil::loadImageFromFile(VulkanEngine& engine, const char* fname, uint32_t
 
 	void* pixelPtr = pixels;
 	VkDeviceSize imageSize = texWidth * texHeight * 4;		// @HARDCODED: bc planning on having the alpha channel in here too
-	VkFormat imageFormat = VK_FORMAT_R8G8B8A8_SRGB;		// @HARDCODED: this could easily change
+	//VkFormat imageFormat = VK_FORMAT_R8G8B8A8_SRGB;		// @HARDCODED: this could easily change
 
 	bool ret = loadImageFromBuffer(engine, texWidth, texHeight, imageSize, imageFormat, pixelPtr, mipLevels, outImage);
 	stbi_image_free(pixels);
 
-	std::cout << "Texture (mips=" << mipLevels << ")" << std::endl << "\t" << fname << std::endl << "\tloaded successfully" << std::endl;
+	std::cout << "Texture (mips=" << outImage._mipLevels << ")" << std::endl << "\t" << fname << std::endl << "\tloaded successfully" << std::endl;
 
 	return ret;
 }
@@ -238,7 +238,7 @@ bool vkutil::loadImageFromBuffer(VulkanEngine& engine, int texWidth, int texHeig
 	return true;
 }
 
-bool vkutil::loadImageCubemapFromFile(VulkanEngine& engine, std::vector<const char*> fnames, uint32_t mipLevels, AllocatedImage& outImage)
+bool vkutil::loadImageCubemapFromFile(VulkanEngine& engine, std::vector<const char*> fnames, VkFormat imageFormat, uint32_t mipLevels, AllocatedImage& outImage)
 {
 	if (mipLevels != 1)
 	{
@@ -276,7 +276,7 @@ bool vkutil::loadImageCubemapFromFile(VulkanEngine& engine, std::vector<const ch
 		maxDimension = std::max(maxDimension, std::max(texWidth, texHeight));
 	}
 
-	VkFormat imageFormat = VK_FORMAT_R8G8B8A8_SRGB;		// @HARDCODED: this could easily change
+	//VkFormat imageFormat = VK_FORMAT_R8G8B8A8_SRGB;		// @HARDCODED: this could easily change
 
 	//
 	// Copy image to CPU-side buffer
