@@ -81,6 +81,9 @@ void VulkanEngine::run()
 	_sceneCamera.gpuCameraData.cameraPosition = { 0.0f, 3.0f, -5.0f };
 	recalculateSceneCamera();
 
+	// @HARDCODED: Set the initial light direction
+	_pbrRendering.gpuSceneShadingProps.lightDir = glm::normalize(glm::vec4(0.432f, 0.864f, 0.259f, 0.0f));
+
 	//
 	// Main Loop
 	//
@@ -273,6 +276,28 @@ void VulkanEngine::run()
 
 			ImGui::Text(("Render Times :     [0, " + std::format("{:.2f}", _debugStats.highestRenderTime) + "]").c_str());
 			ImGui::PlotHistogram("##Render Times Histogram", _debugStats.renderTimesMS, _debugStats.renderTimesMSCount, _debugStats.renderTimesMSHeadIndex, "", 0.0f, _debugStats.highestRenderTime, ImVec2(256, 24.0f));
+		}
+		ImGui::End();
+
+		// PBR Shading Props
+		ImGui::Begin("PBR Shading Props");
+		{
+			if (ImGui::DragFloat3("Light Direction", glm::value_ptr(_pbrRendering.gpuSceneShadingProps.lightDir)))
+				_pbrRendering.gpuSceneShadingProps.lightDir = glm::normalize(_pbrRendering.gpuSceneShadingProps.lightDir);
+
+			ImGui::DragFloat("Exposure", &_pbrRendering.gpuSceneShadingProps.exposure, 0.1f, 0.1f, 10.0f);
+			ImGui::DragFloat("Gamma", &_pbrRendering.gpuSceneShadingProps.gamma, 0.1f, 0.1f, 4.0f);
+			ImGui::DragFloat("IBL Strength", &_pbrRendering.gpuSceneShadingProps.scaleIBLAmbient, 0.1f, 0.0f, 2.0f);
+
+			static int debugViewIndex = 0;
+			if (ImGui::Combo("Debug View Input", &debugViewIndex, "none\0Base color\0Normal\0Occlusion\0Emissive\0Metallic\0Roughness"))
+				_pbrRendering.gpuSceneShadingProps.debugViewInputs = (float_t)debugViewIndex;
+
+			static int debugViewEquation = 0;
+			if (ImGui::Combo("Debug View Equation", &debugViewEquation, "none\0Diff (l,n)\0F (l,h)\0G (l,v,h)\0D (h)\0Specular"))
+				_pbrRendering.gpuSceneShadingProps.debugViewEquation = (float_t)debugViewEquation;
+
+			ImGui::Text(("Prefiltered Cubemap Miplevels: " + std::to_string((int32_t)_pbrRendering.gpuSceneShadingProps.prefilteredCubemapMipLevels)).c_str());
 		}
 		ImGui::End();
 		
@@ -2432,7 +2457,6 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first,
 	//
 	// Upload pbr shading props to GPU
 	//
-	_pbrRendering.gpuSceneShadingProps.lightDir = glm::normalize(glm::vec4(0.432f, 0.864f, 0.259f, 0.0f));    // @HACK: @HARDCODED: Need to put this in a better spot honestly. Man what the heck.  -Timo
 	vmaMapMemory(_allocator, currentFrame.pbrShadingPropsBuffer._allocation, &data);
 	memcpy(data, &_pbrRendering.gpuSceneShadingProps, sizeof(GPUPBRShadingProps));
 	vmaUnmapMemory(_allocator, currentFrame.pbrShadingPropsBuffer._allocation);
