@@ -238,7 +238,7 @@ bool vkutil::loadImageFromBuffer(VulkanEngine& engine, int texWidth, int texHeig
 	return true;
 }
 
-bool vkutil::loadImageCubemapFromFile(VulkanEngine& engine, std::vector<const char*> fnames, VkFormat imageFormat, uint32_t mipLevels, AllocatedImage& outImage)
+bool vkutil::loadImageCubemapFromFile(VulkanEngine& engine, std::vector<const char*> fnames, bool isHDR, VkFormat imageFormat, uint32_t mipLevels, AllocatedImage& outImage)
 {
 	if (mipLevels != 1)
 	{
@@ -262,16 +262,30 @@ bool vkutil::loadImageCubemapFromFile(VulkanEngine& engine, std::vector<const ch
 	for (const char* fname : fnames)
 	{
 		int texWidth, texHeight, texChannels;
-		stbi_uc* pixels = stbi_load(fname, &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
-
-		if (!pixels)
+		if (isHDR)
 		{
-			std::cerr << "ERROR: failed to load texture " << fname << std::endl;
-			return false;
-		}
+			float_t* pixels = stbi_loadf(fname, &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+			if (!pixels)
+			{
+				std::cerr << "ERROR: failed to load texture " << fname << std::endl;
+				return false;
+			}
 
-		pixelPtrs.push_back(pixels);
-		imageSizes.push_back(static_cast<size_t>(texWidth * texHeight * 4));		// @HARDCODED: bc planning on having the alpha channel in here too
+			pixelPtrs.push_back(pixels);
+			imageSizes.push_back(static_cast<size_t>(texWidth * texHeight * 4 * sizeof(float_t)));    // @HARDCODED: bc planning on having the alpha channel in here too
+		}
+		else
+		{
+			stbi_uc* pixels = stbi_load(fname, &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+			if (!pixels)
+			{
+				std::cerr << "ERROR: failed to load texture " << fname << std::endl;
+				return false;
+			}
+
+			pixelPtrs.push_back(pixels);
+			imageSizes.push_back(static_cast<size_t>(texWidth * texHeight * 4 * sizeof(stbi_uc)));		// @HARDCODED: bc planning on having the alpha channel in here too
+		}
 		imageExtents.push_back({ (uint32_t)texWidth, (uint32_t)texHeight, 1 });
 		maxDimension = std::max(maxDimension, std::max(texWidth, texHeight));
 	}
