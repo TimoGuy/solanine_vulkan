@@ -361,10 +361,7 @@ void VulkanEngine::render()
 		.renderPass = _renderPass,
 		.framebuffer = _framebuffers[swapchainImageIndex],		// @NOTE: Framebuffer of the index the swapchain gave
 		.renderArea = {
-			.offset = {
-				.x = 0,
-				.y = 0,
-			},
+			.offset = VkOffset2D{ 0, 0 },
 			.extent = _windowExtent,
 		},
 
@@ -983,7 +980,7 @@ void VulkanEngine::initSyncStructures()
 		});
 }
 
-void VulkanEngine::initDescriptors()
+void VulkanEngine::initDescriptors()    // @TODO: don't destroy and then recreate descriptors when recreating the swapchain. Only pipelines (not even pipelinelayouts), framebuffers, and the corresponding image/imageviews/samplers need to get recreated.  -Timo
 {
 	//
 	// Create Descriptor Pool
@@ -1296,7 +1293,7 @@ void VulkanEngine::initPipelines()
 	// Add destroy command for cleanup
 	_swapchainDependentDeletionQueue.pushFunction([=]() {
 		vkDestroyPipeline(_device, _meshPipeline, nullptr);
-		vkDestroyPipelineLayout(_device, _meshPipelineLayout, nullptr);
+		vkDestroyPipelineLayout(_device, _meshPipelineLayout, nullptr);    // @NOTE: pipelinelayouts don't have to get destroyed
 		vkDestroyPipeline(_device, _skyboxPipeline, nullptr);
 		vkDestroyPipelineLayout(_device, _skyboxPipelineLayout, nullptr);
 		});
