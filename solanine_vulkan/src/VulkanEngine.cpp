@@ -2648,29 +2648,36 @@ void VulkanEngine::checkIfResourceUpdatedThenHotswapRoutine()
 {
 	for (auto& resource : resourcesToWatch)
 	{
-		const std::filesystem::file_time_type lastWriteTime = std::filesystem::last_write_time(resource.path);
-		if (resource.lastWriteTime == lastWriteTime)
-			continue;
-
-		//
-		// Reload the resource
-		//
-		resource.lastWriteTime = lastWriteTime;
-
-		if (!resource.path.has_extension())
+		try
 		{
-			std::cerr << "ERROR: file " << resource.path << " has no extension!" << std::endl;
-			continue;
-		}
+			const std::filesystem::file_time_type lastWriteTime = std::filesystem::last_write_time(resource.path);
+			if (resource.lastWriteTime == lastWriteTime)
+				continue;
 
-		// Find the extension and execute appropriate routine
-		const auto& ext = resource.path.extension();
-		if (ext.compare(".vert") == 0 ||
-			ext.compare(".frag") == 0)
-		{
-			// Compile the shader (GLSL -> SPIRV)
-			glslToSPIRVHelper::compileGLSLShaderToSPIRV(resource.path);
+			//
+			// Reload the resource
+			//
+			resource.lastWriteTime = lastWriteTime;
+
+			if (!resource.path.has_extension())
+			{
+				std::cerr << "ERROR: file " << resource.path << " has no extension!" << std::endl;
+				continue;
+			}
+
+			// Find the extension and execute appropriate routine
+			const auto& ext = resource.path.extension();
+			if (ext.compare(".vert") == 0 ||
+				ext.compare(".frag") == 0)
+			{
+				// Compile the shader (GLSL -> SPIRV)
+				glslToSPIRVHelper::compileGLSLShaderToSPIRV(resource.path);
+
+				// Trip reloading the shaders (recreate swapchain flag)
+				_recreateSwapchain = true;
+			}
 		}
+		catch (...) { }   // Just continue on if you get the filesystem error
 	}
 }
 
