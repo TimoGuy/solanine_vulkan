@@ -24,9 +24,6 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <None Include="shader\default_lit.frag">
-      <Filter>Shader Files</Filter>
-    </None>
     <None Include="shader\filtercube.vert">
       <Filter>Shader Files</Filter>
     </None>
