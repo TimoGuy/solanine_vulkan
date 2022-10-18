@@ -51,27 +51,7 @@ namespace vkglTF
 		VkSamplerAddressMode addressModeW;
 	};
 
-	// @TODO: these aren't quite ready yet... bc the pbr pipeline should get created first, however, in the near future pls!
-	//struct Texture
-	//{
-	//	VkImage image;
-	//	VkImageLayout imageLayout;
-	//	VkDeviceMemory deviceMemory;
-	//	VkImageView view;
-	//	uint32_t width, height;
-	//	uint32_t mipLevels;
-	//	uint32_t layerCount;
-	//	VkDescriptorImageInfo descriptor;
-	//	VkSampler sampler;
-	//
-	//	void updateDescriptor();
-	//	void destroy();
-	//	// Load a texture from a glTF image (stored as vector of chars loaded via stb_image) and generate a full mip chain for it
-	//	void fromglTfImage(tinygltf::Image& gltfimage, TextureSampler textureSampler, VulkanEngine* device, VkQueue copyQueue);
-	//};
-
-	// @TODO: renamed to PBRMaterial (from Material), need to implement this into the gltf model stuff
-	struct PBRMaterial    // @NOTE: this uses the vulkan engine's _pbrTexturesSetLayout
+	struct PBRMaterial    // @NOTE: this uses the vulkan engine's _pbrTexturesSetLayout as the base pipeline
 	{
 		enum AlphaMode { ALPHAMODE_OPAQUE, ALPHAMODE_MASK, ALPHAMODE_BLEND };
 		AlphaMode alphaMode = ALPHAMODE_OPAQUE;
