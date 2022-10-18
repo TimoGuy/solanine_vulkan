@@ -2583,7 +2583,7 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first,
 				if (pbr.pbrWorkflows.specularGlossiness)
 				{
 					// Specular glossiness workflow
-					pc.workflow = static_cast<float>(PBR_WORKFLOW_SPECULAR_GLOSINESS);
+					pc.workflow = static_cast<float>(PBR_WORKFLOW_SPECULAR_GLOSSINESS);
 					pc.PhysicalDescriptorTextureSet = pbr.extension.specularGlossinessTexture != nullptr ? pbr.texCoordSets.specularGlossiness : -1;
 					pc.colorTextureSet = pbr.extension.diffuseTexture != nullptr ? pbr.texCoordSets.baseColor : -1;
 					pc.diffuseFactor = pbr.extension.diffuseFactor;
