@@ -68,6 +68,7 @@
 #include <map>
 #include <string>
 #include <vector>
+#include <taskflow/taskflow.hpp>
 
 //Auto-detect C++14 standard version
 #if !defined(TINYGLTF_USE_CPP14) && defined(__cplusplus) && (__cplusplus >= 201402L)
@@ -5644,58 +5645,79 @@ bool TinyGLTF::LoadFromString(Model *model, std::string *err, std::string *warn,
   // allocate heap when the size of the captured lambda is above 16 bytes with
   // clang and gcc, but it does not require C++14.
   auto ForEachInArray = [](const json &_v, const char *member,
-                           const std::function<bool(const json &)> &cb) -> bool
+                           const std::function<void(const json&, size_t, bool&)> &cb) -> bool
 #endif
   {
     json_const_iterator itm;
+    bool taskSucceeded = true;
+
     if (FindMember(_v, member, itm) && IsArray(GetValue(itm))) {
       const json &root = GetValue(itm);
       auto it = ArrayBegin(root);
       auto end = ArrayEnd(root);
-      for (; it != end; ++it) {
-        if (!cb(*it)) return false;
+
+      // Multithreaded add in
+      size_t jobIndex = 0;
+      tf::Executor e;
+      tf::Taskflow taskflow;
+
+      for (; it != end; ++it, jobIndex++) {
+        auto& itDeref = *it;    // @NOTE: we want a reference to be used, but as the iterator is iterated, this reference in the emplaced lambda below also gets iterated, thus, we dereference it in a smaller scoped object right here.
+        taskflow.emplace([&, jobIndex]() {    // @NOTE: a small scoped copy is needed or else the reference will be used in the taskflow which is bad!
+          cb(itDeref, jobIndex, taskSucceeded);     // @NOTE: when given the taskSucceeded reference, only set it to False!!! Don't set it to true please.
+          });
       }
+
+      e.run(taskflow).wait();
     }
-    return true;
+    return taskSucceeded;
   };
 
   // 2. Parse extensionUsed
   {
-    ForEachInArray(v, "extensionsUsed", [&](const json &o) {
+    size_t lock = 0;
+    ForEachInArray(v, "extensionsUsed", [&](const json &o, size_t jobIndex, bool& succeeded) {
       std::string str;
       GetString(o, str);
+      while (lock != jobIndex);
       model->extensionsUsed.emplace_back(std::move(str));
-      return true;
+      lock++;
     });
   }
 
   {
-    ForEachInArray(v, "extensionsRequired", [&](const json &o) {
+    size_t lock = 0;
+    ForEachInArray(v, "extensionsRequired", [&](const json &o, size_t jobIndex, bool& succeeded) {
       std::string str;
       GetString(o, str);
+      while (lock != jobIndex);
       model->extensionsRequired.emplace_back(std::move(str));
-      return true;
+      lock++;
     });
   }
 
   // 3. Parse Buffer
   {
-    bool success = ForEachInArray(v, "buffers", [&](const json &o) {
+    size_t lock = 0;
+    bool success = ForEachInArray(v, "buffers", [&](const json &o, size_t jobIndex, bool& succeeded) {
       if (!IsObject(o)) {
         if (err) {
           (*err) += "`buffers' does not contain an JSON object.";
         }
-        return false;
+        succeeded = false;
+        return;
       }
       Buffer buffer;
       if (!ParseBuffer(&buffer, err, o,
                        store_original_json_for_extras_and_extensions_, &fs,
                        base_dir, is_binary_, bin_data_, bin_size_)) {
-        return false;
+        succeeded = false;
+        return;
       }
 
+      while (lock != jobIndex);
       model->buffers.emplace_back(std::move(buffer));
-      return true;
+      lock++;
     });
 
     if (!success) {
@@ -5704,21 +5726,25 @@ bool TinyGLTF::LoadFromString(Model *model, std::string *err, std::string *warn,
   }
   // 4. Parse BufferView
   {
-    bool success = ForEachInArray(v, "bufferViews", [&](const json &o) {
+    size_t lock = 0;
+    bool success = ForEachInArray(v, "bufferViews", [&](const json &o, size_t jobIndex, bool& succeeded) {
       if (!IsObject(o)) {
         if (err) {
           (*err) += "`bufferViews' does not contain an JSON object.";
         }
-        return false;
+        succeeded = false;
+        return;
       }
       BufferView bufferView;
       if (!ParseBufferView(&bufferView, err, o,
                            store_original_json_for_extras_and_extensions_)) {
-        return false;
+        succeeded = false;
+        return;
       }
 
+      while (lock != jobIndex);
       model->bufferViews.emplace_back(std::move(bufferView));
-      return true;
+      lock++;
     });
 
     if (!success) {
@@ -5728,21 +5754,25 @@ bool TinyGLTF::LoadFromString(Model *model, std::string *err, std::string *warn,
 
   // 5. Parse Accessor
   {
-    bool success = ForEachInArray(v, "accessors", [&](const json &o) {
+    size_t lock = 0;
+    bool success = ForEachInArray(v, "accessors", [&](const json &o, size_t jobIndex, bool& succeeded) {
       if (!IsObject(o)) {
         if (err) {
           (*err) += "`accessors' does not contain an JSON object.";
         }
-        return false;
+        succeeded = false;
+        return;
       }
       Accessor accessor;
       if (!ParseAccessor(&accessor, err, o,
                          store_original_json_for_extras_and_extensions_)) {
-        return false;
+        succeeded = false;
+        return;
       }
 
+      while (lock != jobIndex);
       model->accessors.emplace_back(std::move(accessor));
-      return true;
+      lock++;
     });
 
     if (!success) {
@@ -5752,21 +5782,25 @@ bool TinyGLTF::LoadFromString(Model *model, std::string *err, std::string *warn,
 
   // 6. Parse Mesh
   {
-    bool success = ForEachInArray(v, "meshes", [&](const json &o) {
+    size_t lock = 0;
+    bool success = ForEachInArray(v, "meshes", [&](const json &o, size_t jobIndex, bool& succeeded) {
       if (!IsObject(o)) {
         if (err) {
           (*err) += "`meshes' does not contain an JSON object.";
         }
-        return false;
+        succeeded = false;
+        return;
       }
       Mesh mesh;
       if (!ParseMesh(&mesh, model, err, o,
                      store_original_json_for_extras_and_extensions_)) {
-        return false;
+        succeeded = false;
+        return;
       }
 
+      while (lock != jobIndex);
       model->meshes.emplace_back(std::move(mesh));
-      return true;
+      lock++;
     });
 
     if (!success) {
@@ -5835,21 +5869,25 @@ bool TinyGLTF::LoadFromString(Model *model, std::string *err, std::string *warn,
 
   // 7. Parse Node
   {
-    bool success = ForEachInArray(v, "nodes", [&](const json &o) {
+    size_t lock = 0;
+    bool success = ForEachInArray(v, "nodes", [&](const json &o, size_t jobIndex, bool& succeeded) {
       if (!IsObject(o)) {
         if (err) {
           (*err) += "`nodes' does not contain an JSON object.";
         }
-        return false;
+        succeeded = false;
+        return;
       }
       Node node;
       if (!ParseNode(&node, err, o,
                      store_original_json_for_extras_and_extensions_)) {
-        return false;
+        succeeded = false;
+        return;
       }
 
+      while (lock != jobIndex);
       model->nodes.emplace_back(std::move(node));
-      return true;
+      lock++;
     });
 
     if (!success) {
@@ -5859,12 +5897,14 @@ bool TinyGLTF::LoadFromString(Model *model, std::string *err, std::string *warn,
 
   // 8. Parse scenes.
   {
-    bool success = ForEachInArray(v, "scenes", [&](const json &o) {
+    size_t lock = 0;
+    bool success = ForEachInArray(v, "scenes", [&](const json &o, size_t jobIndex, bool& succeeded) {
       if (!IsObject(o)) {
         if (err) {
           (*err) += "`scenes' does not contain an JSON object.";
         }
-        return false;
+        succeeded = false;
+        return;
       }
       std::vector<int> nodes;
       ParseIntegerArrayProperty(&nodes, err, o, "nodes", false);
@@ -5892,8 +5932,9 @@ bool TinyGLTF::LoadFromString(Model *model, std::string *err, std::string *warn,
         }
       }
 
+      while (lock != jobIndex);
       model->scenes.emplace_back(std::move(scene));
-      return true;
+      lock++;
     });
 
     if (!success) {
@@ -5912,23 +5953,27 @@ bool TinyGLTF::LoadFromString(Model *model, std::string *err, std::string *warn,
 
   // 10. Parse Material
   {
-    bool success = ForEachInArray(v, "materials", [&](const json &o) {
+    size_t lock = 0;
+    bool success = ForEachInArray(v, "materials", [&](const json &o, size_t jobIndex, bool& succeeded) {
       if (!IsObject(o)) {
         if (err) {
           (*err) += "`materials' does not contain an JSON object.";
         }
-        return false;
+        succeeded = false;
+        return;
       }
       Material material;
       ParseStringProperty(&material.name, err, o, "name", false);
 
       if (!ParseMaterial(&material, err, o,
                          store_original_json_for_extras_and_extensions_)) {
-        return false;
+        succeeded = false;
+        return;
       }
 
+      while (lock != jobIndex);
       model->materials.emplace_back(std::move(material));
-      return true;
+      lock++;
     });
 
     if (!success) {
@@ -5950,19 +5995,22 @@ bool TinyGLTF::LoadFromString(Model *model, std::string *err, std::string *warn,
   }
 
   {
-    int idx = 0;
-    bool success = ForEachInArray(v, "images", [&](const json &o) {
+    size_t lock = 0;
+    bool success = ForEachInArray(v, "images", [&](const json &o, size_t jobIndex, bool& succeeded) {
+      int idx = (int)jobIndex;
       if (!IsObject(o)) {
         if (err) {
           (*err) += "image[" + std::to_string(idx) + "] is not a JSON object.";
         }
-        return false;
+        succeeded = false;
+        return;
       }
       Image image;
       if (!ParseImage(&image, idx, err, warn, o,
                       store_original_json_for_extras_and_extensions_, base_dir,
                       &fs, &this->LoadImageData, load_image_user_data)) {
-        return false;
+        succeeded = false;
+        return;
       }
 
       if (image.bufferView != -1) {
@@ -5974,7 +6022,8 @@ bool TinyGLTF::LoadFromString(Model *model, std::string *err, std::string *warn,
                << "\" not found in the scene." << std::endl;
             (*err) += ss.str();
           }
-          return false;
+          succeeded = false;
+          return;
         }
 
         const BufferView &bufferView =
@@ -5986,7 +6035,8 @@ bool TinyGLTF::LoadFromString(Model *model, std::string *err, std::string *warn,
                << "\" not found in the scene." << std::endl;
             (*err) += ss.str();
           }
-          return false;
+          succeeded = false;
+          return;
         }
         const Buffer &buffer = model->buffers[size_t(bufferView.buffer)];
 
@@ -5994,20 +6044,22 @@ bool TinyGLTF::LoadFromString(Model *model, std::string *err, std::string *warn,
           if (err) {
             (*err) += "No LoadImageData callback specified.\n";
           }
-          return false;
+          succeeded = false;
+          return;
         }
         bool ret = LoadImageData(
             &image, idx, err, warn, image.width, image.height,
             &buffer.data[bufferView.byteOffset],
             static_cast<int>(bufferView.byteLength), load_image_user_data);
         if (!ret) {
-          return false;
+          succeeded = false;
+          return;
         }
       }
 
+      while (lock != jobIndex);
       model->images.emplace_back(std::move(image));
-      ++idx;
-      return true;
+      lock++;
     });
 
     if (!success) {
@@ -6017,22 +6069,26 @@ bool TinyGLTF::LoadFromString(Model *model, std::string *err, std::string *warn,
 
   // 12. Parse Texture
   {
-    bool success = ForEachInArray(v, "textures", [&](const json &o) {
+    size_t lock = 0;
+    bool success = ForEachInArray(v, "textures", [&](const json &o, size_t jobIndex, bool& succeeded) {
       if (!IsObject(o)) {
         if (err) {
           (*err) += "`textures' does not contain an JSON object.";
         }
-        return false;
+        succeeded = false;
+        return;
       }
       Texture texture;
       if (!ParseTexture(&texture, err, o,
                         store_original_json_for_extras_and_extensions_,
                         base_dir)) {
-        return false;
+        succeeded = false;
+        return;
       }
 
+      while (lock != jobIndex);
       model->textures.emplace_back(std::move(texture));
-      return true;
+      lock++;
     });
 
     if (!success) {
@@ -6042,21 +6098,25 @@ bool TinyGLTF::LoadFromString(Model *model, std::string *err, std::string *warn,
 
   // 13. Parse Animation
   {
-    bool success = ForEachInArray(v, "animations", [&](const json &o) {
+    size_t lock = 0;
+    bool success = ForEachInArray(v, "animations", [&](const json &o, size_t jobIndex, bool& succeeded) {
       if (!IsObject(o)) {
         if (err) {
           (*err) += "`animations' does not contain an JSON object.";
         }
-        return false;
+        succeeded = false;
+        return;
       }
       Animation animation;
       if (!ParseAnimation(&animation, err, o,
                           store_original_json_for_extras_and_extensions_)) {
-        return false;
+        succeeded = false;
+        return;
       }
 
+      while (lock != jobIndex);
       model->animations.emplace_back(std::move(animation));
-      return true;
+      lock++;
     });
 
     if (!success) {
@@ -6066,21 +6126,25 @@ bool TinyGLTF::LoadFromString(Model *model, std::string *err, std::string *warn,
 
   // 14. Parse Skin
   {
-    bool success = ForEachInArray(v, "skins", [&](const json &o) {
+    size_t lock = 0;
+    bool success = ForEachInArray(v, "skins", [&](const json &o, size_t jobIndex, bool& succeeded) {
       if (!IsObject(o)) {
         if (err) {
           (*err) += "`skins' does not contain an JSON object.";
         }
-        return false;
+        succeeded = false;
+        return;
       }
       Skin skin;
       if (!ParseSkin(&skin, err, o,
                      store_original_json_for_extras_and_extensions_)) {
-        return false;
+        succeeded = false;
+        return;
       }
 
+      while (lock != jobIndex);
       model->skins.emplace_back(std::move(skin));
-      return true;
+      lock++;
     });
 
     if (!success) {
@@ -6090,21 +6154,25 @@ bool TinyGLTF::LoadFromString(Model *model, std::string *err, std::string *warn,
 
   // 15. Parse Sampler
   {
-    bool success = ForEachInArray(v, "samplers", [&](const json &o) {
+    size_t lock = 0;
+    bool success = ForEachInArray(v, "samplers", [&](const json &o, size_t jobIndex, bool& succeeded) {
       if (!IsObject(o)) {
         if (err) {
           (*err) += "`samplers' does not contain an JSON object.";
         }
-        return false;
+        succeeded = false;
+        return;
       }
       Sampler sampler;
       if (!ParseSampler(&sampler, err, o,
                         store_original_json_for_extras_and_extensions_)) {
-        return false;
+        succeeded = false;
+        return;
       }
 
+      while (lock != jobIndex);
       model->samplers.emplace_back(std::move(sampler));
-      return true;
+      lock++;
     });
 
     if (!success) {
@@ -6114,21 +6182,25 @@ bool TinyGLTF::LoadFromString(Model *model, std::string *err, std::string *warn,
 
   // 16. Parse Camera
   {
-    bool success = ForEachInArray(v, "cameras", [&](const json &o) {
+    size_t lock = 0;
+    bool success = ForEachInArray(v, "cameras", [&](const json &o, size_t jobIndex, bool& succeeded) {
       if (!IsObject(o)) {
         if (err) {
           (*err) += "`cameras' does not contain an JSON object.";
         }
-        return false;
+        succeeded = false;
+        return;
       }
       Camera camera;
       if (!ParseCamera(&camera, err, o,
                        store_original_json_for_extras_and_extensions_)) {
-        return false;
+        succeeded = false;
+        return;
       }
 
+      while (lock != jobIndex);
       model->cameras.emplace_back(std::move(camera));
-      return true;
+      lock++;
     });
 
     if (!success) {
