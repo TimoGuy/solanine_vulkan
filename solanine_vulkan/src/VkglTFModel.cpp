@@ -972,6 +972,7 @@ namespace vkglTF
 			vkCreateSampler(engine->_device, &samplerInfo, nullptr, &texture.sampler);
 
 			engine->_mainDeletionQueue.pushFunction([=]() {
+				vkDestroySampler(engine->_device, texture.sampler, nullptr);
 				vkDestroyImageView(engine->_device, texture.imageView, nullptr);
 				});
 
