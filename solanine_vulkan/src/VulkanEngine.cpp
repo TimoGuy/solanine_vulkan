@@ -2388,15 +2388,13 @@ bool VulkanEngine::loadShaderModule(const char* filePath, VkShaderModule* outSha
 
 void VulkanEngine::loadMeshes()
 {
-	/*tf::Executor e;
+	tf::Executor e;
 	tf::Taskflow taskflow;
 	taskflow.emplace(
 		[&]() { _renderObjectModels.skybox.loadFromFile(this, "res/models/Box.gltf", 0); },
 		[&]() { _renderObjectModels.slimeGirl.loadFromFile(this, "res/models/SlimeGirl.glb", 0); }
 		);
-	e.run(taskflow).wait();*/
-	_renderObjectModels.skybox.loadFromFile(this, "res/models/Box.gltf", 0);
-	_renderObjectModels.slimeGirl.loadFromFile(this, "res/models/SlimeGirl.glb", 0);
+	e.run(taskflow).wait();
 
 	_mainDeletionQueue.pushFunction([=]() {
 		_renderObjectModels.skybox.destroy(_allocator);
