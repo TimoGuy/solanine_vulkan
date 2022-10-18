@@ -2500,29 +2500,6 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first,
 			continue;
 		}
 
-		//if (object.material != lastMaterial)
-		//{
-		//	// Bind the new material
-		//	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipeline);
-		//	lastMaterial = object.material;
-		//
-		//	// Global data descriptor
-		//	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
-		//
-		//	// Object data descriptor
-		//	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
-		//
-		//	// Singletexture
-		//	if (object.material->textureSet != VK_NULL_HANDLE)
-		//		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipelineLayout, 2, 1, &object.material->textureSet, 0, nullptr);
-		//}
-		//
-		//// Push constants
-		//MeshPushConstants constants = {
-		//	.renderMatrix = object.transformMatrix,
-		//};
-		//vkCmdPushConstants(cmd, object.material->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(MeshPushConstants), &constants);
-
 		if (object.model != lastModel)
 		{
 			// Bind the new mesh
@@ -2540,7 +2517,9 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first,
 			cmd,
 			i,
 			[&](vkglTF::Primitive* primitive, vkglTF::Node* node) {
-			
+				//
+				// Apply all of the material properties
+				//
 				vkglTF::PBRMaterial& pbr = primitive->material;
 				Material& primMat = pbr.calculatedMaterial;
 			
