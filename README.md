@@ -30,3 +30,6 @@
 
 ![First PBR! It uses the textures packed in the gltf model (also, using a night space skybox probs wasn't the best for generating the irradiance and prefiltered maps. At least it's a little noticable)](etc/Solanine%20Prealpha%20-%20Vulkan%20-%20Build%20256%2010_17_2022%2002_43_46.png)
 *First PBR! It uses the textures packed in the gltf model (also, using a night space skybox probs wasn't the best for generating the irradiance and prefiltered maps. At least it's a little noticable)*
+
+![Implementation of hdr skyboxes, finally](etc/Solanine%20Prealpha%20-%20Vulkan%20-%20Build%20292%2010_17_2022%2020_15_50.png)
+*Implementation of hdr skyboxes, finally*
