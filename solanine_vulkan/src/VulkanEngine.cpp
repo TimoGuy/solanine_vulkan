@@ -582,10 +582,16 @@ void VulkanEngine::loadImages()
 
 Material* VulkanEngine::createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name)
 {
-	Material material = {
-		.pipeline = pipeline,
-		.pipelineLayout = layout,
-	};
+	Material material = {};
+	Material* alreadyExistsMaterial = getMaterial(name);
+	if (alreadyExistsMaterial != nullptr)
+	{
+		// Copy over the texture descriptorset
+		material.textureSet = alreadyExistsMaterial->textureSet;
+	}
+	material.pipeline = pipeline;
+	material.pipelineLayout = layout;
+
 	_materials[name] = material;
 	return &_materials[name];
 }
@@ -1163,7 +1169,7 @@ void VulkanEngine::initDescriptors()    // @TODO: don't destroy and then recreat
 	}
 
 	// Add destroy command for cleanup
-	_swapchainDependentDeletionQueue.pushFunction([=]() {
+	_mainDeletionQueue.pushFunction([=]() {
 		vkDestroyDescriptorSetLayout(_device, _globalSetLayout, nullptr);
 		vkDestroyDescriptorSetLayout(_device, _objectSetLayout, nullptr);
 		vkDestroyDescriptorSetLayout(_device, _singleTextureSetLayout, nullptr);
@@ -1276,11 +1282,7 @@ void VulkanEngine::initPipelines()
 	pipelineBuilder._pipelineLayout = _skyboxPipelineLayout;		// @NOTE: EFFING DON'T FORGET THIS LINE BC THAT'S WHAT CAUSED ME A BUTT TON OF GRIEF!!!!!
 
 	auto _skyboxPipeline = pipelineBuilder.buildPipeline(_device, _renderPass);
-
-	_renderObjectModels.skyboxMaterial = {
-		.pipeline = _skyboxPipeline,
-		.pipelineLayout = _skyboxPipelineLayout,
-	};
+	_renderObjectModels.skyboxMaterial = *createMaterial(_skyboxPipeline, _skyboxPipelineLayout, "skyboxMaterial");
 
 	//
 	// Cleanup
@@ -2341,7 +2343,6 @@ void VulkanEngine::recreateSwapchain()
 	initSwapchain();
 	initDefaultRenderpass();
 	initFramebuffers();
-	initDescriptors();    // Recreates descriptor pool to get new allocation for descriptorsets
 	initPipelines();
 	initScene();		// @NOTE: @TODO: you don't need to recreate all the renderobjects, just propagate the new pipelines (as materials) and reallocate the descriptorsets.  -Timo
 
@@ -2508,6 +2509,7 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first,
 		//
 		// Render it out
 		//
+		Material& defaultMaterial = *getMaterial("defaultMaterial");    // @HACK: @TODO: create some kind of way to propagate the newly created pipeline to the primMat (calculated material in the gltf model) instead of using defaultMaterial directly.  -Timo
 		Material* lastMaterial = nullptr;
 		VkDescriptorSet* lastJointDescriptor = nullptr;
 		object.model->draw(
@@ -2521,17 +2523,17 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first,
 				if (lastMaterial != &primMat)
 				{
 					// Bind new material
-					vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, primMat.pipeline);
+					vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipeline);
 					lastMaterial = &primMat;
 			
 					// Global data descriptor (set = 0)
-					vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, primMat.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
+					vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
 			
 					// Object data descriptor (set = 1)
-					vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, primMat.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
+					vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
 			
 					// PBR data descriptor    (set = 2)
-					vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, primMat.pipelineLayout, 2, 1, &primMat.textureSet, 0, nullptr);
+					vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 2, 1, &primMat.textureSet, 0, nullptr);
 			
 					// Undo flag for joint descriptor to force rebinding
 					lastJointDescriptor = nullptr;
@@ -2544,7 +2546,7 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first,
 					// 
 					// @NOTE: this doesn't have to be bound every primitive. Every mesh will
 					// have a single joint descriptor, hence having its own binding flag.
-					vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, primMat.pipelineLayout, 3, 1, jointDescriptor, 0, nullptr);
+					vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 3, 1, jointDescriptor, 0, nullptr);
 					lastJointDescriptor = jointDescriptor;
 				}
 			
@@ -2585,7 +2587,7 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first,
 					pc.specularFactor = glm::vec4(pbr.extension.specularFactor, 1.0f);
 				}
 			
-				vkCmdPushConstants(cmd, primMat.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PBRMaterialPushConstBlock), &pc);
+				vkCmdPushConstants(cmd, defaultMaterial.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PBRMaterialPushConstBlock), &pc);
 			}
 		);
 	}
