@@ -68,7 +68,6 @@
 #include <map>
 #include <string>
 #include <vector>
-#include <taskflow/taskflow.hpp>
 
 //Auto-detect C++14 standard version
 #if !defined(TINYGLTF_USE_CPP14) && defined(__cplusplus) && (__cplusplus >= 201402L)
@@ -5703,7 +5702,6 @@ bool TinyGLTF::LoadFromString(Model *model, std::string *err, std::string *warn,
       return false;
     }
   }
-
   // 4. Parse BufferView
   {
     bool success = ForEachInArray(v, "bufferViews", [&](const json &o) {
@@ -5951,10 +5949,7 @@ bool TinyGLTF::LoadFromString(Model *model, std::string *err, std::string *warn,
     load_image_user_data = reinterpret_cast<void *>(&load_image_option);
   }
 
-  
   {
-    tf::Executor e;
-    tf::Taskflow parseImageTask;
     int idx = 0;
     bool success = ForEachInArray(v, "images", [&](const json &o) {
       if (!IsObject(o)) {
@@ -5963,58 +5958,54 @@ bool TinyGLTF::LoadFromString(Model *model, std::string *err, std::string *warn,
         }
         return false;
       }
+      Image image;
+      if (!ParseImage(&image, idx, err, warn, o,
+                      store_original_json_for_extras_and_extensions_, base_dir,
+                      &fs, &this->LoadImageData, load_image_user_data)) {
+        return false;
+      }
 
-      parseImageTask.emplace([&, idx]() {
-        Image image;
-        if (!ParseImage(&image, idx, err, warn, o,
-                        store_original_json_for_extras_and_extensions_, base_dir,
-                        &fs, &this->LoadImageData, load_image_user_data)) {
-          return;  // false
+      if (image.bufferView != -1) {
+        // Load image from the buffer view.
+        if (size_t(image.bufferView) >= model->bufferViews.size()) {
+          if (err) {
+            std::stringstream ss;
+            ss << "image[" << idx << "] bufferView \"" << image.bufferView
+               << "\" not found in the scene." << std::endl;
+            (*err) += ss.str();
+          }
+          return false;
         }
 
-        if (image.bufferView != -1) {
-          // Load image from the buffer view.
-          if (size_t(image.bufferView) >= model->bufferViews.size()) {
-            if (err) {
-              std::stringstream ss;
-              ss << "image[" << idx << "] bufferView \"" << image.bufferView
-                 << "\" not found in the scene." << std::endl;
-              (*err) += ss.str();
-            }
-            return;  // false
+        const BufferView &bufferView =
+            model->bufferViews[size_t(image.bufferView)];
+        if (size_t(bufferView.buffer) >= model->buffers.size()) {
+          if (err) {
+            std::stringstream ss;
+            ss << "image[" << idx << "] buffer \"" << bufferView.buffer
+               << "\" not found in the scene." << std::endl;
+            (*err) += ss.str();
           }
-
-          const BufferView &bufferView =
-              model->bufferViews[size_t(image.bufferView)];
-          if (size_t(bufferView.buffer) >= model->buffers.size()) {
-            if (err) {
-              std::stringstream ss;
-              ss << "image[" << idx << "] buffer \"" << bufferView.buffer
-                 << "\" not found in the scene." << std::endl;
-              (*err) += ss.str();
-            }
-            return;  // false
-          }
-          const Buffer &buffer = model->buffers[size_t(bufferView.buffer)];
-
-          if (*LoadImageData == nullptr) {
-            if (err) {
-              (*err) += "No LoadImageData callback specified.\n";
-            }
-            return;  // false
-          }
-          bool ret = LoadImageData(
-              &image, idx, err, warn, image.width, image.height,
-              &buffer.data[bufferView.byteOffset],
-              static_cast<int>(bufferView.byteLength), load_image_user_data);
-          if (!ret) {
-            return;  // false
-          }
+          return false;
         }
+        const Buffer &buffer = model->buffers[size_t(bufferView.buffer)];
 
-        //model->images.emplace_back(std::move(image));
-        model->images[idx] = std::move(image);
-      });
+        if (*LoadImageData == nullptr) {
+          if (err) {
+            (*err) += "No LoadImageData callback specified.\n";
+          }
+          return false;
+        }
+        bool ret = LoadImageData(
+            &image, idx, err, warn, image.width, image.height,
+            &buffer.data[bufferView.byteOffset],
+            static_cast<int>(bufferView.byteLength), load_image_user_data);
+        if (!ret) {
+          return false;
+        }
+      }
+
+      model->images.emplace_back(std::move(image));
       ++idx;
       return true;
     });
@@ -6022,10 +6013,6 @@ bool TinyGLTF::LoadFromString(Model *model, std::string *err, std::string *warn,
     if (!success) {
       return false;
     }
-
-    // Resize the images vector and run the taskflow
-    model->images.resize((size_t)idx);
-    e.run(parseImageTask).wait();
   }
 
   // 12. Parse Texture
@@ -6055,9 +6042,6 @@ bool TinyGLTF::LoadFromString(Model *model, std::string *err, std::string *warn,
 
   // 13. Parse Animation
   {
-    tf::Executor e;
-    tf::Taskflow parseAnimationTask;
-    size_t idx = 0;
     bool success = ForEachInArray(v, "animations", [&](const json &o) {
       if (!IsObject(o)) {
         if (err) {
@@ -6065,28 +6049,19 @@ bool TinyGLTF::LoadFromString(Model *model, std::string *err, std::string *warn,
         }
         return false;
       }
+      Animation animation;
+      if (!ParseAnimation(&animation, err, o,
+                          store_original_json_for_extras_and_extensions_)) {
+        return false;
+      }
 
-      parseAnimationTask.emplace([&, idx]() {
-        Animation animation;
-        if (!ParseAnimation(&animation, err, o,
-                            store_original_json_for_extras_and_extensions_)) {
-          return false;
-        }
-        
-        //model->animations.emplace_back(std::move(animation));
-        model->animations[idx] = std::move(animation);
-      });
-      idx++;
+      model->animations.emplace_back(std::move(animation));
       return true;
     });
 
     if (!success) {
       return false;
     }
-
-    // Resize the animations vector and run the taskflow
-    model->animations.resize(idx);
-    e.run(parseAnimationTask).wait();
   }
 
   // 14. Parse Skin
