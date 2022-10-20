@@ -108,6 +108,7 @@ set /A BuildNumberForSolanine+=1
     <ClInclude Include="src\GLSLToSPIRVHelper.h" />
     <ClInclude Include="src\imgui\imconfig.h" />
     <ClInclude Include="src\imgui\imgui.h" />
+    <ClInclude Include="src\imgui\ImGuizmo.h" />
     <ClInclude Include="src\imgui\imgui_impl_sdl.h" />
     <ClInclude Include="src\imgui\imgui_impl_vulkan.h" />
     <ClInclude Include="src\imgui\imgui_internal.h" />
@@ -125,6 +126,7 @@ set /A BuildNumberForSolanine+=1
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\imgui\imgui.cpp" />
+    <ClCompile Include="src\imgui\ImGuizmo.cpp" />
     <ClCompile Include="src\imgui\imgui_demo.cpp" />
     <ClCompile Include="src\imgui\imgui_draw.cpp" />
     <ClCompile Include="src\imgui\imgui_impl_sdl.cpp" />
