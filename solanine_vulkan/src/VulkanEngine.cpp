@@ -2609,39 +2609,43 @@ void VulkanEngine::recalculateSceneCamera()
 #ifdef _DEVELOP
 void VulkanEngine::buildResourceList()
 {
-	std::string directory = "shader";
-	for (const auto& entry : std::filesystem::directory_iterator(directory))
-	{
-		// Add the resource if it should be watched
-		const auto& path = entry.path();
-		if (!path.has_extension())
-			continue;		// @NOTE: only allow resource files if they have an extension!  -Timo
-
-		if (path.extension().compare(".spv") == 0 ||
-			path.extension().compare(".log") == 0)
-			continue;		// @NOTE: ignore compiled SPIRV shader files, logs
-
-		ResourceToWatch resource = {
-			.path = path,
-			.lastWriteTime = std::filesystem::last_write_time(path),
-		};
-		resourcesToWatch.push_back(resource);
-
-		// Compile glsl shader if corresponding .spv file isn't up to date
-		const auto& ext = path.extension();
-		if (ext.compare(".vert") == 0 ||
-			ext.compare(".frag") == 0)		// @COPYPASTA
+	std::vector<std::string> directories = {
+		"res",
+		"shader",
+	};
+	for (auto directory : directories)
+		for (const auto& entry : std::filesystem::recursive_directory_iterator(directory))
 		{
-			auto spvPath = path;
-			spvPath += ".spv";
+			// Add the resource if it should be watched
+			const auto& path = entry.path();
+			if (!path.has_extension())
+				continue;		// @NOTE: only allow resource files if they have an extension!  -Timo
 
-			if (!std::filesystem::exists(spvPath) ||
-				std::filesystem::last_write_time(spvPath) <= std::filesystem::last_write_time(path))
+			if (path.extension().compare(".spv") == 0 ||
+				path.extension().compare(".log") == 0)
+				continue;		// @NOTE: ignore compiled SPIRV shader files, logs
+
+			ResourceToWatch resource = {
+				.path = path,
+				.lastWriteTime = std::filesystem::last_write_time(path),
+			};
+			resourcesToWatch.push_back(resource);
+
+			// Compile glsl shader if corresponding .spv file isn't up to date
+			const auto& ext = path.extension();
+			if (ext.compare(".vert") == 0 ||
+				ext.compare(".frag") == 0)		// @COPYPASTA
 			{
-				glslToSPIRVHelper::compileGLSLShaderToSPIRV(path);
+				auto spvPath = path;
+				spvPath += ".spv";
+
+				if (!std::filesystem::exists(spvPath) ||
+					std::filesystem::last_write_time(spvPath) <= std::filesystem::last_write_time(path))
+				{
+					glslToSPIRVHelper::compileGLSLShaderToSPIRV(path);
+				}
 			}
 		}
-	}
 }
 
 void VulkanEngine::checkIfResourceUpdatedThenHotswapRoutine()
@@ -2657,6 +2661,8 @@ void VulkanEngine::checkIfResourceUpdatedThenHotswapRoutine()
 			//
 			// Reload the resource
 			//
+			std::cout << "[RELOAD HOTSWAPPABLE RESOURCE]" << std::endl
+				<< "Name: " << resource.path << std::endl;
 			resource.lastWriteTime = lastWriteTime;
 
 			if (!resource.path.has_extension())
@@ -2665,7 +2671,9 @@ void VulkanEngine::checkIfResourceUpdatedThenHotswapRoutine()
 				continue;
 			}
 
+			//
 			// Find the extension and execute appropriate routine
+			//
 			const auto& ext = resource.path.extension();
 			if (ext.compare(".vert") == 0 ||
 				ext.compare(".frag") == 0)
@@ -2675,7 +2683,13 @@ void VulkanEngine::checkIfResourceUpdatedThenHotswapRoutine()
 
 				// Trip reloading the shaders (recreate swapchain flag)
 				_recreateSwapchain = true;
+				std::cout << "Recompile shader to SPIRV and trigger swapchain recreation SUCCESS" << std::endl;
+				continue;
 			}
+
+			// Nothing to do to the resource!
+			// That means there's no routine for this certain resource
+			std::cout << "WARNING: No routine for " << ext << " files!" << std::endl;
 		}
 		catch (...) { }   // Just continue on if you get the filesystem error
 	}
@@ -2683,6 +2697,9 @@ void VulkanEngine::checkIfResourceUpdatedThenHotswapRoutine()
 
 void VulkanEngine::teardownResourceList()
 {
+	// @NOTE: nothing is around to tear down!
+	//        There are just filesystem entries, so they only go until the lifetime
+	//        of the VulkanEngine object, so we don't need to tear that down!
 }
 #endif
 
