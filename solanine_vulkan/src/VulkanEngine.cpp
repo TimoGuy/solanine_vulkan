@@ -2618,6 +2618,8 @@ void VulkanEngine::buildResourceList()
 		{
 			// Add the resource if it should be watched
 			const auto& path = entry.path();
+			if (std::filesystem::is_directory(path))
+				continue;		// Ignore directories
 			if (!path.has_extension())
 				continue;		// @NOTE: only allow resource files if they have an extension!  -Timo
 
