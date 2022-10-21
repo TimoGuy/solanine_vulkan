@@ -307,6 +307,16 @@ private:
 		glm::vec3 cachedEulerAngles;
 		glm::vec3 cachedScale;
 	} _movingMatrix;
+
+	//
+	// ImGui Stuff
+	//
+	struct ImGuiStuff
+	{
+		VkDescriptorSet textureLayerVisible;
+		VkDescriptorSet textureLayerInvisible;
+		VkDescriptorSet textureLayerBuilder;
+	} _imguiData;
 #endif
 };
 

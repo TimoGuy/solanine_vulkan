@@ -61,6 +61,7 @@ void VulkanEngine::init()
 	initFramebuffers();
 	initSyncStructures();
 	initDescriptors();
+	initImgui();
 	initPipelines();
 	loadImages();
 	loadMeshes();
@@ -68,7 +69,6 @@ void VulkanEngine::init()
 	generatePBRCubemaps();
 	generateBRDFLUT();
 	attachPBRDescriptors();
-	initImgui();
 
 	_isInitialized = true;
 }
@@ -311,6 +311,30 @@ void VulkanEngine::run()
 				_pbrRendering.gpuSceneShadingProps.debugViewEquation = (float_t)debugViewEquation;
 
 			ImGui::Text(("Prefiltered Cubemap Miplevels: " + std::to_string((int32_t)_pbrRendering.gpuSceneShadingProps.prefilteredCubemapMipLevels)).c_str());
+
+			ImGui::Separator();
+
+			ImGui::Text("Toggle Rendering Layers");
+
+			static const ImVec2 imageButtonSize = ImVec2(64, 64);
+			static const ImVec4 tintColorActive = ImVec4(1, 1, 1, 1);
+			static const ImVec4 tintColorInactive = ImVec4(1, 1, 1, 0.25);
+
+			static bool showLayerVisible = true;
+			if (ImGui::ImageButton((ImTextureID)_imguiData.textureLayerVisible, imageButtonSize, ImVec2(0, 0), ImVec2(1, 1), -1, ImVec4(0, 0, 0, 0), showLayerVisible ? tintColorActive : tintColorInactive))
+				showLayerVisible = !showLayerVisible;
+
+			ImGui::SameLine();
+
+			static bool showLayerInvisible = true;
+			if (ImGui::ImageButton((ImTextureID)_imguiData.textureLayerInvisible, imageButtonSize, ImVec2(0, 0), ImVec2(1, 1), -1, ImVec4(0, 0, 0, 0), showLayerInvisible ? tintColorActive : tintColorInactive))
+				showLayerInvisible = !showLayerInvisible;
+
+			ImGui::SameLine();
+
+			static bool showLayerBuilder = true;
+			if (ImGui::ImageButton((ImTextureID)_imguiData.textureLayerBuilder, imageButtonSize, ImVec2(0, 0), ImVec2(1, 1), -1, ImVec4(0, 0, 0, 0), showLayerBuilder ? tintColorActive : tintColorInactive))
+				showLayerBuilder = !showLayerBuilder;
 		}
 		ImGui::End();
 
@@ -681,6 +705,117 @@ void VulkanEngine::loadImages()
 			});
 
 		_loadedTextures["CubemapSkybox"] = cubemapSkybox;
+	}
+
+	// Load imguiTextureLayerVisible
+	{
+		Texture textureLayerVisible;
+		vkutil::loadImageFromFile(*this, "res/_develop/icon_layer_visible.png", VK_FORMAT_R8G8B8A8_SRGB, 0, textureLayerVisible.image);
+
+		VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, textureLayerVisible.image._image, VK_IMAGE_ASPECT_COLOR_BIT, textureLayerVisible.image._mipLevels);
+		vkCreateImageView(_device, &imageInfo, nullptr, &textureLayerVisible.imageView);
+
+		VkSamplerCreateInfo samplerInfo = {
+			.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+			.pNext = nullptr,
+			.magFilter = VK_FILTER_LINEAR,
+			.minFilter = VK_FILTER_LINEAR,
+			.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+			.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			.mipLodBias = 0.0f,
+			.anisotropyEnable = VK_FALSE,    // NOTE: this is just an icon file, so no viewing on the side!
+			.maxAnisotropy = 1,
+			.compareEnable = VK_FALSE,
+			.compareOp = VK_COMPARE_OP_NEVER,
+			.minLod = 0.0f,
+			.maxLod = static_cast<float_t>(textureLayerVisible.image._mipLevels),
+			.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
+			.unnormalizedCoordinates = VK_FALSE,
+		};
+		vkCreateSampler(_device, &samplerInfo, nullptr, &textureLayerVisible.sampler);
+
+		_mainDeletionQueue.pushFunction([=]() {
+			vkDestroySampler(_device, textureLayerVisible.sampler, nullptr);
+			vkDestroyImageView(_device, textureLayerVisible.imageView, nullptr);
+			});
+
+		_loadedTextures["imguiTextureLayerVisible"] = textureLayerVisible;
+	}
+
+	// Load imguiTextureLayerInvisible
+	{
+		Texture textureLayerInvisible;
+		vkutil::loadImageFromFile(*this, "res/_develop/icon_layer_invisible.png", VK_FORMAT_R8G8B8A8_SRGB, 0, textureLayerInvisible.image);
+
+		VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, textureLayerInvisible.image._image, VK_IMAGE_ASPECT_COLOR_BIT, textureLayerInvisible.image._mipLevels);
+		vkCreateImageView(_device, &imageInfo, nullptr, &textureLayerInvisible.imageView);
+
+		VkSamplerCreateInfo samplerInfo = {
+			.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+			.pNext = nullptr,
+			.magFilter = VK_FILTER_LINEAR,
+			.minFilter = VK_FILTER_LINEAR,
+			.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+			.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			.mipLodBias = 0.0f,
+			.anisotropyEnable = VK_FALSE,    // NOTE: this is just an icon file, so no viewing on the side!
+			.maxAnisotropy = 1,
+			.compareEnable = VK_FALSE,
+			.compareOp = VK_COMPARE_OP_NEVER,
+			.minLod = 0.0f,
+			.maxLod = static_cast<float_t>(textureLayerInvisible.image._mipLevels),
+			.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
+			.unnormalizedCoordinates = VK_FALSE,
+		};
+		vkCreateSampler(_device, &samplerInfo, nullptr, &textureLayerInvisible.sampler);
+
+		_mainDeletionQueue.pushFunction([=]() {
+			vkDestroySampler(_device, textureLayerInvisible.sampler, nullptr);
+			vkDestroyImageView(_device, textureLayerInvisible.imageView, nullptr);
+			});
+
+		_loadedTextures["imguiTextureLayerInvisible"] = textureLayerInvisible;
+	}
+
+	// Load imguiTextureLayerBuilder
+	{
+		Texture textureLayerBuilder;
+		vkutil::loadImageFromFile(*this, "res/_develop/icon_layer_builder.png", VK_FORMAT_R8G8B8A8_SRGB, 0, textureLayerBuilder.image);
+
+		VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, textureLayerBuilder.image._image, VK_IMAGE_ASPECT_COLOR_BIT, textureLayerBuilder.image._mipLevels);
+		vkCreateImageView(_device, &imageInfo, nullptr, &textureLayerBuilder.imageView);
+
+		VkSamplerCreateInfo samplerInfo = {
+			.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+			.pNext = nullptr,
+			.magFilter = VK_FILTER_LINEAR,
+			.minFilter = VK_FILTER_LINEAR,
+			.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+			.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			.mipLodBias = 0.0f,
+			.anisotropyEnable = VK_FALSE,    // NOTE: this is just an icon file, so no viewing on the side!
+			.maxAnisotropy = 1,
+			.compareEnable = VK_FALSE,
+			.compareOp = VK_COMPARE_OP_NEVER,
+			.minLod = 0.0f,
+			.maxLod = static_cast<float_t>(textureLayerBuilder.image._mipLevels),
+			.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
+			.unnormalizedCoordinates = VK_FALSE,
+		};
+		vkCreateSampler(_device, &samplerInfo, nullptr, &textureLayerBuilder.sampler);
+
+		_mainDeletionQueue.pushFunction([=]() {
+			vkDestroySampler(_device, textureLayerBuilder.sampler, nullptr);
+			vkDestroyImageView(_device, textureLayerBuilder.imageView, nullptr);
+			});
+
+		_loadedTextures["imguiTextureLayerBuilder"] = textureLayerBuilder;
 	}
 
 	//
@@ -1466,6 +1601,13 @@ void VulkanEngine::initScene()
 			0
 		);
 	vkUpdateDescriptorSets(_device, 1, &texture1, 0, nullptr);
+
+	//
+	// Materials for ImGui
+	//
+	_imguiData.textureLayerVisible   = ImGui_ImplVulkan_AddTexture(_loadedTextures["imguiTextureLayerVisible"].sampler, _loadedTextures["imguiTextureLayerVisible"].imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	_imguiData.textureLayerInvisible = ImGui_ImplVulkan_AddTexture(_loadedTextures["imguiTextureLayerInvisible"].sampler, _loadedTextures["imguiTextureLayerInvisible"].imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	_imguiData.textureLayerBuilder   = ImGui_ImplVulkan_AddTexture(_loadedTextures["imguiTextureLayerBuilder"].sampler, _loadedTextures["imguiTextureLayerBuilder"].imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 }
 
 void VulkanEngine::generatePBRCubemaps()
