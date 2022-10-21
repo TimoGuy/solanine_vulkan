@@ -79,7 +79,7 @@ void VulkanEngine::run()
 	// Initialize Scene Camera
 	//
 	_sceneCamera.aspect = (float_t)_windowExtent.width / (float_t)_windowExtent.height;
-	_sceneCamera.gpuCameraData.cameraPosition = { 0.0f, 3.0f, -5.0f };
+	_sceneCamera.gpuCameraData.cameraPosition = { 0.0f, 10.0f, -10.0f };
 	recalculateSceneCamera();
 
 	// @HARDCODED: Set the initial light direction
@@ -215,7 +215,7 @@ void VulkanEngine::run()
 				_sceneCamera.facingDirection = glm::rotate(_sceneCamera.facingDirection, glm::radians(-mousePositionDeltaCooked.x), worldUp);
 
 				// Update camera position with keyboard input
-				float speedMultiplier = _freeCamMode.keyShiftPressed ? 10.0f : 5.0f;
+				float speedMultiplier = _freeCamMode.keyShiftPressed ? 50.0f : 25.0f;
 				inputToVelocity *= speedMultiplier * deltaTime;
 				worldUpVelocity *= speedMultiplier * deltaTime;
 
@@ -264,7 +264,12 @@ void VulkanEngine::run()
 		ImGui_ImplVulkan_NewFrame();
 		ImGui_ImplSDL2_NewFrame(_window);
 		ImGui::NewFrame();
+
+		ImGuizmo::SetOrthographic(false);
+		ImGuizmo::AllowAxisFlip(false);
 		ImGuizmo::BeginFrame();
+		ImGuiIO& io = ImGui::GetIO();
+		ImGuizmo::SetRect(0, 0, io.DisplaySize.x, io.DisplaySize.y);
 
 		ImGui::ShowDemoWindow();
 
@@ -339,10 +344,13 @@ void VulkanEngine::run()
 				//
 				// Move the matrix via ImGuizmo
 				//
+				glm::mat4 projection = _sceneCamera.gpuCameraData.projection;
+				projection[1][1] *= -1.0f;
+
 				if (ImGuizmo::Manipulate(
 					glm::value_ptr(_sceneCamera.gpuCameraData.view),
-					glm::value_ptr(_sceneCamera.gpuCameraData.projection),
-					ImGuizmo::OPERATION::ROTATE,
+					glm::value_ptr(projection),
+					ImGuizmo::OPERATION::TRANSLATE,
 					ImGuizmo::MODE::WORLD,
 					glm::value_ptr(*_movingMatrix.matrixToMove)))
 				{
