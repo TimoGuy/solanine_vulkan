@@ -3,6 +3,8 @@
 #include "VulkanEngine.h"
 
 
+extern float_t vkinit::_maxSamplerAnisotropy = 0.0f;
+
 VkCommandPoolCreateInfo vkinit::commandPoolCreateInfo(uint32_t queueFamilyIndex, VkCommandPoolCreateFlags flags)
 {
 	VkCommandPoolCreateInfo commandPoolInfo = {};
@@ -265,16 +267,26 @@ VkSubmitInfo vkinit::submitInfo(VkCommandBuffer* cmd)
 	return info;
 }
 
-VkSamplerCreateInfo vkinit::samplerCreateInfo(VkFilter filters, VkSamplerAddressMode samplerAddressMode)
+VkSamplerCreateInfo vkinit::samplerCreateInfo(float_t mipLevels, VkFilter filters, VkSamplerAddressMode samplerAddressMode, bool enableAnisotropy)
 {
 	VkSamplerCreateInfo info = {
 		.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
 		.pNext = nullptr,
 		.magFilter = filters,
 		.minFilter = filters,
+		.mipmapMode = (filters == VK_FILTER_NEAREST) ? VK_SAMPLER_MIPMAP_MODE_NEAREST : VK_SAMPLER_MIPMAP_MODE_LINEAR,
 		.addressModeU = samplerAddressMode,
 		.addressModeV = samplerAddressMode,
 		.addressModeW = samplerAddressMode,
+		.mipLodBias = 0.0f,
+		.anisotropyEnable = enableAnisotropy ? VK_TRUE : VK_FALSE,
+		.maxAnisotropy = _maxSamplerAnisotropy,
+		.compareEnable = VK_FALSE,
+		.compareOp = VK_COMPARE_OP_NEVER,
+		.minLod = 0.0f,
+		.maxLod = mipLevels,
+		.borderColor = VK_BORDER_COLOR_INT_OPAQUE_WHITE,
+		.unnormalizedCoordinates = VK_FALSE,
 	};
 	return info;
 }

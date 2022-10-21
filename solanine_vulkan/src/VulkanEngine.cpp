@@ -574,25 +574,7 @@ void VulkanEngine::loadImages()
 		VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_UNORM, empty.image._image, VK_IMAGE_ASPECT_COLOR_BIT, empty.image._mipLevels);
 		vkCreateImageView(_device, &imageInfo, nullptr, &empty.imageView);
 
-		VkSamplerCreateInfo samplerInfo = {
-			.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-			.pNext = nullptr,
-			.magFilter = VK_FILTER_NEAREST,
-			.minFilter = VK_FILTER_NEAREST,
-			.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST,
-			.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-			.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-			.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-			.mipLodBias = 0.0f,
-			.anisotropyEnable = VK_TRUE,
-			.maxAnisotropy = _gpuProperties.limits.maxSamplerAnisotropy,
-			.compareEnable = VK_FALSE,
-			.compareOp = VK_COMPARE_OP_NEVER,
-			.minLod = 0.0f,
-			.maxLod = static_cast<float_t>(empty.image._mipLevels),
-			.borderColor = VK_BORDER_COLOR_INT_OPAQUE_WHITE,
-			.unnormalizedCoordinates = VK_FALSE,
-		};
+		VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(empty.image._mipLevels), VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
 		vkCreateSampler(_device, &samplerInfo, nullptr, &empty.sampler);
 
 		_mainDeletionQueue.pushFunction([=]() {
@@ -611,25 +593,7 @@ void VulkanEngine::loadImages()
 		VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, woodFloor057.image._image, VK_IMAGE_ASPECT_COLOR_BIT, woodFloor057.image._mipLevels);
 		vkCreateImageView(_device, &imageInfo, nullptr, &woodFloor057.imageView);
 
-		VkSamplerCreateInfo samplerInfo = {
-			.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-			.pNext = nullptr,
-			.magFilter = VK_FILTER_LINEAR,
-			.minFilter = VK_FILTER_LINEAR,
-			.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
-			.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
-			.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
-			.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
-			.mipLodBias = 0.0f,
-			.anisotropyEnable = VK_TRUE,
-			.maxAnisotropy = _gpuProperties.limits.maxSamplerAnisotropy,
-			.compareEnable = VK_FALSE,
-			.compareOp = VK_COMPARE_OP_NEVER,
-			.minLod = 0.0f,
-			.maxLod = static_cast<float_t>(woodFloor057.image._mipLevels),
-			.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
-			.unnormalizedCoordinates = VK_FALSE,
-		};
+		VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(woodFloor057.image._mipLevels), VK_FILTER_LINEAR);
 		vkCreateSampler(_device, &samplerInfo, nullptr, &woodFloor057.sampler);
 
 		_mainDeletionQueue.pushFunction([=]() {
@@ -678,25 +642,7 @@ void VulkanEngine::loadImages()
 		VkImageViewCreateInfo imageInfo = vkinit::imageviewCubemapCreateInfo(VK_FORMAT_R32G32B32A32_SFLOAT, cubemapSkybox.image._image, VK_IMAGE_ASPECT_COLOR_BIT, cubemapSkybox.image._mipLevels);
 		vkCreateImageView(_device, &imageInfo, nullptr, &cubemapSkybox.imageView);
 
-		VkSamplerCreateInfo samplerInfo = {
-			.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-			.pNext = nullptr,
-			.magFilter = VK_FILTER_LINEAR,
-			.minFilter = VK_FILTER_LINEAR,
-			.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
-			.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-			.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-			.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-			.mipLodBias = 0.0f,
-			.anisotropyEnable = VK_TRUE,
-			.maxAnisotropy = _gpuProperties.limits.maxSamplerAnisotropy,
-			.compareEnable = VK_FALSE,
-			.compareOp = VK_COMPARE_OP_NEVER,
-			.minLod = 0.0f,
-			.maxLod = static_cast<float_t>(cubemapSkybox.image._mipLevels),
-			.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
-			.unnormalizedCoordinates = VK_FALSE,
-		};
+		VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(cubemapSkybox.image._mipLevels), VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
 		vkCreateSampler(_device, &samplerInfo, nullptr, &cubemapSkybox.sampler);
 
 		_mainDeletionQueue.pushFunction([=]() {
@@ -715,25 +661,7 @@ void VulkanEngine::loadImages()
 		VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, textureLayerVisible.image._image, VK_IMAGE_ASPECT_COLOR_BIT, textureLayerVisible.image._mipLevels);
 		vkCreateImageView(_device, &imageInfo, nullptr, &textureLayerVisible.imageView);
 
-		VkSamplerCreateInfo samplerInfo = {
-			.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-			.pNext = nullptr,
-			.magFilter = VK_FILTER_LINEAR,
-			.minFilter = VK_FILTER_LINEAR,
-			.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
-			.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-			.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-			.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-			.mipLodBias = 0.0f,
-			.anisotropyEnable = VK_FALSE,    // NOTE: this is just an icon file, so no viewing on the side!
-			.maxAnisotropy = 1,
-			.compareEnable = VK_FALSE,
-			.compareOp = VK_COMPARE_OP_NEVER,
-			.minLod = 0.0f,
-			.maxLod = static_cast<float_t>(textureLayerVisible.image._mipLevels),
-			.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
-			.unnormalizedCoordinates = VK_FALSE,
-		};
+		VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(textureLayerVisible.image._mipLevels), VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
 		vkCreateSampler(_device, &samplerInfo, nullptr, &textureLayerVisible.sampler);
 
 		_mainDeletionQueue.pushFunction([=]() {
@@ -752,25 +680,7 @@ void VulkanEngine::loadImages()
 		VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, textureLayerInvisible.image._image, VK_IMAGE_ASPECT_COLOR_BIT, textureLayerInvisible.image._mipLevels);
 		vkCreateImageView(_device, &imageInfo, nullptr, &textureLayerInvisible.imageView);
 
-		VkSamplerCreateInfo samplerInfo = {
-			.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-			.pNext = nullptr,
-			.magFilter = VK_FILTER_LINEAR,
-			.minFilter = VK_FILTER_LINEAR,
-			.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
-			.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-			.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-			.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-			.mipLodBias = 0.0f,
-			.anisotropyEnable = VK_FALSE,    // NOTE: this is just an icon file, so no viewing on the side!
-			.maxAnisotropy = 1,
-			.compareEnable = VK_FALSE,
-			.compareOp = VK_COMPARE_OP_NEVER,
-			.minLod = 0.0f,
-			.maxLod = static_cast<float_t>(textureLayerInvisible.image._mipLevels),
-			.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
-			.unnormalizedCoordinates = VK_FALSE,
-		};
+		VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(textureLayerInvisible.image._mipLevels), VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
 		vkCreateSampler(_device, &samplerInfo, nullptr, &textureLayerInvisible.sampler);
 
 		_mainDeletionQueue.pushFunction([=]() {
@@ -789,25 +699,7 @@ void VulkanEngine::loadImages()
 		VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, textureLayerBuilder.image._image, VK_IMAGE_ASPECT_COLOR_BIT, textureLayerBuilder.image._mipLevels);
 		vkCreateImageView(_device, &imageInfo, nullptr, &textureLayerBuilder.imageView);
 
-		VkSamplerCreateInfo samplerInfo = {
-			.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-			.pNext = nullptr,
-			.magFilter = VK_FILTER_LINEAR,
-			.minFilter = VK_FILTER_LINEAR,
-			.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
-			.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-			.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-			.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-			.mipLodBias = 0.0f,
-			.anisotropyEnable = VK_FALSE,    // NOTE: this is just an icon file, so no viewing on the side!
-			.maxAnisotropy = 1,
-			.compareEnable = VK_FALSE,
-			.compareOp = VK_COMPARE_OP_NEVER,
-			.minLod = 0.0f,
-			.maxLod = static_cast<float_t>(textureLayerBuilder.image._mipLevels),
-			.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
-			.unnormalizedCoordinates = VK_FALSE,
-		};
+		VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(textureLayerBuilder.image._mipLevels), VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
 		vkCreateSampler(_device, &samplerInfo, nullptr, &textureLayerBuilder.sampler);
 
 		_mainDeletionQueue.pushFunction([=]() {
@@ -973,6 +865,8 @@ void VulkanEngine::initVulkan()
 	std::cout << "MINIMUM_BUFFER_ALIGNMENT    " << _gpuProperties.limits.minUniformBufferOffsetAlignment << std::endl;
 	std::cout << "MAX_COLOR_ATTACHMENTS       " << _gpuProperties.limits.maxColorAttachments << std::endl;
 	std::cout << std::endl;
+
+	vkinit::_maxSamplerAnisotropy = _gpuProperties.limits.maxSamplerAnisotropy;
 }
 
 void VulkanEngine::initSwapchain()
