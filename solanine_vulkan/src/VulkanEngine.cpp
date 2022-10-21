@@ -2553,6 +2553,7 @@ void VulkanEngine::loadMeshes()
 	taskflow.emplace(
 		[&]() { _renderObjectModels.skybox.loadFromFile(this, "res/models/Box.gltf", 0); },
 		[&]() { _renderObjectModels.slimeGirl.loadFromFile(this, "res/models/SlimeGirl.glb", 0); }
+		//[&]() { _renderObjectModels.slimeGirl.loadFromFile(this, "C:/Users/Timo/Documents/Repositories/Vulkan-glTF-PBR/data/models/DamagedHelmet/glTF-Embedded/DamagedHelmet.gltf", 0); }
 		);
 	e.run(taskflow).wait();
 
