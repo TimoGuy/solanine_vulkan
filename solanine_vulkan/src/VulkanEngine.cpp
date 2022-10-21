@@ -2,6 +2,7 @@
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_vulkan.h>
+#include <vma/vk_mem_alloc.h>
 #include "VkBootstrap.h"
 #include "VkInitializers.h"
 #include "VkTextures.h"
@@ -11,10 +12,6 @@
 #include "imgui/imgui_impl_vulkan.h"
 #include "imgui/implot.h"
 #include "imgui/ImGuizmo.h"
-
-// @NOTE: this is for creation of the VMA function definitions
-#define VMA_IMPLEMENTATION
-#include <vma/vk_mem_alloc.h>
 
 
 constexpr uint64_t TIMEOUT_1_SEC = 1000000000;
@@ -275,10 +272,13 @@ void VulkanEngine::run()
 
 		ImPlot::ShowDemoWindow();
 
+		float_t accumulatedWindowHeight = 0.0f;
+		constexpr float_t windowPadding = 8.0f;
+
 		//
 		// Debug Stats window
 		//
-		ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Once);
+		ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight), ImGuiCond_Once);
 		ImGui::Begin("##Debug Statistics", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs);
 		{
 			ImGui::Text((std::to_string(_debugStats.currentFPS) + " FPS").c_str());
@@ -287,13 +287,18 @@ void VulkanEngine::run()
 
 			ImGui::Text(("Render Times :     [0, " + std::format("{:.2f}", _debugStats.highestRenderTime) + "]").c_str());
 			ImGui::PlotHistogram("##Render Times Histogram", _debugStats.renderTimesMS, _debugStats.renderTimesMSCount, _debugStats.renderTimesMSHeadIndex, "", 0.0f, _debugStats.highestRenderTime, ImVec2(256, 24.0f));
+
+			accumulatedWindowHeight += ImGui::GetFrameHeight() + windowPadding;		// @TODO: Pickup from here. Figure out how to get the window height that we're working on... getwindowheight multiplied by 2? Idk.
+			std::cout << ImGui::GetWindowHeight() << std::endl;
 		}
 		ImGui::End();
+
 
 		//
 		// PBR Shading Props
 		//
-		ImGui::Begin("PBR Shading Props");
+		ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight), ImGuiCond_Once);
+		ImGui::Begin("PBR Shading Props", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
 		{
 			if (ImGui::DragFloat3("Light Direction", glm::value_ptr(_pbrRendering.gpuSceneShadingProps.lightDir)))
 				_pbrRendering.gpuSceneShadingProps.lightDir = glm::normalize(_pbrRendering.gpuSceneShadingProps.lightDir);
@@ -335,6 +340,8 @@ void VulkanEngine::run()
 			static bool showLayerBuilder = true;
 			if (ImGui::ImageButton((ImTextureID)_imguiData.textureLayerBuilder, imageButtonSize, ImVec2(0, 0), ImVec2(1, 1), -1, ImVec4(0, 0, 0, 0), showLayerBuilder ? tintColorActive : tintColorInactive))
 				showLayerBuilder = !showLayerBuilder;
+
+			accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
 		}
 		ImGui::End();
 
@@ -384,7 +391,8 @@ void VulkanEngine::run()
 				//
 				// Move the matrix via the cached matrix components
 				//
-				ImGui::Begin("Transform Selected Object");
+				ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight), ImGuiCond_Once);
+				ImGui::Begin("Transform Selected Object", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
 				{
 					bool changed = false;
 					changed |= ImGui::DragFloat3("Pos##ASDFASDFASDFJAKSDFKASDHF", glm::value_ptr(_movingMatrix.cachedPosition));
@@ -403,6 +411,8 @@ void VulkanEngine::run()
 							glm::value_ptr(*_movingMatrix.matrixToMove)
 						);
 					}
+
+					accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
 				}
 				ImGui::End();
 			}

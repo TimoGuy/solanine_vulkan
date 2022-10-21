@@ -143,6 +143,11 @@ set /A BuildNumberForSolanine+=1
     <ClCompile Include="src\VkTextures.cpp" />
     <ClCompile Include="src\VulkanEngine.cpp" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\core\core.vcxproj">
+      <Project>{3b549595-d7a2-4497-900c-8e997b1fee13}</Project>
+    </ProjectReference>
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
