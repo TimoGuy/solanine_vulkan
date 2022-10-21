@@ -2587,7 +2587,7 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first,
 		//
 		// Render it out
 		//
-		Material& defaultMaterial = *getMaterial("defaultMaterial");    // @HACK: @TODO: create some kind of way to propagate the newly created pipeline to the primMat (calculated material in the gltf model) instead of using defaultMaterial directly.  -Timo
+		Material& defaultMaterial = *getMaterial("defaultMaterial");    // @HACK: @TODO: currently, the way that the pipeline is getting used is by just hardcode using it in the draw commands for models... however, each model should get its pipeline set to this material instead (or whatever material its using... that's why we can't hardcode stuff!!!)   @TODO: create some kind of way to propagate the newly created pipeline to the primMat (calculated material in the gltf model) instead of using defaultMaterial directly.  -Timo
 		Material* lastMaterial = nullptr;
 		VkDescriptorSet* lastJointDescriptor = nullptr;
 		object.model->draw(
