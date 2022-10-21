@@ -10,6 +10,7 @@
 #include "imgui/imgui_impl_sdl.h"
 #include "imgui/imgui_impl_vulkan.h"
 #include "imgui/implot.h"
+#include "imgui/ImGuizmo.h"
 
 // @NOTE: this is for creation of the VMA function definitions
 #define VMA_IMPLEMENTATION
@@ -155,6 +156,8 @@ void VulkanEngine::run()
 				if (e.key.keysym.sym == SDLK_q)                                           _freeCamMode.keyWorldDownPressed = (e.key.type == SDL_KEYDOWN);
 				if (e.key.keysym.sym == SDLK_e)                                           _freeCamMode.keyWorldUpPressed = (e.key.type == SDL_KEYDOWN);
 				if (e.key.keysym.sym == SDLK_LSHIFT || e.key.keysym.sym == SDLK_RSHIFT)   _freeCamMode.keyShiftPressed = (e.key.type == SDL_KEYDOWN);
+				if (e.key.keysym.sym == SDLK_DELETE)                                      _movingMatrix.keyDelPressed = (e.key.type == SDL_KEYDOWN);
+				if (e.key.keysym.sym == SDLK_LCTRL || e.key.keysym.sym == SDLK_RCTRL)     _movingMatrix.keyCtrlPressed = (e.key.type == SDL_KEYDOWN);
 				break;
 			}
 			}
@@ -261,12 +264,15 @@ void VulkanEngine::run()
 		ImGui_ImplVulkan_NewFrame();
 		ImGui_ImplSDL2_NewFrame(_window);
 		ImGui::NewFrame();
+		ImGuizmo::BeginFrame();
 
 		ImGui::ShowDemoWindow();
 
 		ImPlot::ShowDemoWindow();
 
+		//
 		// Debug Stats window
+		//
 		ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Once);
 		ImGui::Begin("##Debug Statistics", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs);
 		{
@@ -279,7 +285,9 @@ void VulkanEngine::run()
 		}
 		ImGui::End();
 
+		//
 		// PBR Shading Props
+		//
 		ImGui::Begin("PBR Shading Props");
 		{
 			if (ImGui::DragFloat3("Light Direction", glm::value_ptr(_pbrRendering.gpuSceneShadingProps.lightDir)))
@@ -300,6 +308,73 @@ void VulkanEngine::run()
 			ImGui::Text(("Prefiltered Cubemap Miplevels: " + std::to_string((int32_t)_pbrRendering.gpuSceneShadingProps.prefilteredCubemapMipLevels)).c_str());
 		}
 		ImGui::End();
+
+		//
+		// Moving stuff around window (using ImGuizmo)
+		//
+		_movingMatrix.matrixToMove = &_renderObjects[0].transformMatrix;			// @TEMP
+		if (_movingMatrix.matrixToMove != nullptr)
+		{
+			if (_movingMatrix.keyDelPressed)
+			{
+				_movingMatrix.matrixToMove = nullptr;    // @NOTE: this is based off the assumption that likely if you're pressing delete while selecting an object, you're about to delete the object, so we need to dereference this instead of crashing!
+				_movingMatrix.invalidateCache = true;
+			}
+			else
+			{
+				//
+				// Decompose the matrix if cache is invalid
+				//
+				if (_movingMatrix.invalidateCache)
+				{
+					ImGuizmo::DecomposeMatrixToComponents(
+						glm::value_ptr(*_movingMatrix.matrixToMove),
+						glm::value_ptr(_movingMatrix.cachedPosition),
+						glm::value_ptr(_movingMatrix.cachedEulerAngles),
+						glm::value_ptr(_movingMatrix.cachedScale)
+					);
+					_movingMatrix.invalidateCache = false;
+				}
+
+				//
+				// Move the matrix via ImGuizmo
+				//
+				if (ImGuizmo::Manipulate(
+					glm::value_ptr(_sceneCamera.gpuCameraData.view),
+					glm::value_ptr(_sceneCamera.gpuCameraData.projection),
+					ImGuizmo::OPERATION::ROTATE,
+					ImGuizmo::MODE::WORLD,
+					glm::value_ptr(*_movingMatrix.matrixToMove)))
+				{
+					_movingMatrix.invalidateCache = true;
+				}
+
+				//
+				// Move the matrix via the cached matrix components
+				//
+				ImGui::Begin("Transform Selected Object");
+				{
+					bool changed = false;
+					changed |= ImGui::DragFloat3("Pos##ASDFASDFASDFJAKSDFKASDHF", glm::value_ptr(_movingMatrix.cachedPosition));
+					changed |= ImGui::DragFloat3("Rot##ASDFASDFASDFJAKSDFKASDHF", glm::value_ptr(_movingMatrix.cachedEulerAngles));
+					changed |= ImGui::DragFloat3("Sca##ASDFASDFASDFJAKSDFKASDHF", glm::value_ptr(_movingMatrix.cachedScale));
+
+					if (changed)
+					{
+						// Recompose the matrix
+						// @TODO: Figure out when to invalidate the cache bc the euler angles will reset!
+						//        Or... maybe invalidating the cache isn't necessary for this window????
+						ImGuizmo::RecomposeMatrixFromComponents(
+							glm::value_ptr(_movingMatrix.cachedPosition),
+							glm::value_ptr(_movingMatrix.cachedEulerAngles),
+							glm::value_ptr(_movingMatrix.cachedScale),
+							glm::value_ptr(*_movingMatrix.matrixToMove)
+						);
+					}
+				}
+				ImGui::End();
+			}
+		}
 		
 		ImGui::Render();
 
@@ -1307,7 +1382,7 @@ void VulkanEngine::initPipelines()
 	pipelineBuilder._pipelineLayout = _skyboxPipelineLayout;		// @NOTE: EFFING DON'T FORGET THIS LINE BC THAT'S WHAT CAUSED ME A BUTT TON OF GRIEF!!!!!
 
 	auto _skyboxPipeline = pipelineBuilder.buildPipeline(_device, _renderPass);
-	_renderObjectModels.skyboxMaterial = *createMaterial(_skyboxPipeline, _skyboxPipelineLayout, "skyboxMaterial");
+	createMaterial(_skyboxPipeline, _skyboxPipelineLayout, "skyboxMaterial");
 
 	//
 	// Cleanup
@@ -1333,12 +1408,9 @@ void VulkanEngine::initScene()
 	//	for (int z = -10; z <= 10; z++)
 	int x = 0, z = 0;
 	{
-		glm::mat4 translation = glm::translate(glm::mat4(1.0f), glm::vec3(x, 0, z));
-		glm::mat4 scale = glm::scale(glm::mat4(1.0f), glm::vec3(0.2f));
-
 		RenderObject triangle = {
 			.model = &_renderObjectModels.slimeGirl,
-			.transformMatrix = translation * scale,
+			.transformMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(x, 0, z)),
 		};
 		_renderObjects.push_back(triangle);
 	}
@@ -1373,21 +1445,19 @@ void VulkanEngine::initScene()
 	//
 	// Update cubemapskybox material
 	//
-	vkAllocateDescriptorSets(_device, &allocInfo, &_renderObjectModels.skyboxMaterial.textureSet);
+	Material& skyboxMaterial = *getMaterial("skyboxMaterial");
+	vkAllocateDescriptorSets(_device, &allocInfo, &skyboxMaterial.textureSet);
 
 	imageBufferInfo.sampler = _loadedTextures["CubemapSkybox"].sampler;
 	imageBufferInfo.imageView = _loadedTextures["CubemapSkybox"].imageView;
-	_renderObjectModels.environmentCubeDescriptor = imageBufferInfo;		// @FIXME: @REORGANIZE: This is soooo hacky
 	texture1 =
 		vkinit::writeDescriptorImage(
 			VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-			_renderObjectModels.skyboxMaterial.textureSet,
+			skyboxMaterial.textureSet,
 			&imageBufferInfo,
 			0
 		);
 	vkUpdateDescriptorSets(_device, 1, &texture1, 0, nullptr);
-
-	// @TODO: figure out if there's a way to edit descriptor sets or if they need to be destroyed and then recreated.
 }
 
 void VulkanEngine::generatePBRCubemaps()
@@ -1616,6 +1686,13 @@ void VulkanEngine::generatePBRCubemaps()
 		VkDescriptorPool descriptorpool;
 		VK_CHECK(vkCreateDescriptorPool(_device, &descriptorPoolCI, nullptr, &descriptorpool));
 
+		// @HACK: Get the environment cubemap! (NOTE: not as much of a hack as before, however)
+		VkDescriptorImageInfo environmentCubemapBufferInfo = {
+			.sampler = _loadedTextures["CubemapSkybox"].sampler,
+			.imageView = _loadedTextures["CubemapSkybox"].imageView,
+			.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		};
+
 		// Descriptor sets
 		VkDescriptorSet descriptorset;
 		VkDescriptorSetAllocateInfo descriptorSetAllocInfo{};
@@ -1630,7 +1707,7 @@ void VulkanEngine::generatePBRCubemaps()
 		writeDescriptorSet.descriptorCount = 1;
 		writeDescriptorSet.dstSet = descriptorset;
 		writeDescriptorSet.dstBinding = 0;
-		writeDescriptorSet.pImageInfo = &_renderObjectModels.environmentCubeDescriptor;    // @TODO: @HACK: implement a proper system to get the environment cubemap!
+		writeDescriptorSet.pImageInfo = &environmentCubemapBufferInfo;    // @TODO: @HACK: implement a proper system to get the environment cubemap!
 		vkUpdateDescriptorSets(_device, 1, &writeDescriptorSet, 0, nullptr);
 
 		struct PushBlockIrradiance
@@ -2369,7 +2446,6 @@ void VulkanEngine::recreateSwapchain()
 	initDefaultRenderpass();
 	initFramebuffers();
 	initPipelines();
-	initScene();		// @NOTE: @TODO: you don't need to recreate all the renderobjects, just propagate the new pipelines (as materials) and reallocate the descriptorsets.  -Timo
 
 	recalculateSceneCamera();
 
@@ -2480,9 +2556,10 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first,
 	// Render Skybox
 	// @TODO: fix this weird organization!!!
 	//
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _renderObjectModels.skyboxMaterial.pipeline);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _renderObjectModels.skyboxMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _renderObjectModels.skyboxMaterial.pipelineLayout, 1, 1, &_renderObjectModels.skyboxMaterial.textureSet, 0, nullptr);
+	Material& skyboxMaterial = *getMaterial("skyboxMaterial");
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipeline);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipelineLayout, 1, 1, &skyboxMaterial.textureSet, 0, nullptr);
 	_renderObjectModels.skybox.bind(cmd);
 	_renderObjectModels.skybox.draw(cmd);
 

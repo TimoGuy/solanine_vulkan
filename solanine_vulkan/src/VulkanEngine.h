@@ -141,8 +141,6 @@ public:
 	{
 		vkglTF::Model skybox;
 		vkglTF::Model slimeGirl;
-		Material skyboxMaterial;  // @FIXME: this shouldn't be here... reorganize....!!!!
-		VkDescriptorImageInfo environmentCubeDescriptor;	// @FIXME: This shouldn't be here... reorg!!!! PLEASEEEE!!!!
 	} _renderObjectModels;
 
 	struct PBRSceneTextureSet    // @NOTE: these are the textures that are needed for any type of pbr scene (i.e. the irradiance, prefilter, and brdf maps)
@@ -294,6 +292,21 @@ private:
 	void buildResourceList();
 	void checkIfResourceUpdatedThenHotswapRoutine();
 	void teardownResourceList();
+
+	//
+	// Moving matrices around
+	//
+	struct MovingMatrix
+	{
+		bool keyDelPressed = false,
+			keyCtrlPressed = false;
+
+		glm::mat4* matrixToMove = nullptr;
+		bool invalidateCache = true;
+		glm::vec3 cachedPosition;
+		glm::vec3 cachedEulerAngles;
+		glm::vec3 cachedScale;
+	} _movingMatrix;
 #endif
 };
 
