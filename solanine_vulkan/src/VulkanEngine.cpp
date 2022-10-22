@@ -87,9 +87,9 @@ void VulkanEngine::run()
 	_pbrRendering.gpuSceneShadingProps.lightDir = glm::normalize(glm::vec4(0.432f, 0.864f, 0.259f, 0.0f));
 
 	// @HARDCODED: Play a song!
-	const std::string fname = "res/music/test_song.ogg";
-	AudioEngine::getInstance().loadSound(fname, false, false, false);
-	AudioEngine::getInstance().playSound(fname);
+	//const std::string fname = "res/music/test_song.ogg";             // @NOTE: the song was too good, so I have to turn it off
+	//AudioEngine::getInstance().loadSound(fname, false, false, false);
+	//AudioEngine::getInstance().playSound(fname);
 
 	//
 	// Main Loop
@@ -350,21 +350,35 @@ void VulkanEngine::run()
 			static const ImVec4 tintColorActive = ImVec4(1, 1, 1, 1);
 			static const ImVec4 tintColorInactive = ImVec4(1, 1, 1, 0.25);
 
-			static bool showLayerVisible = true;
-			if (ImGui::ImageButton((ImTextureID)_imguiData.textureLayerVisible, imageButtonSize, ImVec2(0, 0), ImVec2(1, 1), -1, ImVec4(0, 0, 0, 0), showLayerVisible ? tintColorActive : tintColorInactive))
-				showLayerVisible = !showLayerVisible;
+			ImTextureID buttonIcons[] = {
+				(ImTextureID)_imguiData.textureLayerVisible,
+				(ImTextureID)_imguiData.textureLayerInvisible,
+				(ImTextureID)_imguiData.textureLayerBuilder,
+			};
 
-			ImGui::SameLine();
-
-			static bool showLayerInvisible = true;
-			if (ImGui::ImageButton((ImTextureID)_imguiData.textureLayerInvisible, imageButtonSize, ImVec2(0, 0), ImVec2(1, 1), -1, ImVec4(0, 0, 0, 0), showLayerInvisible ? tintColorActive : tintColorInactive))
-				showLayerInvisible = !showLayerInvisible;
-
-			ImGui::SameLine();
-
-			static bool showLayerBuilder = true;
-			if (ImGui::ImageButton((ImTextureID)_imguiData.textureLayerBuilder, imageButtonSize, ImVec2(0, 0), ImVec2(1, 1), -1, ImVec4(0, 0, 0, 0), showLayerBuilder ? tintColorActive : tintColorInactive))
-				showLayerBuilder = !showLayerBuilder;
+			for (size_t i = 0; i < _renderObjectLayersEnabled.size(); i++)
+			{
+				if (ImGui::ImageButton(buttonIcons[i], imageButtonSize, ImVec2(0, 0), ImVec2(1, 1), -1, ImVec4(0, 0, 0, 0), _renderObjectLayersEnabled[i] ? tintColorActive : tintColorInactive))
+				{
+					_renderObjectLayersEnabled[i] = !_renderObjectLayersEnabled[i];
+					if (!_renderObjectLayersEnabled[i])
+					{
+						// Find object that matrixToMove is pulling from (if any)
+						for (auto& ro : _renderObjects)
+						{
+							if (_movingMatrix.matrixToMove == &ro.transformMatrix)
+							{
+								// @HACK: Reset the _movingMatrix.matrixToMove
+								//        if it's for one of the objects that just got disabled
+								if ((size_t)ro.renderLayer == i)
+									_movingMatrix.matrixToMove = nullptr;
+								break;
+							}
+						}
+					}
+				}
+				ImGui::SameLine();
+			}
 
 			accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
 		}
@@ -518,7 +532,7 @@ void VulkanEngine::run()
 				ImGui::End();
 			}
 		}
-		
+
 		ImGui::Render();
 
 		render();
@@ -1240,7 +1254,7 @@ void VulkanEngine::initDefaultRenderpass()
 	//
 	// Create the renderpass for the subpass
 	//
-	VkSubpassDependency dependencies[] = {colorDependency, depthDependency};
+	VkSubpassDependency dependencies[] = { colorDependency, depthDependency };
 	VkAttachmentDescription attachments[] = { colorAttachment, depthAttachment };
 	VkRenderPassCreateInfo renderPassInfo = {
 		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
@@ -1368,7 +1382,7 @@ void VulkanEngine::initPickingRenderpass()    // @NOTE: @COPYPASTA: This is real
 	//
 	// Create the renderpass for the subpass
 	//
-	VkSubpassDependency dependencies[] = {colorDependency, depthDependency};
+	VkSubpassDependency dependencies[] = { colorDependency, depthDependency };
 	VkAttachmentDescription attachments[] = { colorAttachment, depthAttachment };
 	VkRenderPassCreateInfo renderPassInfo = {
 		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
@@ -1511,11 +1525,11 @@ void VulkanEngine::initDescriptors()    // @TODO: don't destroy and then recreat
 	//
 	// Create Descriptor Set Layout for camera buffers
 	//
-	VkDescriptorSetLayoutBinding cameraBufferBinding              = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0);
-	VkDescriptorSetLayoutBinding shadingPropsBufferBinding        = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         VK_SHADER_STAGE_FRAGMENT_BIT,                              1);
-	VkDescriptorSetLayoutBinding pbrIrradianceTextureBinding      = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT,                              2);
-	VkDescriptorSetLayoutBinding pbrPrefilteredTextureBinding     = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT,                              3);
-	VkDescriptorSetLayoutBinding pbrBRDFLUTTextureBinding         = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT,                              4);
+	VkDescriptorSetLayoutBinding cameraBufferBinding          = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0);
+	VkDescriptorSetLayoutBinding shadingPropsBufferBinding    = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT, 1);
+	VkDescriptorSetLayoutBinding pbrIrradianceTextureBinding  = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 2);
+	VkDescriptorSetLayoutBinding pbrPrefilteredTextureBinding = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 3);
+	VkDescriptorSetLayoutBinding pbrBRDFLUTTextureBinding     = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 4);
 	VkDescriptorSetLayoutBinding bindings[] = {
 		cameraBufferBinding,
 		shadingPropsBufferBinding,
@@ -1893,11 +1907,12 @@ void VulkanEngine::initScene()
 	//int x = 0, z = 0;
 	{
 		int z = 0;
-		RenderObject triangle = {
+		RenderObject ro = {
 			.model = &_renderObjectModels.slimeGirl,
 			.transformMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(x, 0, z)),
+			.renderLayer = RenderLayer::VISIBLE,
 		};
-		_renderObjects.push_back(triangle);
+		_renderObjects.push_back(ro);
 	}
 
 	//
@@ -2726,7 +2741,7 @@ void VulkanEngine::generateBRDFLUT()
 	emptyInputStateCI.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
 
 	VkShaderModule genBrdfLUTVertShader,
-		genBrdfLUTFragShader;
+					genBrdfLUTFragShader;
 	loadShaderModule("shader/genbrdflut.vert.spv", &genBrdfLUTVertShader);
 	loadShaderModule("shader/genbrdflut.frag.spv", &genBrdfLUTFragShader);
 
@@ -2815,7 +2830,8 @@ void VulkanEngine::generateBRDFLUT()
 	// Report time it took
 	auto tEnd = std::chrono::high_resolution_clock::now();
 	auto tDiff = std::chrono::duration<double, std::milli>(tEnd - tStart).count();
-	std::cout << "[GENERATING BRDF LUT]" << std::endl << "execution duration: " << tDiff << " ms" << std::endl;
+	std::cout << "[GENERATING BRDF LUT]" << std::endl
+		<< "execution duration: " << tDiff << " ms" << std::endl;
 }
 
 void VulkanEngine::attachPBRDescriptors()
@@ -3003,7 +3019,7 @@ void VulkanEngine::loadMeshes()
 		[&]() { _renderObjectModels.skybox.loadFromFile(this, "res/models/Box.gltf", 0); },
 		[&]() { _renderObjectModels.slimeGirl.loadFromFile(this, "res/models/SlimeGirl.glb", 0); }
 		//[&]() { _renderObjectModels.slimeGirl.loadFromFile(this, "C:/Users/Timo/Documents/Repositories/Vulkan-glTF-PBR/data/models/DamagedHelmet/glTF-Embedded/DamagedHelmet.gltf", 0); }
-		);
+	);
 	e.run(taskflow).wait();
 
 	_mainDeletionQueue.pushFunction([=]() {
@@ -3036,7 +3052,7 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first,
 	//
 	void* objectData;
 	vmaMapMemory(_allocator, currentFrame.objectBuffer._allocation, &objectData);
-	GPUObjectData* objectSSBO = (GPUObjectData*)objectData;
+	GPUObjectData* objectSSBO = (GPUObjectData*)objectData;    // @IMPROVE: perhaps multithread this? Or only update when the object moves?
 
 	for (size_t i = 0; i < count; i++)
 	{
@@ -3071,6 +3087,9 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first,
 	for (size_t i = 0; i < count; i++)
 	{
 		RenderObject& object = first[i];
+
+		if (!_renderObjectLayersEnabled[(size_t)object.renderLayer])
+			continue;    // Ignore layers that are disabled
 
 		if (!object.model)	// @NOTE: Subdue a warning that a possible nullptr could be dereferenced
 		{
@@ -3292,13 +3311,15 @@ void VulkanEngine::submitSelectedRenderObjectId(int32_t id)
 	{
 		// Nullify the matrixToMove pointer
 		_movingMatrix.matrixToMove = nullptr;
-		std::cout << "HEY! Selected object nullified" << std::endl;
+		std::cout << "[PICKING]" << std::endl
+			<< "Selected object nullified" << std::endl;
 		return;
 	}
 
 	// Set a new matrixToMove
 	_movingMatrix.matrixToMove = &_renderObjects[id].transformMatrix;
-	std::cout << "HEY! New object is selected with id of " << id << std::endl;
+	std::cout << "[PICKING]" << std::endl
+		<< "Selected object " << id << std::endl;
 }
 
 VkPipeline PipelineBuilder::buildPipeline(VkDevice device, VkRenderPass pass)

@@ -81,10 +81,16 @@ struct DeletionQueue
 	}
 };
 
+enum class RenderLayer
+{
+	VISIBLE, INVISIBLE, BUILDER
+};
+
 struct RenderObject
 {
 	vkglTF::Model* model;
 	glm::mat4 transformMatrix;
+	RenderLayer renderLayer;
 };
 
 constexpr unsigned int FRAME_OVERLAP = 2;
@@ -156,6 +162,7 @@ public:
 	//
 	std::vector<RenderObject> _renderObjects;
 	std::unordered_map<std::string, Material> _materials;
+	std::vector<bool> _renderObjectLayersEnabled = { true, true, true };
 
 	struct RenderObjectModels
 	{
