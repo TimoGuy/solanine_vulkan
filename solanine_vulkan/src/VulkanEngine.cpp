@@ -3310,8 +3310,8 @@ void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& curr
 		"wireframeColorBehindMaterial"
 	};
 	glm::vec4 materialColors[numRenders] = {
-		glm::vec4(1, 0, 0, 1),
-		glm::vec4(0, 1, 0, 1),
+		glm::vec4(1, 0.25, 1, 1),
+		glm::vec4(0.535, 0.13, 0.535, 1),
 	};
 
 	for (size_t i = 0; i < numRenders; i++)
