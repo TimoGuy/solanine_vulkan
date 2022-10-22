@@ -739,8 +739,8 @@ void VulkanEngine::render()
 		// Object data descriptor             (set = 1)
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
 
-		// Picking Return value id descriptor (set = 2)
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 2, 1, &currentFrame.pickingReturnValueDescriptor, 0, nullptr);
+		// Picking Return value id descriptor (set = 3)
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 3, 1, &currentFrame.pickingReturnValueDescriptor, 0, nullptr);
 
 		// Set dynamic scissor
 		VkRect2D scissor = {};
@@ -1802,7 +1802,7 @@ void VulkanEngine::initPipelines()
 	meshPipelineLayoutInfo.pPushConstantRanges = &pushConstant;
 	meshPipelineLayoutInfo.pushConstantRangeCount = 1;
 
-	VkDescriptorSetLayout setLayouts[] = { _globalSetLayout, _objectSetLayout, _pbrTexturesSetLayout, _skeletalAnimationSetLayout };
+	VkDescriptorSetLayout setLayouts[] = { _globalSetLayout, _objectSetLayout, _skeletalAnimationSetLayout, _pbrTexturesSetLayout };
 	meshPipelineLayoutInfo.pSetLayouts = setLayouts;
 	meshPipelineLayoutInfo.setLayoutCount = 4;
 
@@ -1890,7 +1890,7 @@ void VulkanEngine::initPipelines()
 	pickingPipelineLayoutInfo.pPushConstantRanges = nullptr;
 	pickingPipelineLayoutInfo.pushConstantRangeCount = 0;
 
-	VkDescriptorSetLayout setLayouts3[] = { _globalSetLayout, _objectSetLayout, _pickingReturnValueSetLayout, _skeletalAnimationSetLayout };
+	VkDescriptorSetLayout setLayouts3[] = { _globalSetLayout, _objectSetLayout, _skeletalAnimationSetLayout, _pickingReturnValueSetLayout };
 	pickingPipelineLayoutInfo.pSetLayouts = setLayouts3;
 	pickingPipelineLayoutInfo.setLayoutCount = 4;
 
@@ -1931,8 +1931,8 @@ void VulkanEngine::initPipelines()
 		.offset = 0,
 		.size = sizeof(ColorPushConstBlock)
 	};
-	meshPipelineLayoutInfo.pPushConstantRanges = &pushConstant;
-	meshPipelineLayoutInfo.pushConstantRangeCount = 1;
+	wireframeColorPipelineLayoutInfo.pPushConstantRanges = &pushConstant;
+	wireframeColorPipelineLayoutInfo.pushConstantRangeCount = 1;
 
 	VkDescriptorSetLayout setLayouts4[] = { _globalSetLayout, _objectSetLayout, _skeletalAnimationSetLayout };
 	wireframeColorPipelineLayoutInfo.pSetLayouts = setLayouts4;
@@ -1958,8 +1958,13 @@ void VulkanEngine::initPipelines()
 	};
 	pipelineBuilder._dynamicState = noDynamicState;    // Turn off dynamic states
 
-	auto _wireframeColorPipeline = pipelineBuilder.buildPipeline(_device, _renderPass);    // @NOTE: the changed renderpass bc this is for picking
+	auto _wireframeColorPipeline = pipelineBuilder.buildPipeline(_device, _renderPass);
 	createMaterial(_wireframeColorPipeline, _wireframeColorPipelineLayout, "wireframeColorMaterial");
+
+	pipelineBuilder._depthStencil = vkinit::depthStencilCreateInfo(true, false, VK_COMPARE_OP_GREATER);
+	auto _wireframeColorBehindPipeline = pipelineBuilder.buildPipeline(_device, _renderPass);
+	createMaterial(_wireframeColorBehindPipeline, _wireframeColorPipelineLayout, "wireframeColorBehindMaterial");
+
 
 	for (auto shaderStage : pipelineBuilder._shaderStages)
 		vkDestroyShaderModule(_device, shaderStage.module, nullptr);
@@ -1973,6 +1978,7 @@ void VulkanEngine::initPipelines()
 		vkDestroyPipeline(_device, _pickingPipeline, nullptr);
 		vkDestroyPipelineLayout(_device, _pickingPipelineLayout, nullptr);
 		vkDestroyPipeline(_device, _wireframeColorPipeline, nullptr);
+		vkDestroyPipeline(_device, _wireframeColorBehindPipeline, nullptr);
 		vkDestroyPipelineLayout(_device, _wireframeColorPipelineLayout, nullptr);
 		});
 }
@@ -3209,8 +3215,8 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first,
 						// Object data descriptor (set = 1)
 						vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
 			
-						// PBR data descriptor    (set = 2)
-						vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 2, 1, &primMat.textureSet, 0, nullptr);
+						// PBR data descriptor    (set = 3)
+						vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 3, 1, &primMat.textureSet, 0, nullptr);
 			
 						// Undo flag for joint descriptor to force rebinding
 						lastJointDescriptor = nullptr;
@@ -3262,11 +3268,11 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first,
 				VkDescriptorSet* jointDescriptor = &node->mesh->uniformBuffer.descriptorSet;
 				if (lastJointDescriptor != jointDescriptor)
 				{
-					// Joint Descriptor (set = 3) (i.e. skeletal animations)
+					// Joint Descriptor (set = 2) (i.e. skeletal animations)
 					// 
 					// @NOTE: this doesn't have to be bound every primitive. Every mesh will
 					// have a single joint descriptor, hence having its own binding flag.
-					vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, (materialOverride) ? *overrideLayout : defaultMaterial.pipelineLayout, 3, 1, jointDescriptor, 0, nullptr);
+					vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, (materialOverride) ? *overrideLayout : defaultMaterial.pipelineLayout, 2, 1, jointDescriptor, 0, nullptr);
 					lastJointDescriptor = jointDescriptor;
 				}
 			}
@@ -3295,23 +3301,36 @@ void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& curr
 	//
 	// Render it with the wireframe color pipeline
 	//
-	Material& wireframeColorMaterial = *getMaterial("wireframeColorMaterial");
+	constexpr size_t numRenders = 2;
+	std::string materialNames[numRenders] = {
+		"wireframeColorMaterial",
+		"wireframeColorBehindMaterial"
+	};
+	glm::vec4 materialColors[numRenders] = {
+		glm::vec4(1, 0, 0, 1),
+		glm::vec4(0, 1, 0, 1),
+	};
 
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, wireframeColorMaterial.pipeline);
+	for (size_t i = 0; i < numRenders; i++)
+	{
+		Material& material = *getMaterial(materialNames[i]);
 
-	// Global data descriptor             (set = 0)
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, wireframeColorMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
+		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, material.pipeline);
 
-	// Object data descriptor             (set = 1)
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, wireframeColorMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
+		// Global data descriptor             (set = 0)
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, material.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
 
-	// Push constants
-	ColorPushConstBlock pc = {
-		.color = glm::vec4(1, 0, 0, 1),
-	};	
-	vkCmdPushConstants(cmd, wireframeColorMaterial.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ColorPushConstBlock), &pc);
+		// Object data descriptor             (set = 1)
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, material.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
 
-	renderRenderObjects(cmd, pickedRO, 1, false, true, &wireframeColorMaterial.pipelineLayout);
+		// Push constants
+		ColorPushConstBlock pc = {
+			.color = materialColors[i],
+		};	
+		vkCmdPushConstants(cmd, material.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ColorPushConstBlock), &pc);
+
+		renderRenderObjects(cmd, pickedRO, 1, false, true, &material.pipelineLayout);
+	}
 }
 
 void VulkanEngine::recalculateSceneCamera()

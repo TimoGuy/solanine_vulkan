@@ -39,11 +39,11 @@ layout (set = 0, binding = 4) uniform sampler2D samplerBRDFLUT;
 
 // Material bindings
 
-layout (set = 2, binding = 0) uniform sampler2D colorMap;
-layout (set = 2, binding = 1) uniform sampler2D physicalDescriptorMap;
-layout (set = 2, binding = 2) uniform sampler2D normalMap;
-layout (set = 2, binding = 3) uniform sampler2D aoMap;
-layout (set = 2, binding = 4) uniform sampler2D emissiveMap;
+layout (set = 3, binding = 0) uniform sampler2D colorMap;
+layout (set = 3, binding = 1) uniform sampler2D physicalDescriptorMap;
+layout (set = 3, binding = 2) uniform sampler2D normalMap;
+layout (set = 3, binding = 3) uniform sampler2D aoMap;
+layout (set = 3, binding = 4) uniform sampler2D emissiveMap;
 
 layout (push_constant) uniform Material
 {

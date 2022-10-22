@@ -35,7 +35,7 @@ layout(std140, set = 1, binding = 0) readonly buffer ObjectBuffer
 
 // Skeletal Animation/Skinning
 #define MAX_NUM_JOINTS 128
-layout (set = 3, binding = 0) uniform SkeletonAnimationNode
+layout (set = 2, binding = 0) uniform SkeletonAnimationNode
 {
 	mat4 matrix;
 	mat4 jointMatrix[MAX_NUM_JOINTS];
