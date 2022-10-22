@@ -392,13 +392,13 @@ void VulkanEngine::run()
 			if (_movingMatrix.keyDelPressed)
 			{
 				_movingMatrix.matrixToMove = nullptr;    // @NOTE: this is based off the assumption that likely if you're pressing delete while selecting an object, you're about to delete the object, so we need to dereference this instead of crashing!
-				_movingMatrix.invalidateCache = true;
 			}
 			else
 			{
 				//
 				// Decompose the matrix if cache is invalidated
 				//
+				_movingMatrix.invalidateCache = (_movingMatrix.prevMatrixToMove != _movingMatrix.matrixToMove);
 				if (_movingMatrix.invalidateCache)
 				{
 					ImGuizmo::DecomposeMatrixToComponents(
@@ -554,6 +554,8 @@ void VulkanEngine::run()
 				}
 				ImGui::End();
 			}
+
+			_movingMatrix.prevMatrixToMove = _movingMatrix.matrixToMove;
 		}
 
 		ImGui::Render();

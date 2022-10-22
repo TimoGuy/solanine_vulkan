@@ -336,6 +336,7 @@ private:
 			keyRPressed = false;
 
 		glm::mat4* matrixToMove = nullptr;
+		glm::mat4* prevMatrixToMove = nullptr;    // @NOTE: this is for invalidating the cache
 		bool invalidateCache = true;
 		glm::vec3 cachedPosition;
 		glm::vec3 cachedEulerAngles;
