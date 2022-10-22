@@ -283,6 +283,8 @@ public:
 		float alphaMaskCutoff;
 	};
 
+private:
+
 #ifdef _DEVELOP
 	//
 	// Moving Free cam
@@ -293,8 +295,8 @@ public:
 		glm::ivec2 savedMousePosition;
 		float_t sensitivity = 100.0f;
 	} _freeCamMode;
+	void updateFreeCam(const float_t& deltaTime);
 	
-private:
 	//
 	// Debug Statistics
 	//
@@ -307,6 +309,7 @@ private:
 		float_t renderTimesMS[256 * 2];
 		float_t highestRenderTime = -1.0f;
 	} _debugStats;
+	void updateDebugStats(const float_t& deltaTime);
 
 	//
 	// Hot-swappable resources system
@@ -344,6 +347,7 @@ private:
 		VkDescriptorSet textureLayerInvisible;
 		VkDescriptorSet textureLayerBuilder;
 	} _imguiData;
+	void renderImGui();
 #endif
 };
 

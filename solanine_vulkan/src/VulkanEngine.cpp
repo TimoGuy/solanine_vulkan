@@ -96,411 +96,54 @@ void VulkanEngine::run()
 	// Main Loop
 	//
 	bool isRunning = true;
-
 	float_t ticksFrequency = 1.0f / (float_t)SDL_GetPerformanceFrequency();
 	uint64_t lastFrame = SDL_GetPerformanceCounter();
 
 	while (isRunning)
 	{
 #ifdef _DEVELOP
+		// Routine to reload any resources when they're updated
+		// NOTE: We mayyyy have to move this to another thread, but it
+		//       really doesn't seem to be slowing anything down. We'll
+		//       see though  -Timo 2022/10/22
 		checkIfResourceUpdatedThenHotswapRoutine();
 #endif
 
 		// Poll events from the window
 		input::processInput(&isRunning);
 
-		//
 		// Update AudioEngine
-		//
 		AudioEngine::getInstance().update();
 
 		//
 		// Update DeltaTime
 		//
 		uint64_t currentFrame = SDL_GetPerformanceCounter();
-		const float deltaTime = (float_t)(currentFrame - lastFrame) * ticksFrequency;
+		const float_t deltaTime = (float_t)(currentFrame - lastFrame) * ticksFrequency;
 		lastFrame = currentFrame;
 
 		//
-		// Play Slimegirl Idle_hip animation
+		// @TEMP: Play Slimegirl animation
 		//
 		static uint32_t animationIndex = 31;    // @NOTE: this is Slimegirl's running inmotion animation
-		static float animationTimer = 0.0f;
+		static float_t animationTimer = 0.0f;
 		animationTimer += deltaTime;
 		if (animationTimer > _renderObjectModels.slimeGirl.animations[animationIndex].end)    // Loop animation
 			animationTimer -= _renderObjectModels.slimeGirl.animations[animationIndex].end;
 		_renderObjectModels.slimeGirl.updateAnimation(animationIndex, animationTimer);
 
-		//
 		// Free Cam
-		//
-		if (input::onRMBPress || input::onRMBRelease)
-		{
-			_freeCamMode.enabled = input::RMBPressed;
-			SDL_SetRelativeMouseMode(_freeCamMode.enabled ? SDL_TRUE : SDL_FALSE);		// @NOTE: this causes cursor to disappear and not leave window boundaries (@BUG: Except for if you right click into the window?)
-					
-			if (_freeCamMode.enabled)
-				SDL_GetMouseState(
-					&_freeCamMode.savedMousePosition.x,
-					&_freeCamMode.savedMousePosition.y
-				);
-			else
-				SDL_WarpMouseInWindow(_window, _freeCamMode.savedMousePosition.x, _freeCamMode.savedMousePosition.y);
-		}
-		if (_freeCamMode.enabled)
-		{
-			glm::vec2 mousePositionDeltaCooked = (glm::vec2)input::mouseDelta / (float_t)_windowExtent.height * _freeCamMode.sensitivity;
-			input::mouseDelta = glm::ivec2(0);		// Reset the mouseDelta
+		updateFreeCam(deltaTime);
 
-			glm::vec2 inputToVelocity(0.0f);
-			inputToVelocity.x += input::keyLeftPressed ? -1.0f : 0.0f;
-			inputToVelocity.x += input::keyRightPressed ? 1.0f : 0.0f;
-			inputToVelocity.y += input::keyUpPressed ? 1.0f : 0.0f;
-			inputToVelocity.y += input::keyDownPressed ? -1.0f : 0.0f;
-
-			float_t worldUpVelocity = 0.0f;
-			worldUpVelocity += input::keyWorldUpPressed ? 1.0f : 0.0f;
-			worldUpVelocity += input::keyWorldDownPressed ? -1.0f : 0.0f;
-
-			if (glm::length(mousePositionDeltaCooked) > 0.0f || glm::length(inputToVelocity) > 0.0f || glm::abs(worldUpVelocity) > 0.0f)
-			{
-				constexpr glm::vec3 worldUp = { 0.0f, 1.0f, 0.0f };
-
-				// Update camera facing direction with mouse input
-				glm::vec3 newCamFacingDirection =
-					glm::rotate(
-						_sceneCamera.facingDirection,
-						glm::radians(-mousePositionDeltaCooked.y),
-						glm::normalize(glm::cross(_sceneCamera.facingDirection, worldUp))
-					);
-				if (glm::angle(newCamFacingDirection, worldUp) > glm::radians(5.0f) &&
-					glm::angle(newCamFacingDirection, -worldUp) > glm::radians(5.0f))
-					_sceneCamera.facingDirection = newCamFacingDirection;
-				_sceneCamera.facingDirection = glm::rotate(_sceneCamera.facingDirection, glm::radians(-mousePositionDeltaCooked.x), worldUp);
-
-				// Update camera position with keyboard input
-				float speedMultiplier = input::keyShiftPressed ? 50.0f : 25.0f;
-				inputToVelocity *= speedMultiplier * deltaTime;
-				worldUpVelocity *= speedMultiplier * deltaTime;
-
-				_sceneCamera.gpuCameraData.cameraPosition +=
-					inputToVelocity.y * _sceneCamera.facingDirection +
-					inputToVelocity.x * glm::normalize(glm::cross(_sceneCamera.facingDirection, worldUp)) +
-					glm::vec3(0.0f, worldUpVelocity, 0.0f);
-
-				// Recalculate camera
-				recalculateSceneCamera();
-			}
-		}
-
-		//
 		// Collect debug stats
-		//
-		_debugStats.currentFPS = std::roundf(1.0f / deltaTime);
-		_debugStats.renderTimesMSHeadIndex = std::fmodf(_debugStats.renderTimesMSHeadIndex + 1, _debugStats.renderTimesMSCount);
+		updateDebugStats(deltaTime);
 
-		// Find what the highest render time is
-		float_t renderTime = deltaTime * 1000.0f;
-		if (renderTime > _debugStats.highestRenderTime)
-			_debugStats.highestRenderTime = renderTime;
-		else if (_debugStats.renderTimesMS[_debugStats.renderTimesMSHeadIndex] == _debugStats.highestRenderTime)     // Former highest render time about to be overwritten
-		{
-			float_t nextHighestRenderTime = renderTime;
-			for (size_t i = _debugStats.renderTimesMSHeadIndex + 1; i < _debugStats.renderTimesMSHeadIndex + _debugStats.renderTimesMSCount; i++)
-					nextHighestRenderTime = std::max(nextHighestRenderTime, _debugStats.renderTimesMS[i]);
-			_debugStats.highestRenderTime = nextHighestRenderTime;
-		}
-
-		// Apply render time to buffer
-		_debugStats.renderTimesMS[_debugStats.renderTimesMSHeadIndex] =
-			_debugStats.renderTimesMS[_debugStats.renderTimesMSHeadIndex + _debugStats.renderTimesMSCount] =
-			renderTime;
-
-		//
 		// Recreate swapchain if flagged
-		//
 		if (_recreateSwapchain)
 			recreateSwapchain();
 
-		//
 		// Render
-		//
-		ImGui_ImplVulkan_NewFrame();
-		ImGui_ImplSDL2_NewFrame(_window);
-		ImGui::NewFrame();
-
-		ImGuizmo::SetOrthographic(false);
-		ImGuizmo::AllowAxisFlip(false);
-		ImGuizmo::BeginFrame();
-		ImGuiIO& io = ImGui::GetIO();
-		ImGuizmo::SetRect(0, 0, io.DisplaySize.x, io.DisplaySize.y);
-
-		ImGui::ShowDemoWindow();
-
-		ImPlot::ShowDemoWindow();
-
-		float_t accumulatedWindowHeight = 0.0f;
-		constexpr float_t windowPadding = 8.0f;
-
-		//
-		// Debug Stats window
-		//
-		ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight), ImGuiCond_Always);		// @NOTE: the ImGuiCond_Always means that this line will execute always, when set to once, this line will be ignored after the first time it's called
-		ImGui::Begin("##Debug Statistics", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs);
-		{
-			ImGui::Text((std::to_string(_debugStats.currentFPS) + " FPS").c_str());
-			ImGui::Text((std::format("{:.2f}", _debugStats.renderTimesMS[_debugStats.renderTimesMSHeadIndex]) + "ms").c_str());
-			ImGui::Text(("Frame : " + std::to_string(_frameNumber)).c_str());
-
-			ImGui::Text(("Render Times :     [0, " + std::format("{:.2f}", _debugStats.highestRenderTime) + "]").c_str());
-			ImGui::PlotHistogram("##Render Times Histogram", _debugStats.renderTimesMS, _debugStats.renderTimesMSCount, _debugStats.renderTimesMSHeadIndex, "", 0.0f, _debugStats.highestRenderTime, ImVec2(256, 24.0f));
-
-			accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
-		}
-		ImGui::End();
-
-
-		//
-		// PBR Shading Props
-		//
-		ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight), ImGuiCond_Always);
-		ImGui::Begin("PBR Shading Props", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
-		{
-			if (ImGui::DragFloat3("Light Direction", glm::value_ptr(_pbrRendering.gpuSceneShadingProps.lightDir)))
-				_pbrRendering.gpuSceneShadingProps.lightDir = glm::normalize(_pbrRendering.gpuSceneShadingProps.lightDir);
-
-			ImGui::DragFloat("Exposure", &_pbrRendering.gpuSceneShadingProps.exposure, 0.1f, 0.1f, 10.0f);
-			ImGui::DragFloat("Gamma", &_pbrRendering.gpuSceneShadingProps.gamma, 0.1f, 0.1f, 4.0f);
-			ImGui::DragFloat("IBL Strength", &_pbrRendering.gpuSceneShadingProps.scaleIBLAmbient, 0.1f, 0.0f, 2.0f);
-
-			static int debugViewIndex = 0;
-			if (ImGui::Combo("Debug View Input", &debugViewIndex, "none\0Base color\0Normal\0Occlusion\0Emissive\0Metallic\0Roughness"))
-				_pbrRendering.gpuSceneShadingProps.debugViewInputs = (float_t)debugViewIndex;
-
-			static int debugViewEquation = 0;
-			if (ImGui::Combo("Debug View Equation", &debugViewEquation, "none\0Diff (l,n)\0F (l,h)\0G (l,v,h)\0D (h)\0Specular"))
-				_pbrRendering.gpuSceneShadingProps.debugViewEquation = (float_t)debugViewEquation;
-
-			ImGui::Text(("Prefiltered Cubemap Miplevels: " + std::to_string((int32_t)_pbrRendering.gpuSceneShadingProps.prefilteredCubemapMipLevels)).c_str());
-
-			ImGui::Separator();
-
-			ImGui::Text("Toggle Rendering Layers");
-
-			static const ImVec2 imageButtonSize = ImVec2(64, 64);
-			static const ImVec4 tintColorActive = ImVec4(1, 1, 1, 1);
-			static const ImVec4 tintColorInactive = ImVec4(1, 1, 1, 0.25);
-
-			ImTextureID buttonIcons[] = {
-				(ImTextureID)_imguiData.textureLayerVisible,
-				(ImTextureID)_imguiData.textureLayerInvisible,
-				(ImTextureID)_imguiData.textureLayerBuilder,
-			};
-
-			for (size_t i = 0; i < _renderObjectLayersEnabled.size(); i++)
-			{
-				if (ImGui::ImageButton(buttonIcons[i], imageButtonSize, ImVec2(0, 0), ImVec2(1, 1), -1, ImVec4(0, 0, 0, 0), _renderObjectLayersEnabled[i] ? tintColorActive : tintColorInactive))
-				{
-					_renderObjectLayersEnabled[i] = !_renderObjectLayersEnabled[i];
-					if (!_renderObjectLayersEnabled[i])
-					{
-						// Find object that matrixToMove is pulling from (if any)
-						for (auto& ro : _renderObjects)
-						{
-							if (_movingMatrix.matrixToMove == &ro.transformMatrix)
-							{
-								// @HACK: Reset the _movingMatrix.matrixToMove
-								//        if it's for one of the objects that just got disabled
-								if ((size_t)ro.renderLayer == i)
-									_movingMatrix.matrixToMove = nullptr;
-								break;
-							}
-						}
-					}
-				}
-				ImGui::SameLine();
-			}
-
-			accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
-		}
-		ImGui::End();
-
-		//
-		// Moving stuff around window (using ImGuizmo)
-		//
-		if (_movingMatrix.matrixToMove != nullptr)
-		{
-			if (input::keyDelPressed)
-			{
-				_movingMatrix.matrixToMove = nullptr;    // @NOTE: this is based off the assumption that likely if you're pressing delete while selecting an object, you're about to delete the object, so we need to dereference this instead of crashing!
-			}
-			else
-			{
-				//
-				// Decompose the matrix if cache is invalidated
-				//
-				_movingMatrix.invalidateCache = (_movingMatrix.prevMatrixToMove != _movingMatrix.matrixToMove);
-				if (_movingMatrix.invalidateCache)
-				{
-					ImGuizmo::DecomposeMatrixToComponents(
-						glm::value_ptr(*_movingMatrix.matrixToMove),
-						glm::value_ptr(_movingMatrix.cachedPosition),
-						glm::value_ptr(_movingMatrix.cachedEulerAngles),
-						glm::value_ptr(_movingMatrix.cachedScale)
-					);
-					_movingMatrix.invalidateCache = false;
-				}
-
-				//
-				// Move the matrix via ImGuizmo
-				//
-				glm::mat4 projection = _sceneCamera.gpuCameraData.projection;
-				projection[1][1] *= -1.0f;
-
-				static ImGuizmo::OPERATION manipulateOperation = ImGuizmo::OPERATION::TRANSLATE;
-				static ImGuizmo::MODE manipulateMode           = ImGuizmo::MODE::WORLD;
-				if (ImGuizmo::Manipulate(
-					glm::value_ptr(_sceneCamera.gpuCameraData.view),
-					glm::value_ptr(projection),
-					manipulateOperation,
-					manipulateMode,
-					glm::value_ptr(*_movingMatrix.matrixToMove)))
-				{
-					_movingMatrix.invalidateCache = true;
-				}
-
-				//
-				// Move the matrix via the cached matrix components
-				//
-				ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight), ImGuiCond_Always);
-				ImGui::Begin("Edit Selected", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
-				{
-					ImGui::Text("Transform");
-
-					bool changed = false;
-					changed |= ImGui::DragFloat3("Pos##ASDFASDFASDFJAKSDFKASDHF", glm::value_ptr(_movingMatrix.cachedPosition));
-					changed |= ImGui::DragFloat3("Rot##ASDFASDFASDFJAKSDFKASDHF", glm::value_ptr(_movingMatrix.cachedEulerAngles));
-					changed |= ImGui::DragFloat3("Sca##ASDFASDFASDFJAKSDFKASDHF", glm::value_ptr(_movingMatrix.cachedScale));
-
-					if (changed)
-					{
-						// Recompose the matrix
-						// @TODO: Figure out when to invalidate the cache bc the euler angles will reset!
-						//        Or... maybe invalidating the cache isn't necessary for this window????
-						ImGuizmo::RecomposeMatrixFromComponents(
-							glm::value_ptr(_movingMatrix.cachedPosition),
-							glm::value_ptr(_movingMatrix.cachedEulerAngles),
-							glm::value_ptr(_movingMatrix.cachedScale),
-							glm::value_ptr(*_movingMatrix.matrixToMove)
-						);
-					}
-
-					ImGui::Separator();
-					ImGui::Text("Manipulation Gizmo");
-					static bool forceRecalculation = false;    // @NOTE: this is a flag for the key bindings below
-					static int operationIndex = 0;
-					if (ImGui::Combo("Operation", &operationIndex, "Translate\0Rotate\0Scale") || forceRecalculation)
-					{
-						switch (operationIndex)
-						{
-						case 0:
-							manipulateOperation = ImGuizmo::OPERATION::TRANSLATE;
-							break;
-						case 1:
-							manipulateOperation = ImGuizmo::OPERATION::ROTATE;
-							break;
-						case 2:
-							manipulateOperation = ImGuizmo::OPERATION::SCALE;
-							break;
-						}
-					}
-					static int modeIndex = 0;
-					if (ImGui::Combo("Mode", &modeIndex, "World\0Local") || forceRecalculation)
-					{
-						switch (modeIndex)
-						{
-						case 0:
-							manipulateMode = ImGuizmo::MODE::WORLD;
-							break;
-						case 1:
-							manipulateMode = ImGuizmo::MODE::LOCAL;
-							break;
-						}
-					}
-
-					// Key bindings for switching the operation and mode
-					forceRecalculation = false;
-
-					bool hasMouseButtonDown = false;
-					for (size_t i = 0; i < 5; i++)
-						hasMouseButtonDown |= io.MouseDown[i];    // @NOTE: this covers cases of gizmo operation changing while left clicking on the gizmo (or anywhere else) or flying around with right click.  -Timo
-					if (!hasMouseButtonDown)
-					{
-						static bool qKeyLock = false;
-						if (input::keyQPressed)
-						{
-							if (!qKeyLock)
-							{
-								modeIndex = (int)!(bool)modeIndex;
-								qKeyLock = true;
-								forceRecalculation = true;
-							}
-						}
-						else
-						{
-							qKeyLock = false;
-						}
-
-						if (input::keyWPressed)
-						{
-							operationIndex = 0;
-							forceRecalculation = true;
-						}
-						if (input::keyEPressed)
-						{
-							operationIndex = 1;
-							forceRecalculation = true;
-						}
-						if (input::keyRPressed)
-						{
-							operationIndex = 2;
-							forceRecalculation = true;
-						}
-					}
-
-					//
-					// Edit props exclusive to render objects
-					//
-					RenderObject* foundRO = nullptr;
-					for (auto& ro : _renderObjects)
-					{
-						if (_movingMatrix.matrixToMove == &ro.transformMatrix)
-						{
-							foundRO = &ro;
-							break;
-						}
-					}
-
-					if (foundRO != nullptr)
-					{
-						ImGui::Separator();
-						ImGui::Text("Render Object");
-
-						int32_t temp = (int32_t)foundRO->renderLayer;
-						if (ImGui::Combo("Render Layer##asdfasdfasgasgcombo", &temp, "VISIBLE\0INVISIBLE\0BUILDER"))
-							foundRO->renderLayer = RenderLayer(temp);
-					}
-
-					accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
-				}
-				ImGui::End();
-			}
-
-			_movingMatrix.prevMatrixToMove = _movingMatrix.matrixToMove;
-		}
-
-		ImGui::Render();
-
+		renderImGui();
 		render();
 	}
 }
@@ -3293,6 +2936,91 @@ void VulkanEngine::recalculateSceneCamera()
 }
 
 #ifdef _DEVELOP
+void VulkanEngine::updateFreeCam(const float_t& deltaTime)
+{
+	if (input::onRMBPress || input::onRMBRelease)
+	{
+		_freeCamMode.enabled = input::RMBPressed;
+		SDL_SetRelativeMouseMode(_freeCamMode.enabled ? SDL_TRUE : SDL_FALSE);		// @NOTE: this causes cursor to disappear and not leave window boundaries (@BUG: Except for if you right click into the window?)
+					
+		if (_freeCamMode.enabled)
+			SDL_GetMouseState(
+				&_freeCamMode.savedMousePosition.x,
+				&_freeCamMode.savedMousePosition.y
+			);
+		else
+			SDL_WarpMouseInWindow(_window, _freeCamMode.savedMousePosition.x, _freeCamMode.savedMousePosition.y);
+	}
+	if (_freeCamMode.enabled)
+	{
+		glm::vec2 mousePositionDeltaCooked = (glm::vec2)input::mouseDelta / (float_t)_windowExtent.height * _freeCamMode.sensitivity;
+		input::mouseDelta = glm::ivec2(0);		// Reset the mouseDelta
+
+		glm::vec2 inputToVelocity(0.0f);
+		inputToVelocity.x += input::keyLeftPressed ? -1.0f : 0.0f;
+		inputToVelocity.x += input::keyRightPressed ? 1.0f : 0.0f;
+		inputToVelocity.y += input::keyUpPressed ? 1.0f : 0.0f;
+		inputToVelocity.y += input::keyDownPressed ? -1.0f : 0.0f;
+
+		float_t worldUpVelocity = 0.0f;
+		worldUpVelocity += input::keyWorldUpPressed ? 1.0f : 0.0f;
+		worldUpVelocity += input::keyWorldDownPressed ? -1.0f : 0.0f;
+
+		if (glm::length(mousePositionDeltaCooked) > 0.0f || glm::length(inputToVelocity) > 0.0f || glm::abs(worldUpVelocity) > 0.0f)
+		{
+			constexpr glm::vec3 worldUp = { 0.0f, 1.0f, 0.0f };
+
+			// Update camera facing direction with mouse input
+			glm::vec3 newCamFacingDirection =
+				glm::rotate(
+					_sceneCamera.facingDirection,
+					glm::radians(-mousePositionDeltaCooked.y),
+					glm::normalize(glm::cross(_sceneCamera.facingDirection, worldUp))
+				);
+			if (glm::angle(newCamFacingDirection, worldUp) > glm::radians(5.0f) &&
+				glm::angle(newCamFacingDirection, -worldUp) > glm::radians(5.0f))
+				_sceneCamera.facingDirection = newCamFacingDirection;
+			_sceneCamera.facingDirection = glm::rotate(_sceneCamera.facingDirection, glm::radians(-mousePositionDeltaCooked.x), worldUp);
+
+			// Update camera position with keyboard input
+			float speedMultiplier = input::keyShiftPressed ? 50.0f : 25.0f;
+			inputToVelocity *= speedMultiplier * deltaTime;
+			worldUpVelocity *= speedMultiplier * deltaTime;
+
+			_sceneCamera.gpuCameraData.cameraPosition +=
+				inputToVelocity.y * _sceneCamera.facingDirection +
+				inputToVelocity.x * glm::normalize(glm::cross(_sceneCamera.facingDirection, worldUp)) +
+				glm::vec3(0.0f, worldUpVelocity, 0.0f);
+
+			// Recalculate camera
+			recalculateSceneCamera();
+		}
+	}
+}
+
+void VulkanEngine::updateDebugStats(const float_t& deltaTime)
+{
+	_debugStats.currentFPS = std::roundf(1.0f / deltaTime);
+	_debugStats.renderTimesMSHeadIndex = std::fmodf(_debugStats.renderTimesMSHeadIndex + 1, _debugStats.renderTimesMSCount);
+
+	// Find what the highest render time is
+	float_t renderTime = deltaTime * 1000.0f;
+	if (renderTime > _debugStats.highestRenderTime)
+		_debugStats.highestRenderTime = renderTime;
+	else if (_debugStats.renderTimesMS[_debugStats.renderTimesMSHeadIndex] == _debugStats.highestRenderTime)     // Former highest render time about to be overwritten
+	{
+		float_t nextHighestRenderTime = renderTime;
+		for (size_t i = _debugStats.renderTimesMSHeadIndex + 1; i < _debugStats.renderTimesMSHeadIndex + _debugStats.renderTimesMSCount; i++)
+				nextHighestRenderTime = std::max(nextHighestRenderTime, _debugStats.renderTimesMS[i]);
+		_debugStats.highestRenderTime = nextHighestRenderTime;
+	}
+
+	// Apply render time to buffer
+	_debugStats.renderTimesMS[_debugStats.renderTimesMSHeadIndex] =
+		_debugStats.renderTimesMS[_debugStats.renderTimesMSHeadIndex + _debugStats.renderTimesMSCount] =
+		renderTime;
+}
+
 void VulkanEngine::buildResourceList()
 {
 	std::vector<std::string> directories = {
@@ -3406,6 +3134,285 @@ void VulkanEngine::submitSelectedRenderObjectId(int32_t id)
 	_movingMatrix.matrixToMove = &_renderObjects[id].transformMatrix;
 	std::cout << "[PICKING]" << std::endl
 		<< "Selected object " << id << std::endl;
+}
+
+void VulkanEngine::renderImGui()
+{
+	ImGui_ImplVulkan_NewFrame();
+	ImGui_ImplSDL2_NewFrame(_window);
+	ImGui::NewFrame();
+
+	ImGuizmo::SetOrthographic(false);
+	ImGuizmo::AllowAxisFlip(false);
+	ImGuizmo::BeginFrame();
+	ImGuiIO& io = ImGui::GetIO();
+	ImGuizmo::SetRect(0, 0, io.DisplaySize.x, io.DisplaySize.y);
+
+	ImGui::ShowDemoWindow();
+
+	ImPlot::ShowDemoWindow();
+
+	float_t accumulatedWindowHeight = 0.0f;
+	constexpr float_t windowPadding = 8.0f;
+
+	//
+	// Debug Stats window
+	//
+	ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight), ImGuiCond_Always);		// @NOTE: the ImGuiCond_Always means that this line will execute always, when set to once, this line will be ignored after the first time it's called
+	ImGui::Begin("##Debug Statistics", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs);
+	{
+		ImGui::Text((std::to_string(_debugStats.currentFPS) + " FPS").c_str());
+		ImGui::Text((std::format("{:.2f}", _debugStats.renderTimesMS[_debugStats.renderTimesMSHeadIndex]) + "ms").c_str());
+		ImGui::Text(("Frame : " + std::to_string(_frameNumber)).c_str());
+
+		ImGui::Text(("Render Times :     [0, " + std::format("{:.2f}", _debugStats.highestRenderTime) + "]").c_str());
+		ImGui::PlotHistogram("##Render Times Histogram", _debugStats.renderTimesMS, _debugStats.renderTimesMSCount, _debugStats.renderTimesMSHeadIndex, "", 0.0f, _debugStats.highestRenderTime, ImVec2(256, 24.0f));
+
+		accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
+	}
+	ImGui::End();
+
+
+	//
+	// PBR Shading Props
+	//
+	ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight), ImGuiCond_Always);
+	ImGui::Begin("PBR Shading Props", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
+	{
+		if (ImGui::DragFloat3("Light Direction", glm::value_ptr(_pbrRendering.gpuSceneShadingProps.lightDir)))
+			_pbrRendering.gpuSceneShadingProps.lightDir = glm::normalize(_pbrRendering.gpuSceneShadingProps.lightDir);
+
+		ImGui::DragFloat("Exposure", &_pbrRendering.gpuSceneShadingProps.exposure, 0.1f, 0.1f, 10.0f);
+		ImGui::DragFloat("Gamma", &_pbrRendering.gpuSceneShadingProps.gamma, 0.1f, 0.1f, 4.0f);
+		ImGui::DragFloat("IBL Strength", &_pbrRendering.gpuSceneShadingProps.scaleIBLAmbient, 0.1f, 0.0f, 2.0f);
+
+		static int debugViewIndex = 0;
+		if (ImGui::Combo("Debug View Input", &debugViewIndex, "none\0Base color\0Normal\0Occlusion\0Emissive\0Metallic\0Roughness"))
+			_pbrRendering.gpuSceneShadingProps.debugViewInputs = (float_t)debugViewIndex;
+
+		static int debugViewEquation = 0;
+		if (ImGui::Combo("Debug View Equation", &debugViewEquation, "none\0Diff (l,n)\0F (l,h)\0G (l,v,h)\0D (h)\0Specular"))
+			_pbrRendering.gpuSceneShadingProps.debugViewEquation = (float_t)debugViewEquation;
+
+		ImGui::Text(("Prefiltered Cubemap Miplevels: " + std::to_string((int32_t)_pbrRendering.gpuSceneShadingProps.prefilteredCubemapMipLevels)).c_str());
+
+		ImGui::Separator();
+
+		ImGui::Text("Toggle Rendering Layers");
+
+		static const ImVec2 imageButtonSize = ImVec2(64, 64);
+		static const ImVec4 tintColorActive = ImVec4(1, 1, 1, 1);
+		static const ImVec4 tintColorInactive = ImVec4(1, 1, 1, 0.25);
+
+		ImTextureID buttonIcons[] = {
+			(ImTextureID)_imguiData.textureLayerVisible,
+			(ImTextureID)_imguiData.textureLayerInvisible,
+			(ImTextureID)_imguiData.textureLayerBuilder,
+		};
+
+		for (size_t i = 0; i < _renderObjectLayersEnabled.size(); i++)
+		{
+			if (ImGui::ImageButton(buttonIcons[i], imageButtonSize, ImVec2(0, 0), ImVec2(1, 1), -1, ImVec4(0, 0, 0, 0), _renderObjectLayersEnabled[i] ? tintColorActive : tintColorInactive))
+			{
+				_renderObjectLayersEnabled[i] = !_renderObjectLayersEnabled[i];
+				if (!_renderObjectLayersEnabled[i])
+				{
+					// Find object that matrixToMove is pulling from (if any)
+					for (auto& ro : _renderObjects)
+					{
+						if (_movingMatrix.matrixToMove == &ro.transformMatrix)
+						{
+							// @HACK: Reset the _movingMatrix.matrixToMove
+							//        if it's for one of the objects that just got disabled
+							if ((size_t)ro.renderLayer == i)
+								_movingMatrix.matrixToMove = nullptr;
+							break;
+						}
+					}
+				}
+			}
+			ImGui::SameLine();
+		}
+
+		accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
+	}
+	ImGui::End();
+
+	//
+	// Moving stuff around window (using ImGuizmo)
+	//
+	if (_movingMatrix.matrixToMove != nullptr)
+	{
+		if (input::keyDelPressed)
+		{
+			_movingMatrix.matrixToMove = nullptr;    // @NOTE: this is based off the assumption that likely if you're pressing delete while selecting an object, you're about to delete the object, so we need to dereference this instead of crashing!
+		}
+		else
+		{
+			//
+			// Decompose the matrix if cache is invalidated
+			//
+			_movingMatrix.invalidateCache = (_movingMatrix.prevMatrixToMove != _movingMatrix.matrixToMove);
+			if (_movingMatrix.invalidateCache)
+			{
+				ImGuizmo::DecomposeMatrixToComponents(
+					glm::value_ptr(*_movingMatrix.matrixToMove),
+					glm::value_ptr(_movingMatrix.cachedPosition),
+					glm::value_ptr(_movingMatrix.cachedEulerAngles),
+					glm::value_ptr(_movingMatrix.cachedScale)
+				);
+				_movingMatrix.invalidateCache = false;
+			}
+
+			//
+			// Move the matrix via ImGuizmo
+			//
+			glm::mat4 projection = _sceneCamera.gpuCameraData.projection;
+			projection[1][1] *= -1.0f;
+
+			static ImGuizmo::OPERATION manipulateOperation = ImGuizmo::OPERATION::TRANSLATE;
+			static ImGuizmo::MODE manipulateMode           = ImGuizmo::MODE::WORLD;
+			if (ImGuizmo::Manipulate(
+				glm::value_ptr(_sceneCamera.gpuCameraData.view),
+				glm::value_ptr(projection),
+				manipulateOperation,
+				manipulateMode,
+				glm::value_ptr(*_movingMatrix.matrixToMove)))
+			{
+				_movingMatrix.invalidateCache = true;
+			}
+
+			//
+			// Move the matrix via the cached matrix components
+			//
+			ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight), ImGuiCond_Always);
+			ImGui::Begin("Edit Selected", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
+			{
+				ImGui::Text("Transform");
+
+				bool changed = false;
+				changed |= ImGui::DragFloat3("Pos##ASDFASDFASDFJAKSDFKASDHF", glm::value_ptr(_movingMatrix.cachedPosition));
+				changed |= ImGui::DragFloat3("Rot##ASDFASDFASDFJAKSDFKASDHF", glm::value_ptr(_movingMatrix.cachedEulerAngles));
+				changed |= ImGui::DragFloat3("Sca##ASDFASDFASDFJAKSDFKASDHF", glm::value_ptr(_movingMatrix.cachedScale));
+
+				if (changed)
+				{
+					// Recompose the matrix
+					// @TODO: Figure out when to invalidate the cache bc the euler angles will reset!
+					//        Or... maybe invalidating the cache isn't necessary for this window????
+					ImGuizmo::RecomposeMatrixFromComponents(
+						glm::value_ptr(_movingMatrix.cachedPosition),
+						glm::value_ptr(_movingMatrix.cachedEulerAngles),
+						glm::value_ptr(_movingMatrix.cachedScale),
+						glm::value_ptr(*_movingMatrix.matrixToMove)
+					);
+				}
+
+				ImGui::Separator();
+				ImGui::Text("Manipulation Gizmo");
+				static bool forceRecalculation = false;    // @NOTE: this is a flag for the key bindings below
+				static int operationIndex = 0;
+				if (ImGui::Combo("Operation", &operationIndex, "Translate\0Rotate\0Scale") || forceRecalculation)
+				{
+					switch (operationIndex)
+					{
+					case 0:
+						manipulateOperation = ImGuizmo::OPERATION::TRANSLATE;
+						break;
+					case 1:
+						manipulateOperation = ImGuizmo::OPERATION::ROTATE;
+						break;
+					case 2:
+						manipulateOperation = ImGuizmo::OPERATION::SCALE;
+						break;
+					}
+				}
+				static int modeIndex = 0;
+				if (ImGui::Combo("Mode", &modeIndex, "World\0Local") || forceRecalculation)
+				{
+					switch (modeIndex)
+					{
+					case 0:
+						manipulateMode = ImGuizmo::MODE::WORLD;
+						break;
+					case 1:
+						manipulateMode = ImGuizmo::MODE::LOCAL;
+						break;
+					}
+				}
+
+				// Key bindings for switching the operation and mode
+				forceRecalculation = false;
+
+				bool hasMouseButtonDown = false;
+				for (size_t i = 0; i < 5; i++)
+					hasMouseButtonDown |= io.MouseDown[i];    // @NOTE: this covers cases of gizmo operation changing while left clicking on the gizmo (or anywhere else) or flying around with right click.  -Timo
+				if (!hasMouseButtonDown)
+				{
+					static bool qKeyLock = false;
+					if (input::keyQPressed)
+					{
+						if (!qKeyLock)
+						{
+							modeIndex = (int)!(bool)modeIndex;
+							qKeyLock = true;
+							forceRecalculation = true;
+						}
+					}
+					else
+					{
+						qKeyLock = false;
+					}
+
+					if (input::keyWPressed)
+					{
+						operationIndex = 0;
+						forceRecalculation = true;
+					}
+					if (input::keyEPressed)
+					{
+						operationIndex = 1;
+						forceRecalculation = true;
+					}
+					if (input::keyRPressed)
+					{
+						operationIndex = 2;
+						forceRecalculation = true;
+					}
+				}
+
+				//
+				// Edit props exclusive to render objects
+				//
+				RenderObject* foundRO = nullptr;
+				for (auto& ro : _renderObjects)
+				{
+					if (_movingMatrix.matrixToMove == &ro.transformMatrix)
+					{
+						foundRO = &ro;
+						break;
+					}
+				}
+
+				if (foundRO != nullptr)
+				{
+					ImGui::Separator();
+					ImGui::Text("Render Object");
+
+					int32_t temp = (int32_t)foundRO->renderLayer;
+					if (ImGui::Combo("Render Layer##asdfasdfasgasgcombo", &temp, "VISIBLE\0INVISIBLE\0BUILDER"))
+						foundRO->renderLayer = RenderLayer(temp);
+				}
+
+				accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
+			}
+			ImGui::End();
+		}
+
+		_movingMatrix.prevMatrixToMove = _movingMatrix.matrixToMove;
+	}
+
+	ImGui::Render();
 }
 
 VkPipeline PipelineBuilder::buildPipeline(VkDevice device, VkRenderPass pass)
