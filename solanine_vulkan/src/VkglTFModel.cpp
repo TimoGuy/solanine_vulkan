@@ -353,8 +353,8 @@ namespace vkglTF
 			for (size_t j = 0; j < mesh.primitives.size(); j++)
 			{
 				const tinygltf::Primitive& primitive = mesh.primitives[j];
-				uint32_t vertexStart = loaderInfo.vertexPos;
-				uint32_t indexStart = loaderInfo.indexPos;
+				uint32_t vertexStart = static_cast<uint32_t>(loaderInfo.vertexPos);
+				uint32_t indexStart = static_cast<uint32_t>(loaderInfo.indexPos);
 				uint32_t indexCount = 0;
 				uint32_t vertexCount = 0;
 				glm::vec3 posMin{};
@@ -729,6 +729,8 @@ namespace vkglTF
 			return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
 		case 33648:
 			return VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT;
+		default:
+			return VK_SAMPLER_ADDRESS_MODE_REPEAT;
 		}
 	}
 
@@ -747,6 +749,8 @@ namespace vkglTF
 		case 9986:
 			return VK_FILTER_LINEAR;
 		case 9987:
+			return VK_FILTER_LINEAR;
+		default:
 			return VK_FILTER_LINEAR;
 		}
 	}
@@ -1187,7 +1191,7 @@ namespace vkglTF
 
 		size_t vertexBufferSize = vertexCount * sizeof(Vertex);
 		size_t indexBufferSize = indexCount * sizeof(uint32_t);
-		indices.count = indexCount;
+		indices.count = static_cast<int32_t>(indexCount);
 
 		assert(vertexBufferSize > 0);
 

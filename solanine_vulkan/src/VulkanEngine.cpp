@@ -1032,7 +1032,7 @@ void VulkanEngine::initFramebuffers()
 	fbInfo.height = _windowExtent.height;
 	fbInfo.layers = 1;
 
-	const uint32_t swapchainImagecount = _swapchainImages.size();
+	const uint32_t swapchainImagecount = static_cast<uint32_t>(_swapchainImages.size());
 	_framebuffers = std::vector<VkFramebuffer>(swapchainImagecount);
 
 	for (size_t i = 0; i < swapchainImagecount; i++)
@@ -1410,9 +1410,9 @@ void VulkanEngine::initPipelines()
 
 	pipelineBuilder._vertexInputInfo = vkinit::vertexInputStateCreateInfo();
 	pipelineBuilder._vertexInputInfo.pVertexAttributeDescriptions = vertexDescription.attributes.data();
-	pipelineBuilder._vertexInputInfo.vertexAttributeDescriptionCount = vertexDescription.attributes.size();
+	pipelineBuilder._vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(vertexDescription.attributes.size());
 	pipelineBuilder._vertexInputInfo.pVertexBindingDescriptions = vertexDescription.bindings.data();
-	pipelineBuilder._vertexInputInfo.vertexBindingDescriptionCount = vertexDescription.bindings.size();
+	pipelineBuilder._vertexInputInfo.vertexBindingDescriptionCount = static_cast<uint32_t>(vertexDescription.bindings.size());
 
 	pipelineBuilder._inputAssembly = vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
 
@@ -2565,7 +2565,7 @@ void VulkanEngine::initImgui()
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
 		.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
 		.maxSets = 1000,
-		.poolSizeCount = std::size(poolSizes),
+		.poolSizeCount = static_cast<uint32_t>(std::size(poolSizes)),
 		.pPoolSizes = poolSizes,
 	};
 	VkDescriptorPool imguiPool;
@@ -2782,7 +2782,7 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 		//
 		// Render it out
 		//
-		object.model->draw(cmd, i,
+		object.model->draw(cmd, (uint32_t)i,
 			[&](vkglTF::Primitive* primitive, vkglTF::Node* node) {
 				//
 				// Apply all of the material properties
@@ -3000,8 +3000,8 @@ void VulkanEngine::updateFreeCam(const float_t& deltaTime)
 
 void VulkanEngine::updateDebugStats(const float_t& deltaTime)
 {
-	_debugStats.currentFPS = std::roundf(1.0f / deltaTime);
-	_debugStats.renderTimesMSHeadIndex = std::fmodf(_debugStats.renderTimesMSHeadIndex + 1, _debugStats.renderTimesMSCount);
+	_debugStats.currentFPS = (uint32_t)std::roundf(1.0f / deltaTime);
+	_debugStats.renderTimesMSHeadIndex = (size_t)std::fmodf((float_t)_debugStats.renderTimesMSHeadIndex + 1, (float_t)_debugStats.renderTimesMSCount);
 
 	// Find what the highest render time is
 	float_t renderTime = deltaTime * 1000.0f;
@@ -3166,7 +3166,7 @@ void VulkanEngine::renderImGui()
 		ImGui::Text(("Frame : " + std::to_string(_frameNumber)).c_str());
 
 		ImGui::Text(("Render Times :     [0, " + std::format("{:.2f}", _debugStats.highestRenderTime) + "]").c_str());
-		ImGui::PlotHistogram("##Render Times Histogram", _debugStats.renderTimesMS, _debugStats.renderTimesMSCount, _debugStats.renderTimesMSHeadIndex, "", 0.0f, _debugStats.highestRenderTime, ImVec2(256, 24.0f));
+		ImGui::PlotHistogram("##Render Times Histogram", _debugStats.renderTimesMS, (int32_t)_debugStats.renderTimesMSCount, (int32_t)_debugStats.renderTimesMSHeadIndex, "", 0.0f, _debugStats.highestRenderTime, ImVec2(256, 24.0f));
 
 		accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
 	}
@@ -3442,7 +3442,7 @@ VkPipeline PipelineBuilder::buildPipeline(VkDevice device, VkRenderPass pass)
 	pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
 	pipelineInfo.pNext = nullptr;
 
-	pipelineInfo.stageCount = _shaderStages.size();
+	pipelineInfo.stageCount = static_cast<uint32_t>(_shaderStages.size());
 	pipelineInfo.pStages = _shaderStages.data();
 	pipelineInfo.pVertexInputState = &_vertexInputInfo;
 	pipelineInfo.pInputAssemblyState = &_inputAssembly;
