@@ -8,6 +8,7 @@
 #include "VkTextures.h"
 #include "GLSLToSPIRVHelper.h"
 #include "AudioEngine.h"
+#include "InputManager.h"
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_sdl.h"
 #include "imgui/imgui_impl_vulkan.h"
@@ -94,7 +95,6 @@ void VulkanEngine::run()
 	//
 	// Main Loop
 	//
-	SDL_Event e;
 	bool isRunning = true;
 
 	float_t ticksFrequency = 1.0f / (float_t)SDL_GetPerformanceFrequency();
@@ -106,80 +106,8 @@ void VulkanEngine::run()
 		checkIfResourceUpdatedThenHotswapRoutine();
 #endif
 
-		//
 		// Poll events from the window
-		//
-		_movingMatrix.onLMBPress = false;
-		_freeCamMode.mouseDelta = { 0, 0 };
-
-		while (SDL_PollEvent(&e) != 0)
-		{
-			ImGui_ImplSDL2_ProcessEvent(&e);
-
-			switch (e.type)
-			{
-			case SDL_QUIT:
-			{
-				// Exit program
-				isRunning = false;
-				break;
-			}
-
-			case SDL_MOUSEMOTION:
-			{
-				if (_freeCamMode.enabled)
-				{
-					_freeCamMode.mouseDelta.x += e.motion.xrel;
-					_freeCamMode.mouseDelta.y += e.motion.yrel;
-				}
-				break;
-			}
-
-			case SDL_MOUSEBUTTONDOWN:
-			case SDL_MOUSEBUTTONUP:
-			{
-				if (e.button.button == SDL_BUTTON_LEFT)
-				{
-					_movingMatrix.onLMBPress = (e.button.type == SDL_MOUSEBUTTONDOWN);
-				}
-
-				if (e.button.button == SDL_BUTTON_RIGHT)
-				{
-					// Right click to control free camera
-					_freeCamMode.enabled = (e.button.type == SDL_MOUSEBUTTONDOWN);
-					SDL_SetRelativeMouseMode(_freeCamMode.enabled ?SDL_TRUE : SDL_FALSE);		// @NOTE: this causes cursor to disappear and not leave window boundaries
-					
-					if (_freeCamMode.enabled)
-						SDL_GetMouseState(
-							&_freeCamMode.savedMousePosition.x,
-							&_freeCamMode.savedMousePosition.y
-						);
-					else
-						SDL_WarpMouseInWindow(_window, _freeCamMode.savedMousePosition.x, _freeCamMode.savedMousePosition.y);
-				}
-				break;
-			}
-
-			case SDL_KEYDOWN:
-			case SDL_KEYUP:
-			{
-				if (e.key.keysym.sym == SDLK_w)                                           _freeCamMode.keyUpPressed = (e.key.type == SDL_KEYDOWN);
-				if (e.key.keysym.sym == SDLK_s)                                           _freeCamMode.keyDownPressed = (e.key.type == SDL_KEYDOWN);
-				if (e.key.keysym.sym == SDLK_a)                                           _freeCamMode.keyLeftPressed = (e.key.type == SDL_KEYDOWN);
-				if (e.key.keysym.sym == SDLK_d)                                           _freeCamMode.keyRightPressed = (e.key.type == SDL_KEYDOWN);
-				if (e.key.keysym.sym == SDLK_q)                                           _freeCamMode.keyWorldDownPressed = (e.key.type == SDL_KEYDOWN);
-				if (e.key.keysym.sym == SDLK_e)                                           _freeCamMode.keyWorldUpPressed = (e.key.type == SDL_KEYDOWN);
-				if (e.key.keysym.sym == SDLK_LSHIFT || e.key.keysym.sym == SDLK_RSHIFT)   _freeCamMode.keyShiftPressed = (e.key.type == SDL_KEYDOWN);
-				if (e.key.keysym.sym == SDLK_DELETE)                                      _movingMatrix.keyDelPressed = (e.key.type == SDL_KEYDOWN);
-				if (e.key.keysym.sym == SDLK_LCTRL || e.key.keysym.sym == SDLK_RCTRL)     _movingMatrix.keyCtrlPressed = (e.key.type == SDL_KEYDOWN);
-				if (e.key.keysym.sym == SDLK_q)                                           _movingMatrix.keyQPressed = (e.key.type == SDL_KEYDOWN);
-				if (e.key.keysym.sym == SDLK_w)                                           _movingMatrix.keyWPressed = (e.key.type == SDL_KEYDOWN);
-				if (e.key.keysym.sym == SDLK_e)                                           _movingMatrix.keyEPressed = (e.key.type == SDL_KEYDOWN);
-				if (e.key.keysym.sym == SDLK_r)                                           _movingMatrix.keyRPressed = (e.key.type == SDL_KEYDOWN);
-				break;
-			}
-			}
-		}
+		input::processInput(&isRunning);
 
 		//
 		// Update AudioEngine
@@ -206,20 +134,33 @@ void VulkanEngine::run()
 		//
 		// Free Cam
 		//
+		if (input::onRMBPress || input::onRMBRelease)
+		{
+			_freeCamMode.enabled = input::RMBPressed;
+			SDL_SetRelativeMouseMode(_freeCamMode.enabled ? SDL_TRUE : SDL_FALSE);		// @NOTE: this causes cursor to disappear and not leave window boundaries (@BUG: Except for if you right click into the window?)
+					
+			if (_freeCamMode.enabled)
+				SDL_GetMouseState(
+					&_freeCamMode.savedMousePosition.x,
+					&_freeCamMode.savedMousePosition.y
+				);
+			else
+				SDL_WarpMouseInWindow(_window, _freeCamMode.savedMousePosition.x, _freeCamMode.savedMousePosition.y);
+		}
 		if (_freeCamMode.enabled)
 		{
-			glm::vec2 mousePositionDeltaCooked = (glm::vec2)_freeCamMode.mouseDelta / (float_t)_windowExtent.height * _freeCamMode.sensitivity;
-			_freeCamMode.mouseDelta = glm::ivec2(0);		// Reset the mouseDelta
+			glm::vec2 mousePositionDeltaCooked = (glm::vec2)input::mouseDelta / (float_t)_windowExtent.height * _freeCamMode.sensitivity;
+			input::mouseDelta = glm::ivec2(0);		// Reset the mouseDelta
 
 			glm::vec2 inputToVelocity(0.0f);
-			inputToVelocity.x += _freeCamMode.keyLeftPressed ? -1.0f : 0.0f;
-			inputToVelocity.x += _freeCamMode.keyRightPressed ? 1.0f : 0.0f;
-			inputToVelocity.y += _freeCamMode.keyUpPressed ? 1.0f : 0.0f;
-			inputToVelocity.y += _freeCamMode.keyDownPressed ? -1.0f : 0.0f;
+			inputToVelocity.x += input::keyLeftPressed ? -1.0f : 0.0f;
+			inputToVelocity.x += input::keyRightPressed ? 1.0f : 0.0f;
+			inputToVelocity.y += input::keyUpPressed ? 1.0f : 0.0f;
+			inputToVelocity.y += input::keyDownPressed ? -1.0f : 0.0f;
 
 			float_t worldUpVelocity = 0.0f;
-			worldUpVelocity += _freeCamMode.keyWorldUpPressed ? 1.0f : 0.0f;
-			worldUpVelocity += _freeCamMode.keyWorldDownPressed ? -1.0f : 0.0f;
+			worldUpVelocity += input::keyWorldUpPressed ? 1.0f : 0.0f;
+			worldUpVelocity += input::keyWorldDownPressed ? -1.0f : 0.0f;
 
 			if (glm::length(mousePositionDeltaCooked) > 0.0f || glm::length(inputToVelocity) > 0.0f || glm::abs(worldUpVelocity) > 0.0f)
 			{
@@ -238,7 +179,7 @@ void VulkanEngine::run()
 				_sceneCamera.facingDirection = glm::rotate(_sceneCamera.facingDirection, glm::radians(-mousePositionDeltaCooked.x), worldUp);
 
 				// Update camera position with keyboard input
-				float speedMultiplier = _freeCamMode.keyShiftPressed ? 50.0f : 25.0f;
+				float speedMultiplier = input::keyShiftPressed ? 50.0f : 25.0f;
 				inputToVelocity *= speedMultiplier * deltaTime;
 				worldUpVelocity *= speedMultiplier * deltaTime;
 
@@ -389,7 +330,7 @@ void VulkanEngine::run()
 		//
 		if (_movingMatrix.matrixToMove != nullptr)
 		{
-			if (_movingMatrix.keyDelPressed)
+			if (input::keyDelPressed)
 			{
 				_movingMatrix.matrixToMove = nullptr;    // @NOTE: this is based off the assumption that likely if you're pressing delete while selecting an object, you're about to delete the object, so we need to dereference this instead of crashing!
 			}
@@ -496,7 +437,7 @@ void VulkanEngine::run()
 					if (!hasMouseButtonDown)
 					{
 						static bool qKeyLock = false;
-						if (_movingMatrix.keyQPressed)
+						if (input::keyQPressed)
 						{
 							if (!qKeyLock)
 							{
@@ -510,17 +451,17 @@ void VulkanEngine::run()
 							qKeyLock = false;
 						}
 
-						if (_movingMatrix.keyWPressed)
+						if (input::keyWPressed)
 						{
 							operationIndex = 0;
 							forceRecalculation = true;
 						}
-						if (_movingMatrix.keyEPressed)
+						if (input::keyEPressed)
 						{
 							operationIndex = 1;
 							forceRecalculation = true;
 						}
-						if (_movingMatrix.keyRPressed)
+						if (input::keyRPressed)
 						{
 							operationIndex = 2;
 							forceRecalculation = true;
@@ -687,7 +628,12 @@ void VulkanEngine::render()
 	//
 	// Picking Render Pass
 	//
-	if (_movingMatrix.onLMBPress && !ImGui::GetIO().WantCaptureMouse && !ImGuizmo::IsUsing() && !ImGuizmo::IsOver() && ImGui::IsMousePosValid())
+	if (input::onLMBPress &&
+		!_freeCamMode.enabled &&
+		!ImGui::GetIO().WantCaptureMouse &&
+		!ImGuizmo::IsUsing() &&
+		!ImGuizmo::IsOver() &&
+		ImGui::IsMousePosValid())
 	{
 		VK_CHECK(vkResetFences(_device, 1, &currentFrame.pickingRenderFence));
 

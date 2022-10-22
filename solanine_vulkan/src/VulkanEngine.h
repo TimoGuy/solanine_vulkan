@@ -282,7 +282,6 @@ public:
 		float alphaMask;
 		float alphaMaskCutoff;
 	};
-private:
 
 #ifdef _DEVELOP
 	//
@@ -291,18 +290,11 @@ private:
 	struct FreeCamMode
 	{
 		bool enabled = false;
-		bool keyUpPressed = false,
-			keyDownPressed = false,
-			keyLeftPressed = false,
-			keyRightPressed = false,
-			keyWorldUpPressed = false,
-			keyWorldDownPressed = false,
-			keyShiftPressed = false;
 		glm::ivec2 savedMousePosition;
-		glm::ivec2 mouseDelta;
 		float_t sensitivity = 100.0f;
 	} _freeCamMode;
-
+	
+private:
 	//
 	// Debug Statistics
 	//
@@ -334,14 +326,6 @@ private:
 	//
 	struct MovingMatrix
 	{
-		bool onLMBPress = false;
-		bool keyDelPressed = false,
-			keyCtrlPressed = false,
-			keyQPressed = false,
-			keyWPressed = false,
-			keyEPressed = false,
-			keyRPressed = false;
-
 		glm::mat4* matrixToMove = nullptr;
 		glm::mat4* prevMatrixToMove = nullptr;    // @NOTE: this is for invalidating the cache
 		bool invalidateCache = true;
