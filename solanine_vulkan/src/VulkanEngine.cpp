@@ -1013,6 +1013,7 @@ void VulkanEngine::initVulkan()
 			// @NOTE: @FEATURES: Enable required features right here
 			.depthClamp = VK_TRUE,				// @NOTE: for shadow maps, this is really nice
 			.samplerAnisotropy = VK_TRUE,
+			.fragmentStoresAndAtomics = VK_TRUE,    // @NOTE: this is only necessary for the picking buffer! If a release build then you can just disable this feature (@NOTE: it allows for me to write into an ssbo in the fragment shader. The picking buffer shader would have to be readonly if this were disabled)  -Timo 2022/10/21
 			})
 		.select()
 		.value();
@@ -1778,6 +1779,11 @@ void VulkanEngine::initPipelines()
 	pipelineBuilder._multisampling = vkinit::multisamplingStateCreateInfo();
 	pipelineBuilder._pipelineLayout = _meshPipelineLayout;
 	pipelineBuilder._depthStencil = vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL);
+	pipelineBuilder._dynamicState = {    // @TODO: for now we'll have this, but make a "..." initializing function in the vkinit namespace, bc honestly you just need one param and then just make it an expanding list!
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+		.dynamicStateCount = 0,
+		.pDynamicStates = nullptr,
+	};
 
 	auto _meshPipeline = pipelineBuilder.buildPipeline(_device, _renderPass);
 	createMaterial(_meshPipeline, _meshPipelineLayout, "defaultMaterial");
