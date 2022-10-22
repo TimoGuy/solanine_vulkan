@@ -156,6 +156,10 @@ void VulkanEngine::run()
 				if (e.key.keysym.sym == SDLK_LSHIFT || e.key.keysym.sym == SDLK_RSHIFT)   _freeCamMode.keyShiftPressed = (e.key.type == SDL_KEYDOWN);
 				if (e.key.keysym.sym == SDLK_DELETE)                                      _movingMatrix.keyDelPressed = (e.key.type == SDL_KEYDOWN);
 				if (e.key.keysym.sym == SDLK_LCTRL || e.key.keysym.sym == SDLK_RCTRL)     _movingMatrix.keyCtrlPressed = (e.key.type == SDL_KEYDOWN);
+				if (e.key.keysym.sym == SDLK_q)                                           _movingMatrix.keyQPressed = (e.key.type == SDL_KEYDOWN);
+				if (e.key.keysym.sym == SDLK_w)                                           _movingMatrix.keyWPressed = (e.key.type == SDL_KEYDOWN);
+				if (e.key.keysym.sym == SDLK_e)                                           _movingMatrix.keyEPressed = (e.key.type == SDL_KEYDOWN);
+				if (e.key.keysym.sym == SDLK_r)                                           _movingMatrix.keyRPressed = (e.key.type == SDL_KEYDOWN);
 				break;
 			}
 			}
@@ -418,8 +422,9 @@ void VulkanEngine::run()
 
 					ImGui::Separator();
 					ImGui::Text("Manipulation Gizmo");
+					static bool forceRecalculation = false;    // @NOTE: this is a flag for the key bindings below
 					static int operationIndex = 0;
-					if (ImGui::Combo("Operation", &operationIndex, "Translate\0Rotate\0Scale"))
+					if (ImGui::Combo("Operation", &operationIndex, "Translate\0Rotate\0Scale") || forceRecalculation)
 					{
 						switch (operationIndex)
 						{
@@ -435,7 +440,7 @@ void VulkanEngine::run()
 						}
 					}
 					static int modeIndex = 0;
-					if (ImGui::Combo("Mode", &modeIndex, "World\0Local"))
+					if (ImGui::Combo("Mode", &modeIndex, "World\0Local") || forceRecalculation)
 					{
 						switch (modeIndex)
 						{
@@ -445,6 +450,46 @@ void VulkanEngine::run()
 						case 1:
 							manipulateMode = ImGuizmo::MODE::LOCAL;
 							break;
+						}
+					}
+
+					// Key bindings for switching the operation and mode
+					forceRecalculation = false;
+
+					bool hasMouseButtonDown = false;
+					for (size_t i = 0; i < 5; i++)
+						hasMouseButtonDown |= io.MouseDown[i];    // @NOTE: this covers cases of gizmo operation changing while left clicking on the gizmo (or anywhere else) or flying around with right click.  -Timo
+					if (!hasMouseButtonDown)
+					{
+						static bool qKeyLock = false;
+						if (_movingMatrix.keyQPressed)
+						{
+							if (!qKeyLock)
+							{
+								modeIndex = (int)!(bool)modeIndex;
+								qKeyLock = true;
+								forceRecalculation = true;
+							}
+						}
+						else
+						{
+							qKeyLock = false;
+						}
+
+						if (_movingMatrix.keyWPressed)
+						{
+							operationIndex = 0;
+							forceRecalculation = true;
+						}
+						if (_movingMatrix.keyEPressed)
+						{
+							operationIndex = 1;
+							forceRecalculation = true;
+						}
+						if (_movingMatrix.keyRPressed)
+						{
+							operationIndex = 2;
+							forceRecalculation = true;
 						}
 					}
 
@@ -1487,9 +1532,9 @@ void VulkanEngine::initPipelines()
 void VulkanEngine::initScene()
 {
 	_renderObjects.clear();   // For when it resets, so that correct materials are grabbed (@TODO: make a new material grabbing system for when the pipeline is recreated... BUT! Make sure whether you actually need that or not, bc it could be that it's not needed). Bc the pipelines will get recreated but it could just be a different situation with reliance on the gltf materials too idk really!
-	for (int x = -10; x <= 10; x++)
-		for (int z = -10; z <= 10; z++)
-	//int x = 0, z = 0;
+	//for (int x = -10; x <= 10; x++)
+	//	for (int z = -10; z <= 10; z++)
+	int x = 0, z = 0;
 	{
 		RenderObject triangle = {
 			.model = &_renderObjectModels.slimeGirl,

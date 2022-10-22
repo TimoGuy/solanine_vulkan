@@ -299,7 +299,11 @@ private:
 	struct MovingMatrix
 	{
 		bool keyDelPressed = false,
-			keyCtrlPressed = false;
+			keyCtrlPressed = false,
+			keyQPressed = false,
+			keyWPressed = false,
+			keyEPressed = false,
+			keyRPressed = false;
 
 		glm::mat4* matrixToMove = nullptr;
 		bool invalidateCache = true;
