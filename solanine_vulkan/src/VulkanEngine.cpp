@@ -100,6 +100,7 @@ void VulkanEngine::run()
 		//
 		// Poll events from the window
 		//
+		_freeCamMode.mouseDelta = { 0, 0 };
 		while (SDL_PollEvent(&e) != 0)
 		{
 			ImGui_ImplSDL2_ProcessEvent(&e);
@@ -117,8 +118,8 @@ void VulkanEngine::run()
 			{
 				if (_freeCamMode.enabled)
 				{
-					_freeCamMode.mouseDelta.x = e.motion.xrel;
-					_freeCamMode.mouseDelta.y = e.motion.yrel;
+					_freeCamMode.mouseDelta.x += e.motion.xrel;
+					_freeCamMode.mouseDelta.y += e.motion.yrel;
 				}
 				break;
 			}
@@ -278,7 +279,7 @@ void VulkanEngine::run()
 		//
 		// Debug Stats window
 		//
-		ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight), ImGuiCond_Once);
+		ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight), ImGuiCond_Always);		// @NOTE: the ImGuiCond_Always means that this line will execute always, when set to once, this line will be ignored after the first time it's called
 		ImGui::Begin("##Debug Statistics", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs);
 		{
 			ImGui::Text((std::to_string(_debugStats.currentFPS) + " FPS").c_str());
@@ -288,8 +289,7 @@ void VulkanEngine::run()
 			ImGui::Text(("Render Times :     [0, " + std::format("{:.2f}", _debugStats.highestRenderTime) + "]").c_str());
 			ImGui::PlotHistogram("##Render Times Histogram", _debugStats.renderTimesMS, _debugStats.renderTimesMSCount, _debugStats.renderTimesMSHeadIndex, "", 0.0f, _debugStats.highestRenderTime, ImVec2(256, 24.0f));
 
-			accumulatedWindowHeight += ImGui::GetFrameHeight() + windowPadding;		// @TODO: Pickup from here. Figure out how to get the window height that we're working on... getwindowheight multiplied by 2? Idk.
-			std::cout << ImGui::GetWindowHeight() << std::endl;
+			accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
 		}
 		ImGui::End();
 
@@ -297,7 +297,7 @@ void VulkanEngine::run()
 		//
 		// PBR Shading Props
 		//
-		ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight), ImGuiCond_Once);
+		ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight), ImGuiCond_Always);
 		ImGui::Begin("PBR Shading Props", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
 		{
 			if (ImGui::DragFloat3("Light Direction", glm::value_ptr(_pbrRendering.gpuSceneShadingProps.lightDir)))
@@ -378,11 +378,13 @@ void VulkanEngine::run()
 				glm::mat4 projection = _sceneCamera.gpuCameraData.projection;
 				projection[1][1] *= -1.0f;
 
+				static ImGuizmo::OPERATION manipulateOperation = ImGuizmo::OPERATION::TRANSLATE;
+				static ImGuizmo::MODE manipulateMode           = ImGuizmo::MODE::WORLD;
 				if (ImGuizmo::Manipulate(
 					glm::value_ptr(_sceneCamera.gpuCameraData.view),
 					glm::value_ptr(projection),
-					ImGuizmo::OPERATION::TRANSLATE,
-					ImGuizmo::MODE::WORLD,
+					manipulateOperation,
+					manipulateMode,
 					glm::value_ptr(*_movingMatrix.matrixToMove)))
 				{
 					_movingMatrix.invalidateCache = true;
@@ -391,9 +393,11 @@ void VulkanEngine::run()
 				//
 				// Move the matrix via the cached matrix components
 				//
-				ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight), ImGuiCond_Once);
+				ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight), ImGuiCond_Always);
 				ImGui::Begin("Transform Selected Object", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
 				{
+					ImGui::Text("Transform");
+
 					bool changed = false;
 					changed |= ImGui::DragFloat3("Pos##ASDFASDFASDFJAKSDFKASDHF", glm::value_ptr(_movingMatrix.cachedPosition));
 					changed |= ImGui::DragFloat3("Rot##ASDFASDFASDFJAKSDFKASDHF", glm::value_ptr(_movingMatrix.cachedEulerAngles));
@@ -410,6 +414,38 @@ void VulkanEngine::run()
 							glm::value_ptr(_movingMatrix.cachedScale),
 							glm::value_ptr(*_movingMatrix.matrixToMove)
 						);
+					}
+
+					ImGui::Separator();
+					ImGui::Text("Manipulation Gizmo");
+					static int operationIndex = 0;
+					if (ImGui::Combo("Operation", &operationIndex, "Translate\0Rotate\0Scale"))
+					{
+						switch (operationIndex)
+						{
+						case 0:
+							manipulateOperation = ImGuizmo::OPERATION::TRANSLATE;
+							break;
+						case 1:
+							manipulateOperation = ImGuizmo::OPERATION::ROTATE;
+							break;
+						case 2:
+							manipulateOperation = ImGuizmo::OPERATION::SCALE;
+							break;
+						}
+					}
+					static int modeIndex = 0;
+					if (ImGui::Combo("Mode", &modeIndex, "World\0Local"))
+					{
+						switch (modeIndex)
+						{
+						case 0:
+							manipulateMode = ImGuizmo::MODE::WORLD;
+							break;
+						case 1:
+							manipulateMode = ImGuizmo::MODE::LOCAL;
+							break;
+						}
 					}
 
 					accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
@@ -1451,9 +1487,9 @@ void VulkanEngine::initPipelines()
 void VulkanEngine::initScene()
 {
 	_renderObjects.clear();   // For when it resets, so that correct materials are grabbed (@TODO: make a new material grabbing system for when the pipeline is recreated... BUT! Make sure whether you actually need that or not, bc it could be that it's not needed). Bc the pipelines will get recreated but it could just be a different situation with reliance on the gltf materials too idk really!
-	//for (int x = -10; x <= 10; x++)
-	//	for (int z = -10; z <= 10; z++)
-	int x = 0, z = 0;
+	for (int x = -10; x <= 10; x++)
+		for (int z = -10; z <= 10; z++)
+	//int x = 0, z = 0;
 	{
 		RenderObject triangle = {
 			.model = &_renderObjectModels.slimeGirl,
