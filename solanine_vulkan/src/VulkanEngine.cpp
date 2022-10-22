@@ -432,7 +432,7 @@ void VulkanEngine::run()
 				// Move the matrix via the cached matrix components
 				//
 				ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight), ImGuiCond_Always);
-				ImGui::Begin("Transform Selected Object", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
+				ImGui::Begin("Edit Selected Object", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
 				{
 					ImGui::Text("Transform");
 
@@ -525,6 +525,29 @@ void VulkanEngine::run()
 							operationIndex = 2;
 							forceRecalculation = true;
 						}
+					}
+
+					//
+					// Edit props exclusive to render objects
+					//
+					RenderObject* foundRO = nullptr;
+					for (auto& ro : _renderObjects)
+					{
+						if (_movingMatrix.matrixToMove == &ro.transformMatrix)
+						{
+							foundRO = &ro;
+							break;
+						}
+					}
+
+					if (foundRO != nullptr)
+					{
+						ImGui::Separator();
+						ImGui::Text("Render Object");
+
+						int32_t temp = (int32_t)foundRO->renderLayer;
+						if (ImGui::Combo("Render Layer##asdfasdfasgasgcombo", &temp, "VISIBLE\0INVISIBLE\0BUILDER"))
+							foundRO->renderLayer = RenderLayer(temp);
 					}
 
 					accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
