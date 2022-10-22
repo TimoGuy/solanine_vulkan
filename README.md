@@ -33,3 +33,6 @@
 
 ![Implementation of hdr skyboxes, finally](etc/Solanine%20Prealpha%20-%20Vulkan%20-%20Build%20292%2010_17_2022%2020_15_50.png)
 *Implementation of hdr skyboxes, finally*
+
+![Object picking and transformation gizmo set up!](etc/Solanine%20Prealpha%20-%20Vulkan%20-%20Build%20385%2010_21_2022%2023_32_01.png)
+*Object picking and transformation gizmo set up!*
