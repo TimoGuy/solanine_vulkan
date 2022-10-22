@@ -228,7 +228,8 @@ private:
 
 	void loadMeshes();
 
-	void renderRenderObjects(VkCommandBuffer cmd, RenderObject* first, size_t count, bool renderSkybox, bool materialOverride, VkPipelineLayout* overrideLayout);
+	void uploadCurrentFrameToGPU(const FrameData& currentFrame);
+	void renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, size_t offset, size_t count, bool renderSkybox, bool materialOverride, VkPipelineLayout* overrideLayout);
 	void renderPickedObject(VkCommandBuffer cmd, const FrameData& currentFrame);
 
 	//

@@ -653,7 +653,8 @@ void VulkanEngine::render()
 	// Begin renderpass
 	vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-	renderRenderObjects(cmd, _renderObjects.data(), _renderObjects.size(), true, false, nullptr);
+	uploadCurrentFrameToGPU(currentFrame);
+	renderRenderObjects(cmd, currentFrame, 0, _renderObjects.size(), true, false, nullptr);
 	renderPickedObject(cmd, currentFrame);
 
 	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
@@ -749,7 +750,7 @@ void VulkanEngine::render()
 		scissor.extent = { 1, 1 };
 		vkCmdSetScissor(cmd, 0, 1, &scissor);    // @NOTE: the scissor is set to be dynamic state for this pipeline
 
-		renderRenderObjects(cmd, _renderObjects.data(), _renderObjects.size(), false, true, &pickingMaterial.pipelineLayout);    // @NOTE: the joint descriptorset will still be bound in here   @HACK: it's using the wrong pipelinelayout but.... it should be fine? Bc the slot is still set=3 for the joints on the picking pipelinelayout too??
+		renderRenderObjects(cmd, currentFrame, 0, _renderObjects.size(), false, true, &pickingMaterial.pipelineLayout);    // @NOTE: the joint descriptorset will still be bound in here   @HACK: it's using the wrong pipelinelayout but.... it should be fine? Bc the slot is still set=3 for the joints on the picking pipelinelayout too??
 
 		// End renderpass
 		vkCmdEndRenderPass(cmd);
@@ -3112,10 +3113,8 @@ void VulkanEngine::loadMeshes()
 		});
 }
 
-void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first, size_t count, bool renderSkybox, bool materialOverride, VkPipelineLayout* overrideLayout)
+void VulkanEngine::uploadCurrentFrameToGPU(const FrameData& currentFrame)
 {
-	const auto& currentFrame = getCurrentFrame();
-
 	//
 	// Upload Camera Data to GPU
 	//
@@ -3138,14 +3137,17 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first,
 	vmaMapMemory(_allocator, currentFrame.objectBuffer._allocation, &objectData);
 	GPUObjectData* objectSSBO = (GPUObjectData*)objectData;    // @IMPROVE: perhaps multithread this? Or only update when the object moves?
 
-	for (size_t i = 0; i < count; i++)
+	for (size_t i = 0; i < _renderObjects.size(); i++)
 	{
-		RenderObject& object = first[i];
+		RenderObject& object = _renderObjects[i];
 		objectSSBO[i].modelMatrix = object.transformMatrix;		// Another evil pointer trick I love... call me Dmitri the Evil
 	}
 
 	vmaUnmapMemory(_allocator, currentFrame.objectBuffer._allocation);
+}
 
+void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, size_t offset, size_t count, bool renderSkybox, bool materialOverride, VkPipelineLayout* overrideLayout)
+{
 	//
 	// Render Skybox
 	// @TODO: fix this weird organization!!!
@@ -3168,9 +3170,9 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first,
 	Material* lastMaterial = nullptr;
 	VkDescriptorSet* lastJointDescriptor = nullptr;
 
-	for (size_t i = 0; i < count; i++)
+	for (size_t i = offset; i < offset + count; i++)
 	{
-		RenderObject& object = first[i];
+		RenderObject& object = _renderObjects[i];
 
 		if (!_renderObjectLayersEnabled[(size_t)object.renderLayer])
 			continue;    // Ignore layers that are disabled
@@ -3285,17 +3287,20 @@ void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& curr
 	//
 	// Try to find the picked object
 	//
-	RenderObject* pickedRO = nullptr;
-	for (auto& ro : _renderObjects)
+	bool found = false;
+	size_t pickedROIndex = 0;
+
+	for (size_t i = 0; i < _renderObjects.size(); i++)
 	{
-		if (_movingMatrix.matrixToMove == &ro.transformMatrix)
+		if (_movingMatrix.matrixToMove == &_renderObjects[i].transformMatrix)
 		{
-			pickedRO = &ro;
+			found = true;
+			pickedROIndex = i;
 			break;
 		}
 	}
 
-	if (pickedRO == nullptr)
+	if (!found)
 		return;
 
 	//
@@ -3329,7 +3334,7 @@ void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& curr
 		};	
 		vkCmdPushConstants(cmd, material.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ColorPushConstBlock), &pc);
 
-		renderRenderObjects(cmd, pickedRO, 1, false, true, &material.pipelineLayout);
+		renderRenderObjects(cmd, currentFrame, pickedROIndex, 1, false, true, &material.pipelineLayout);
 	}
 }
 
