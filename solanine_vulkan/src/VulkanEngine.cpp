@@ -397,7 +397,7 @@ void VulkanEngine::run()
 			else
 			{
 				//
-				// Decompose the matrix if cache is invalid
+				// Decompose the matrix if cache is invalidated
 				//
 				if (_movingMatrix.invalidateCache)
 				{
