@@ -1874,9 +1874,10 @@ void VulkanEngine::initScene()
 {
 	_renderObjects.clear();   // For when it resets, so that correct materials are grabbed (@TODO: make a new material grabbing system for when the pipeline is recreated... BUT! Make sure whether you actually need that or not, bc it could be that it's not needed). Bc the pipelines will get recreated but it could just be a different situation with reliance on the gltf materials too idk really!
 	for (int x = -5; x <= 5; x++)
-		for (int z = -5; z <= 5; z++)
+		//for (int z = -5; z <= 5; z++)
 	//int x = 0, z = 0;
 	{
+		int z = 0;
 		RenderObject triangle = {
 			.model = &_renderObjectModels.slimeGirl,
 			.transformMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(x, 0, z)),
