@@ -432,7 +432,7 @@ void VulkanEngine::run()
 				// Move the matrix via the cached matrix components
 				//
 				ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight), ImGuiCond_Always);
-				ImGui::Begin("Edit Selected Object", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
+				ImGui::Begin("Edit Selected", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
 				{
 					ImGui::Text("Transform");
 
