@@ -3193,9 +3193,7 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 		//
 		// Render it out
 		//
-		object.model->draw(
-			cmd,
-			i,
+		object.model->draw(cmd, i,
 			[&](vkglTF::Primitive* primitive, vkglTF::Node* node) {
 				//
 				// Apply all of the material properties
