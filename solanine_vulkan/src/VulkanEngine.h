@@ -28,13 +28,19 @@ struct GPUObjectData
 	glm::mat4 modelMatrix;
 };
 
+struct GPUPickingSelectedIdData
+{
+	uint32_t selectedId;
+};
+
 struct FrameData
 {
 	VkSemaphore presentSemaphore, renderSemaphore;
-	VkFence renderFence;
+	VkFence renderFence, pickingRenderFence;
 
 	VkCommandPool commandPool;
 	VkCommandBuffer mainCommandBuffer;
+	VkCommandBuffer pickingCommandBuffer;
 
 	AllocatedBuffer cameraBuffer;
 	AllocatedBuffer pbrShadingPropsBuffer;
@@ -42,6 +48,9 @@ struct FrameData
 
 	AllocatedBuffer objectBuffer;
 	VkDescriptorSet objectDescriptor;
+
+	AllocatedBuffer pickingSelectedIdBuffer;
+	VkDescriptorSet pickingReturnValueDescriptor;
 };
 
 struct UploadContext
@@ -108,13 +117,24 @@ public:
 	VkQueue _graphicsQueue;
 	uint32_t _graphicsQueueFamily;
 
+	// Main Renderpass
 	VkRenderPass _renderPass;
 	std::vector<VkFramebuffer> _framebuffers;
 
-	// Depth Buffer
+	// Main Depth Buffer
 	VkImageView _depthImageView;
 	AllocatedImage _depthImage;
 	VkFormat _depthFormat;
+
+	// Picking Renderpass
+	VkRenderPass _pickingRenderPass;
+	VkFramebuffer _pickingFramebuffer;
+	VkImageView _pickingImageView;
+	AllocatedImage _pickingImage;
+
+	// Picking Depth Buffer
+	VkImageView _pickingDepthImageView;
+	AllocatedImage _pickingDepthImage;
 
 	// VMA Lib Allocator
 	VmaAllocator _allocator;
@@ -160,6 +180,7 @@ public:
 	VkDescriptorSetLayout _objectSetLayout;
 	VkDescriptorSetLayout _singleTextureSetLayout;
 	VkDescriptorSetLayout _pbrTexturesSetLayout;
+	VkDescriptorSetLayout _pickingReturnValueSetLayout;
 	VkDescriptorSetLayout _skeletalAnimationSetLayout;    // @NOTE: for this one, descriptor sets are created inside of the vkglTFModels themselves, they're not global
 	VkDescriptorPool _descriptorPool;
 
@@ -175,6 +196,7 @@ private:
 	void initSwapchain();
 	void initCommands();
 	void initDefaultRenderpass();
+	void initPickingRenderpass();
 	void initFramebuffers();
 	void initSyncStructures();
 	void initDescriptors();
@@ -194,7 +216,7 @@ private:
 
 	void loadMeshes();
 
-	void renderRenderObjects(VkCommandBuffer cmd, RenderObject* first, size_t count);
+	void renderRenderObjects(VkCommandBuffer cmd, RenderObject* first, size_t count, bool renderSkybox, bool materialOverride, VkPipelineLayout* overrideLayout);
 
 	//
 	// Scene Camera
@@ -298,6 +320,7 @@ private:
 	//
 	struct MovingMatrix
 	{
+		bool onLMBPress = false;
 		bool keyDelPressed = false,
 			keyCtrlPressed = false,
 			keyQPressed = false,
@@ -311,6 +334,7 @@ private:
 		glm::vec3 cachedEulerAngles;
 		glm::vec3 cachedScale;
 	} _movingMatrix;
+	void submitSelectedRenderObjectId(int32_t id);
 
 	//
 	// ImGui Stuff
@@ -329,15 +353,16 @@ class PipelineBuilder
 {
 public:
 	std::vector<VkPipelineShaderStageCreateInfo> _shaderStages;
-	VkPipelineVertexInputStateCreateInfo _vertexInputInfo;
-	VkPipelineInputAssemblyStateCreateInfo _inputAssembly;
-	VkViewport _viewport;
-	VkRect2D _scissor;
-	VkPipelineRasterizationStateCreateInfo _rasterizer;
-	VkPipelineColorBlendAttachmentState _colorBlendAttachment;
-	VkPipelineMultisampleStateCreateInfo _multisampling;
-	VkPipelineLayout _pipelineLayout;
-	VkPipelineDepthStencilStateCreateInfo _depthStencil;
+	VkPipelineVertexInputStateCreateInfo         _vertexInputInfo;
+	VkPipelineInputAssemblyStateCreateInfo       _inputAssembly;
+	VkViewport                                   _viewport;
+	VkRect2D                                     _scissor;
+	VkPipelineRasterizationStateCreateInfo       _rasterizer;
+	VkPipelineColorBlendAttachmentState          _colorBlendAttachment;
+	VkPipelineMultisampleStateCreateInfo         _multisampling;
+	VkPipelineLayout                             _pipelineLayout;
+	VkPipelineDepthStencilStateCreateInfo        _depthStencil;
+	VkPipelineDynamicStateCreateInfo             _dynamicState;
 
 	VkPipeline buildPipeline(VkDevice device, VkRenderPass pass);
 };
