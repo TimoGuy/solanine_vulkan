@@ -654,6 +654,8 @@ void VulkanEngine::render()
 	vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
 	renderRenderObjects(cmd, _renderObjects.data(), _renderObjects.size(), true, false, nullptr);
+	renderPickedObject(cmd, currentFrame);
+
 	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
 
 	// End renderpass
@@ -1066,6 +1068,7 @@ void VulkanEngine::initVulkan()
 		.set_required_features({
 			// @NOTE: @FEATURES: Enable required features right here
 			.depthClamp = VK_TRUE,				// @NOTE: for shadow maps, this is really nice
+			.fillModeNonSolid = VK_TRUE,            // @NOTE: well, I guess this is necessary to render wireframes
 			.samplerAnisotropy = VK_TRUE,
 			.fragmentStoresAndAtomics = VK_TRUE,    // @NOTE: this is only necessary for the picking buffer! If a release build then you can just disable this feature (@NOTE: it allows for me to write into an ssbo in the fragment shader. The picking buffer shader would have to be readonly if this were disabled)  -Timo 2022/10/21
 			})
@@ -1781,6 +1784,11 @@ void VulkanEngine::initPipelines()
 	loadShaderModule("shader/picking.vert.spv", &pickingVertShader);
 	loadShaderModule("shader/picking.frag.spv", &pickingFragShader);
 
+	VkShaderModule wireframeColorVertShader,
+					wireframeColorFragShader;
+	loadShaderModule("shader/pbr.vert.spv", &wireframeColorVertShader);
+	loadShaderModule("shader/color.frag.spv", &wireframeColorFragShader);
+
 	//
 	// Mesh Pipeline
 	//
@@ -1913,6 +1921,49 @@ void VulkanEngine::initPipelines()
 	for (auto shaderStage : pipelineBuilder._shaderStages)
 		vkDestroyShaderModule(_device, shaderStage.module, nullptr);
 
+	//
+	// Wireframe color pipeline
+	//
+	VkPipelineLayoutCreateInfo wireframeColorPipelineLayoutInfo = pickingPipelineLayoutInfo;
+
+	pushConstant = {
+		.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+		.offset = 0,
+		.size = sizeof(ColorPushConstBlock)
+	};
+	meshPipelineLayoutInfo.pPushConstantRanges = &pushConstant;
+	meshPipelineLayoutInfo.pushConstantRangeCount = 1;
+
+	VkDescriptorSetLayout setLayouts4[] = { _globalSetLayout, _objectSetLayout, _skeletalAnimationSetLayout };
+	wireframeColorPipelineLayoutInfo.pSetLayouts = setLayouts4;
+	wireframeColorPipelineLayoutInfo.setLayoutCount = 3;
+
+	VkPipelineLayout _wireframeColorPipelineLayout;
+	VK_CHECK(vkCreatePipelineLayout(_device, &wireframeColorPipelineLayoutInfo, nullptr, &_wireframeColorPipelineLayout));
+
+	pipelineBuilder._shaderStages.clear();
+	pipelineBuilder._shaderStages.push_back(
+		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, wireframeColorVertShader));
+	pipelineBuilder._shaderStages.push_back(
+		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, wireframeColorFragShader));
+
+	pipelineBuilder._rasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_LINE, VK_CULL_MODE_BACK_BIT);    // Bc we're rendering a box inside-out
+	pipelineBuilder._depthStencil = vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL);
+	pipelineBuilder._pipelineLayout = _wireframeColorPipelineLayout;
+
+	VkPipelineDynamicStateCreateInfo noDynamicState = {
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+		.dynamicStateCount = 0,
+		.pDynamicStates = nullptr,
+	};
+	pipelineBuilder._dynamicState = noDynamicState;    // Turn off dynamic states
+
+	auto _wireframeColorPipeline = pipelineBuilder.buildPipeline(_device, _renderPass);    // @NOTE: the changed renderpass bc this is for picking
+	createMaterial(_wireframeColorPipeline, _wireframeColorPipelineLayout, "wireframeColorMaterial");
+
+	for (auto shaderStage : pipelineBuilder._shaderStages)
+		vkDestroyShaderModule(_device, shaderStage.module, nullptr);
+
 	// Add destroy command for cleanup
 	_swapchainDependentDeletionQueue.pushFunction([=]() {
 		vkDestroyPipeline(_device, _meshPipeline, nullptr);
@@ -1921,6 +1972,8 @@ void VulkanEngine::initPipelines()
 		vkDestroyPipelineLayout(_device, _skyboxPipelineLayout, nullptr);
 		vkDestroyPipeline(_device, _pickingPipeline, nullptr);
 		vkDestroyPipelineLayout(_device, _pickingPipelineLayout, nullptr);
+		vkDestroyPipeline(_device, _wireframeColorPipeline, nullptr);
+		vkDestroyPipelineLayout(_device, _wireframeColorPipelineLayout, nullptr);
 		});
 }
 
@@ -3219,6 +3272,46 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, RenderObject* first,
 			}
 		);
 	}
+}
+
+void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& currentFrame)
+{
+	//
+	// Try to find the picked object
+	//
+	RenderObject* pickedRO = nullptr;
+	for (auto& ro : _renderObjects)
+	{
+		if (_movingMatrix.matrixToMove == &ro.transformMatrix)
+		{
+			pickedRO = &ro;
+			break;
+		}
+	}
+
+	if (pickedRO == nullptr)
+		return;
+
+	//
+	// Render it with the wireframe color pipeline
+	//
+	Material& wireframeColorMaterial = *getMaterial("wireframeColorMaterial");
+
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, wireframeColorMaterial.pipeline);
+
+	// Global data descriptor             (set = 0)
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, wireframeColorMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
+
+	// Object data descriptor             (set = 1)
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, wireframeColorMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
+
+	// Push constants
+	ColorPushConstBlock pc = {
+		.color = glm::vec4(1, 0, 0, 1),
+	};	
+	vkCmdPushConstants(cmd, wireframeColorMaterial.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ColorPushConstBlock), &pc);
+
+	renderRenderObjects(cmd, pickedRO, 1, false, true, &wireframeColorMaterial.pipelineLayout);
 }
 
 void VulkanEngine::recalculateSceneCamera()

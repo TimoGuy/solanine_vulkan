@@ -57,6 +57,9 @@
     <None Include="shader\picking.vert">
       <Filter>Shader Files</Filter>
     </None>
+    <None Include="shader\color.frag">
+      <Filter>Shader Files</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\Imports.h">

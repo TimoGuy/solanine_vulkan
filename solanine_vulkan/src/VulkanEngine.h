@@ -33,6 +33,11 @@ struct GPUPickingSelectedIdData
 	uint32_t selectedId;
 };
 
+struct ColorPushConstBlock
+{
+	glm::vec4 color;
+};
+
 struct FrameData
 {
 	VkSemaphore presentSemaphore, renderSemaphore;
@@ -224,6 +229,7 @@ private:
 	void loadMeshes();
 
 	void renderRenderObjects(VkCommandBuffer cmd, RenderObject* first, size_t count, bool renderSkybox, bool materialOverride, VkPipelineLayout* overrideLayout);
+	void renderPickedObject(VkCommandBuffer cmd, const FrameData& currentFrame);
 
 	//
 	// Scene Camera
