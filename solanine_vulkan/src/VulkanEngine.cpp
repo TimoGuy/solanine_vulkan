@@ -7,6 +7,7 @@
 #include "VkInitializers.h"
 #include "VkTextures.h"
 #include "GLSLToSPIRVHelper.h"
+#include "AudioEngine.h"
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_sdl.h"
 #include "imgui/imgui_impl_vulkan.h"
@@ -47,6 +48,8 @@ void VulkanEngine::init()
 		window_flags
 	);
 
+	AudioEngine::getInstance().initialize();
+
 #ifdef _DEVELOP
 	buildResourceList();
 #endif
@@ -82,6 +85,11 @@ void VulkanEngine::run()
 
 	// @HARDCODED: Set the initial light direction
 	_pbrRendering.gpuSceneShadingProps.lightDir = glm::normalize(glm::vec4(0.432f, 0.864f, 0.259f, 0.0f));
+
+	// @HARDCODED: Play a song!
+	const std::string fname = "res/music/test_song.ogg";
+	AudioEngine::getInstance().loadSound(fname, false, false, false);
+	AudioEngine::getInstance().playSound(fname);
 
 	//
 	// Main Loop
@@ -172,6 +180,11 @@ void VulkanEngine::run()
 			}
 			}
 		}
+
+		//
+		// Update AudioEngine
+		//
+		AudioEngine::getInstance().update();
 
 		//
 		// Update DeltaTime
@@ -514,6 +527,8 @@ void VulkanEngine::run()
 
 void VulkanEngine::cleanup()
 {
+	AudioEngine::getInstance().cleanup();
+
 #ifdef _DEVELOP
 	teardownResourceList();
 #endif
