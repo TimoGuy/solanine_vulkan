@@ -118,6 +118,7 @@ copy $(SolutionDir)libs\fmod_studio\lib\fmodstudio.dll $(OutDirfullPath)fmodstud
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\AudioEngine.h" />
+    <ClInclude Include="src\Entity.h" />
     <ClInclude Include="src\GLSLToSPIRVHelper.h" />
     <ClInclude Include="src\imgui\imconfig.h" />
     <ClInclude Include="src\imgui\imgui.h" />
@@ -140,6 +141,7 @@ copy $(SolutionDir)libs\fmod_studio\lib\fmodstudio.dll $(OutDirfullPath)fmodstud
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\AudioEngine.cpp" />
+    <ClCompile Include="src\Entity.cpp" />
     <ClCompile Include="src\imgui\imgui.cpp" />
     <ClCompile Include="src\imgui\ImGuizmo.cpp" />
     <ClCompile Include="src\imgui\imgui_demo.cpp" />

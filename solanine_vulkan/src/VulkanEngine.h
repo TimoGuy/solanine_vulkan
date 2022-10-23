@@ -4,6 +4,8 @@
 #include "VkglTFModel.h"
 
 
+class Entity;
+
 struct GPUCameraData
 {
 	glm::mat4 view;
@@ -285,6 +287,20 @@ public:
 
 private:
 
+	//
+	// Entities
+	//
+	void INTERNALaddEntity(Entity* entity);
+	void INTERNALdestroyEntity(Entity* entity);
+	void INTERNALaddRemoveRequestedEntities();
+public:
+	void destroyEntity(Entity* entity);    // Do not use the destructor or INTERNALdestroyEntity(), use this function!
+private:
+	std::vector<Entity*> _entities;
+	std::deque<Entity*> _entitiesToAddQueue;
+	std::deque<Entity*> _entitiesToDestroyQueue;
+	bool _flushEntitiesToDestroyRoutine = false;
+
 #ifdef _DEVELOP
 	//
 	// Moving Free cam
@@ -349,6 +365,8 @@ private:
 	} _imguiData;
 	void renderImGui();
 #endif
+
+    friend class Entity;
 };
 
 

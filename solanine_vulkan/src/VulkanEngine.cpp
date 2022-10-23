@@ -9,6 +9,7 @@
 #include "GLSLToSPIRVHelper.h"
 #include "AudioEngine.h"
 #include "InputManager.h"
+#include "Entity.h"
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_sdl.h"
 #include "imgui/imgui_impl_vulkan.h"
@@ -98,6 +99,7 @@ void VulkanEngine::run()
 	bool isRunning = true;
 	float_t ticksFrequency = 1.0f / (float_t)SDL_GetPerformanceFrequency();
 	uint64_t lastFrame = SDL_GetPerformanceCounter();
+	float accumulatedTimeForPhysics = 0.0f;
 
 	while (isRunning)
 	{
@@ -112,15 +114,44 @@ void VulkanEngine::run()
 		// Poll events from the window
 		input::processInput(&isRunning);
 
-		// Update AudioEngine
-		AudioEngine::getInstance().update();
-
-		//
 		// Update DeltaTime
-		//
 		uint64_t currentFrame = SDL_GetPerformanceCounter();
 		const float_t deltaTime = (float_t)(currentFrame - lastFrame) * ticksFrequency;
 		lastFrame = currentFrame;
+
+#pragma region Physics update block
+		// @TODO: @INCOMPLETE Add this into your own physics management system!
+
+		// Update entity physics  (https://gafferongames.com/post/fix_your_timestep/)
+		constexpr float_t physicsDeltaTime = 0.02f;    // 50fps
+		accumulatedTimeForPhysics += deltaTime;
+
+		for (; accumulatedTimeForPhysics >= physicsDeltaTime; accumulatedTimeForPhysics -= physicsDeltaTime)
+		{
+			for (auto it = _entities.begin(); it != _entities.end(); it++)
+			{
+				Entity* ent = *it;
+				if (ent->enablePhysicsUpdate)
+					ent->physicsUpdate(deltaTime);
+			}
+
+			// @TODO: @INCOMPLETE: insert in the bullet physics physics update right here!!!
+		}
+
+		// @INCOMPLETE: Interpolate the positions of all physics objects
+		/*const float_t physicsAlpha = accumulatedTimeForPhysics / physicsDeltaTime;
+#ifdef _DEVELOP
+		if (!playMode)
+			PhysicsTransformState::interpolationAlpha = 1.0f;
+#endif
+		for (size_t i = 0; i < physicsObjects.size(); i++)
+		{
+			physicsObjects[i]->baseObject->INTERNALfetchInterpolatedPhysicsTransform();
+		}*/
+#pragma endregion
+
+		// Collect debug stats
+		updateDebugStats(deltaTime);
 
 		//
 		// @TEMP: Play Slimegirl animation
@@ -135,8 +166,20 @@ void VulkanEngine::run()
 		// Free Cam
 		updateFreeCam(deltaTime);
 
-		// Collect debug stats
-		updateDebugStats(deltaTime);
+		// Update entities
+		// @TODO: multithread this sucker!
+		for (auto it = _entities.begin(); it != _entities.end(); it++)
+		{
+			Entity* ent = *it;
+			if (ent->enableUpdate)
+				ent->update(deltaTime);
+		}
+
+		// Add/Remove requested entities
+		INTERNALaddRemoveRequestedEntities();
+
+		// Update Audio Engine
+		AudioEngine::getInstance().update();
 
 		// Recreate swapchain if flagged
 		if (_recreateSwapchain)
@@ -2933,6 +2976,54 @@ void VulkanEngine::recalculateSceneCamera()
 	_sceneCamera.gpuCameraData.view = view;
 	_sceneCamera.gpuCameraData.projection = projection;
 	_sceneCamera.gpuCameraData.projectionView = projection * view;
+}
+
+void VulkanEngine::INTERNALaddEntity(Entity* entity)
+{
+	_entitiesToAddQueue.push_back(entity);    // @NOTE: this only requests that the entity get added into the system
+}
+
+void VulkanEngine::INTERNALdestroyEntity(Entity* entity)
+{
+	if (!_flushEntitiesToDestroyRoutine)
+	{
+		// Still must destroy this entity, but give a very nasty warning message
+		std::cout << "[DESTROY ENTITY]" << std::endl
+			<< "WARNING: what you're doing is very wrong." << std::endl
+			<< "         Don't use the destructor for entities, instead use destroyEntity()." << std::endl
+			<< "         Crashes could easily happen." << std::endl;
+	}
+
+	_entities.erase(
+		std::remove(
+			_entities.begin(),
+			_entities.end(),
+			entity
+		),
+		_entities.end()
+	);
+}
+
+void VulkanEngine::INTERNALaddRemoveRequestedEntities()
+{
+	// Remove entities requested to be removed
+	_flushEntitiesToDestroyRoutine = true;
+
+	for (auto it = _entitiesToDestroyQueue.begin(); it != _entitiesToDestroyQueue.end(); it++)
+		delete (*it);
+	_entitiesToDestroyQueue.clear();
+
+	_flushEntitiesToDestroyRoutine = false;
+
+	// Add entities requested to be added
+	for (auto it = _entitiesToAddQueue.begin(); it != _entitiesToAddQueue.end(); it++)
+		_entities.push_back(*it);
+	_entitiesToAddQueue.clear();
+}
+
+void VulkanEngine::destroyEntity(Entity* entity)
+{
+	_entitiesToDestroyQueue.push_back(entity);
 }
 
 #ifdef _DEVELOP
