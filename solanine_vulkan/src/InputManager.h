@@ -26,5 +26,5 @@ namespace input
 		keyEPressed,
 		keyRPressed;
 
-	void processInput(bool* isRunning);
+	void processInput(bool* isRunning, bool* isWindowMinimized);
 }

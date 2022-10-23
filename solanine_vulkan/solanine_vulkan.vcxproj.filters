@@ -22,6 +22,12 @@
     <Filter Include="Source Files\imgui">
       <UniqueIdentifier>{af1c0568-7c3a-4063-a380-cba3bbf45046}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\render_engine">
+      <UniqueIdentifier>{4f2e3477-018c-43d8-883a-ebec7330091b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\render_engine">
+      <UniqueIdentifier>{e40c084b-0a1f-4c9a-927b-01630939a795}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <None Include="shader\filtercube.vert">
@@ -62,24 +68,6 @@
     </None>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="src\Imports.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="src\VkBootstrap.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="src\VkInitializers.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="src\VulkanEngine.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="src\GLSLToSPIRVHelper.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="src\VkTextures.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="src\imgui\imconfig.h">
       <Filter>Header Files\imgui</Filter>
     </ClInclude>
@@ -104,17 +92,11 @@
     <ClInclude Include="src\imgui\imgui_impl_vulkan.h">
       <Filter>Header Files\imgui</Filter>
     </ClInclude>
-    <ClInclude Include="src\VkglTFModel.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="src\imgui\implot.h">
       <Filter>Header Files\imgui</Filter>
     </ClInclude>
     <ClInclude Include="src\imgui\implot_internal.h">
       <Filter>Header Files\imgui</Filter>
-    </ClInclude>
-    <ClInclude Include="src\imgui\ImGuizmo.h">
-      <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\AudioEngine.h">
       <Filter>Header Files</Filter>
@@ -125,21 +107,33 @@
     <ClInclude Include="src\Entity.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\imgui\ImGuizmo.h">
+      <Filter>Header Files\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\VulkanEngine.h">
+      <Filter>Header Files\render_engine</Filter>
+    </ClInclude>
+    <ClInclude Include="src\VkBootstrap.h">
+      <Filter>Header Files\render_engine</Filter>
+    </ClInclude>
+    <ClInclude Include="src\VkglTFModel.h">
+      <Filter>Header Files\render_engine</Filter>
+    </ClInclude>
+    <ClInclude Include="src\VkInitializers.h">
+      <Filter>Header Files\render_engine</Filter>
+    </ClInclude>
+    <ClInclude Include="src\VkTextures.h">
+      <Filter>Header Files\render_engine</Filter>
+    </ClInclude>
+    <ClInclude Include="src\GLSLToSPIRVHelper.h">
+      <Filter>Header Files\render_engine</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Imports.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Main.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="src\VkBootstrap.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="src\VkInitializers.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="src\VulkanEngine.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="src\VkTextures.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\imgui\imgui.cpp">
@@ -163,9 +157,6 @@
     <ClCompile Include="src\imgui\imgui_impl_vulkan.cpp">
       <Filter>Source Files\imgui</Filter>
     </ClCompile>
-    <ClCompile Include="src\VkglTFModel.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="src\imgui\implot.cpp">
       <Filter>Source Files\imgui</Filter>
     </ClCompile>
@@ -175,9 +166,6 @@
     <ClCompile Include="src\imgui\implot_items.cpp">
       <Filter>Source Files\imgui</Filter>
     </ClCompile>
-    <ClCompile Include="src\imgui\ImGuizmo.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="src\AudioEngine.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -186,6 +174,24 @@
     </ClCompile>
     <ClCompile Include="src\Entity.cpp">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\imgui\ImGuizmo.cpp">
+      <Filter>Source Files\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\VkBootstrap.cpp">
+      <Filter>Source Files\render_engine</Filter>
+    </ClCompile>
+    <ClCompile Include="src\VkglTFModel.cpp">
+      <Filter>Source Files\render_engine</Filter>
+    </ClCompile>
+    <ClCompile Include="src\VkInitializers.cpp">
+      <Filter>Source Files\render_engine</Filter>
+    </ClCompile>
+    <ClCompile Include="src\VkTextures.cpp">
+      <Filter>Source Files\render_engine</Filter>
+    </ClCompile>
+    <ClCompile Include="src\VulkanEngine.cpp">
+      <Filter>Source Files\render_engine</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

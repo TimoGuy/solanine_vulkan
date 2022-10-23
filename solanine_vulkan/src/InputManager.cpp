@@ -2,6 +2,7 @@
 
 #include "InputManager.h"
 
+#include <iostream>
 #include <SDL2/SDL.h>
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_sdl.h"
@@ -31,7 +32,7 @@ extern bool input::keyEPressed = false;
 extern bool input::keyRPressed = false;
 
 
-void input::processInput(bool* isRunning)
+void input::processInput(bool* isRunning, bool* isWindowMinimized)
 {
     input::onLMBPress = false;
     input::onLMBRelease = false;
@@ -98,6 +99,52 @@ void input::processInput(bool* isRunning)
 			if (e.key.keysym.sym == SDLK_r)                                           input::keyRPressed = (e.key.type == SDL_KEYDOWN);
 			break;
 		}
+
+        case SDL_WINDOWEVENT:
+        {
+            switch (e.window.event)
+            {
+            case SDL_WINDOWEVENT_SHOWN:
+                break;
+            case SDL_WINDOWEVENT_HIDDEN:
+                break;
+            case SDL_WINDOWEVENT_EXPOSED:
+                break;
+            case SDL_WINDOWEVENT_MOVED:
+                break;
+            case SDL_WINDOWEVENT_RESIZED:
+                break;
+            case SDL_WINDOWEVENT_SIZE_CHANGED:
+                break;
+            case SDL_WINDOWEVENT_MINIMIZED:
+                *isWindowMinimized = true;
+                break;
+            case SDL_WINDOWEVENT_MAXIMIZED:
+                break;
+            case SDL_WINDOWEVENT_RESTORED:
+                *isWindowMinimized = false;
+                break;
+            case SDL_WINDOWEVENT_ENTER:
+                break;
+            case SDL_WINDOWEVENT_LEAVE:
+                break;
+            case SDL_WINDOWEVENT_FOCUS_GAINED:
+                break;
+            case SDL_WINDOWEVENT_FOCUS_LOST:
+                break;
+            case SDL_WINDOWEVENT_CLOSE:
+                break;
+#if SDL_VERSION_ATLEAST(2, 0, 5)
+            case SDL_WINDOWEVENT_TAKE_FOCUS:
+                break;
+            case SDL_WINDOWEVENT_HIT_TEST:
+                break;
+#endif
+            default:
+                break;
+            }
+            break;
 		}
+        }
 	}
 }

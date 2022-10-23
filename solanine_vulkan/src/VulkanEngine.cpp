@@ -89,9 +89,9 @@ void VulkanEngine::run()
 	_pbrRendering.gpuSceneShadingProps.lightDir = glm::normalize(glm::vec4(0.432f, 0.864f, 0.259f, 0.0f));
 
 	// @HARDCODED: Play a song!
-	//const std::string fname = "res/music/test_song.ogg";             // @NOTE: the song was too good, so I have to turn it off
-	//AudioEngine::getInstance().loadSound(fname, false, false, false);
-	//AudioEngine::getInstance().playSound(fname);
+	const std::string fname = "res/music/test_song.ogg";             // @NOTE: the song was too good, so I have to turn it off
+	AudioEngine::getInstance().loadSound(fname, false, false, false);
+	AudioEngine::getInstance().playSound(fname);
 
 	//
 	// Main Loop
@@ -112,12 +112,19 @@ void VulkanEngine::run()
 #endif
 
 		// Poll events from the window
-		input::processInput(&isRunning);
+		input::processInput(&isRunning, &_isWindowMinimized);
 
 		// Update DeltaTime
 		uint64_t currentFrame = SDL_GetPerformanceCounter();
 		const float_t deltaTime = (float_t)(currentFrame - lastFrame) * ticksFrequency;
 		lastFrame = currentFrame;
+
+		// Stop anything from updating when window is minimized
+		// @NOTE: this prevents the VK_ERROR_DEVICE_LOST(-4) error
+		//        once the rendering code gets run while the window
+		//        is minimized.  -Timo 2022/10/23
+		if (_isWindowMinimized)
+			continue;
 
 #pragma region Physics update block
 		// @TODO: @INCOMPLETE Add this into your own physics management system!
@@ -219,14 +226,18 @@ void VulkanEngine::cleanup()
 void VulkanEngine::render()
 {
 	const auto& currentFrame = getCurrentFrame();
+	VkResult result;
 
 	// Wait until GPU finishes rendering the previous frame
-	VK_CHECK(vkWaitForFences(_device, 1, &currentFrame.renderFence, true, TIMEOUT_1_SEC));
+	result = vkWaitForFences(_device, 1, &currentFrame.renderFence, true, TIMEOUT_1_SEC);
+	if (result == VK_ERROR_DEVICE_LOST)
+		return;
+
 	VK_CHECK(vkResetFences(_device, 1, &currentFrame.renderFence));
 
 	// Request image from swapchain
 	uint32_t swapchainImageIndex;
-	VkResult result = vkAcquireNextImageKHR(_device, _swapchain, TIMEOUT_1_SEC, currentFrame.presentSemaphore, nullptr, &swapchainImageIndex);
+	result = vkAcquireNextImageKHR(_device, _swapchain, TIMEOUT_1_SEC, currentFrame.presentSemaphore, nullptr, &swapchainImageIndex);
 	if (result == VK_ERROR_OUT_OF_DATE_KHR)
 	{
 		_recreateSwapchain = true;
@@ -309,7 +320,9 @@ void VulkanEngine::render()
 	submit.commandBufferCount = 1;
 	submit.pCommandBuffers = &cmd;
 
-	VK_CHECK(vkQueueSubmit(_graphicsQueue, 1, &submit, currentFrame.renderFence));		// Submit work to gpu
+	result = vkQueueSubmit(_graphicsQueue, 1, &submit, currentFrame.renderFence);		// Submit work to gpu
+	if (result == VK_ERROR_DEVICE_LOST)
+		return;
 
 	//
 	// Picking Render Pass
@@ -398,7 +411,9 @@ void VulkanEngine::render()
 		submit.commandBufferCount = 1;
 		submit.pCommandBuffers = &cmd;
 
-		VK_CHECK(vkQueueSubmit(_graphicsQueue, 1, &submit, currentFrame.pickingRenderFence));		// Submit work to gpu
+		result = vkQueueSubmit(_graphicsQueue, 1, &submit, currentFrame.pickingRenderFence);		// Submit work to gpu
+		if (result == VK_ERROR_DEVICE_LOST)
+			return;
 
 		//
 		// Read from GPU to the CPU

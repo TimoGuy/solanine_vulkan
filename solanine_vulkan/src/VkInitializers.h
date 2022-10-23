@@ -1,6 +1,7 @@
 #pragma once
 
-#include "Imports.h"
+#include <cmath>
+#include <vulkan/vulkan.h>
 struct Texture;
 
 
