@@ -249,6 +249,7 @@ namespace vkglTF
 			size_t vertexPos = 0;
 		};
 
+	private:
 		void destroy(VmaAllocator allocator);
 		void loadNode(VulkanEngine* engine, vkglTF::Node* parent, const tinygltf::Node& node, uint32_t nodeIndex, const tinygltf::Model& model, LoaderInfo& loaderInfo, float globalscale);
 		void getNodeProps(const tinygltf::Node& node, const tinygltf::Model& model, size_t& vertexCount, size_t& indexCount);
@@ -261,18 +262,24 @@ namespace vkglTF
 		void loadMaterials(tinygltf::Model& gltfModel, VulkanEngine* engine);    // @NOTE: someday it might be beneficial to have some kind of material override for any model.  -Timo
 		void loadAnimations(tinygltf::Model& gltfModel);
 		void loadFromFile(VulkanEngine* engine, std::string filename, float scale = 1.0f);
+	public:
 		void bind(VkCommandBuffer commandBuffer);
 		void draw(VkCommandBuffer commandBuffer);
 		void draw(VkCommandBuffer commandBuffer, uint32_t transformID, std::function<void(Primitive* primitive, Node* node)>&& perPrimitiveFunction);    // You know, I wonder about the overhead of including a lambda per primitive
+	private:
 		void drawNode(Node* node, VkCommandBuffer commandBuffer, uint32_t transformID, std::function<void(Primitive* primitive, Node* node)>&& perPrimitiveFunction);
 		void calculateBoundingBox(Node* node, Node* parent);
+	public:
 		void getSceneDimensions();
 		void updateAnimation(uint32_t index, float time);
+	private:
 		Node* findNode(Node* parent, uint32_t index);
 		Node* nodeFromIndex(uint32_t index);
 
 	private:
 		tf::Taskflow _calculateJointMatricesTaskflow;
 		tf::Executor _taskflowExecutor;
+
+		friend class ModelCache;
 	};
 }
