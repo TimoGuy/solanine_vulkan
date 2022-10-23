@@ -1,7 +1,6 @@
 #pragma once
 
 #include "Imports.h"
-#include "ModelCache.h"
 #include "VkglTFModel.h"
 
 
@@ -173,12 +172,10 @@ public:
 	std::unordered_map<std::string, Material> _materials;
 	std::vector<bool> _renderObjectLayersEnabled = { true, true, true };
 
-	ModelCache _modelCache;      // @NOTE: since this is initialized on the stack, it will delete once VulkanEngine::this falls out of scope.
-	vkglTF::Model* getModel(const std::string& filename);
 	struct RenderObjectModels
 	{
-		vkglTF::Model* skybox;
-		vkglTF::Model* slimeGirl;
+		vkglTF::Model skybox;
+		vkglTF::Model slimeGirl;
 	} _renderObjectModels;
 
 	struct PBRSceneTextureSet    // @NOTE: these are the textures that are needed for any type of pbr scene (i.e. the irradiance, prefilter, and brdf maps)

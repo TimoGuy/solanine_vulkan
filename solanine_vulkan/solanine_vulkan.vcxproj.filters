@@ -131,9 +131,6 @@
     <ClInclude Include="src\Imports.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\ModelCache.h">
-      <Filter>Header Files\render_engine</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Main.cpp">
@@ -195,9 +192,6 @@
     </ClCompile>
     <ClCompile Include="src\VulkanEngine.cpp">
       <Filter>Source Files\render_engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\ModelCache.cpp">
-      <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

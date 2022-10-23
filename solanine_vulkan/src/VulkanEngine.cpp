@@ -166,9 +166,9 @@ void VulkanEngine::run()
 		static uint32_t animationIndex = 31;    // @NOTE: this is Slimegirl's running inmotion animation
 		static float_t animationTimer = 0.0f;
 		animationTimer += deltaTime;
-		if (animationTimer > _renderObjectModels.slimeGirl->animations[animationIndex].end)    // Loop animation
-			animationTimer -= _renderObjectModels.slimeGirl->animations[animationIndex].end;
-		_renderObjectModels.slimeGirl->updateAnimation(animationIndex, animationTimer);
+		if (animationTimer > _renderObjectModels.slimeGirl.animations[animationIndex].end)    // Loop animation
+			animationTimer -= _renderObjectModels.slimeGirl.animations[animationIndex].end;
+		_renderObjectModels.slimeGirl.updateAnimation(animationIndex, animationTimer);
 
 		// Free Cam
 		updateFreeCam(deltaTime);
@@ -616,11 +616,6 @@ void VulkanEngine::loadImages()
 	//
 	// @TODO: add a thing to destroy all the loaded images from _loadedTextures hashmap
 	//
-}
-
-vkglTF::Model* VulkanEngine::getModel(const std::string& filename)
-{
-	return _modelCache.getModel(this, filename);
 }
 
 Material* VulkanEngine::createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name)
@@ -1645,7 +1640,7 @@ void VulkanEngine::initScene()
 	{
 		int z = 0;
 		RenderObject ro = {
-			.model = _renderObjectModels.slimeGirl,
+			.model = &_renderObjectModels.slimeGirl,
 			.transformMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(x, 0, z)),
 			.renderLayer = RenderLayer::VISIBLE,
 		};
@@ -2174,8 +2169,8 @@ void VulkanEngine::generatePBRCubemaps()
 
 					VkDeviceSize offsets[1] = { 0 };
 
-					_renderObjectModels.skybox->bind(cmd);
-					_renderObjectModels.skybox->draw(cmd);
+					_renderObjectModels.skybox.bind(cmd);
+					_renderObjectModels.skybox.draw(cmd);
 
 					vkCmdEndRenderPass(cmd);
 
@@ -2753,11 +2748,15 @@ void VulkanEngine::loadMeshes()
 	tf::Executor e;
 	tf::Taskflow taskflow;
 	taskflow.emplace(
-		[&]() { _renderObjectModels.skybox = getModel("res/models/Box.gltf"); },
-		[&]() { _renderObjectModels.slimeGirl = getModel("res/models/SlimeGirl.glb"); }
-		//[&]() { _renderObjectModels.slimeGirl.loadFromFile(this, "C:/Users/Timo/Documents/Repositories/Vulkan-glTF-PBR/data/models/DamagedHelmet/glTF-Embedded/DamagedHelmet.gltf", 0); }
+		[&]() { _renderObjectModels.skybox.loadFromFile(this, "res/models/Box.gltf"); },
+		[&]() { _renderObjectModels.slimeGirl.loadFromFile(this, "res/models/SlimeGirl.glb"); }
 	);
 	e.run(taskflow).wait();
+
+	_mainDeletionQueue.pushFunction([=]() {
+		_renderObjectModels.skybox.destroy(_allocator);
+		_renderObjectModels.slimeGirl.destroy(_allocator);
+		});
 }
 
 void VulkanEngine::uploadCurrentFrameToGPU(const FrameData& currentFrame)
@@ -2805,8 +2804,8 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipeline);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipelineLayout, 1, 1, &skyboxMaterial.textureSet, 0, nullptr);
-		_renderObjectModels.skybox->bind(cmd);
-		_renderObjectModels.skybox->draw(cmd);
+		_renderObjectModels.skybox.bind(cmd);
+		_renderObjectModels.skybox.draw(cmd);
 	}
 
 	//
