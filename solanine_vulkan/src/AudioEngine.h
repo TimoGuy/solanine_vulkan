@@ -49,6 +49,8 @@ public:
     inline float volumeToDb(float volume) { return 20.0f * log10f(volume); }
 
 private:
+    AudioEngine() = default;
+    ~AudioEngine() {}
     AudioAdapter_FMOD* audioAdapter = nullptr;
 };
 

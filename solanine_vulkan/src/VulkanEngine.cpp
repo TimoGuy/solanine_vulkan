@@ -8,6 +8,7 @@
 #include "VkTextures.h"
 #include "GLSLToSPIRVHelper.h"
 #include "AudioEngine.h"
+#include "PhysicsEngine.h"
 #include "InputManager.h"
 #include "Entity.h"
 #include "imgui/imgui.h"
@@ -51,6 +52,7 @@ void VulkanEngine::init()
 	);
 
 	AudioEngine::getInstance().initialize();
+	PhysicsEngine::getInstance().initialize();
 
 #ifdef _DEVELOP
 	buildResourceList();
@@ -203,6 +205,7 @@ void VulkanEngine::run()
 
 void VulkanEngine::cleanup()
 {
+	PhysicsEngine::getInstance().cleanup();
 	AudioEngine::getInstance().cleanup();
 
 #ifdef _DEVELOP

@@ -101,6 +101,7 @@ struct RenderObject
 };
 
 constexpr unsigned int FRAME_OVERLAP = 2;
+
 class VulkanEngine
 {
 public:
