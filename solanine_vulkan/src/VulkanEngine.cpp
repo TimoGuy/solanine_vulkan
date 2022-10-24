@@ -101,7 +101,6 @@ void VulkanEngine::run()
 	bool isRunning = true;
 	float_t ticksFrequency = 1.0f / (float_t)SDL_GetPerformanceFrequency();
 	uint64_t lastFrame = SDL_GetPerformanceCounter();
-	float accumulatedTimeForPhysics = 0.0f;
 
 	while (isRunning)
 	{
@@ -131,49 +130,11 @@ void VulkanEngine::run()
 		if (_isWindowMinimized)
 			continue;
 
-#pragma region Physics update block
-		// @TODO: @INCOMPLETE Add this into your own physics management system!
-
-		// Update entity physics  (https://gafferongames.com/post/fix_your_timestep/)
-		constexpr float_t physicsDeltaTime = 0.02f;    // 50fps
-		accumulatedTimeForPhysics += deltaTime;
-
-		for (; accumulatedTimeForPhysics >= physicsDeltaTime; accumulatedTimeForPhysics -= physicsDeltaTime)
-		{
-			for (auto it = _entities.begin(); it != _entities.end(); it++)
-			{
-				Entity* ent = *it;
-				if (ent->enablePhysicsUpdate)
-					ent->physicsUpdate(deltaTime);
-			}
-
-			// @TODO: @INCOMPLETE: insert in the bullet physics physics update right here!!!
-		}
-
-		// @INCOMPLETE: Interpolate the positions of all physics objects
-		/*const float_t physicsAlpha = accumulatedTimeForPhysics / physicsDeltaTime;
-#ifdef _DEVELOP
-		if (!playMode)
-			PhysicsTransformState::interpolationAlpha = 1.0f;
-#endif
-		for (size_t i = 0; i < physicsObjects.size(); i++)
-		{
-			physicsObjects[i]->baseObject->INTERNALfetchInterpolatedPhysicsTransform();
-		}*/
-#pragma endregion
+		// Update physics
+		PhysicsEngine::getInstance().update(deltaTime, &_entities);
 
 		// Collect debug stats
 		updateDebugStats(deltaTime);
-
-		//
-		// @TEMP: Play Slimegirl animation
-		//
-		static uint32_t animationIndex = 31;    // @NOTE: this is Slimegirl's running inmotion animation
-		static float_t animationTimer = 0.0f;
-		animationTimer += deltaTime;
-		if (animationTimer > _renderObjectModels.slimeGirl.animations[animationIndex].end)    // Loop animation
-			animationTimer -= _renderObjectModels.slimeGirl.animations[animationIndex].end;
-		_renderObjectModels.slimeGirl.updateAnimation(animationIndex, animationTimer);
 
 		// Free Cam
 		updateFreeCam(deltaTime);
@@ -193,11 +154,21 @@ void VulkanEngine::run()
 		// Update Audio Engine
 		AudioEngine::getInstance().update();
 
-		// Recreate swapchain if flagged
-		if (_recreateSwapchain)
-			recreateSwapchain();
+		//
+		// @TODO: loop thru animators and update them!
+		//
+		// @TEMP: Play Slimegirl animation
+		//
+		static uint32_t animationIndex = 31;    // @NOTE: this is Slimegirl's running inmotion animation
+		static float_t animationTimer = 0.0f;
+		animationTimer += deltaTime;
+		if (animationTimer > _renderObjectModels.slimeGirl.animations[animationIndex].end)    // Loop animation
+			animationTimer -= _renderObjectModels.slimeGirl.animations[animationIndex].end;
+		_renderObjectModels.slimeGirl.updateAnimation(animationIndex, animationTimer);
 
 		// Render
+		if (_recreateSwapchain)
+			recreateSwapchain();
 		renderImGui();
 		render();
 	}
@@ -300,7 +271,6 @@ void VulkanEngine::render()
 	uploadCurrentFrameToGPU(currentFrame);
 	renderRenderObjects(cmd, currentFrame, 0, _renderObjects.size(), true, false, nullptr);
 	renderPickedObject(cmd, currentFrame);
-
 	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
 
 	// End renderpass
