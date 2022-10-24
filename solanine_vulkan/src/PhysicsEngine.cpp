@@ -97,7 +97,6 @@ void PhysicsEngine::update(float_t deltaTime, std::vector<Entity*>* entities)   
 
 	for (size_t i = 0; i < _physicsObjects.size(); i++)    // @IMPROVEMENT: @TODO: oh man, this should definitely be multithreaded. However, taskflow doesn't seem like the best choice.  @TOOD: look into the c++11 multithreaded for loop
 		calculateInterpolatedTransform(_physicsObjects[i], physicsAlpha);
-	std::cout << std::endl;
 }
 
 void PhysicsEngine::cleanup()
@@ -146,16 +145,11 @@ void PhysicsEngine::unregisterPhysicsObject(RegisteredPhysicsObject* objRegistra
 void PhysicsEngine::calculateInterpolatedTransform(RegisteredPhysicsObject& obj, const float_t& physicsAlpha)
 {
 	btTransform currentTransform = obj.body->getWorldTransform();
-	//btTransform interpolatedTransform(
-	//	obj.prevTransform.getRotation().slerp(currentTransform.getRotation(), physicsAlpha),    // NLerp nor lerp are available for btQuaternions smh
-	//	obj.prevTransform.getOrigin().lerp(currentTransform.getOrigin(), physicsAlpha)
-	//);
-	//interpolatedTransform.getOpenGLMatrix(glm::value_ptr(obj.interpolatedTransform));  // Apply to the interpolatedTransform matrix!
-	glm::mat4 newTrans;
-	currentTransform.getOpenGLMatrix(glm::value_ptr(newTrans));  // Apply to the interpolatedTransform matrix!
-	obj.interpolatedTransform = newTrans;
-	auto koko = currentTransform.getOrigin();
-	std::cout << koko.getX() << "," << koko.getY() << "," << koko.getZ() << "\t";
+	btTransform interpolatedTransform(
+		obj.prevTransform.getRotation().slerp(currentTransform.getRotation(), physicsAlpha),    // NLerp nor lerp are available for btQuaternions smh
+		obj.prevTransform.getOrigin().lerp(currentTransform.getOrigin(), physicsAlpha)
+	);
+	interpolatedTransform.getOpenGLMatrix(glm::value_ptr(obj.interpolatedTransform));  // Apply to the interpolatedTransform matrix!
 	obj.prevTransform = currentTransform;
 }
 
