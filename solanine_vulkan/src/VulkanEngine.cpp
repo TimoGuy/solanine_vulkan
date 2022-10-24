@@ -123,6 +123,9 @@ void VulkanEngine::run()
 		// @NOTE: this prevents the VK_ERROR_DEVICE_LOST(-4) error
 		//        once the rendering code gets run while the window
 		//        is minimized.  -Timo 2022/10/23
+		// @NOTE: well, if you wanted the game to keep running in the
+		//        background, you could just have this `continue;` block
+		//        right after all of the simulations...
 		if (_isWindowMinimized)
 			continue;
 
