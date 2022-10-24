@@ -116,7 +116,8 @@ RegisteredPhysicsObject* PhysicsEngine::registerPhysicsObject(float_t mass, glm:
 		.interpolatedTransform = glmTrans,
 	};
 	_physicsObjects.push_back(rpo);
-	return &_physicsObjects.back();
+	//return &_physicsObjects.back();
+	return &_physicsObjects[_physicsObjects.size() - 1];
 }
 
 void PhysicsEngine::unregisterPhysicsObject(RegisteredPhysicsObject* objRegistration)
@@ -130,13 +131,15 @@ void PhysicsEngine::unregisterPhysicsObject(RegisteredPhysicsObject* objRegistra
 
 void PhysicsEngine::calculateInterpolatedTransform(RegisteredPhysicsObject& obj, const float_t& physicsAlpha)
 {
-	btTransform& currentTransform = obj.body->getWorldTransform();
+	btTransform currentTransform = obj.body->getWorldTransform();
 	//btTransform interpolatedTransform(
 	//	obj.prevTransform.getRotation().slerp(currentTransform.getRotation(), physicsAlpha),    // NLerp nor lerp are available for btQuaternions smh
 	//	obj.prevTransform.getOrigin().lerp(currentTransform.getOrigin(), physicsAlpha)
 	//);
 	//interpolatedTransform.getOpenGLMatrix(glm::value_ptr(obj.interpolatedTransform));  // Apply to the interpolatedTransform matrix!
-	currentTransform.getOpenGLMatrix(glm::value_ptr(obj.interpolatedTransform));  // Apply to the interpolatedTransform matrix!
+	glm::mat4 newTrans;
+	currentTransform.getOpenGLMatrix(glm::value_ptr(newTrans));  // Apply to the interpolatedTransform matrix!
+	obj.interpolatedTransform = newTrans;
 	auto koko = currentTransform.getOrigin();
 	std::cout << koko.getX() << "," << koko.getY() << "," << koko.getZ() << "\t";
 	obj.prevTransform = currentTransform;
