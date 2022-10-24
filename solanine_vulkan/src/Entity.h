@@ -12,9 +12,10 @@ public:
     virtual void update(const float_t& deltaTime) { }    // Gets called once per frame
     virtual void physicsUpdate(const float_t) { }        // Gets called once per physics calculation
 
-    bool enableUpdate = false,
-        enablePhysicsUpdate = false;
+    // @NOTE: you need to manually enable these!
+    bool _enableUpdate = false,
+         _enablePhysicsUpdate = false;
 
 protected:
-    VulkanEngine* engine;
+    VulkanEngine* _engine;
 };

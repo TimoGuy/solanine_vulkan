@@ -158,6 +158,7 @@ public:
 	void init();
 	void run();
 	void cleanup();
+
 	void render();		// @TODO: Why is this public?
 
 	//
@@ -169,7 +170,10 @@ public:
 	//
 	// Render Objects
 	//
-	std::vector<RenderObject> _renderObjects;
+	std::vector<RenderObject> _renderObjects;    // @TODO: consider this to be private!
+	RenderObject* registerRenderObject(RenderObject renderObjectData);
+	void unregisterRenderObject(RenderObject* objRegistration);
+
 	std::unordered_map<std::string, Material> _materials;
 	std::vector<bool> _renderObjectLayersEnabled = { true, true, true };
 

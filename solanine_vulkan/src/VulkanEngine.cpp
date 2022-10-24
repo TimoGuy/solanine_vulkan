@@ -17,6 +17,8 @@
 #include "imgui/implot.h"
 #include "imgui/ImGuizmo.h"
 
+#include "Player.h"		// @TEMP: need an entity populator or level loader
+
 
 constexpr uint64_t TIMEOUT_1_SEC = 1000000000;
 
@@ -144,7 +146,7 @@ void VulkanEngine::run()
 		for (auto it = _entities.begin(); it != _entities.end(); it++)
 		{
 			Entity* ent = *it;
-			if (ent->enableUpdate)
+			if (ent->_enableUpdate)
 				ent->update(deltaTime);
 		}
 
@@ -592,6 +594,21 @@ void VulkanEngine::loadImages()
 	//
 	// @TODO: add a thing to destroy all the loaded images from _loadedTextures hashmap
 	//
+}
+
+RenderObject* VulkanEngine::registerRenderObject(RenderObject renderObjectData)
+{
+	_renderObjects.push_back(renderObjectData);
+	return &_renderObjects.back();
+}
+
+void VulkanEngine::unregisterRenderObject(RenderObject* objRegistration)
+{
+	std::erase_if(_renderObjects,
+		[=](RenderObject& x) {
+			return &x == objRegistration;
+		}
+	);
 }
 
 Material* VulkanEngine::createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name)
@@ -1607,21 +1624,14 @@ void VulkanEngine::initPipelines()
 		});
 }
 
-void VulkanEngine::initScene()
+void VulkanEngine::initScene()    // @TODO: rename this to something better, bc all it's doing is allocating image descriptorsets... or even better is including this in maybe loadImages()?  -Timo 2022/10/24
 {
-	_renderObjects.clear();   // For when it resets, so that correct materials are grabbed (@TODO: make a new material grabbing system for when the pipeline is recreated... BUT! Make sure whether you actually need that or not, bc it could be that it's not needed). Bc the pipelines will get recreated but it could just be a different situation with reliance on the gltf materials too idk really!
-	for (int x = -5; x <= 5; x++)
-		//for (int z = -5; z <= 5; z++)
-	//int x = 0, z = 0;
-	{
-		int z = 0;
-		RenderObject ro = {
-			.model = &_renderObjectModels.slimeGirl,
-			.transformMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(x, 0, z)),
-			.renderLayer = RenderLayer::VISIBLE,
-		};
-		_renderObjects.push_back(ro);
-	}
+	// @TEMP
+	auto player = new Player(this);
+	_mainDeletionQueue.pushFunction([=]() {
+		delete player;
+		});
+
 
 	//
 	// Update defaultMaterial		@TODO: @FIXME: likely we should just have the material get updated with the textures on pipeline creation, not here... plus pipelines are recreated when the screen resizes too so it should be done then.

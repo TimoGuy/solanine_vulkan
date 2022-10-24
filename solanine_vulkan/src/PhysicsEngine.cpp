@@ -77,7 +77,7 @@ void PhysicsEngine::update(float_t deltaTime, std::vector<Entity*>* entities)   
 		for (auto it = entities->begin(); it != entities->end(); it++)    // @IMPROVEMENT: this could be multithreaded if we're just smart by how we do the physicsupdates
 		{
 			Entity* ent = *it;
-			if (ent->enablePhysicsUpdate)
+			if (ent->_enablePhysicsUpdate)
 				ent->physicsUpdate(physicsDeltaTime);
 		}
 
@@ -119,13 +119,10 @@ RegisteredPhysicsObject* PhysicsEngine::registerPhysicsObject(float_t mass, glm:
 
 void PhysicsEngine::unregisterPhysicsObject(RegisteredPhysicsObject* objRegistration)
 {
-	_physicsObjects.erase(
-		std::remove(
-			_physicsObjects.begin(),
-			_physicsObjects.end(),
-			*objRegistration  // @CHECK: does this work? It's not a pointer-based vector.... so yeah will this work?
-		),
-		_physicsObjects.end()
+	std::erase_if(_physicsObjects,
+		[=](RegisteredPhysicsObject& x) {
+			return &x == objRegistration;
+		}
 	);
 }
 
@@ -137,6 +134,7 @@ void PhysicsEngine::calculateInterpolatedTransform(RegisteredPhysicsObject& obj,
 		obj.prevTransform.getOrigin().lerp(currentTransform.getOrigin(), physicsAlpha)
 	);
 	interpolatedTransform.getOpenGLMatrix(glm::value_ptr(obj.interpolatedTransform));  // Apply to the interpolatedTransform matrix!
+	obj.prevTransform = currentTransform;
 }
 
 btRigidBody* PhysicsEngine::createRigidBody(float_t mass, const btTransform& startTransform, btCollisionShape* shape, const btVector4& color)
