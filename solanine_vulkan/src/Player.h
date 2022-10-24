@@ -23,4 +23,5 @@ private:
     vkglTF::Model _characterModel;
     RenderObject* _renderObj;
     RegisteredPhysicsObject* _physicsObj;
+    RegisteredPhysicsObject* _physicsObj2;
 };

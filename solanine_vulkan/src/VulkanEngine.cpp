@@ -86,7 +86,7 @@ void VulkanEngine::run()
 	// Initialize Scene Camera
 	//
 	_sceneCamera.aspect = (float_t)_windowExtent.width / (float_t)_windowExtent.height;
-	_sceneCamera.gpuCameraData.cameraPosition = { 0.0f, 10.0f, -10.0f };
+	_sceneCamera.gpuCameraData.cameraPosition = { 0.0f, 0.0f, -30.0f };
 	recalculateSceneCamera();
 
 	// @HARDCODED: Set the initial light direction

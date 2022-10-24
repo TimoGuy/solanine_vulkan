@@ -26,6 +26,14 @@ Player::Player(VulkanEngine* engine) : Entity(engine)
             new btCapsuleShape(0.5f, 2.0f)
         );
 
+    _physicsObj2 =
+        PhysicsEngine::getInstance().registerPhysicsObject(
+            false,
+            glm::vec3(0, -50, 0),
+            glm::quat(glm::vec3(0.0f)),
+            new btBoxShape({100, 1, 100})
+        );
+
     _enableUpdate = true;
     _enablePhysicsUpdate = true;
 }
@@ -35,6 +43,7 @@ Player::~Player()
     _characterModel.destroy(_engine->_allocator);
     _engine->unregisterRenderObject(_renderObj);
     PhysicsEngine::getInstance().unregisterPhysicsObject(_physicsObj);
+    PhysicsEngine::getInstance().unregisterPhysicsObject(_physicsObj2);
 }
 
 void Player::update(const float_t& deltaTime)
