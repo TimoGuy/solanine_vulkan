@@ -11,6 +11,8 @@
 
 class Entity;
 
+constexpr size_t PHYSICS_OBJECTS_MAX_CAPACITY = 1000;
+
 struct RegisteredPhysicsObject
 {
     btRigidBody* body;

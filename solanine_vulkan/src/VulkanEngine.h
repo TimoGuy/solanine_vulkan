@@ -101,6 +101,7 @@ struct RenderObject
 };
 
 constexpr unsigned int FRAME_OVERLAP = 2;
+constexpr size_t RENDER_OBJECTS_MAX_CAPACITY = 10000;
 
 class VulkanEngine
 {

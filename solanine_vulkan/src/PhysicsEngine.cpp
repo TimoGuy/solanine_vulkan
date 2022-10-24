@@ -60,6 +60,8 @@ void PhysicsEngine::initialize()
 	_dynamicsWorld->getSolverInfo().m_numIterations = 10;    // @NOTE: 10 is probably good, but Unity engine only uses 6 *shrug*
 	_dynamicsWorld->setGravity(btVector3(0, -10, 0));
 
+	_physicsObjects.reserve(PHYSICS_OBJECTS_MAX_CAPACITY);
+
 	//
 	// Create some stuff (capsule and plane)
 	//
@@ -105,6 +107,19 @@ void PhysicsEngine::cleanup()
 
 RegisteredPhysicsObject* PhysicsEngine::registerPhysicsObject(float_t mass, glm::vec3 origin, glm::quat rotation, btCollisionShape* shape)
 {
+	// @NOTE: this is required to be here (as well as the .reserve() on init)
+	//        bc if the capacity is overcome, then a new array with a larger
+	//        capacity is allocated, and then the pointer to the part in the
+	//        vector is lost to garbage memory that got deallocated.  -Timo 2022/10/24
+	if (_physicsObjects.size() >= PHYSICS_OBJECTS_MAX_CAPACITY)
+	{
+		std::cerr << "[REGISTER PHYSICS OBJECT]" << std::endl
+			<< "ERROR: trying to register physics object when capacity is at maximum." << std::endl
+			<< "       Current capacity: " << _physicsObjects.size() << std::endl
+			<< "       Maximum capacity: " << PHYSICS_OBJECTS_MAX_CAPACITY << std::endl;
+		return nullptr;
+	}
+
 	glm::mat4 glmTrans = glm::translate(glm::mat4(1.0f), origin) * glm::toMat4(rotation);
 
 	btTransform trans;
@@ -116,8 +131,7 @@ RegisteredPhysicsObject* PhysicsEngine::registerPhysicsObject(float_t mass, glm:
 		.interpolatedTransform = glmTrans,
 	};
 	_physicsObjects.push_back(rpo);
-	//return &_physicsObjects.back();
-	return &_physicsObjects[_physicsObjects.size() - 1];
+	return &_physicsObjects.back();
 }
 
 void PhysicsEngine::unregisterPhysicsObject(RegisteredPhysicsObject* objRegistration)

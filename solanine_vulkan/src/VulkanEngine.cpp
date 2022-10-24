@@ -53,6 +53,7 @@ void VulkanEngine::init()
 		window_flags
 	);
 
+	_renderObjects.reserve(RENDER_OBJECTS_MAX_CAPACITY);
 	AudioEngine::getInstance().initialize();
 	PhysicsEngine::getInstance().initialize();
 
@@ -598,6 +599,19 @@ void VulkanEngine::loadImages()
 
 RenderObject* VulkanEngine::registerRenderObject(RenderObject renderObjectData)
 {
+	// @NOTE: this is required to be here (as well as the .reserve() on init)
+	//        bc if the capacity is overcome, then a new array with a larger
+	//        capacity is allocated, and then the pointer to the part in the
+	//        vector is lost to garbage memory that got deallocated.  -Timo 2022/10/24
+	if (_renderObjects.size() >= RENDER_OBJECTS_MAX_CAPACITY)
+	{
+		std::cerr << "[REGISTER RENDER OBJECT]" << std::endl
+			<< "ERROR: trying to register render object when capacity is at maximum." << std::endl
+			<< "       Current capacity: " << _renderObjects.size() << std::endl
+			<< "       Maximum capacity: " << RENDER_OBJECTS_MAX_CAPACITY << std::endl;
+		return nullptr;
+	}
+
 	_renderObjects.push_back(renderObjectData);
 	return &_renderObjects.back();
 }
@@ -1322,9 +1336,7 @@ void VulkanEngine::initDescriptors()    // @TODO: don't destroy and then recreat
 		// Create buffers
 		_frames[i].cameraBuffer = createBuffer(sizeof(GPUCameraData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 		_frames[i].pbrShadingPropsBuffer = createBuffer(sizeof(GPUPBRShadingProps), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
-
-		const int MAX_OBJECTS = 10000;
-		_frames[i].objectBuffer = createBuffer(sizeof(GPUObjectData) * MAX_OBJECTS, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+		_frames[i].objectBuffer = createBuffer(sizeof(GPUObjectData) * RENDER_OBJECTS_MAX_CAPACITY, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
 		_frames[i].pickingSelectedIdBuffer = createBuffer(sizeof(GPUPickingSelectedIdData), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_TO_CPU);    // @NOTE: primary focus is to read from gpu, so gpu_to_cpu
 
@@ -1370,7 +1382,7 @@ void VulkanEngine::initDescriptors()    // @TODO: don't destroy and then recreat
 		VkDescriptorBufferInfo objectBufferInfo = {
 			.buffer = _frames[i].objectBuffer._buffer,
 			.offset = 0,
-			.range = sizeof(GPUObjectData) * MAX_OBJECTS,
+			.range = sizeof(GPUObjectData) * RENDER_OBJECTS_MAX_CAPACITY,
 		};
 		VkDescriptorBufferInfo pickingSelectedIdBufferInfo = {
 			.buffer = _frames[i].pickingSelectedIdBuffer._buffer,
