@@ -54,8 +54,6 @@ void VulkanEngine::init()
 	);
 
 	_renderObjects.reserve(RENDER_OBJECTS_MAX_CAPACITY);
-	AudioEngine::getInstance().initialize();
-	PhysicsEngine::getInstance().initialize();
 
 #ifdef _DEVELOP
 	buildResourceList();
@@ -78,7 +76,13 @@ void VulkanEngine::init()
 	generateBRDFLUT();
 	attachPBRDescriptors();
 
+	AudioEngine::getInstance().initialize();
+	PhysicsEngine::getInstance().initialize(this);
+
 	_isInitialized = true;
+
+	// @TEMP
+	auto player = new Player(this);  // This gets automagically deleted by the engine!
 }
 
 void VulkanEngine::run()
@@ -92,11 +96,6 @@ void VulkanEngine::run()
 
 	// @HARDCODED: Set the initial light direction
 	_pbrRendering.gpuSceneShadingProps.lightDir = glm::normalize(glm::vec4(0.432f, 0.864f, 0.259f, 0.0f));
-
-	// @HARDCODED: Play a song!
-	const std::string fname = "res/music/test_song.ogg";             // @NOTE: the song was too good, so I have to turn it off
-	AudioEngine::getInstance().loadSound(fname, false, false, false);
-	AudioEngine::getInstance().playSound(fname);
 
 	//
 	// Main Loop
@@ -179,9 +178,6 @@ void VulkanEngine::run()
 
 void VulkanEngine::cleanup()
 {
-	PhysicsEngine::getInstance().cleanup();
-	AudioEngine::getInstance().cleanup();
-
 #ifdef _DEVELOP
 	teardownResourceList();
 #endif
@@ -189,6 +185,13 @@ void VulkanEngine::cleanup()
 	if (_isInitialized)
 	{
 		vkDeviceWaitIdle(_device);
+
+		_flushEntitiesToDestroyRoutine = true;  // @NOTE: all entities must be deleted before the physicsengine can shut down
+		for (auto& entity : _entities)
+			delete entity;
+
+		PhysicsEngine::getInstance().cleanup();
+		AudioEngine::getInstance().cleanup();
 
 		_mainDeletionQueue.flush();
 		_swapchainDependentDeletionQueue.flush();
@@ -274,6 +277,8 @@ void VulkanEngine::render()
 	uploadCurrentFrameToGPU(currentFrame);
 	renderRenderObjects(cmd, currentFrame, 0, _renderObjects.size(), true, false, nullptr);
 	renderPickedObject(cmd, currentFrame);
+	if (_showCollisionDebugDraw)
+		PhysicsEngine::getInstance().renderDebugDraw(cmd, currentFrame.globalDescriptor);
 	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
 
 	// End renderpass
@@ -590,6 +595,25 @@ void VulkanEngine::loadImages()
 			});
 
 		_loadedTextures["imguiTextureLayerBuilder"] = textureLayerBuilder;
+	}
+
+	// Load imguiTextureLayerCollision  @NOTE: this is a special case. It's not a render layer but rather a toggle to see the debug shapes rendered
+	{
+		Texture textureLayerCollision;
+		vkutil::loadImageFromFile(*this, "res/_develop/icon_layer_collision.png", VK_FORMAT_R8G8B8A8_SRGB, 0, textureLayerCollision.image);
+
+		VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, textureLayerCollision.image._image, VK_IMAGE_ASPECT_COLOR_BIT, textureLayerCollision.image._mipLevels);
+		vkCreateImageView(_device, &imageInfo, nullptr, &textureLayerCollision.imageView);
+
+		VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(textureLayerCollision.image._mipLevels), VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
+		vkCreateSampler(_device, &samplerInfo, nullptr, &textureLayerCollision.sampler);
+
+		_mainDeletionQueue.pushFunction([=]() {
+			vkDestroySampler(_device, textureLayerCollision.sampler, nullptr);
+			vkDestroyImageView(_device, textureLayerCollision.imageView, nullptr);
+			});
+
+		_loadedTextures["imguiTextureLayerCollision"] = textureLayerCollision;
 	}
 
 	//
@@ -1442,6 +1466,11 @@ void VulkanEngine::initPipelines()
 	loadShaderModule("shader/pbr.vert.spv", &wireframeColorVertShader);
 	loadShaderModule("shader/color.frag.spv", &wireframeColorFragShader);
 
+	VkShaderModule debugPhysicsObjectVertShader,
+					debugPhysicsObjectFragShader;
+	loadShaderModule("shader/debug_physics_object.vert.spv", &debugPhysicsObjectVertShader);
+	loadShaderModule("shader/color.frag.spv", &debugPhysicsObjectFragShader);
+
 	//
 	// Mesh Pipeline
 	//
@@ -1618,6 +1647,52 @@ void VulkanEngine::initPipelines()
 	auto _wireframeColorBehindPipeline = pipelineBuilder.buildPipeline(_device, _renderPass);
 	createMaterial(_wireframeColorBehindPipeline, _wireframeColorPipelineLayout, "wireframeColorBehindMaterial");
 
+	for (auto shaderStage : pipelineBuilder._shaderStages)
+		vkDestroyShaderModule(_device, shaderStage.module, nullptr);
+
+	//
+	// Debug Physics Object pipeline
+	//
+	VkPipelineLayoutCreateInfo debugPhysicsObjectPipelineLayoutInfo = wireframeColorPipelineLayoutInfo;
+
+	pushConstant = {
+		.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+		.offset = 0,
+		.size = sizeof(ColorPushConstBlock)
+	};
+	debugPhysicsObjectPipelineLayoutInfo.pPushConstantRanges = &pushConstant;
+	debugPhysicsObjectPipelineLayoutInfo.pushConstantRangeCount = 1;
+
+	VkDescriptorSetLayout setLayouts5[] = { _globalSetLayout, _objectSetLayout };
+	debugPhysicsObjectPipelineLayoutInfo.pSetLayouts = setLayouts5;
+	debugPhysicsObjectPipelineLayoutInfo.setLayoutCount = 2;
+
+	VkPipelineLayout _debugPhysicsObjectPipelineLayout;
+	VK_CHECK(vkCreatePipelineLayout(_device, &debugPhysicsObjectPipelineLayoutInfo, nullptr, &_debugPhysicsObjectPipelineLayout));
+
+	auto attributes = PhysicsEngine::getInstance().getVertexAttributeDescriptions();
+	auto bindings = PhysicsEngine::getInstance().getVertexBindingDescriptions();
+
+	pipelineBuilder._shaderStages.clear();
+	pipelineBuilder._shaderStages.push_back(
+		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, debugPhysicsObjectVertShader));
+	pipelineBuilder._shaderStages.push_back(
+		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, debugPhysicsObjectFragShader));
+
+	pipelineBuilder._vertexInputInfo = vkinit::vertexInputStateCreateInfo();
+	pipelineBuilder._vertexInputInfo.pVertexAttributeDescriptions = attributes.data();
+	pipelineBuilder._vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributes.size());
+	pipelineBuilder._vertexInputInfo.pVertexBindingDescriptions = bindings.data();
+	pipelineBuilder._vertexInputInfo.vertexBindingDescriptionCount = static_cast<uint32_t>(bindings.size());
+
+	pipelineBuilder._inputAssembly = vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_LINE_LIST);
+
+	pipelineBuilder._rasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_LINE, VK_CULL_MODE_NONE);
+	pipelineBuilder._depthStencil = vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_NEVER);
+	pipelineBuilder._pipelineLayout = _debugPhysicsObjectPipelineLayout;
+
+	auto _debugPhysicsObjectPipeline = pipelineBuilder.buildPipeline(_device, _renderPass);
+	createMaterial(_debugPhysicsObjectPipeline, _debugPhysicsObjectPipelineLayout, "debugPhysicsObjectMaterial");
 
 	for (auto shaderStage : pipelineBuilder._shaderStages)
 		vkDestroyShaderModule(_device, shaderStage.module, nullptr);
@@ -1633,18 +1708,13 @@ void VulkanEngine::initPipelines()
 		vkDestroyPipeline(_device, _wireframeColorPipeline, nullptr);
 		vkDestroyPipeline(_device, _wireframeColorBehindPipeline, nullptr);
 		vkDestroyPipelineLayout(_device, _wireframeColorPipelineLayout, nullptr);
+		vkDestroyPipeline(_device, _debugPhysicsObjectPipeline, nullptr);
+		vkDestroyPipelineLayout(_device, _debugPhysicsObjectPipelineLayout, nullptr);
 		});
 }
 
 void VulkanEngine::initScene()    // @TODO: rename this to something better, bc all it's doing is allocating image descriptorsets... or even better is including this in maybe loadImages()?  -Timo 2022/10/24
 {
-	// @TEMP
-	auto player = new Player(this);
-	_mainDeletionQueue.pushFunction([=]() {
-		delete player;
-		});
-
-
 	//
 	// Update defaultMaterial		@TODO: @FIXME: likely we should just have the material get updated with the textures on pipeline creation, not here... plus pipelines are recreated when the screen resizes too so it should be done then.
 	//
@@ -1695,6 +1765,7 @@ void VulkanEngine::initScene()    // @TODO: rename this to something better, bc 
 	_imguiData.textureLayerVisible   = ImGui_ImplVulkan_AddTexture(_loadedTextures["imguiTextureLayerVisible"].sampler, _loadedTextures["imguiTextureLayerVisible"].imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	_imguiData.textureLayerInvisible = ImGui_ImplVulkan_AddTexture(_loadedTextures["imguiTextureLayerInvisible"].sampler, _loadedTextures["imguiTextureLayerInvisible"].imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	_imguiData.textureLayerBuilder   = ImGui_ImplVulkan_AddTexture(_loadedTextures["imguiTextureLayerBuilder"].sampler, _loadedTextures["imguiTextureLayerBuilder"].imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	_imguiData.textureLayerCollision = ImGui_ImplVulkan_AddTexture(_loadedTextures["imguiTextureLayerCollision"].sampler, _loadedTextures["imguiTextureLayerCollision"].imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 }
 
 void VulkanEngine::generatePBRCubemaps()
@@ -3301,40 +3372,85 @@ void VulkanEngine::renderImGui()
 
 		ImGui::Separator();
 
-		ImGui::Text("Toggle Rendering Layers");
+		ImGui::Text("Toggle Layers");
 
 		static const ImVec2 imageButtonSize = ImVec2(64, 64);
 		static const ImVec4 tintColorActive = ImVec4(1, 1, 1, 1);
 		static const ImVec4 tintColorInactive = ImVec4(1, 1, 1, 0.25);
 
-		ImTextureID buttonIcons[] = {
+		//
+		// Toggle Layers (Section: Rendering)
+		//
+		ImTextureID renderingLayersButtonIcons[] = {
 			(ImTextureID)_imguiData.textureLayerVisible,
 			(ImTextureID)_imguiData.textureLayerInvisible,
 			(ImTextureID)_imguiData.textureLayerBuilder,
+			(ImTextureID)_imguiData.textureLayerCollision,
+		};
+		std::string buttonTurnOnSfx[] = {
+			"res/_develop/layer_visible_sfx.ogg",
+			"res/_develop/layer_invisible_sfx.ogg",
+			"res/_develop/layer_builder_sfx.ogg",
+			"res/_develop/layer_collision_sfx.ogg",
 		};
 
-		for (size_t i = 0; i < _renderObjectLayersEnabled.size(); i++)
+		for (size_t i = 0; i < std::size(renderingLayersButtonIcons); i++)
 		{
-			if (ImGui::ImageButton(buttonIcons[i], imageButtonSize, ImVec2(0, 0), ImVec2(1, 1), -1, ImVec4(0, 0, 0, 0), _renderObjectLayersEnabled[i] ? tintColorActive : tintColorInactive))
+			bool isLayerActive = false;
+			switch (i)
 			{
-				_renderObjectLayersEnabled[i] = !_renderObjectLayersEnabled[i];
-				if (!_renderObjectLayersEnabled[i])
+			case 0:
+			case 1:
+			case 2:
+				isLayerActive = _renderObjectLayersEnabled[i];
+				break;
+
+			case 3:
+				isLayerActive = _showCollisionDebugDraw;
+				break;
+			}
+
+			if (ImGui::ImageButton(renderingLayersButtonIcons[i], imageButtonSize, ImVec2(0, 0), ImVec2(1, 1), -1, ImVec4(0, 0, 0, 0), isLayerActive ? tintColorActive : tintColorInactive))
+			{
+				switch (i)
 				{
-					// Find object that matrixToMove is pulling from (if any)
-					for (auto& ro : _renderObjects)
+				case 0:
+				case 1:
+				case 2:
+				{
+					// Toggle render layer
+					_renderObjectLayersEnabled[i] = !_renderObjectLayersEnabled[i];
+					if (!_renderObjectLayersEnabled[i])
 					{
-						if (_movingMatrix.matrixToMove == &ro.transformMatrix)
+						// Find object that matrixToMove is pulling from (if any)
+						for (auto& ro : _renderObjects)
 						{
-							// @HACK: Reset the _movingMatrix.matrixToMove
-							//        if it's for one of the objects that just got disabled
-							if ((size_t)ro.renderLayer == i)
-								_movingMatrix.matrixToMove = nullptr;
-							break;
+							if (_movingMatrix.matrixToMove == &ro.transformMatrix)
+							{
+								// @HACK: Reset the _movingMatrix.matrixToMove
+								//        if it's for one of the objects that just got disabled
+								if ((size_t)ro.renderLayer == i)
+									_movingMatrix.matrixToMove = nullptr;
+								break;
+							}
 						}
 					}
+					break;
 				}
+
+				case 3:
+					// Collision Layer debug draw toggle
+					_showCollisionDebugDraw = !_showCollisionDebugDraw;
+					break;
+				}
+
+				// Assume toggle occurred (so if layer wasn't active)
+				if (!isLayerActive)
+					AudioEngine::getInstance().playSound(buttonTurnOnSfx[i]);
 			}
-			ImGui::SameLine();
+
+			if ((int32_t)fmodf(i + 1, 3) != 0)
+				ImGui::SameLine();
 		}
 
 		accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;

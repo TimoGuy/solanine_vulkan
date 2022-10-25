@@ -1,6 +1,9 @@
 #include "PhysicsEngine.h"
 
+#include <cmath>
+#include "VulkanEngine.h"
 #include "Entity.h"
+#include "VkInitializers.h"
 
 
 PhysicsEngine& PhysicsEngine::getInstance()
@@ -9,9 +12,10 @@ PhysicsEngine& PhysicsEngine::getInstance()
 	return instance;
 }
 
-void PhysicsEngine::initialize()
+void PhysicsEngine::initialize(VulkanEngine* engine)
 {
 	std::cout << "[INITIALIZING PHYSICS ENGINE]" << std::endl;    // @NOTE: this is gonna spit out a bunch of verbose console crap
+	_engine = engine;
 
 	//
 	// Initialize MT task scheduler
@@ -60,13 +64,35 @@ void PhysicsEngine::initialize()
 	_dynamicsWorld->getSolverInfo().m_numIterations = 10;    // @NOTE: 10 is probably good, but Unity engine only uses 6 *shrug*
 	_dynamicsWorld->setGravity(btVector3(0, -10, 0));
 
+	//
+	// Reserve the transforms
+	//
 	_physicsObjects.reserve(PHYSICS_OBJECTS_MAX_CAPACITY);
+	_transformsBuffer =
+		_engine->createBuffer(
+			sizeof(GPUObjectData) * PHYSICS_OBJECTS_MAX_CAPACITY,  // Pray that GPUObjectData doesn't change!
+			VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+			VMA_MEMORY_USAGE_CPU_TO_GPU
+		);
 
-	//
-	// Create some stuff (capsule and plane)
-	//
-	btCollisionShape* groundShape = new btStaticPlaneShape({ 0, 1, 0 }, 0.0f);
-	btCollisionShape* capsuleShape = new btCapsuleShape(0.5f, 2.0f);
+	// Allocate
+	VkDescriptorSetAllocateInfo objectSetAllocInfo = {
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+		.pNext = nullptr,
+		.descriptorPool = _engine->_descriptorPool,
+		.descriptorSetCount = 1,
+		.pSetLayouts = &_engine->_objectSetLayout,  // Pray this doesn't change!
+	};
+	vkAllocateDescriptorSets(_engine->_device, &objectSetAllocInfo, &_transformsDescriptor);
+	
+	// Write
+	VkDescriptorBufferInfo transformsBufferInfo = {
+		.buffer = _transformsBuffer._buffer,
+		.offset = 0,
+		.range = sizeof(GPUObjectData) * PHYSICS_OBJECTS_MAX_CAPACITY,
+	};
+	VkWriteDescriptorSet transformsWrite = vkinit::writeDescriptorBuffer(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, _transformsDescriptor, &transformsBufferInfo, 0);
+	vkUpdateDescriptorSets(_engine->_device, 1, &transformsWrite, 0, nullptr);
 }
 
 void PhysicsEngine::update(float_t deltaTime, std::vector<Entity*>* entities)    // https://gafferongames.com/post/fix_your_timestep/
@@ -94,13 +120,23 @@ void PhysicsEngine::update(float_t deltaTime, std::vector<Entity*>* entities)   
 	//if (!playMode)
 	//	physicsInterpolationAlpha = 1.0f;
 #endif
-
+	
+	void* objectData;
+	vmaMapMemory(_engine->_allocator, _transformsBuffer._allocation, &objectData);   // And what happens if you overwrite the memory during a frame? Well, idk, but it shouldn't be too bad for debugging purposes I think  -Timo 2022/10/24
+	GPUObjectData* objectSSBO = (GPUObjectData*)objectData;    // @IMPROVE: perhaps multithread this? Or only update when the object moves?
 	for (size_t i = 0; i < _physicsObjects.size(); i++)    // @IMPROVEMENT: @TODO: oh man, this should definitely be multithreaded. However, taskflow doesn't seem like the best choice.  @TOOD: look into the c++11 multithreaded for loop
+	{
 		calculateInterpolatedTransform(_physicsObjects[i], physicsAlpha);
+		objectSSBO[i].modelMatrix = _physicsObjects[i].interpolatedTransform;
+	}
+	vmaUnmapMemory(_engine->_allocator, _transformsBuffer._allocation);
 }
 
 void PhysicsEngine::cleanup()
 {
+	if (_vertexBufferCreated)
+		vmaDestroyBuffer(_engine->_allocator, _vertexBuffer._buffer, _vertexBuffer._allocation);
+	vmaDestroyBuffer(_engine->_allocator, _transformsBuffer._buffer, _transformsBuffer._allocation);
 	delete _mainTaskScheduler;    // @NOTE: apparently this is all you need?
 }
 
@@ -130,17 +166,74 @@ RegisteredPhysicsObject* PhysicsEngine::registerPhysicsObject(float_t mass, glm:
 		.interpolatedTransform = glmTrans,
 	};
 	_physicsObjects.push_back(rpo);
+
+	recreateDebugDrawBuffer();
+
 	return &_physicsObjects.back();
 }
 
 void PhysicsEngine::unregisterPhysicsObject(RegisteredPhysicsObject* objRegistration)
 {
-	// @TODO: figure out how to remove the physics object from the _dynamicsWorld!
+	// @TODO: figure out how to remove the rigidbody and shape from the _dynamicsWorld!
 	std::erase_if(_physicsObjects,
 		[=](RegisteredPhysicsObject& x) {
 			return &x == objRegistration;
 		}
 	);
+
+	recreateDebugDrawBuffer();
+}
+
+void PhysicsEngine::renderDebugDraw(VkCommandBuffer cmd, const VkDescriptorSet& globalDescriptor)
+{
+	Material& debugDrawMaterial = *_engine->getMaterial("debugPhysicsObjectMaterial");
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, debugDrawMaterial.pipeline);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, debugDrawMaterial.pipelineLayout, 0, 1, &globalDescriptor, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, debugDrawMaterial.pipelineLayout, 1, 1, &_transformsDescriptor, 0, nullptr);
+	ColorPushConstBlock pc = {
+		.color = glm::vec4(0, 1, 0, 1),
+	};	
+	vkCmdPushConstants(cmd, debugDrawMaterial.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ColorPushConstBlock), &pc);
+
+	const VkDeviceSize offsets[1] = { 0 };
+	vkCmdBindVertexBuffers(cmd, 0, 1, &_vertexBuffer._buffer, offsets);
+	vkCmdDraw(cmd, _vertexCount, 1, 0, 0);
+}
+
+std::vector<VkVertexInputAttributeDescription> PhysicsEngine::getVertexAttributeDescriptions()
+{
+	std::vector<VkVertexInputAttributeDescription> attributes;
+
+	VkVertexInputAttributeDescription posAttribute = {
+		.location = 0,
+		.binding = 0,
+		.format = VK_FORMAT_R32G32B32_SFLOAT,
+		.offset = offsetof(DebugDrawVertex, pos),
+	};
+	VkVertexInputAttributeDescription transformIndexAttribute = {
+		.location = 1,
+		.binding = 0,
+		.format = VK_FORMAT_R32_SINT,
+		.offset = offsetof(DebugDrawVertex, physObjIndex),
+	};
+
+	attributes.push_back(posAttribute);
+	attributes.push_back(transformIndexAttribute);
+	return attributes;
+}
+
+std::vector<VkVertexInputBindingDescription> PhysicsEngine::getVertexBindingDescriptions()
+{
+	std::vector<VkVertexInputBindingDescription> bindings;
+
+	VkVertexInputBindingDescription mainBinding = {
+		.binding = 0,
+		.stride = sizeof(DebugDrawVertex),
+		.inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+	};
+
+	bindings.push_back(mainBinding);
+	return bindings;
 }
 
 void PhysicsEngine::calculateInterpolatedTransform(RegisteredPhysicsObject& obj, const float_t& physicsAlpha)
@@ -181,4 +274,260 @@ btRigidBody* PhysicsEngine::createRigidBody(float_t mass, const btTransform& sta
 	body->setUserIndex(-1);
 	_dynamicsWorld->addRigidBody(body);
 	return body;
+}
+
+void PhysicsEngine::appendDebugShapeVertices(btBoxShape* shape, size_t physObjIndex, std::vector<DebugDrawVertex>& vertexList)
+{
+	DebugDrawVertex v = {
+		.physObjIndex = static_cast<int32_t>(physObjIndex),
+	};
+	auto temp = shape->getHalfExtentsWithMargin();
+	glm::vec3 he = glm::vec3(temp.getX(), temp.getY(), temp.getZ());  // Short for Half Extents
+	
+	v.pos = glm::vec3(-1, 1, 1) * he;
+	vertexList.push_back(v);
+	v.pos = glm::vec3(1, 1, 1) * he;
+	vertexList.push_back(v);
+
+	vertexList.push_back(v);
+	v.pos = glm::vec3(1, 1, -1) * he;
+	vertexList.push_back(v);
+
+	vertexList.push_back(v);
+	v.pos = glm::vec3(-1, 1, -1) * he;
+	vertexList.push_back(v);
+
+	vertexList.push_back(v);
+	v.pos = glm::vec3(-1, 1, 1) * he;
+	vertexList.push_back(v);
+
+	vertexList.push_back(v);
+	v.pos = glm::vec3(-1, -1, 1) * he;
+	vertexList.push_back(v);
+
+	vertexList.push_back(v);
+	v.pos = glm::vec3(1, -1, 1) * he;
+	vertexList.push_back(v);
+
+	vertexList.push_back(v);
+	v.pos = glm::vec3(1, -1, -1) * he;
+	vertexList.push_back(v);
+
+	vertexList.push_back(v);
+	v.pos = glm::vec3(-1, -1, -1) * he;
+	vertexList.push_back(v);
+
+	vertexList.push_back(v);
+	v.pos = glm::vec3(-1, -1, 1) * he;
+	vertexList.push_back(v);
+	
+	v.pos = glm::vec3(-1, -1, -1) * he;
+	vertexList.push_back(v);
+	v.pos = glm::vec3(-1, 1, -1) * he;
+	vertexList.push_back(v);
+	
+	v.pos = glm::vec3(1, -1, -1) * he;
+	vertexList.push_back(v);
+	v.pos = glm::vec3(1, 1, -1) * he;
+	vertexList.push_back(v);
+
+	v.pos = glm::vec3(1, -1, 1) * he;
+	vertexList.push_back(v);
+	v.pos = glm::vec3(1, 1, 1) * he;
+	vertexList.push_back(v);
+}
+
+void PhysicsEngine::appendDebugShapeVertices(btSphereShape* shape, size_t physObjIndex, std::vector<DebugDrawVertex>& vertexList)
+{
+	DebugDrawVertex v = {
+		.physObjIndex = static_cast<int32_t>(physObjIndex),
+	};
+	float_t radius = shape->getRadius();
+
+	constexpr int32_t circleSlices = 16;
+	const float_t circleStride = glm::radians(360.0f) / (float_t)circleSlices;
+	float_t ca;
+	for (int32_t i = 0, ca = 0.0f; i <= circleSlices; i++, ca += circleStride)
+	{
+		v.pos = glm::vec3(glm::sin(ca),            0, glm::cos(ca)) * radius;
+		vertexList.push_back(v);
+	}
+	for (int32_t i = 0, ca = 0.0f; i <= circleSlices; i++, ca += circleStride)
+	{
+		v.pos = glm::vec3(           0, glm::sin(ca), glm::cos(ca)) * radius;
+		vertexList.push_back(v);
+	}
+	for (int32_t i = 0, ca = 0.0f; i <= circleSlices; i++, ca += circleStride)
+	{
+		v.pos = glm::vec3(glm::sin(ca), glm::cos(ca),            0) * radius;
+		vertexList.push_back(v);
+	}
+}
+
+void PhysicsEngine::appendDebugShapeVertices(btCylinderShape* shape, size_t physObjIndex, std::vector<DebugDrawVertex>& vertexList)
+{
+	DebugDrawVertex v = {
+		.physObjIndex = static_cast<int32_t>(physObjIndex),
+	};
+	auto temp = shape->getHalfExtentsWithMargin();
+	glm::vec3 he = glm::vec3(temp.getX(), temp.getY(), temp.getZ());  // Short for Half Extents
+	
+	constexpr int32_t circleSlices = 16;
+	const float_t circleStride = glm::radians(360.0f) / (float_t)circleSlices;
+	float_t ca;
+	for (int32_t i = 0, ca = 0.0f; i <= circleSlices; i++, ca += circleStride)
+	{
+		v.pos = glm::vec3(glm::sin(ca) * he.x,  he.y, glm::cos(ca) * he.z);
+		vertexList.push_back(v);
+	}
+	for (int32_t i = 0, ca = 0.0f; i <= circleSlices; i++, ca += circleStride)
+	{
+		v.pos = glm::vec3(glm::sin(ca) * he.x, -he.y, glm::cos(ca) * he.z);
+		vertexList.push_back(v);
+	}
+	
+	v.pos = glm::vec3(he.x, he.y, 0);
+	vertexList.push_back(v);
+	v.pos = glm::vec3(he.x, -he.y, 0);
+	vertexList.push_back(v);
+
+	v.pos = glm::vec3(-he.x, he.y, 0);
+	vertexList.push_back(v);
+	v.pos = glm::vec3(-he.x, -he.y, 0);
+	vertexList.push_back(v);
+
+	v.pos = glm::vec3(0, he.y, he.z);
+	vertexList.push_back(v);
+	v.pos = glm::vec3(0, -he.y, he.z);
+	vertexList.push_back(v);
+
+	v.pos = glm::vec3(0, he.y, -he.z);
+	vertexList.push_back(v);
+	v.pos = glm::vec3(0, -he.y, -he.z);
+	vertexList.push_back(v);
+}
+
+void PhysicsEngine::appendDebugShapeVertices(btCapsuleShape* shape, size_t physObjIndex, std::vector<DebugDrawVertex>& vertexList)
+{
+	DebugDrawVertex v = {
+		.physObjIndex = static_cast<int32_t>(physObjIndex),
+	};
+	float_t radius = shape->getRadius();
+	float_t halfHeight = shape->getHalfHeight();
+	float_t drawHeight = glm::max(0.0f, halfHeight - radius);
+	
+	constexpr int32_t circleSlices = 16;
+	const float_t circleStride = glm::radians(360.0f) / (float_t)circleSlices;
+	float_t ca;
+	for (int32_t i = 0, ca = 0.0f; i <= circleSlices; i++, ca += circleStride)
+	{
+		v.pos = glm::vec3(glm::sin(ca) * radius,  drawHeight, glm::cos(ca) * radius);
+		vertexList.push_back(v);
+	}
+	for (int32_t i = 0, ca = 0.0f; i <= circleSlices; i++, ca += circleStride)
+	{
+		v.pos = glm::vec3(glm::sin(ca) * radius, -drawHeight, glm::cos(ca) * radius);
+		vertexList.push_back(v);
+	}
+
+	
+	for (int32_t i = 0, ca = 0.0f; i <= circleSlices; i++, ca += circleStride)
+	{
+		v.pos = glm::vec3(           0, glm::sin(ca), glm::cos(ca)) * radius;
+		if (i == circleSlices / 2 || i == circleSlices)
+		{
+			v.pos += drawHeight;
+			vertexList.push_back(v);
+			v.pos -= drawHeight * 2.0f;
+			vertexList.push_back(v);
+		}
+		else if (i < circleSlices / 2)
+		{
+			v.pos += drawHeight;
+			vertexList.push_back(v);
+		}
+		else
+		{
+			v.pos -= drawHeight;
+			vertexList.push_back(v);
+		}
+	}
+	for (int32_t i = 0, ca = 0.0f; i <= circleSlices; i++, ca += circleStride)
+	{
+		v.pos = glm::vec3(glm::sin(ca), glm::cos(ca),            0) * radius;
+		if (i == circleSlices / 2 || i == circleSlices)
+		{
+			v.pos += drawHeight;
+			vertexList.push_back(v);
+			v.pos -= drawHeight * 2.0f;
+			vertexList.push_back(v);
+		}
+		else if (i < circleSlices / 2)
+		{
+			v.pos += drawHeight;
+			vertexList.push_back(v);
+		}
+		else
+		{
+			v.pos -= drawHeight;
+			vertexList.push_back(v);
+		}
+	}
+}
+
+void PhysicsEngine::recreateDebugDrawBuffer()
+{
+	//
+	// Assemble vertices with the correct shape sizing
+	//
+	std::vector<DebugDrawVertex> vertexList;
+	for (size_t i = 0; i < _physicsObjects.size(); i++)
+	{
+		btCollisionShape* shape = _physicsObjects[i].body->getCollisionShape();
+
+		switch (shape->getShapeType())
+		{
+		case BOX_SHAPE_PROXYTYPE:
+			appendDebugShapeVertices((btBoxShape*)shape, i, vertexList);
+			break;
+		case SPHERE_SHAPE_PROXYTYPE:
+			appendDebugShapeVertices((btSphereShape*)shape, i, vertexList);
+			break;
+		case CYLINDER_SHAPE_PROXYTYPE:
+			appendDebugShapeVertices((btCylinderShape*)shape, i, vertexList);
+			break;
+		case CAPSULE_SHAPE_PROXYTYPE:
+			appendDebugShapeVertices((btCapsuleShape*)shape, i, vertexList);
+			break;
+		default:
+			std::cerr << "[CREATING PHYSICS ENGINE DEBUG DRAW BUFFER]" << std::endl
+				<< "ERROR: shape type currently not supported: " << shape->getShapeType() << std::endl;
+			break;
+		}
+	}
+
+	//
+	// Construct gpu visible buffer with all of these vertices
+	//
+	if (_vertexBufferCreated)
+	{
+		// Delete created buffer before recreation
+		vmaDestroyBuffer(_engine->_allocator, _vertexBuffer._buffer, _vertexBuffer._allocation);
+		_vertexBufferCreated = false;
+	}
+
+	size_t vertexBufferSize = vertexList.size() * sizeof(DebugDrawVertex);
+	_vertexBuffer =
+		_engine->createBuffer(
+			vertexBufferSize,
+			VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+			VMA_MEMORY_USAGE_CPU_TO_GPU
+		);
+	_vertexCount = vertexList.size();
+	_vertexBufferCreated = true;
+
+	void* data;
+	vmaMapMemory(_engine->_allocator, _vertexBuffer._allocation, &data);
+	memcpy(data, &vertexList[0], vertexBufferSize);
+	vmaUnmapMemory(_engine->_allocator, _vertexBuffer._allocation);
 }
