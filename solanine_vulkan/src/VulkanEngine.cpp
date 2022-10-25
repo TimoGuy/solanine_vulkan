@@ -3471,7 +3471,7 @@ void VulkanEngine::renderImGui()
 			//
 			// Decompose the matrix if cache is invalidated
 			//
-			_movingMatrix.invalidateCache = (_movingMatrix.prevMatrixToMove != _movingMatrix.matrixToMove);
+			_movingMatrix.invalidateCache |= (_movingMatrix.prevMatrixToMove != _movingMatrix.matrixToMove);
 			if (_movingMatrix.invalidateCache)
 			{
 				ImGuizmo::DecomposeMatrixToComponents(

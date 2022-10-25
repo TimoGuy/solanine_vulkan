@@ -346,21 +346,29 @@ void PhysicsEngine::appendDebugShapeVertices(btSphereShape* shape, size_t physOb
 
 	constexpr int32_t circleSlices = 16;
 	const float_t circleStride = glm::radians(360.0f) / (float_t)circleSlices;
-	float_t ca;
-	for (int32_t i = 0, ca = 0.0f; i <= circleSlices; i++, ca += circleStride)
+	float_t ca = 0.0f;
+	for (int32_t i = 0; i <= circleSlices; i++, ca += circleStride)
 	{
 		v.pos = glm::vec3(glm::sin(ca),            0, glm::cos(ca)) * radius;
 		vertexList.push_back(v);
+		if (i > 0 && i < circleSlices)
+			vertexList.push_back(v);
 	}
-	for (int32_t i = 0, ca = 0.0f; i <= circleSlices; i++, ca += circleStride)
+	ca = 0.0f;
+	for (int32_t i = 0; i <= circleSlices; i++, ca += circleStride)
 	{
 		v.pos = glm::vec3(           0, glm::sin(ca), glm::cos(ca)) * radius;
 		vertexList.push_back(v);
+		if (i > 0 && i < circleSlices)
+			vertexList.push_back(v);
 	}
-	for (int32_t i = 0, ca = 0.0f; i <= circleSlices; i++, ca += circleStride)
+	ca = 0.0f;
+	for (int32_t i = 0; i <= circleSlices; i++, ca += circleStride)
 	{
 		v.pos = glm::vec3(glm::sin(ca), glm::cos(ca),            0) * radius;
 		vertexList.push_back(v);
+		if (i > 0 && i < circleSlices)
+			vertexList.push_back(v);
 	}
 }
 
@@ -374,16 +382,21 @@ void PhysicsEngine::appendDebugShapeVertices(btCylinderShape* shape, size_t phys
 	
 	constexpr int32_t circleSlices = 16;
 	const float_t circleStride = glm::radians(360.0f) / (float_t)circleSlices;
-	float_t ca;
-	for (int32_t i = 0, ca = 0.0f; i <= circleSlices; i++, ca += circleStride)
+	float_t ca = 0.0f;
+	for (int32_t i = 0; i <= circleSlices; i++, ca += circleStride)
 	{
 		v.pos = glm::vec3(glm::sin(ca) * he.x,  he.y, glm::cos(ca) * he.z);
 		vertexList.push_back(v);
+		if (i > 0 && i < circleSlices)
+			vertexList.push_back(v);
 	}
-	for (int32_t i = 0, ca = 0.0f; i <= circleSlices; i++, ca += circleStride)
+	ca = 0.0f;
+	for (int32_t i = 0; i <= circleSlices; i++, ca += circleStride)
 	{
 		v.pos = glm::vec3(glm::sin(ca) * he.x, -he.y, glm::cos(ca) * he.z);
 		vertexList.push_back(v);
+		if (i > 0 && i < circleSlices)
+			vertexList.push_back(v);
 	}
 	
 	v.pos = glm::vec3(he.x, he.y, 0);
@@ -418,59 +431,93 @@ void PhysicsEngine::appendDebugShapeVertices(btCapsuleShape* shape, size_t physO
 	
 	constexpr int32_t circleSlices = 16;
 	const float_t circleStride = glm::radians(360.0f) / (float_t)circleSlices;
-	float_t ca;
-	for (int32_t i = 0, ca = 0.0f; i <= circleSlices; i++, ca += circleStride)
+	float_t ca = 0.0f;      // "The code is its own documentation" ... to take the red pill, keep reading.      ---->                                                          `ca` means 'current angle'. Now ask yourself, was the code self-documenting?  -Dmitri
+	for (int32_t i = 0; i <= circleSlices; i++, ca += circleStride)
 	{
 		v.pos = glm::vec3(glm::sin(ca) * radius,  drawHeight, glm::cos(ca) * radius);
 		vertexList.push_back(v);
+		if (i > 0 && i < circleSlices)
+			vertexList.push_back(v);
 	}
-	for (int32_t i = 0, ca = 0.0f; i <= circleSlices; i++, ca += circleStride)
+	ca = 0.0f;
+	for (int32_t i = 0; i <= circleSlices; i++, ca += circleStride)
 	{
 		v.pos = glm::vec3(glm::sin(ca) * radius, -drawHeight, glm::cos(ca) * radius);
 		vertexList.push_back(v);
+		if (i > 0 && i < circleSlices)
+			vertexList.push_back(v);
 	}
 
-	
-	for (int32_t i = 0, ca = 0.0f; i <= circleSlices; i++, ca += circleStride)
+	ca = 0.0f;
+	for (int32_t i = 0; i <= circleSlices; i++, ca += circleStride)
 	{
-		v.pos = glm::vec3(           0, glm::sin(ca), glm::cos(ca)) * radius;
-		if (i == circleSlices / 2 || i == circleSlices)
+		v.pos = glm::vec3(0, glm::sin(ca), glm::cos(ca)) * radius;
+		if (i == circleSlices / 2)
 		{
-			v.pos += drawHeight;
+			v.pos.y += drawHeight;
 			vertexList.push_back(v);
-			v.pos -= drawHeight * 2.0f;
+			vertexList.push_back(v);
+			v.pos.y *= -1.0f;
+			vertexList.push_back(v);
 			vertexList.push_back(v);
 		}
 		else if (i < circleSlices / 2)
 		{
-			v.pos += drawHeight;
+			v.pos.y += drawHeight;
+			vertexList.push_back(v);
+			if (i > 0 && i < circleSlices)
+				vertexList.push_back(v);
+		}
+		else if (i == circleSlices)
+		{
+			v.pos.y -= drawHeight;
+			vertexList.push_back(v);
+			vertexList.push_back(v);
+			v.pos.y *= -1.0f;
 			vertexList.push_back(v);
 		}
 		else
 		{
-			v.pos -= drawHeight;
+			v.pos.y -= drawHeight;
 			vertexList.push_back(v);
+			if (i > 0 && i < circleSlices)
+				vertexList.push_back(v);
 		}
 	}
-	for (int32_t i = 0, ca = 0.0f; i <= circleSlices; i++, ca += circleStride)
+	ca = 0.0f;
+	for (int32_t i = 0; i <= circleSlices; i++, ca += circleStride)
 	{
-		v.pos = glm::vec3(glm::sin(ca), glm::cos(ca),            0) * radius;
-		if (i == circleSlices / 2 || i == circleSlices)
+		v.pos = glm::vec3(glm::cos(ca), glm::sin(ca), 0) * radius;
+		if (i == circleSlices / 2)
 		{
-			v.pos += drawHeight;
+			v.pos.y += drawHeight;
 			vertexList.push_back(v);
-			v.pos -= drawHeight * 2.0f;
+			vertexList.push_back(v);
+			v.pos.y *= -1.0f;
+			vertexList.push_back(v);
 			vertexList.push_back(v);
 		}
 		else if (i < circleSlices / 2)
 		{
-			v.pos += drawHeight;
+			v.pos.y += drawHeight;
+			vertexList.push_back(v);
+			if (i > 0 && i < circleSlices)
+				vertexList.push_back(v);
+		}
+		else if (i == circleSlices)
+		{
+			v.pos.y -= drawHeight;
+			vertexList.push_back(v);
+			vertexList.push_back(v);
+			v.pos.y *= -1.0f;
 			vertexList.push_back(v);
 		}
 		else
 		{
-			v.pos -= drawHeight;
+			v.pos.y -= drawHeight;
 			vertexList.push_back(v);
+			if (i > 0 && i < circleSlices)
+				vertexList.push_back(v);
 		}
 	}
 }

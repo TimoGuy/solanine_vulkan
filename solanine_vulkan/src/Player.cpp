@@ -23,7 +23,7 @@ Player::Player(VulkanEngine* engine) : Entity(engine)
             1.0f,
             _position,
             glm::quat(glm::vec3(0.0f)),
-            new btCapsuleShape(0.5f, 2.0f)
+            new btCapsuleShape(2.5f, 5.0f)
         );
 
     _physicsObj2 =
