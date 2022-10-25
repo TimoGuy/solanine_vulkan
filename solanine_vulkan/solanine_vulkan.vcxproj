@@ -43,6 +43,9 @@
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
@@ -60,7 +63,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>$(VK_SDK_PATH)\Lib;$(SolutionDir)libs\fmod_core\lib;$(SolutionDir)libs\fmod_fsbank\lib;$(SolutionDir)libs\fmod_studio\lib;$(SolutionDir)..\bullet3\lib\$(ConfigurationName);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>SDL2.lib;SDL2main.lib;vulkan-1.lib;fmod$(Suffix)_vc.lib;fmodstudio$(Suffix)_vc.lib;Bullet3Common_Debug.lib;BulletSoftBody_Debug.lib;BulletDynamics_Debug.lib;BulletCollision_Debug.lib;BulletInverseDynamicsUtils_Debug.lib;BulletInverseDynamics_Debug.lib;LinearMath_Debug.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <LinkTimeCodeGeneration>UseFastLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
     </Link>
     <PostBuildEvent>
       <Command>set /p BuildNumberForSolanine=&lt;build_number.txt
@@ -106,6 +109,7 @@ copy $(SolutionDir)libs\fmod_studio\lib\fmodstudio.dll $(OutDirfullPath)fmodstud
   </ItemDefinitionGroup>
   <ItemGroup>
     <None Include="shader\color.frag" />
+    <None Include="shader\debug_physics_object.vert" />
     <None Include="shader\filtercube.vert" />
     <None Include="shader\genbrdflut.frag" />
     <None Include="shader\genbrdflut.vert" />

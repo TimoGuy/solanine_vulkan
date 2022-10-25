@@ -66,6 +66,9 @@
     <None Include="shader\color.frag">
       <Filter>Shader Files</Filter>
     </None>
+    <None Include="shader\debug_physics_object.vert">
+      <Filter>Shader Files</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\imgui\imconfig.h">
