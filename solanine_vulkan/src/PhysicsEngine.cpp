@@ -127,7 +127,7 @@ void PhysicsEngine::update(float_t deltaTime, std::vector<Entity*>* entities)   
 	for (size_t i = 0; i < _physicsObjects.size(); i++)    // @IMPROVEMENT: @TODO: oh man, this should definitely be multithreaded. However, taskflow doesn't seem like the best choice.  @TOOD: look into the c++11 multithreaded for loop
 	{
 		calculateInterpolatedTransform(_physicsObjects[i], physicsAlpha);
-		objectSSBO[i].modelMatrix = _physicsObjects[i].interpolatedTransform;
+		_physicsObjects[i].body->getWorldTransform().getOpenGLMatrix(glm::value_ptr(objectSSBO[i].modelMatrix));  // Extra Dmitri in this one
 	}
 	vmaUnmapMemory(_engine->_allocator, _transformsBuffer._allocation);
 }
@@ -242,6 +242,7 @@ void PhysicsEngine::calculateInterpolatedTransform(RegisteredPhysicsObject& obj,
 	btTransform interpolatedTransform(
 		obj.prevTransform.getRotation().slerp(currentTransform.getRotation(), physicsAlpha),    // NLerp nor lerp are available for btQuaternions smh
 		obj.prevTransform.getOrigin().lerp(currentTransform.getOrigin(), physicsAlpha)
+		    + btVector3(obj.transformOffset.x, obj.transformOffset.y, obj.transformOffset.z)
 	);
 	interpolatedTransform.getOpenGLMatrix(glm::value_ptr(obj.interpolatedTransform));  // Apply to the interpolatedTransform matrix!
 	obj.prevTransform = currentTransform;

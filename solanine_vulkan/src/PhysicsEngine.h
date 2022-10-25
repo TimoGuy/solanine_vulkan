@@ -18,6 +18,7 @@ struct RegisteredPhysicsObject
 {
     btRigidBody* body;
     btTransform prevTransform;
+    glm::vec3 transformOffset;
     glm::mat4 interpolatedTransform;    // @NOTE: these are calculated at the end of simulation
 };
 

@@ -25,6 +25,7 @@ Player::Player(VulkanEngine* engine) : Entity(engine)
             glm::quat(glm::vec3(0.0f)),
             new btCapsuleShape(2.5f, 5.0f)
         );
+    _physicsObj->transformOffset = glm::vec3(0, 10.0f, 0);
 
     _physicsObj2 =
         PhysicsEngine::getInstance().registerPhysicsObject(
