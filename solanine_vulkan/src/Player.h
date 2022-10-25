@@ -20,7 +20,7 @@ private:
     glm::vec3 _position;
     float_t _facingDirection;
 
-    vkglTF::Model _characterModel;
+    vkglTF::Model* _characterModel;
     RenderObject* _renderObj;
     RegisteredPhysicsObject* _physicsObj;
     RegisteredPhysicsObject* _physicsObj2;

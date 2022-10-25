@@ -135,6 +135,7 @@ RegisteredPhysicsObject* PhysicsEngine::registerPhysicsObject(float_t mass, glm:
 
 void PhysicsEngine::unregisterPhysicsObject(RegisteredPhysicsObject* objRegistration)
 {
+	// @TODO: figure out how to remove the physics object from the _dynamicsWorld!
 	std::erase_if(_physicsObjects,
 		[=](RegisteredPhysicsObject& x) {
 			return &x == objRegistration;

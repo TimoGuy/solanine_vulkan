@@ -9,11 +9,11 @@ Player::Player(VulkanEngine* engine) : Entity(engine)
     _position = glm::vec3(0.0f);
     _facingDirection = 0.0f;
 
-    _characterModel.loadFromFile(_engine, "res/models/SlimeGirl.glb");
+    _characterModel = &_engine->_renderObjectModels.slimeGirl;
 
     _renderObj =
         _engine->registerRenderObject({
-            .model = &_characterModel,
+            .model = _characterModel,
             .transformMatrix = glm::translate(glm::mat4(1.0f), _position) * glm::toMat4(glm::quat(glm::vec3(0, _facingDirection, 0))),
             .renderLayer = RenderLayer::VISIBLE,
             });
@@ -40,7 +40,6 @@ Player::Player(VulkanEngine* engine) : Entity(engine)
 
 Player::~Player()
 {
-    _characterModel.destroy(_engine->_allocator);
     _engine->unregisterRenderObject(_renderObj);
     PhysicsEngine::getInstance().unregisterPhysicsObject(_physicsObj);
     PhysicsEngine::getInstance().unregisterPhysicsObject(_physicsObj2);
