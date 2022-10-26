@@ -98,6 +98,7 @@ struct RenderObject
 	vkglTF::Model* model;
 	glm::mat4 transformMatrix;
 	RenderLayer renderLayer;
+	std::string attachedEntityGuid;  // @NOTE: this is just for @DEBUG purposes for the imgui property panel
 };
 
 constexpr unsigned int FRAME_OVERLAP = 2;

@@ -16,6 +16,8 @@ public:
     void update(const float_t& deltaTime);
     void physicsUpdate(const float_t& physicsDeltaTime);
 
+    void renderImGui();
+
 private:
     glm::vec3 _position;
     float_t _facingDirection;
@@ -24,9 +26,13 @@ private:
     RenderObject* _renderObj;
     RegisteredPhysicsObject* _physicsObj;
     RegisteredPhysicsObject* _physicsObj2;
+    RegisteredPhysicsObject* _physicsObj3;
 
     bool _flagJump = false;
-    float_t _maxSpeed = 10.0f;
+    glm::vec3 _prevPosition;
+
+    // Tweak Props
+    float_t _maxSpeed = 20.0f;
     float_t _maxAcceleration = 50.0f;
     float_t _jumpHeight = 5.0f;
 };

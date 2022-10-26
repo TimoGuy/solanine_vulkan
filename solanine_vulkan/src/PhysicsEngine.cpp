@@ -673,4 +673,9 @@ namespace physutil
 	{
 		return glm::vec3(vector.x(), vector.y(), vector.z());
 	}
+
+	glm::vec3 getPosition(const glm::mat4& transform)
+	{
+		return glm::vec3(transform[3]);
+	}
 }

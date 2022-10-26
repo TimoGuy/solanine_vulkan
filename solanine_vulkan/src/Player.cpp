@@ -3,11 +3,13 @@
 #include "VulkanEngine.h"
 #include "PhysicsEngine.h"
 #include "InputManager.h"
+#include "imgui/imgui.h"
 
 
 Player::Player(VulkanEngine* engine) : Entity(engine)
 {
     _position = glm::vec3(0.0f);
+    _prevPosition = _position;
     _facingDirection = 0.0f;
 
     _characterModel = &_engine->_renderObjectModels.slimeGirl;
@@ -17,6 +19,7 @@ Player::Player(VulkanEngine* engine) : Entity(engine)
             .model = _characterModel,
             .transformMatrix = glm::translate(glm::mat4(1.0f), _position) * glm::toMat4(glm::quat(glm::vec3(0, _facingDirection, 0))),
             .renderLayer = RenderLayer::VISIBLE,
+            .attachedEntityGuid = _guid,
             });
 
     _physicsObj =
@@ -32,12 +35,47 @@ Player::Player(VulkanEngine* engine) : Entity(engine)
     _physicsObj->body->setFriction(0.0f);
     _physicsObj->body->setActivationState(DISABLE_DEACTIVATION);
 
-    _physicsObj2 =
+    _physicsObj2 =  // @TEMP (0deg)
         PhysicsEngine::getInstance().registerPhysicsObject(
             false,
-            glm::vec3(0, -50, 0),
+            glm::vec3(0, -10, 0),
             glm::quat(glm::vec3(0.0f)),
             new btBoxShape({100, 1, 100})
+        );
+    _physicsObj3 =  // @TEMP (45deg)
+        PhysicsEngine::getInstance().registerPhysicsObject(
+            false,
+            glm::vec3(90, 20, -50),
+            glm::quat(glm::vec3(0.785398, 0.0f, 0.0f)),
+            new btBoxShape({20, 1, 100})
+        );
+    _physicsObj3 =  // @TEMP (30deg)
+        PhysicsEngine::getInstance().registerPhysicsObject(
+            false,
+            glm::vec3(50, 10, -50),
+            glm::quat(glm::vec3(0.523599, 0.0f, 0.0f)),
+            new btBoxShape({20, 1, 100})
+        );
+    _physicsObj3 =  // @TEMP (22.5deg)
+        PhysicsEngine::getInstance().registerPhysicsObject(
+            false,
+            glm::vec3(10, 5, -50),
+            glm::quat(glm::vec3(0.3926991, 0.0f, 0.0f)),
+            new btBoxShape({20, 1, 100})
+        );
+    _physicsObj3 =  // @TEMP (10deg)
+        PhysicsEngine::getInstance().registerPhysicsObject(
+            false,
+            glm::vec3(-30, 2, -50),
+            glm::quat(glm::vec3(0.174533, 0.0f, 0.0f)),
+            new btBoxShape({20, 1, 100})
+        );
+    _physicsObj3 =  // @TEMP (5deg)
+        PhysicsEngine::getInstance().registerPhysicsObject(
+            false,
+            glm::vec3(-70, -5, -50),
+            glm::quat(glm::vec3(0.0872665, 0.0f, 0.0f)),
+            new btBoxShape({20, 1, 100})
         );
 
     _enableUpdate = true;
@@ -48,14 +86,25 @@ Player::~Player()
 {
     _engine->unregisterRenderObject(_renderObj);
     PhysicsEngine::getInstance().unregisterPhysicsObject(_physicsObj);
-    PhysicsEngine::getInstance().unregisterPhysicsObject(_physicsObj2);
+    PhysicsEngine::getInstance().unregisterPhysicsObject(_physicsObj2);  // @TEMP
+    PhysicsEngine::getInstance().unregisterPhysicsObject(_physicsObj3);  // @TEMP
 }
 
 void Player::update(const float_t& deltaTime)
 {
     _flagJump |= input::onKeyJumpPress;
 
-    _renderObj->transformMatrix = _physicsObj->interpolatedTransform;
+    //
+    // Calculate render object transform
+    //
+    glm::vec3 interpPos = physutil::getPosition(_physicsObj->interpolatedTransform);
+    glm::vec3 deltaPos = interpPos - _prevPosition;
+    _prevPosition = interpPos;
+
+    if (glm::length2(deltaPos) > 0.0001f)
+        _facingDirection = glm::atan(deltaPos.x, deltaPos.z);
+
+    _renderObj->transformMatrix = glm::translate(glm::mat4(1.0f), interpPos) * glm::toMat4(glm::quat(glm::vec3(0, _facingDirection, 0)));
 }
 
 void Player::physicsUpdate(const float_t& physicsDeltaTime)
@@ -102,4 +151,11 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         );
     }
     _physicsObj->body->setLinearVelocity(velocity);
+}
+
+void Player::renderImGui()
+{
+    ImGui::DragFloat("_maxSpeed", &_maxSpeed);
+    ImGui::DragFloat("_maxAcceleration", &_maxAcceleration);
+    ImGui::DragFloat("_jumpHeight", &_jumpHeight);
 }

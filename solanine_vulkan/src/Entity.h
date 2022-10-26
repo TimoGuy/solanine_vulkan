@@ -14,6 +14,8 @@ public:
     virtual void physicsUpdate(const float_t& physicsDeltaTime) { }        // Gets called once per physics calculation
     std::string getGUID() { return _guid; }
 
+    virtual void renderImGui() { }
+
     // @NOTE: you need to manually enable these!
     bool _enableUpdate = false,
          _enablePhysicsUpdate = false;

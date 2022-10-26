@@ -3507,56 +3507,58 @@ void VulkanEngine::renderImGui()
 			ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight), ImGuiCond_Always);
 			ImGui::Begin("Edit Selected", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
 			{
-				ImGui::Text("Transform");
-
-				bool changed = false;
-				changed |= ImGui::DragFloat3("Pos##ASDFASDFASDFJAKSDFKASDHF", glm::value_ptr(_movingMatrix.cachedPosition));
-				changed |= ImGui::DragFloat3("Rot##ASDFASDFASDFJAKSDFKASDHF", glm::value_ptr(_movingMatrix.cachedEulerAngles));
-				changed |= ImGui::DragFloat3("Sca##ASDFASDFASDFJAKSDFKASDHF", glm::value_ptr(_movingMatrix.cachedScale));
-
-				if (changed)
+				if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen))
 				{
-					// Recompose the matrix
-					// @TODO: Figure out when to invalidate the cache bc the euler angles will reset!
-					//        Or... maybe invalidating the cache isn't necessary for this window????
-					ImGuizmo::RecomposeMatrixFromComponents(
-						glm::value_ptr(_movingMatrix.cachedPosition),
-						glm::value_ptr(_movingMatrix.cachedEulerAngles),
-						glm::value_ptr(_movingMatrix.cachedScale),
-						glm::value_ptr(*_movingMatrix.matrixToMove)
-					);
-				}
+					bool changed = false;
+					changed |= ImGui::DragFloat3("Pos##ASDFASDFASDFJAKSDFKASDHF", glm::value_ptr(_movingMatrix.cachedPosition));
+					changed |= ImGui::DragFloat3("Rot##ASDFASDFASDFJAKSDFKASDHF", glm::value_ptr(_movingMatrix.cachedEulerAngles));
+					changed |= ImGui::DragFloat3("Sca##ASDFASDFASDFJAKSDFKASDHF", glm::value_ptr(_movingMatrix.cachedScale));
 
-				ImGui::Separator();
-				ImGui::Text("Manipulation Gizmo");
-				static bool forceRecalculation = false;    // @NOTE: this is a flag for the key bindings below
-				static int operationIndex = 0;
-				if (ImGui::Combo("Operation", &operationIndex, "Translate\0Rotate\0Scale") || forceRecalculation)
-				{
-					switch (operationIndex)
+					if (changed)
 					{
-					case 0:
-						manipulateOperation = ImGuizmo::OPERATION::TRANSLATE;
-						break;
-					case 1:
-						manipulateOperation = ImGuizmo::OPERATION::ROTATE;
-						break;
-					case 2:
-						manipulateOperation = ImGuizmo::OPERATION::SCALE;
-						break;
+						// Recompose the matrix
+						// @TODO: Figure out when to invalidate the cache bc the euler angles will reset!
+						//        Or... maybe invalidating the cache isn't necessary for this window????
+						ImGuizmo::RecomposeMatrixFromComponents(
+							glm::value_ptr(_movingMatrix.cachedPosition),
+							glm::value_ptr(_movingMatrix.cachedEulerAngles),
+							glm::value_ptr(_movingMatrix.cachedScale),
+							glm::value_ptr(*_movingMatrix.matrixToMove)
+						);
 					}
 				}
+
+				static bool forceRecalculation = false;    // @NOTE: this is a flag for the key bindings below
+				static int operationIndex = 0;
 				static int modeIndex = 0;
-				if (ImGui::Combo("Mode", &modeIndex, "World\0Local") || forceRecalculation)
+				if (ImGui::CollapsingHeader("Manipulation Gizmo", ImGuiTreeNodeFlags_DefaultOpen))
 				{
-					switch (modeIndex)
+					if (ImGui::Combo("Operation", &operationIndex, "Translate\0Rotate\0Scale") || forceRecalculation)
 					{
-					case 0:
-						manipulateMode = ImGuizmo::MODE::WORLD;
-						break;
-					case 1:
-						manipulateMode = ImGuizmo::MODE::LOCAL;
-						break;
+						switch (operationIndex)
+						{
+						case 0:
+							manipulateOperation = ImGuizmo::OPERATION::TRANSLATE;
+							break;
+						case 1:
+							manipulateOperation = ImGuizmo::OPERATION::ROTATE;
+							break;
+						case 2:
+							manipulateOperation = ImGuizmo::OPERATION::SCALE;
+							break;
+						}
+					}
+					if (ImGui::Combo("Mode", &modeIndex, "World\0Local") || forceRecalculation)
+					{
+						switch (modeIndex)
+						{
+						case 0:
+							manipulateMode = ImGuizmo::MODE::WORLD;
+							break;
+						case 1:
+							manipulateMode = ImGuizmo::MODE::LOCAL;
+							break;
+						}
 					}
 				}
 
@@ -3615,12 +3617,38 @@ void VulkanEngine::renderImGui()
 
 				if (foundRO != nullptr)
 				{
-					ImGui::Separator();
-					ImGui::Text("Render Object");
+					if (ImGui::CollapsingHeader("Render Object", ImGuiTreeNodeFlags_DefaultOpen))
+					{
+						int32_t temp = (int32_t)foundRO->renderLayer;
+						if (ImGui::Combo("Render Layer##asdfasdfasgasgcombo", &temp, "VISIBLE\0INVISIBLE\0BUILDER"))
+							foundRO->renderLayer = RenderLayer(temp);
+					}
 
-					int32_t temp = (int32_t)foundRO->renderLayer;
-					if (ImGui::Combo("Render Layer##asdfasdfasgasgcombo", &temp, "VISIBLE\0INVISIBLE\0BUILDER"))
-						foundRO->renderLayer = RenderLayer(temp);
+					//
+					// @TODO: see if you can't implement one for physics objects
+					//
+
+					//
+					// @NOTE: first see if there is an entity attached to the renderobject via guid
+					// Edit props connected to the entity
+					//
+					Entity* foundEnt = nullptr;
+					if (!foundRO->attachedEntityGuid.empty())
+					{
+						for (auto& ent : _entities)
+						{
+							if (ent->getGUID() == foundRO->attachedEntityGuid)
+							{
+								foundEnt = ent;
+								break;
+							}
+						}
+
+						if (ImGui::CollapsingHeader(("Entity " + foundEnt->getGUID()).c_str(), ImGuiTreeNodeFlags_DefaultOpen))
+						{
+							foundEnt->renderImGui();
+						}
+					}
 				}
 
 				accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;

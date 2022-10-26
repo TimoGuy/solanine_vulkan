@@ -87,4 +87,5 @@ namespace physutil
 	glm::vec3 clampVector(glm::vec3 vector, float_t min, float_t max);
     btVector3 toVec3(const glm::vec3& vector);
     glm::vec3 toVec3(const btVector3& vector);
+    glm::vec3 getPosition(const glm::mat4& transform);
 }
