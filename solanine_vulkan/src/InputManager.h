@@ -3,7 +3,8 @@
 
 namespace input
 {
-    extern bool onLMBPress,
+    extern bool
+		onLMBPress,
 		onLMBRelease,
 		LMBPressed,
 		onRMBPress,
@@ -12,7 +13,8 @@ namespace input
 
 	extern glm::ivec2 mouseDelta;
 
-	extern bool keyUpPressed,
+	extern bool
+		keyUpPressed,
 		keyDownPressed,
 		keyLeftPressed,
 		keyRightPressed,
@@ -24,7 +26,8 @@ namespace input
 		keyQPressed,
 		keyWPressed,
 		keyEPressed,
-		keyRPressed;
+		keyRPressed,
+		onKeyJumpPress;
 
 	void processInput(bool* isRunning, bool* isWindowMinimized);
 }

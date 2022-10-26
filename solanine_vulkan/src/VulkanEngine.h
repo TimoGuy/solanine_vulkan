@@ -176,7 +176,7 @@ public:
 	void unregisterRenderObject(RenderObject* objRegistration);
 
 	std::unordered_map<std::string, Material> _materials;
-	std::vector<bool> _renderObjectLayersEnabled = { true, true, true };
+	std::vector<bool> _renderObjectLayersEnabled = { true, false, false };
 
 	struct RenderObjectModels
 	{
@@ -244,15 +244,17 @@ private:
 	//
 	// Scene Camera
 	//
+public:
 	struct SceneCamera
 	{
 		glm::vec3 facingDirection = { 0.0f, 0.0f, 1.0f };
 		float_t fov = glm::radians(70.0f);
 		float_t aspect;
 		float_t zNear = 0.1f;
-		float_t zFar = 200.0f;
+		float_t zFar = 1500.0f;
 		GPUCameraData gpuCameraData;
 	} _sceneCamera;
+private:
 	void recalculateSceneCamera();
 
 	//
@@ -309,6 +311,7 @@ private:
 	bool _flushEntitiesToDestroyRoutine = false;
 
 #ifdef _DEVELOP
+public:
 	//
 	// Moving Free cam
 	//
@@ -318,6 +321,7 @@ private:
 		glm::ivec2 savedMousePosition;
 		float_t sensitivity = 100.0f;
 	} _freeCamMode;
+private:
 	void updateFreeCam(const float_t& deltaTime);
 	
 	//
@@ -332,7 +336,7 @@ private:
 		float_t renderTimesMS[256 * 2];
 		float_t highestRenderTime = -1.0f;
 	} _debugStats;
-	bool _showCollisionDebugDraw = false;
+	bool _showCollisionDebugDraw = true;
 	void updateDebugStats(const float_t& deltaTime);
 
 	//

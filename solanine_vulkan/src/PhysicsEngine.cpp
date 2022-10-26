@@ -62,7 +62,8 @@ void PhysicsEngine::initialize(VulkanEngine* engine)
 	//_dynamicsWorld->setInternalTickCallback(profileEndCallback, NULL, false);
 	_dynamicsWorld->getSolverInfo().m_solverMode = SOLVER_SIMD | SOLVER_USE_WARMSTARTING;
 	_dynamicsWorld->getSolverInfo().m_numIterations = 10;    // @NOTE: 10 is probably good, but Unity engine only uses 6 *shrug*
-	_dynamicsWorld->setGravity(btVector3(0, -10, 0));
+	_dynamicsWorld->setGravity(btVector3(0, -100, 0));
+	_gravityStrength = _dynamicsWorld->getGravity().length();
 
 	//
 	// Reserve the transforms
@@ -98,9 +99,9 @@ void PhysicsEngine::initialize(VulkanEngine* engine)
 void PhysicsEngine::update(float_t deltaTime, std::vector<Entity*>* entities)    // https://gafferongames.com/post/fix_your_timestep/
 {
 	constexpr float_t physicsDeltaTime = 0.02f;    // 50fps
-	accumulatedTimeForPhysics += deltaTime;
+	_accumulatedTimeForPhysics += deltaTime;
 
-	for (; accumulatedTimeForPhysics >= physicsDeltaTime; accumulatedTimeForPhysics -= physicsDeltaTime)
+	for (; _accumulatedTimeForPhysics >= physicsDeltaTime; _accumulatedTimeForPhysics -= physicsDeltaTime)
 	{
 		for (auto it = entities->begin(); it != entities->end(); it++)    // @IMPROVEMENT: this could be multithreaded if we're just smart by how we do the physicsupdates
 		{
@@ -114,11 +115,11 @@ void PhysicsEngine::update(float_t deltaTime, std::vector<Entity*>* entities)   
 	}
 
 	// Interpolate the positions of all physics objects
-	const float_t physicsAlpha = accumulatedTimeForPhysics / physicsDeltaTime;
+	const float_t physicsAlpha = _accumulatedTimeForPhysics / physicsDeltaTime;
 #ifdef _DEVELOP
 	// @TODO: Make a playmode flag
 	//if (!playMode)
-	//	physicsInterpolationAlpha = 1.0f;
+	//	physicsAlpha = 1.0f;
 #endif
 	
 	void* objectData;
@@ -138,6 +139,11 @@ void PhysicsEngine::cleanup()
 		vmaDestroyBuffer(_engine->_allocator, _vertexBuffer._buffer, _vertexBuffer._allocation);
 	vmaDestroyBuffer(_engine->_allocator, _transformsBuffer._buffer, _transformsBuffer._allocation);
 	delete _mainTaskScheduler;    // @NOTE: apparently this is all you need?
+}
+
+float_t PhysicsEngine::getGravityStrength()
+{
+	return _gravityStrength;
 }
 
 RegisteredPhysicsObject* PhysicsEngine::registerPhysicsObject(float_t mass, glm::vec3 origin, glm::quat rotation, btCollisionShape* shape)
@@ -174,10 +180,12 @@ RegisteredPhysicsObject* PhysicsEngine::registerPhysicsObject(float_t mass, glm:
 
 void PhysicsEngine::unregisterPhysicsObject(RegisteredPhysicsObject* objRegistration)
 {
-	// @TODO: figure out how to remove the rigidbody and shape from the _dynamicsWorld!
 	std::erase_if(_physicsObjects,
-		[=](RegisteredPhysicsObject& x) {
-			return &x == objRegistration;
+		[&](RegisteredPhysicsObject& x) {
+			bool deleteFlag = (&x == objRegistration);
+			if (deleteFlag)
+				_dynamicsWorld->removeRigidBody(x.body);
+			return deleteFlag;
 		}
 	);
 
@@ -578,4 +586,91 @@ void PhysicsEngine::recreateDebugDrawBuffer()
 	vmaMapMemory(_engine->_allocator, _vertexBuffer._allocation, &data);
 	memcpy(data, &vertexList[0], vertexBufferSize);
 	vmaUnmapMemory(_engine->_allocator, _vertexBuffer._allocation);
+}
+
+namespace physutil
+{
+	float_t smoothStep(float_t edge0, float_t edge1, float_t t)
+	{
+		t = std::clamp((t - edge0) / (edge1 - edge0), 0.0f, 1.0f);
+		return t * t * (3 - 2 * t);
+	}
+
+	float_t moveTowards(float_t current, float_t target, float_t maxDistanceDelta)
+	{
+		float_t delta = target - current;
+		return (maxDistanceDelta >= std::abs(delta)) ? target : (current + std::copysignf(1.0f, delta) * maxDistanceDelta);
+	}
+
+	glm::i64 moveTowards(glm::i64 current, glm::i64 target, glm::i64 maxDistanceDelta)
+	{
+		glm::i64 delta = target - current;
+		return (maxDistanceDelta >= glm::abs(delta)) ? target : (current + glm::sign(delta) * maxDistanceDelta);
+	}
+
+	float_t moveTowardsAngle(float_t currentAngle, float_t targetAngle, float_t maxTurnDelta)
+	{
+		float_t result;
+		float_t diff = targetAngle - currentAngle;
+		if (diff < -180.0f)
+		{
+			// Move upwards past 360
+			targetAngle += 360.0f;
+			result = moveTowards(currentAngle, targetAngle, maxTurnDelta);
+			if (result >= 360.0f)
+			{
+				result -= 360.0f;
+			}
+		}
+		else if (diff > 180.0f)
+		{
+			// Move downwards past 0
+			targetAngle -= 360.0f;
+			result = moveTowards(currentAngle, targetAngle, maxTurnDelta);
+			if (result < 0.0f)
+			{
+				result += 360.0f;
+			}
+		}
+		else
+		{
+			// Straight move
+			result = moveTowards(currentAngle, targetAngle, maxTurnDelta);
+		}
+
+		return result;
+	}
+
+	glm::vec2 moveTowardsVec2(glm::vec2 current, glm::vec2 target, float_t maxDistanceDelta)
+	{
+		float_t delta = glm::length(target - current);
+		glm::vec2 mvtDeltaNormalized = glm::normalize(target - current);
+		return (maxDistanceDelta >= std::abs(delta)) ? target : (current + mvtDeltaNormalized * maxDistanceDelta);
+	}
+
+	glm::vec3 moveTowardsVec3(glm::vec3 current, glm::vec3 target, float_t maxDistanceDelta)
+	{
+		float_t delta = glm::length(target - current);
+		glm::vec3 mvtDeltaNormalized = glm::normalize(target - current);
+		return (maxDistanceDelta >= std::abs(delta)) ? target : (current + mvtDeltaNormalized * maxDistanceDelta);
+	}
+
+	glm::vec3 clampVector(glm::vec3 vector, float_t min, float_t max)
+	{
+		float_t magnitude = glm::length(vector);
+
+		assert(std::abs(magnitude) > 0.00001f);
+
+		return glm::normalize(vector) * std::clamp(magnitude, min, max);
+	}
+
+    btVector3 toVec3(const glm::vec3& vector)
+	{
+		return btVector3(vector.x, vector.y, vector.z);
+	}
+
+    glm::vec3 toVec3(const btVector3& vector)
+	{
+		return glm::vec3(vector.x(), vector.y(), vector.z());
+	}
 }

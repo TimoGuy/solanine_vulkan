@@ -3,8 +3,32 @@
 #include "VulkanEngine.h"
 
 
+uint32_t randomChar()
+{
+	std::random_device rd;
+	std::mt19937 gen(rd());
+	std::uniform_int_distribution<> dis(0, 255);
+	return dis(gen);
+}
+
+std::string generateHex(const uint32_t numChars)
+{
+	std::stringstream ss;
+	for (uint32_t i = 0; i < numChars; i++)
+	{
+		const auto rc = randomChar();
+		std::stringstream hexstream;
+		hexstream << std::hex << rc;
+		auto hex = hexstream.str();
+		ss << (hex.length() < 2 ? '0' + hex : hex);
+	}
+	return ss.str();
+}
+
+
 Entity::Entity(VulkanEngine* engine) : _engine(engine)
 {
+    _guid = generateHex(32);
     _engine->INTERNALaddEntity(this);
 }
 

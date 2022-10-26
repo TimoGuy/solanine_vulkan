@@ -14,7 +14,7 @@ public:
     ~Player();
 
     void update(const float_t& deltaTime);
-    void physicsUpdate(const float_t);
+    void physicsUpdate(const float_t& physicsDeltaTime);
 
 private:
     glm::vec3 _position;
@@ -24,4 +24,9 @@ private:
     RenderObject* _renderObj;
     RegisteredPhysicsObject* _physicsObj;
     RegisteredPhysicsObject* _physicsObj2;
+
+    bool _flagJump = false;
+    float_t _maxSpeed = 10.0f;
+    float_t _maxAcceleration = 50.0f;
+    float_t _jumpHeight = 5.0f;
 };

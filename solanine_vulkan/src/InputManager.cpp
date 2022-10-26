@@ -30,6 +30,7 @@ extern bool input::keyQPressed = false;
 extern bool input::keyWPressed = false;
 extern bool input::keyEPressed = false;
 extern bool input::keyRPressed = false;
+extern bool input::onKeyJumpPress = false;
 
 
 void input::processInput(bool* isRunning, bool* isWindowMinimized)
@@ -38,6 +39,7 @@ void input::processInput(bool* isRunning, bool* isWindowMinimized)
     input::onLMBRelease = false;
     input::onRMBPress = false;
     input::onRMBRelease = false;
+	input::onKeyJumpPress = false;
 	input::mouseDelta = { 0, 0 };
 
 	SDL_Event e;
@@ -97,6 +99,7 @@ void input::processInput(bool* isRunning, bool* isWindowMinimized)
 			if (e.key.keysym.sym == SDLK_w)                                           input::keyWPressed = (e.key.type == SDL_KEYDOWN);
 			if (e.key.keysym.sym == SDLK_e)                                           input::keyEPressed = (e.key.type == SDL_KEYDOWN);
 			if (e.key.keysym.sym == SDLK_r)                                           input::keyRPressed = (e.key.type == SDL_KEYDOWN);
+			if (e.key.keysym.sym == SDLK_SPACE)                                       input::onKeyJumpPress = (e.key.type == SDL_KEYDOWN);
 			break;
 		}
 

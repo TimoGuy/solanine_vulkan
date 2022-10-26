@@ -31,6 +31,8 @@ public:
     void update(float_t deltaTime, std::vector<Entity*>* entities);
     void cleanup();
 
+    float_t getGravityStrength();
+
     RegisteredPhysicsObject* registerPhysicsObject(float_t mass, glm::vec3 origin, glm::quat rotation, btCollisionShape* shape);    // @NOTE: setting mass=0.0 will make the rigidbody be static
     void unregisterPhysicsObject(RegisteredPhysicsObject* objRegistration);
 
@@ -47,8 +49,8 @@ private:
     btConstraintSolver* _solver                       = nullptr;
     btDiscreteDynamicsWorld* _dynamicsWorld           = nullptr;
 
-    float_t accumulatedTimeForPhysics = 0.0f;
-    float_t physicsInterpolationAlpha = 0.0f;
+    float_t _gravityStrength = 0.0f;
+    float_t _accumulatedTimeForPhysics = 0.0f;
 
     std::vector<RegisteredPhysicsObject> _physicsObjects;
     void calculateInterpolatedTransform(RegisteredPhysicsObject& obj, const float_t& physicsAlpha);
@@ -73,3 +75,16 @@ private:
     void appendDebugShapeVertices(btCapsuleShape* shape, size_t physObjIndex, std::vector<DebugDrawVertex>& vertexList);
     void recreateDebugDrawBuffer();
 };
+
+namespace physutil
+{
+    float_t smoothStep(float_t edge0, float_t edge1, float_t t);
+	float_t moveTowards(float_t current, float_t target, float_t maxDistanceDelta);
+	glm::i64 moveTowards(glm::i64 current, glm::i64 target, glm::i64 maxDistanceDelta);
+	float_t moveTowardsAngle(float_t currentAngle, float_t targetAngle, float_t maxTurnDelta);
+	glm::vec2 moveTowardsVec2(glm::vec2 current, glm::vec2 target, float_t maxDistanceDelta);
+	glm::vec3 moveTowardsVec3(glm::vec3 current, glm::vec3 target, float_t maxDistanceDelta);
+	glm::vec3 clampVector(glm::vec3 vector, float_t min, float_t max);
+    btVector3 toVec3(const glm::vec3& vector);
+    glm::vec3 toVec3(const btVector3& vector);
+}
