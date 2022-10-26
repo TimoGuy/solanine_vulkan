@@ -16,10 +16,14 @@ constexpr size_t PHYSICS_OBJECTS_MAX_CAPACITY = 1000;
 
 struct RegisteredPhysicsObject
 {
+    // Returned values
     btRigidBody* body;
     btTransform prevTransform;
-    glm::vec3 transformOffset;
     glm::mat4 interpolatedTransform;    // @NOTE: these are calculated at the end of simulation
+
+    // Tweakable properties
+    glm::vec3 transformOffset;
+    std::function<void(btPersistentManifold*)>* onCollisionStayCallback = nullptr;
 };
 
 class PhysicsEngine
@@ -49,12 +53,14 @@ private:
     btConstraintSolver* _solver                       = nullptr;
     btDiscreteDynamicsWorld* _dynamicsWorld           = nullptr;
 
-    float_t _gravityStrength = 0.0f;
-    float_t _accumulatedTimeForPhysics = 0.0f;
+    float_t   _gravityStrength = 0.0f;
+    btVector3 _gravityDirection;
+    float_t   _accumulatedTimeForPhysics = 0.0f;
 
     std::vector<RegisteredPhysicsObject> _physicsObjects;
     void calculateInterpolatedTransform(RegisteredPhysicsObject& obj, const float_t& physicsAlpha);
 
+    std::map<void*, RegisteredPhysicsObject*> _rigidBodyToPhysicsObjectMap;
     btRigidBody* createRigidBody(float_t mass, const btTransform& startTransform, btCollisionShape* shape, const btVector4& color = btVector4(1, 0, 0, 1));  // @NOTE: the `shape` param looks like just one shape, but in bullet physics you need to add in a `CompoundShape` type into the shape to be able to add in multiple shapes to a single rigidbody
 
     struct DebugDrawVertex

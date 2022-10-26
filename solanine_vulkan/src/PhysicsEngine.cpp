@@ -63,7 +63,9 @@ void PhysicsEngine::initialize(VulkanEngine* engine)
 	_dynamicsWorld->getSolverInfo().m_solverMode = SOLVER_SIMD | SOLVER_USE_WARMSTARTING;
 	_dynamicsWorld->getSolverInfo().m_numIterations = 10;    // @NOTE: 10 is probably good, but Unity engine only uses 6 *shrug*
 	_dynamicsWorld->setGravity(btVector3(0, -100, 0));
+
 	_gravityStrength = _dynamicsWorld->getGravity().length();
+	_gravityDirection = _dynamicsWorld->getGravity().normalized();
 
 	//
 	// Reserve the transforms
@@ -101,6 +103,9 @@ void PhysicsEngine::update(float_t deltaTime, std::vector<Entity*>* entities)   
 	constexpr float_t physicsDeltaTime = 0.02f;    // 50fps
 	_accumulatedTimeForPhysics += deltaTime;
 
+	//
+	// Step thru the simulation
+	//
 	for (; _accumulatedTimeForPhysics >= physicsDeltaTime; _accumulatedTimeForPhysics -= physicsDeltaTime)
 	{
 		for (auto it = entities->begin(); it != entities->end(); it++)    // @IMPROVEMENT: this could be multithreaded if we're just smart by how we do the physicsupdates
@@ -114,7 +119,27 @@ void PhysicsEngine::update(float_t deltaTime, std::vector<Entity*>* entities)   
 		_dynamicsWorld->stepSimulation(physicsDeltaTime, 0);    // @NOTE: only want the step simulation to happen once at a time
 	}
 
+	//
+	// Check contact manifolds
+	// @NOTE: using a system similar to Unity's messaging OnCollisionStay() (just oncollisionstay bc that's the only one I use personally)
+	//
+	for (size_t i = 0; i < (size_t)_dispatcher->getNumManifolds(); i++)
+	{
+		btPersistentManifold* manifold = _dispatcher->getManifoldByIndexInternal(i);  // @NOTE: a manifold is a set of contacts that came from a collision. Ideally it should store normal hit info too.
+		if (manifold->getNumContacts() <= 0)
+			continue;
+
+		RegisteredPhysicsObject* obj0 = _rigidBodyToPhysicsObjectMap[(void*)manifold->getBody0()];
+		RegisteredPhysicsObject* obj1 = _rigidBodyToPhysicsObjectMap[(void*)manifold->getBody1()];
+		if (obj0->onCollisionStayCallback)
+			(*obj0->onCollisionStayCallback)(manifold);
+		if (obj1->onCollisionStayCallback)
+			(*obj1->onCollisionStayCallback)(manifold);
+	}
+
+	//
 	// Interpolate the positions of all physics objects
+	//
 	const float_t physicsAlpha = _accumulatedTimeForPhysics / physicsDeltaTime;
 #ifdef _DEVELOP
 	// @TODO: Make a playmode flag
@@ -175,6 +200,7 @@ RegisteredPhysicsObject* PhysicsEngine::registerPhysicsObject(float_t mass, glm:
 
 	recreateDebugDrawBuffer();
 
+	_rigidBodyToPhysicsObjectMap[(void*)rpo.body] = &_physicsObjects.back();
 	return &_physicsObjects.back();
 }
 
@@ -184,7 +210,10 @@ void PhysicsEngine::unregisterPhysicsObject(RegisteredPhysicsObject* objRegistra
 		[&](RegisteredPhysicsObject& x) {
 			bool deleteFlag = (&x == objRegistration);
 			if (deleteFlag)
+			{
 				_dynamicsWorld->removeRigidBody(x.body);
+				_rigidBodyToPhysicsObjectMap.erase((void*)x.body);
+			}
 			return deleteFlag;
 		}
 	);

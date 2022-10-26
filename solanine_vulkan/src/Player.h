@@ -5,6 +5,7 @@
 #include "VkglTFModel.h"
 struct RenderObject;
 struct RegisteredPhysicsObject;
+class btPersistentManifold;
 
 
 class Player : public Entity
@@ -28,8 +29,12 @@ private:
     RegisteredPhysicsObject* _physicsObj2;
     RegisteredPhysicsObject* _physicsObj3;
 
+    bool _onGround = false;
     bool _flagJump = false;
     glm::vec3 _prevPosition;
+
+    std::function<void(btPersistentManifold*)> _onCollisionStayFunc;
+    void onCollisionStay(btPersistentManifold* manifold);
 
     // Tweak Props
     float_t _maxSpeed = 20.0f;

@@ -35,6 +35,10 @@ Player::Player(VulkanEngine* engine) : Entity(engine)
     _physicsObj->body->setFriction(0.0f);
     _physicsObj->body->setActivationState(DISABLE_DEACTIVATION);
 
+    _onCollisionStayFunc =
+        [&](btPersistentManifold* manifold) { onCollisionStay(manifold); };
+    _physicsObj->onCollisionStayCallback = &_onCollisionStayFunc;
+
     _physicsObj2 =  // @TEMP (0deg)
         PhysicsEngine::getInstance().registerPhysicsObject(
             false,
@@ -141,16 +145,29 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     float_t maxSpeedChange = _maxAcceleration * physicsDeltaTime;
 
     btVector3 velocity = _physicsObj->body->getLinearVelocity();
-    velocity.setX(physutil::moveTowards(velocity.x(), desiredVelocity.x, maxSpeedChange));
-    velocity.setZ(physutil::moveTowards(velocity.z(), desiredVelocity.z, maxSpeedChange));
+
+    glm::vec2 a(velocity.x(), velocity.z());
+    glm::vec2 b(desiredVelocity.x, desiredVelocity.z);
+    glm::vec2 c = physutil::moveTowardsVec2(a, b, maxSpeedChange);
+    velocity.setX(c.x);
+    velocity.setZ(c.y);
+
     if (_flagJump)
     {
         _flagJump = false;
-        velocity.setY(
-            glm::sqrt(_jumpHeight * 2.0f * PhysicsEngine::getInstance().getGravityStrength())
-        );
+        if (_onGround)
+        {
+            velocity.setY(
+                glm::sqrt(_jumpHeight * 2.0f * PhysicsEngine::getInstance().getGravityStrength())
+            );
+        }
     }
     _physicsObj->body->setLinearVelocity(velocity);
+
+    //
+    // Clear
+    //
+    _onGround = false;
 }
 
 void Player::renderImGui()
@@ -158,4 +175,9 @@ void Player::renderImGui()
     ImGui::DragFloat("_maxSpeed", &_maxSpeed);
     ImGui::DragFloat("_maxAcceleration", &_maxAcceleration);
     ImGui::DragFloat("_jumpHeight", &_jumpHeight);
+}
+
+void Player::onCollisionStay(btPersistentManifold* manifold)
+{
+    _onGround = true;
 }
