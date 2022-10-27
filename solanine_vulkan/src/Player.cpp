@@ -44,41 +44,48 @@ Player::Player(VulkanEngine* engine) : Entity(engine)
             false,
             glm::vec3(0, -10, 0),
             glm::quat(glm::vec3(0.0f)),
-            new btBoxShape({100, 1, 100})
+            new btBoxShape({200, 1, 200})
         );
     _physicsObj3 =  // @TEMP (45deg)
         PhysicsEngine::getInstance().registerPhysicsObject(
             false,
             glm::vec3(90, 20, -50),
-            glm::quat(glm::vec3(0.785398, 0.0f, 0.0f)),
+            glm::quat(glm::vec3(glm::radians(45.0f), 0.0f, 0.0f)),
             new btBoxShape({20, 1, 100})
         );
     _physicsObj3 =  // @TEMP (30deg)
         PhysicsEngine::getInstance().registerPhysicsObject(
             false,
             glm::vec3(50, 10, -50),
-            glm::quat(glm::vec3(0.523599, 0.0f, 0.0f)),
+            glm::quat(glm::vec3(glm::radians(30.0f), 0.0f, 0.0f)),
             new btBoxShape({20, 1, 100})
         );
     _physicsObj3 =  // @TEMP (22.5deg)
         PhysicsEngine::getInstance().registerPhysicsObject(
             false,
             glm::vec3(10, 5, -50),
-            glm::quat(glm::vec3(0.3926991, 0.0f, 0.0f)),
+            glm::quat(glm::vec3(glm::radians(22.5f), 0.0f, 0.0f)),
             new btBoxShape({20, 1, 100})
         );
     _physicsObj3 =  // @TEMP (10deg)
         PhysicsEngine::getInstance().registerPhysicsObject(
             false,
             glm::vec3(-30, 2, -50),
-            glm::quat(glm::vec3(0.174533, 0.0f, 0.0f)),
+            glm::quat(glm::vec3(glm::radians(10.0f), 0.0f, 0.0f)),
             new btBoxShape({20, 1, 100})
         );
     _physicsObj3 =  // @TEMP (5deg)
         PhysicsEngine::getInstance().registerPhysicsObject(
             false,
             glm::vec3(-70, -5, -50),
-            glm::quat(glm::vec3(0.0872665, 0.0f, 0.0f)),
+            glm::quat(glm::vec3(glm::radians(5.0f), 0.0f, 0.0f)),
+            new btBoxShape({20, 1, 100})
+        );
+    _physicsObj3 =  // @TEMP (50deg)
+        PhysicsEngine::getInstance().registerPhysicsObject(
+            false,
+            glm::vec3(-110, -5, -50),
+            glm::quat(glm::vec3(glm::radians(50.0f), 0.0f, 0.0f)),
             new btBoxShape({20, 1, 100})
         );
 
@@ -172,6 +179,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
 
 void Player::renderImGui()
 {
+    ImGui::Text(("_onGround: " + std::to_string(_onGround)).c_str());
     ImGui::DragFloat("_maxSpeed", &_maxSpeed);
     ImGui::DragFloat("_maxAcceleration", &_maxAcceleration);
     ImGui::DragFloat("_jumpHeight", &_jumpHeight);
@@ -179,5 +187,12 @@ void Player::renderImGui()
 
 void Player::onCollisionStay(btPersistentManifold* manifold)
 {
-    _onGround = true;
+    for (int32_t i = 0; i < manifold->getNumContacts(); i++)
+    {
+        auto contact = manifold->getContactPoint(i);
+        auto contactNormal = contact.m_normalWorldOnB;
+        _onGround |= contactNormal.y() > glm::cos(glm::radians(47.0f));
+        if (_onGround)
+            break;
+    }
 }
