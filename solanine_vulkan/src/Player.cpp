@@ -171,6 +171,17 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     
     //
     // Calculate rigidbody velocity
+    // 
+    // @NOTE: it seems like the current methodology is to make a physically accurate
+    //        character collider. That would work, but it's kinda a little weird how
+    //        the character slowly slides down ramps or can't go up a ramp too. Maybe
+    //        some things could be done to change that, but landing on a ramp and sliding
+    //        down until you regain your X and Z is pretty cool. Hitting a nick in the
+    //        ground and flying up is pretty okay too, though I wish it didn't happen
+    //        so dramatically with higher speeds, but maybe keeping the speed at 20 or
+    //        so is the best bc the bump up really isn't that noticable, however, it's like
+    //        the character tripped because of the sudden velocity speed drop when running
+    //        into a nick.
     //
     glm::vec3 desiredVelocity = cameraViewInput * _maxSpeed;  // @NOTE: we just ignore the y component in this desired velocity thing
     float_t acceleration = _onGround ? _maxAcceleration : _maxMidairAcceleration;
