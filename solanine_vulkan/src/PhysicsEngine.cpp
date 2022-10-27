@@ -171,6 +171,16 @@ float_t PhysicsEngine::getGravityStrength()
 	return _gravityStrength;
 }
 
+btVector3 PhysicsEngine::getGravityDirection()
+{
+	return _gravityDirection;
+}
+
+btVector3 PhysicsEngine::getGravity()
+{
+	return _dynamicsWorld->getGravity();
+}
+
 RegisteredPhysicsObject* PhysicsEngine::registerPhysicsObject(float_t mass, glm::vec3 origin, glm::quat rotation, btCollisionShape* shape)
 {
 	// @NOTE: this is required to be here (as well as the .reserve() on init)

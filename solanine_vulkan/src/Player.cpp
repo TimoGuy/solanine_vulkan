@@ -149,7 +149,8 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     // Calculate rigidbody velocity
     //
     glm::vec3 desiredVelocity = cameraViewInput * _maxSpeed;  // @NOTE: we just ignore the y component in this desired velocity thing
-    float_t maxSpeedChange = _maxAcceleration * physicsDeltaTime;
+    float_t acceleration = _onGround ? _maxAcceleration : _maxMidairAcceleration;
+    float_t maxSpeedChange = acceleration * physicsDeltaTime;
 
     btVector3 velocity = _physicsObj->body->getLinearVelocity();
 
@@ -172,6 +173,18 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     _physicsObj->body->setLinearVelocity(velocity);
 
     //
+    // Set gravity
+    //
+    if (_onGround)
+    {
+        _physicsObj->body->setGravity(btVector3(0.0f, 0.0f, 0.0f));
+    }
+    else
+    {
+        _physicsObj->body->setGravity(PhysicsEngine::getInstance().getGravity());
+    }
+
+    //
     // Clear
     //
     _onGround = false;
@@ -182,6 +195,7 @@ void Player::renderImGui()
     ImGui::Text(("_onGround: " + std::to_string(_onGround)).c_str());
     ImGui::DragFloat("_maxSpeed", &_maxSpeed);
     ImGui::DragFloat("_maxAcceleration", &_maxAcceleration);
+    ImGui::DragFloat("_maxMidairAcceleration", &_maxMidairAcceleration);
     ImGui::DragFloat("_jumpHeight", &_jumpHeight);
 }
 

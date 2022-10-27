@@ -36,6 +36,8 @@ public:
     void cleanup();
 
     float_t getGravityStrength();
+    btVector3 getGravityDirection();
+    btVector3 getGravity();
 
     RegisteredPhysicsObject* registerPhysicsObject(float_t mass, glm::vec3 origin, glm::quat rotation, btCollisionShape* shape);    // @NOTE: setting mass=0.0 will make the rigidbody be static
     void unregisterPhysicsObject(RegisteredPhysicsObject* objRegistration);
