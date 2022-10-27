@@ -244,6 +244,9 @@ private:
 
 	//
 	// Scene Camera
+	// @NOTE: I think this is a bad name for it. The Scene Camera holds all the data for the GPU,
+	//        however, the Main cam and the Moving Free cam are both virtual cameras that get switched
+	//        to back and forth, and just simply change the scene camera's information
 	//
 public:
 	struct SceneCamera
@@ -257,6 +260,40 @@ public:
 	} _sceneCamera;
 private:
 	void recalculateSceneCamera();
+
+	const uint32_t
+		_cameraMode_mainCamMode = 0,
+		_cameraMode_freeCamMode = 1;
+	uint32_t _cameraMode = _cameraMode_freeCamMode;
+	uint32_t _numCameraModes = 2;
+
+	//
+	// Main cam mode
+	// (Orbiting camera using just mouse inputs)
+	//
+	struct MainCamMode
+	{
+		bool prevWasSetToThisCamMode = false;
+		glm::vec2 sensitivity = glm::vec2(100.0f, 50.0f);
+	} _mainCamMode;
+	void updateMainCam(const float_t& deltaTime);
+
+#ifdef _DEVELOP
+public:
+	//
+	// Moving Free cam mode
+	// (First person camera using wasd and q and e and RMB+mouse to look and move)
+	//
+	struct FreeCamMode
+	{
+		bool enabled = false;
+		glm::ivec2 savedMousePosition;
+		float_t sensitivity = 100.0f;
+	} _freeCamMode;
+private:
+	void updateFreeCam(const float_t& deltaTime);
+#endif
+
 
 	//
 	// PBR rendering
@@ -312,19 +349,6 @@ private:
 	bool _flushEntitiesToDestroyRoutine = false;
 
 #ifdef _DEVELOP
-public:
-	//
-	// Moving Free cam
-	//
-	struct FreeCamMode
-	{
-		bool enabled = false;
-		glm::ivec2 savedMousePosition;
-		float_t sensitivity = 100.0f;
-	} _freeCamMode;
-private:
-	void updateFreeCam(const float_t& deltaTime);
-
 public:
 	//
 	// Debug Messages

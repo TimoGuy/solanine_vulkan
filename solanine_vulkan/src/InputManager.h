@@ -27,7 +27,8 @@ namespace input
 		keyWPressed,
 		keyEPressed,
 		keyRPressed,
-		onKeyJumpPress;
+		onKeyJumpPress,
+		onKeyF10Press;
 
 	void processInput(bool* isRunning, bool* isWindowMinimized);
 }

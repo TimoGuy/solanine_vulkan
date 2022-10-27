@@ -138,7 +138,15 @@ void VulkanEngine::run()
 		// Collect debug stats
 		updateDebugStats(deltaTime);
 
-		// Free Cam
+		// Update camera modes
+		if (input::onKeyF10Press)
+		{
+			_cameraMode = fmodf(_cameraMode + 1, _numCameraModes);
+			pushDebugMessage({
+				.message = "Changed to " + std::string(_cameraMode == 0 ? "game camera" : "free camera") + " mode",
+				});
+		}
+		updateMainCam(deltaTime);
 		updateFreeCam(deltaTime);
 
 		// Update entities
@@ -312,6 +320,7 @@ void VulkanEngine::render()
 	// Picking Render Pass
 	//
 	if (input::onLMBPress &&
+		_cameraMode == _cameraMode_freeCamMode &&
 		!_freeCamMode.enabled &&
 		!ImGui::GetIO().WantCaptureMouse &&
 		!ImGuizmo::IsUsing() &&
@@ -3061,6 +3070,165 @@ void VulkanEngine::recalculateSceneCamera()
 	_sceneCamera.gpuCameraData.projectionView = projection * view;
 }
 
+void VulkanEngine::updateMainCam(const float_t& deltaTime)
+{
+	bool setToThisCamMode = (_cameraMode == _cameraMode_mainCamMode);
+	if (setToThisCamMode != _mainCamMode.prevWasSetToThisCamMode)
+	{
+		_mainCamMode.prevWasSetToThisCamMode = setToThisCamMode;
+
+		SDL_SetRelativeMouseMode(setToThisCamMode ? SDL_TRUE : SDL_FALSE);
+		if (!setToThisCamMode)
+			SDL_WarpMouseInWindow(_window, _windowExtent.width / 2, _windowExtent.height / 2);
+	}
+
+	if (!setToThisCamMode)
+		return;
+
+
+
+
+
+
+	// @INCOMPLETE: @TODO: continue from here!!!!
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	//if (input::onRMBPress || input::onRMBRelease)
+	//{
+	//	_freeCamMode.enabled = input::RMBPressed;
+	//	SDL_SetRelativeMouseMode(_freeCamMode.enabled ? SDL_TRUE : SDL_FALSE);		// @NOTE: this causes cursor to disappear and not leave window boundaries (@BUG: Except for if you right click into the window?)
+	//				
+	//	if (_freeCamMode.enabled)
+	//		SDL_GetMouseState(
+	//			&_freeCamMode.savedMousePosition.x,
+	//			&_freeCamMode.savedMousePosition.y
+	//		);
+	//	else
+	//		SDL_WarpMouseInWindow(_window, _freeCamMode.savedMousePosition.x, _freeCamMode.savedMousePosition.y);
+	//}
+
+	glm::vec2 mousePositionDeltaCooked = (glm::vec2)input::mouseDelta / (float_t)_windowExtent.height * _mainCamMode.sensitivity;
+	std::cout << "MASDFASDF: " << mousePositionDeltaCooked.x << ",\t" << mousePositionDeltaCooked.y << std::endl;
+	//input::mouseDelta = glm::ivec2(0);		// Reset the mouseDelta
+
+	//glm::vec2 inputToVelocity(0.0f);
+	//inputToVelocity.x += input::keyLeftPressed ? -1.0f : 0.0f;
+	//inputToVelocity.x += input::keyRightPressed ? 1.0f : 0.0f;
+	//inputToVelocity.y += input::keyUpPressed ? 1.0f : 0.0f;
+	//inputToVelocity.y += input::keyDownPressed ? -1.0f : 0.0f;
+
+	//float_t worldUpVelocity = 0.0f;
+	//worldUpVelocity += input::keyWorldUpPressed ? 1.0f : 0.0f;
+	//worldUpVelocity += input::keyWorldDownPressed ? -1.0f : 0.0f;
+
+	//if (glm::length(mousePositionDeltaCooked) > 0.0f || glm::length(inputToVelocity) > 0.0f || glm::abs(worldUpVelocity) > 0.0f)
+	//{
+	//	constexpr glm::vec3 worldUp = { 0.0f, 1.0f, 0.0f };
+
+	//	// Update camera facing direction with mouse input
+	//	glm::vec3 newCamFacingDirection =
+	//		glm::rotate(
+	//			_sceneCamera.facingDirection,
+	//			glm::radians(-mousePositionDeltaCooked.y),
+	//			glm::normalize(glm::cross(_sceneCamera.facingDirection, worldUp))
+	//		);
+	//	if (glm::angle(newCamFacingDirection, worldUp) > glm::radians(5.0f) &&
+	//		glm::angle(newCamFacingDirection, -worldUp) > glm::radians(5.0f))
+	//		_sceneCamera.facingDirection = newCamFacingDirection;
+	//	_sceneCamera.facingDirection = glm::rotate(_sceneCamera.facingDirection, glm::radians(-mousePositionDeltaCooked.x), worldUp);
+
+	//	// Update camera position with keyboard input
+	//	float speedMultiplier = input::keyShiftPressed ? 50.0f : 25.0f;
+	//	inputToVelocity *= speedMultiplier * deltaTime;
+	//	worldUpVelocity *= speedMultiplier * deltaTime;
+
+	//	_sceneCamera.gpuCameraData.cameraPosition +=
+	//		inputToVelocity.y * _sceneCamera.facingDirection +
+	//		inputToVelocity.x * glm::normalize(glm::cross(_sceneCamera.facingDirection, worldUp)) +
+	//		glm::vec3(0.0f, worldUpVelocity, 0.0f);
+
+		// Recalculate camera
+		recalculateSceneCamera();
+	//}
+}
+
+#ifdef _DEVELOP
+void VulkanEngine::updateFreeCam(const float_t& deltaTime)
+{
+	if (input::onRMBPress || input::onRMBRelease || _cameraMode != _cameraMode_freeCamMode)
+	{
+		_freeCamMode.enabled = (input::RMBPressed && _cameraMode == _cameraMode_freeCamMode);
+		SDL_SetRelativeMouseMode(_freeCamMode.enabled ? SDL_TRUE : SDL_FALSE);		// @NOTE: this causes cursor to disappear and not leave window boundaries (@BUG: Except for if you right click into the window?)
+					
+		if (_freeCamMode.enabled)
+			SDL_GetMouseState(
+				&_freeCamMode.savedMousePosition.x,
+				&_freeCamMode.savedMousePosition.y
+			);
+		else
+			SDL_WarpMouseInWindow(_window, _freeCamMode.savedMousePosition.x, _freeCamMode.savedMousePosition.y);
+	}
+	
+	if (!_freeCamMode.enabled)
+		return;
+
+	glm::vec2 mousePositionDeltaCooked = (glm::vec2)input::mouseDelta / (float_t)_windowExtent.height * _freeCamMode.sensitivity;
+	input::mouseDelta = glm::ivec2(0);		// Reset the mouseDelta
+
+	glm::vec2 inputToVelocity(0.0f);
+	inputToVelocity.x += input::keyLeftPressed ? -1.0f : 0.0f;
+	inputToVelocity.x += input::keyRightPressed ? 1.0f : 0.0f;
+	inputToVelocity.y += input::keyUpPressed ? 1.0f : 0.0f;
+	inputToVelocity.y += input::keyDownPressed ? -1.0f : 0.0f;
+
+	float_t worldUpVelocity = 0.0f;
+	worldUpVelocity += input::keyWorldUpPressed ? 1.0f : 0.0f;
+	worldUpVelocity += input::keyWorldDownPressed ? -1.0f : 0.0f;
+
+	if (glm::length(mousePositionDeltaCooked) > 0.0f || glm::length(inputToVelocity) > 0.0f || glm::abs(worldUpVelocity) > 0.0f)
+	{
+		constexpr glm::vec3 worldUp = { 0.0f, 1.0f, 0.0f };
+
+		// Update camera facing direction with mouse input
+		glm::vec3 newCamFacingDirection =
+			glm::rotate(
+				_sceneCamera.facingDirection,
+				glm::radians(-mousePositionDeltaCooked.y),
+				glm::normalize(glm::cross(_sceneCamera.facingDirection, worldUp))
+			);
+		if (glm::angle(newCamFacingDirection, worldUp) > glm::radians(5.0f) &&
+			glm::angle(newCamFacingDirection, -worldUp) > glm::radians(5.0f))
+			_sceneCamera.facingDirection = newCamFacingDirection;
+		_sceneCamera.facingDirection = glm::rotate(_sceneCamera.facingDirection, glm::radians(-mousePositionDeltaCooked.x), worldUp);
+
+		// Update camera position with keyboard input
+		float speedMultiplier = input::keyShiftPressed ? 50.0f : 25.0f;
+		inputToVelocity *= speedMultiplier * deltaTime;
+		worldUpVelocity *= speedMultiplier * deltaTime;
+
+		_sceneCamera.gpuCameraData.cameraPosition +=
+			inputToVelocity.y * _sceneCamera.facingDirection +
+			inputToVelocity.x * glm::normalize(glm::cross(_sceneCamera.facingDirection, worldUp)) +
+			glm::vec3(0.0f, worldUpVelocity, 0.0f);
+
+		// Recalculate camera
+		recalculateSceneCamera();
+	}
+}
+#endif
+
 void VulkanEngine::INTERNALaddEntity(Entity* entity)
 {
 	_entitiesToAddQueue.push_back(entity);    // @NOTE: this only requests that the entity get added into the system
@@ -3110,68 +3278,6 @@ void VulkanEngine::destroyEntity(Entity* entity)
 }
 
 #ifdef _DEVELOP
-void VulkanEngine::updateFreeCam(const float_t& deltaTime)
-{
-	if (input::onRMBPress || input::onRMBRelease)
-	{
-		_freeCamMode.enabled = input::RMBPressed;
-		SDL_SetRelativeMouseMode(_freeCamMode.enabled ? SDL_TRUE : SDL_FALSE);		// @NOTE: this causes cursor to disappear and not leave window boundaries (@BUG: Except for if you right click into the window?)
-					
-		if (_freeCamMode.enabled)
-			SDL_GetMouseState(
-				&_freeCamMode.savedMousePosition.x,
-				&_freeCamMode.savedMousePosition.y
-			);
-		else
-			SDL_WarpMouseInWindow(_window, _freeCamMode.savedMousePosition.x, _freeCamMode.savedMousePosition.y);
-	}
-	if (_freeCamMode.enabled)
-	{
-		glm::vec2 mousePositionDeltaCooked = (glm::vec2)input::mouseDelta / (float_t)_windowExtent.height * _freeCamMode.sensitivity;
-		input::mouseDelta = glm::ivec2(0);		// Reset the mouseDelta
-
-		glm::vec2 inputToVelocity(0.0f);
-		inputToVelocity.x += input::keyLeftPressed ? -1.0f : 0.0f;
-		inputToVelocity.x += input::keyRightPressed ? 1.0f : 0.0f;
-		inputToVelocity.y += input::keyUpPressed ? 1.0f : 0.0f;
-		inputToVelocity.y += input::keyDownPressed ? -1.0f : 0.0f;
-
-		float_t worldUpVelocity = 0.0f;
-		worldUpVelocity += input::keyWorldUpPressed ? 1.0f : 0.0f;
-		worldUpVelocity += input::keyWorldDownPressed ? -1.0f : 0.0f;
-
-		if (glm::length(mousePositionDeltaCooked) > 0.0f || glm::length(inputToVelocity) > 0.0f || glm::abs(worldUpVelocity) > 0.0f)
-		{
-			constexpr glm::vec3 worldUp = { 0.0f, 1.0f, 0.0f };
-
-			// Update camera facing direction with mouse input
-			glm::vec3 newCamFacingDirection =
-				glm::rotate(
-					_sceneCamera.facingDirection,
-					glm::radians(-mousePositionDeltaCooked.y),
-					glm::normalize(glm::cross(_sceneCamera.facingDirection, worldUp))
-				);
-			if (glm::angle(newCamFacingDirection, worldUp) > glm::radians(5.0f) &&
-				glm::angle(newCamFacingDirection, -worldUp) > glm::radians(5.0f))
-				_sceneCamera.facingDirection = newCamFacingDirection;
-			_sceneCamera.facingDirection = glm::rotate(_sceneCamera.facingDirection, glm::radians(-mousePositionDeltaCooked.x), worldUp);
-
-			// Update camera position with keyboard input
-			float speedMultiplier = input::keyShiftPressed ? 50.0f : 25.0f;
-			inputToVelocity *= speedMultiplier * deltaTime;
-			worldUpVelocity *= speedMultiplier * deltaTime;
-
-			_sceneCamera.gpuCameraData.cameraPosition +=
-				inputToVelocity.y * _sceneCamera.facingDirection +
-				inputToVelocity.x * glm::normalize(glm::cross(_sceneCamera.facingDirection, worldUp)) +
-				glm::vec3(0.0f, worldUpVelocity, 0.0f);
-
-			// Recalculate camera
-			recalculateSceneCamera();
-		}
-	}
-}
-
 std::vector<VulkanEngine::DebugMessage> VulkanEngine::_debugMessages;
 void VulkanEngine::pushDebugMessage(const DebugMessage& message)
 {
