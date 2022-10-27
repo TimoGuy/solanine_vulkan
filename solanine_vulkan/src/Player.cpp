@@ -90,6 +90,13 @@ Player::Player(VulkanEngine* engine) : Entity(engine)
             glm::quat(glm::vec3(glm::radians(50.0f), 0.0f, 0.0f)),
             new btBoxShape({20, 1, 100})
         );
+    _physicsObj3 =  // @TEMP (step up)
+        PhysicsEngine::getInstance().registerPhysicsObject(
+            false,
+            glm::vec3(0, -9.75f, 150),
+            glm::quat(glm::vec3(0.0f)),
+            new btBoxShape({100, 1, 100})
+        );
 
     _enableUpdate = true;
     _enablePhysicsUpdate = true;
@@ -157,7 +164,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     //
     _stepsSinceLastGrounded++;
     glm::vec3 velocity = physutil::toVec3(_physicsObj->body->getLinearVelocity());
-    if (_onGround || snapToGround(velocity))
+    if (_onGround || snapToGround(physicsDeltaTime, velocity))
     {
         _stepsSinceLastGrounded = 0;
     }
@@ -200,11 +207,15 @@ void Player::renderImGui()
     ImGui::DragFloat("_maxAcceleration", &_maxAcceleration);
     ImGui::DragFloat("_maxMidairAcceleration", &_maxMidairAcceleration);
     ImGui::DragFloat("_jumpHeight", &_jumpHeight);
+    ImGui::Checkbox("_enableSnapping", &_enableSnapping);
     ImGui::DragFloat("_maxSnapSpeed", &_maxSnapSpeed);
 }
 
-bool Player::snapToGround(glm::vec3& currentVelocity)
+bool Player::snapToGround(const float_t& physicsDeltaTime, glm::vec3& currentVelocity)
 {
+    if (!_enableSnapping)
+        return false;
+
     if (_stepsSinceLastGrounded > 1)
         return false;
 
@@ -212,7 +223,8 @@ bool Player::snapToGround(glm::vec3& currentVelocity)
     if (veloMagnitude2 < 0.0001f || veloMagnitude2 > _maxSnapSpeed * _maxSnapSpeed)
         return false;
 
-    float_t rayLength = _collisionShape->getHalfHeight() + _collisionShape->getRadius() * 2.0f;
+    float_t rayLength = _collisionShape->getRadius() * 2.0f;
+    rayLength += _collisionShape->getHalfHeight() + _collisionShape->getRadius() + _collisionShape->getMargin();  // Padding to push raylength out of collision shape shell downwards
     auto bodyPos = _physicsObj->body->getWorldTransform().getOrigin();
     auto hitInfo = PhysicsEngine::getInstance().raycast(bodyPos, bodyPos + btVector3(0, -rayLength, 0));
     if (!hitInfo.hasHit())
@@ -225,11 +237,6 @@ bool Player::snapToGround(glm::vec3& currentVelocity)
     float_t veloDNormal = glm::dot(glm::normalize(currentVelocity), _groundContactNormal);
     if (veloDNormal > 0.0f)
         currentVelocity = glm::normalize(currentVelocity - _groundContactNormal * veloDNormal) * glm::sqrt(veloMagnitude2);  // Correct the velocity
-
-    VulkanEngine::pushDebugMessage({
-        .message = "Snapped to ground: " + std::to_string(hitInfo.m_hitNormalWorld.x()) + ", " + std::to_string(hitInfo.m_hitNormalWorld.y()) + ", " + std::to_string(hitInfo.m_hitNormalWorld.z()),
-        .type = 0,
-        });
 
     return true;
 }

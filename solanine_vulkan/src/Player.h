@@ -37,7 +37,7 @@ private:
     bool _flagJump = false;
     glm::vec3 _prevPosition;
 
-    bool snapToGround(glm::vec3& currentVelocity);
+    bool snapToGround(const float_t& physicsDeltaTime, glm::vec3& currentVelocity);
 
     // Callbacks
     std::function<void(btPersistentManifold*)> _onCollisionStayFunc;
@@ -48,5 +48,6 @@ private:
     float_t _maxAcceleration = 50.0f;
     float_t _maxMidairAcceleration = 20.0f;
     float_t _jumpHeight = 5.0f;
+    bool    _enableSnapping = true;
     float_t _maxSnapSpeed = 100.0f;
 };
