@@ -397,11 +397,6 @@ private:
 	struct MovingMatrix
 	{
 		glm::mat4* matrixToMove = nullptr;
-		glm::mat4* prevMatrixToMove = nullptr;    // @NOTE: this is for invalidating the cache
-		bool invalidateCache = true;
-		glm::vec3 cachedPosition;
-		glm::vec3 cachedEulerAngles;
-		glm::vec3 cachedScale;
 	} _movingMatrix;
 	void submitSelectedRenderObjectId(int32_t id);
 

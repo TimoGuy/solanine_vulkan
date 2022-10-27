@@ -3619,21 +3619,6 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 		else
 		{
 			//
-			// Decompose the matrix if cache is invalidated
-			//
-			_movingMatrix.invalidateCache |= (_movingMatrix.prevMatrixToMove != _movingMatrix.matrixToMove);
-			if (_movingMatrix.invalidateCache)
-			{
-				ImGuizmo::DecomposeMatrixToComponents(
-					glm::value_ptr(*_movingMatrix.matrixToMove),
-					glm::value_ptr(_movingMatrix.cachedPosition),
-					glm::value_ptr(_movingMatrix.cachedEulerAngles),
-					glm::value_ptr(_movingMatrix.cachedScale)
-				);
-				_movingMatrix.invalidateCache = false;
-			}
-
-			//
 			// Move the matrix via ImGuizmo
 			//
 			glm::mat4 projection = _sceneCamera.gpuCameraData.projection;
@@ -3641,15 +3626,13 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 
 			static ImGuizmo::OPERATION manipulateOperation = ImGuizmo::OPERATION::TRANSLATE;
 			static ImGuizmo::MODE manipulateMode           = ImGuizmo::MODE::WORLD;
-			if (ImGuizmo::Manipulate(
+			ImGuizmo::Manipulate(
 				glm::value_ptr(_sceneCamera.gpuCameraData.view),
 				glm::value_ptr(projection),
 				manipulateOperation,
 				manipulateMode,
-				glm::value_ptr(*_movingMatrix.matrixToMove)))
-			{
-				_movingMatrix.invalidateCache = true;
-			}
+				glm::value_ptr(*_movingMatrix.matrixToMove)
+			);
 
 			//
 			// Move the matrix via the cached matrix components
@@ -3659,10 +3642,18 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 			{
 				if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen))
 				{
+					glm::vec3 position, eulerAngles, scale;
+					ImGuizmo::DecomposeMatrixToComponents(
+						glm::value_ptr(*_movingMatrix.matrixToMove),
+						glm::value_ptr(position),
+						glm::value_ptr(eulerAngles),
+						glm::value_ptr(scale)
+					);
+
 					bool changed = false;
-					changed |= ImGui::DragFloat3("Pos##ASDFASDFASDFJAKSDFKASDHF", glm::value_ptr(_movingMatrix.cachedPosition));
-					changed |= ImGui::DragFloat3("Rot##ASDFASDFASDFJAKSDFKASDHF", glm::value_ptr(_movingMatrix.cachedEulerAngles));
-					changed |= ImGui::DragFloat3("Sca##ASDFASDFASDFJAKSDFKASDHF", glm::value_ptr(_movingMatrix.cachedScale));
+					changed |= ImGui::DragFloat3("Pos##ASDFASDFASDFJAKSDFKASDHF", glm::value_ptr(position));
+					changed |= ImGui::DragFloat3("Rot##ASDFASDFASDFJAKSDFKASDHF", glm::value_ptr(eulerAngles));
+					changed |= ImGui::DragFloat3("Sca##ASDFASDFASDFJAKSDFKASDHF", glm::value_ptr(scale));
 
 					if (changed)
 					{
@@ -3670,9 +3661,9 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 						// @TODO: Figure out when to invalidate the cache bc the euler angles will reset!
 						//        Or... maybe invalidating the cache isn't necessary for this window????
 						ImGuizmo::RecomposeMatrixFromComponents(
-							glm::value_ptr(_movingMatrix.cachedPosition),
-							glm::value_ptr(_movingMatrix.cachedEulerAngles),
-							glm::value_ptr(_movingMatrix.cachedScale),
+							glm::value_ptr(position),
+							glm::value_ptr(eulerAngles),
+							glm::value_ptr(scale),
 							glm::value_ptr(*_movingMatrix.matrixToMove)
 						);
 					}
@@ -3805,8 +3796,6 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 			}
 			ImGui::End();
 		}
-
-		_movingMatrix.prevMatrixToMove = _movingMatrix.matrixToMove;
 	}
 
 	ImGui::Render();
