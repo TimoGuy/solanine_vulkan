@@ -83,6 +83,7 @@ void VulkanEngine::init()
 
 	// @TEMP
 	auto player = new Player(this);  // This gets automagically deleted by the engine!
+	_mainCamMode.targetObject = &_renderObjects[0];  // This should be the player (@TEMP)
 }
 
 void VulkanEngine::run()
@@ -138,17 +139,6 @@ void VulkanEngine::run()
 		// Collect debug stats
 		updateDebugStats(deltaTime);
 
-		// Update camera modes
-		if (input::onKeyF10Press)
-		{
-			_cameraMode = fmodf(_cameraMode + 1, _numCameraModes);
-			pushDebugMessage({
-				.message = "Changed to " + std::string(_cameraMode == 0 ? "game camera" : "free camera") + " mode",
-				});
-		}
-		updateMainCam(deltaTime);
-		updateFreeCam(deltaTime);
-
 		// Update entities
 		// @TODO: multithread this sucker!
 		for (auto it = _entities.begin(); it != _entities.end(); it++)
@@ -158,11 +148,37 @@ void VulkanEngine::run()
 				ent->update(deltaTime);
 		}
 
+		//
+		// Update camera modes
+		// @TODO: scrunch this into its own function
+		//
+		for (size_t i = 0; i < _numCameraModes; i++)
+			_changeEvents[i] = CameraModeChangeEvent::NONE;
+		if (_flagNextStepSetEnterChangeEvent && !input::onKeyF10Press)  // If we hit the F10 key two frames in a row, I can see bugs happening without this guard  -Timo
+		{
+			_flagNextStepSetEnterChangeEvent = false;
+			_changeEvents[_cameraMode] = CameraModeChangeEvent::ENTER;
+		}
+		if (input::onKeyF10Press)
+		{
+			_prevCameraMode = _cameraMode;
+			_cameraMode = fmodf(_cameraMode + 1, _numCameraModes);
+
+			if (!_flagNextStepSetEnterChangeEvent)  // There is a situation where this flag is still true, and that's if the F10 key was hit two frames in a row. We don't need to call EXIT on a camera mode that never ocurred, hence ignoring doing this if the flag is still on  -Timo
+			{
+				_changeEvents[_prevCameraMode] = CameraModeChangeEvent::EXIT;
+				_flagNextStepSetEnterChangeEvent = true;
+			}
+
+			pushDebugMessage({
+				.message = "Changed to " + std::string(_cameraMode == 0 ? "game camera" : "free camera") + " mode",
+				});
+		}
+		updateMainCam(deltaTime, _changeEvents[_cameraMode_mainCamMode]);
+		updateFreeCam(deltaTime, _changeEvents[_cameraMode_freeCamMode]);
+
 		// Add/Remove requested entities
 		INTERNALaddRemoveRequestedEntities();
-
-		// Update Audio Engine
-		AudioEngine::getInstance().update();
 
 		//
 		// @TODO: loop thru animators and update them!
@@ -175,6 +191,9 @@ void VulkanEngine::run()
 		if (animationTimer > _renderObjectModels.slimeGirl.animations[animationIndex].end)    // Loop animation
 			animationTimer -= _renderObjectModels.slimeGirl.animations[animationIndex].end;
 		_renderObjectModels.slimeGirl.updateAnimation(animationIndex, animationTimer);
+
+		// Update Audio Engine
+		AudioEngine::getInstance().update();
 
 		// Render
 		if (_recreateSwapchain)
@@ -3070,23 +3089,58 @@ void VulkanEngine::recalculateSceneCamera()
 	_sceneCamera.gpuCameraData.projectionView = projection * view;
 }
 
-void VulkanEngine::updateMainCam(const float_t& deltaTime)
+void VulkanEngine::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent changeEvent)
 {
-	bool setToThisCamMode = (_cameraMode == _cameraMode_mainCamMode);
-	if (setToThisCamMode != _mainCamMode.prevWasSetToThisCamMode)
+	if (changeEvent != CameraModeChangeEvent::NONE)
 	{
-		_mainCamMode.prevWasSetToThisCamMode = setToThisCamMode;
-
-		SDL_SetRelativeMouseMode(setToThisCamMode ? SDL_TRUE : SDL_FALSE);
-		if (!setToThisCamMode)
-			SDL_WarpMouseInWindow(_window, _windowExtent.width / 2, _windowExtent.height / 2);
+		_mainCamMode.orientation = glm::vec2(0.0f);
+		SDL_SetRelativeMouseMode(changeEvent == CameraModeChangeEvent::ENTER ? SDL_TRUE : SDL_FALSE);
+		SDL_WarpMouseInWindow(_window, _windowExtent.width / 2, _windowExtent.height / 2);
 	}
-
-	if (!setToThisCamMode)
+	if (_cameraMode != _cameraMode_mainCamMode)
 		return;
 
+	//
+	// Calculate Mouse delta
+	//
+	glm::vec2 mousePositionDeltaCooked = (glm::vec2)input::mouseDelta / (float_t)_windowExtent.height * _mainCamMode.sensitivity;
 
+	//
+	// Focus onto target object
+	//
+	if (_mainCamMode.targetObject != nullptr)
+	{
+		// Update the focus position
+		glm::vec3 targetPosition = physutil::getPosition(_mainCamMode.targetObject->transformMatrix);
+		if (_mainCamMode.focusRadius > 0.0f)
+		{
+			glm::vec3 delta = _mainCamMode.focusPosition - targetPosition;
+			float_t distance = glm::length(delta);
+			float_t t = 1.0f;
+			if (distance > 0.01f && _mainCamMode.focusCentering > 0.0f)
+				t = glm::pow(1.0f - _mainCamMode.focusCentering, deltaTime);
+			if (distance > _mainCamMode.focusRadius)
+				t = glm::min(t, _mainCamMode.focusRadius / distance);
+			_mainCamMode.focusPosition = targetPosition + delta * t;
+		}
+		else
+			_mainCamMode.focusPosition = targetPosition;
+	}
+	constexpr glm::vec3 worldUp = { 0.0f, 1.0f, 0.0f };
 
+	// Update look direction
+	glm::quat lookRotation = ;// @INCOMPLETE: start here!!!!!!!
+
+	_mainCamMode.calculatedCameraPosition = _mainCamMode.focusPosition + _mainCamMode.focusPositionOffset - _mainCamMode.calculatedLookDirection * _mainCamMode.lookDistance;
+
+	// Recalculate camera
+	if (_sceneCamera.facingDirection != _mainCamMode.calculatedLookDirection ||
+		_sceneCamera.gpuCameraData.cameraPosition != _mainCamMode.calculatedCameraPosition)
+	{
+		_sceneCamera.facingDirection = _mainCamMode.calculatedLookDirection;
+		_sceneCamera.gpuCameraData.cameraPosition = _mainCamMode.calculatedCameraPosition;
+		recalculateSceneCamera();
+	}
 
 
 
@@ -3119,7 +3173,6 @@ void VulkanEngine::updateMainCam(const float_t& deltaTime)
 	//		SDL_WarpMouseInWindow(_window, _freeCamMode.savedMousePosition.x, _freeCamMode.savedMousePosition.y);
 	//}
 
-	glm::vec2 mousePositionDeltaCooked = (glm::vec2)input::mouseDelta / (float_t)_windowExtent.height * _mainCamMode.sensitivity;
 	std::cout << "MASDFASDF: " << mousePositionDeltaCooked.x << ",\t" << mousePositionDeltaCooked.y << std::endl;
 	//input::mouseDelta = glm::ivec2(0);		// Reset the mouseDelta
 
@@ -3165,9 +3218,14 @@ void VulkanEngine::updateMainCam(const float_t& deltaTime)
 }
 
 #ifdef _DEVELOP
-void VulkanEngine::updateFreeCam(const float_t& deltaTime)
+void VulkanEngine::updateFreeCam(const float_t& deltaTime, CameraModeChangeEvent changeEvent)
 {
-	if (input::onRMBPress || input::onRMBRelease || _cameraMode != _cameraMode_freeCamMode)
+	if (changeEvent != CameraModeChangeEvent::NONE)
+		_freeCamMode.enabled = false;
+	if (_cameraMode != _cameraMode_freeCamMode)
+		return;
+
+	if (input::onRMBPress || input::onRMBRelease)
 	{
 		_freeCamMode.enabled = (input::RMBPressed && _cameraMode == _cameraMode_freeCamMode);
 		SDL_SetRelativeMouseMode(_freeCamMode.enabled ? SDL_TRUE : SDL_FALSE);		// @NOTE: this causes cursor to disappear and not leave window boundaries (@BUG: Except for if you right click into the window?)

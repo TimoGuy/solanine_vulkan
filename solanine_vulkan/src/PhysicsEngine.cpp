@@ -725,4 +725,9 @@ namespace physutil
 	{
 		return glm::vec3(transform[3]);
 	}
+
+	float_t lerp(float_t a, float_t b, float_t t)
+	{
+		return ((1.0f - t) * a) + (t * b);
+	}
 }

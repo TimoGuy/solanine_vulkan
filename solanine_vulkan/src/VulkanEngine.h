@@ -265,7 +265,11 @@ private:
 		_cameraMode_mainCamMode = 0,
 		_cameraMode_freeCamMode = 1;
 	uint32_t _cameraMode = _cameraMode_freeCamMode;
-	uint32_t _numCameraModes = 2;
+	uint32_t _prevCameraMode = (uint32_t)-1;
+	static const uint32_t _numCameraModes = 2;
+	enum class CameraModeChangeEvent { NONE, ENTER, EXIT };
+	CameraModeChangeEvent _changeEvents[_numCameraModes];
+	bool _flagNextStepSetEnterChangeEvent = true;  // For default camera mode event to get triggered with ::ENTER
 
 	//
 	// Main cam mode
@@ -273,10 +277,20 @@ private:
 	//
 	struct MainCamMode
 	{
-		bool prevWasSetToThisCamMode = false;
+		RenderObject* targetObject = nullptr;
+		glm::vec3 focusPosition = glm::vec3(0);
 		glm::vec2 sensitivity = glm::vec2(100.0f, 50.0f);
+		glm::vec2 orientation = glm::vec2(0.0f);
+		glm::vec3 calculatedCameraPosition = glm::vec3(0);
+		glm::vec3 calculatedLookDirection = glm::vec3(0, -0.707106781, 0.707106781);
+
+		// Tweak variables
+		float_t   lookDistance = 15.0f;
+		float_t   focusRadius = 1.0f;
+		float_t   focusCentering = 0.75f;
+		glm::vec3 focusPositionOffset = glm::vec3(0);
 	} _mainCamMode;
-	void updateMainCam(const float_t& deltaTime);
+	void updateMainCam(const float_t& deltaTime, CameraModeChangeEvent changeEvent);
 
 #ifdef _DEVELOP
 public:
@@ -291,7 +305,7 @@ public:
 		float_t sensitivity = 100.0f;
 	} _freeCamMode;
 private:
-	void updateFreeCam(const float_t& deltaTime);
+	void updateFreeCam(const float_t& deltaTime, CameraModeChangeEvent changeEvent);
 #endif
 
 
