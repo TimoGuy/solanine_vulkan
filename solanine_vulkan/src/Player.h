@@ -30,6 +30,8 @@ private:
     RegisteredPhysicsObject* _physicsObj3;
 
     bool _onGround = false;
+    glm::vec3 _groundContactNormal;
+    uint32_t _stepsSinceLastGrounded = 0;
     bool _flagJump = false;
     glm::vec3 _prevPosition;
 

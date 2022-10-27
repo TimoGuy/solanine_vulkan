@@ -148,6 +148,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     //
     // Calculate rigidbody velocity
     //
+    _stepsSinceLastGrounded++;
     glm::vec3 desiredVelocity = cameraViewInput * _maxSpeed;  // @NOTE: we just ignore the y component in this desired velocity thing
     float_t acceleration = _onGround ? _maxAcceleration : _maxMidairAcceleration;
     float_t maxSpeedChange = acceleration * physicsDeltaTime;
@@ -160,6 +161,18 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     velocity.setX(c.x);
     velocity.setZ(c.y);
 
+    if (_onGround)
+    {
+        _stepsSinceLastGrounded = 0;
+        _physicsObj->body->setGravity(btVector3(0.0f, 0.0f, 0.0f));
+        velocity.setY(velocity.y() - 0.01f);
+
+    }
+    else
+    {
+        _physicsObj->body->setGravity(PhysicsEngine::getInstance().getGravity());
+    }
+
     if (_flagJump)
     {
         _flagJump = false;
@@ -170,18 +183,18 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
             );
         }
     }
+
     _physicsObj->body->setLinearVelocity(velocity);
 
     //
-    // Set gravity
+    // Debug message
     //
-    if (_onGround)
+    if (_stepsSinceLastGrounded > 0)
     {
-        _physicsObj->body->setGravity(btVector3(0.0f, 0.0f, 0.0f));
-    }
-    else
-    {
-        _physicsObj->body->setGravity(PhysicsEngine::getInstance().getGravity());
+        VulkanEngine::pushDebugMessage({
+            .message = "Steps since last grounded: " + std::to_string(_stepsSinceLastGrounded),
+            .type = 0,
+            });
     }
 
     //
@@ -201,12 +214,19 @@ void Player::renderImGui()
 
 void Player::onCollisionStay(btPersistentManifold* manifold)
 {
+    _groundContactNormal = glm::vec3(0.0f);
     for (int32_t i = 0; i < manifold->getNumContacts(); i++)
     {
         auto contact = manifold->getContactPoint(i);
         auto contactNormal = contact.m_normalWorldOnB;
-        _onGround |= contactNormal.y() > glm::cos(glm::radians(47.0f));
-        if (_onGround)
-            break;
+        bool isGroundContactNormal = contactNormal.y() > glm::cos(glm::radians(47.0f));
+        if (isGroundContactNormal)
+        {
+            _onGround = true;
+            _groundContactNormal += physutil::toVec3(contactNormal);
+        }
     }
+    
+    if (_onGround)
+        _groundContactNormal = glm::normalize(_groundContactNormal);
 }

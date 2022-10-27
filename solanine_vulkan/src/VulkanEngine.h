@@ -332,12 +332,11 @@ public:
 	struct DebugMessage
 	{
 		std::string message;
-		uint32_t type;  // 0: info | 1: warning | 2: error
-		float_t timeDisplayed = 0.0f;
+		uint32_t type = 0;  // 0: info | 1: warning | 2: error
+		float_t timeUntilDeletion = 5.0f;  // @NOTE: use this to lengthen certain messages, like error ones
 	};
 	static void pushDebugMessage(const DebugMessage& message);
 private:
-	const float_t _debugMessageDisplayTime = 5.0f;
 	static std::vector<DebugMessage> _debugMessages;
 	
 	//

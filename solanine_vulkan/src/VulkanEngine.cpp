@@ -3358,11 +3358,12 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 				textColor = ImVec4(1, 0, 0, 1);
 				break;
 			}
+			textColor.w = glm::clamp(dm.timeUntilDeletion / 0.35f, 0.0f, 1.0f);
 
 			ImGui::TextColored(textColor, dm.message.c_str());
-			dm.timeDisplayed += deltaTime;
+			dm.timeUntilDeletion -= deltaTime;
 
-			if (dm.timeDisplayed > _debugMessageDisplayTime)
+			if (dm.timeUntilDeletion <= 0)
 				_debugMessages.erase(_debugMessages.begin() + (size_t)i);
 		}
 
