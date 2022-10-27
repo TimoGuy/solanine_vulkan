@@ -171,7 +171,7 @@ void VulkanEngine::run()
 		// Render
 		if (_recreateSwapchain)
 			recreateSwapchain();
-		renderImGui();
+		renderImGui(deltaTime);
 		render();
 	}
 }
@@ -3172,6 +3172,12 @@ void VulkanEngine::updateFreeCam(const float_t& deltaTime)
 	}
 }
 
+std::vector<VulkanEngine::DebugMessage> VulkanEngine::_debugMessages;
+void VulkanEngine::pushDebugMessage(const DebugMessage& message)
+{
+	_debugMessages.push_back(message);
+}
+
 void VulkanEngine::updateDebugStats(const float_t& deltaTime)
 {
 	_debugStats.currentFPS = (uint32_t)std::roundf(1.0f / deltaTime);
@@ -3310,7 +3316,7 @@ void VulkanEngine::submitSelectedRenderObjectId(int32_t id)
 		<< "Selected object " << id << std::endl;
 }
 
-void VulkanEngine::renderImGui()
+void VulkanEngine::renderImGui(float_t deltaTime)
 {
 	ImGui_ImplVulkan_NewFrame();
 	ImGui_ImplSDL2_NewFrame(_window);
@@ -3326,12 +3332,50 @@ void VulkanEngine::renderImGui()
 
 	ImPlot::ShowDemoWindow();
 
-	float_t accumulatedWindowHeight = 0.0f;
-	constexpr float_t windowPadding = 8.0f;
+	//
+	// Debug Messages window
+	//
+	static float_t debugMessagesWindowWidth = 0.0f;
+	ImGui::SetNextWindowPos(ImVec2(_windowExtent.width * 0.5f - debugMessagesWindowWidth * 0.5f, 0.0f), ImGuiCond_Always);
+	ImGui::Begin("##Debug Messages", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs);
+	{
+		for (int32_t i = (int32_t)_debugMessages.size() - 1; i >= 0; i--)
+		{
+			DebugMessage& dm = _debugMessages[(size_t)i];
+
+			ImVec4 textColor(1, 1, 1, 1);
+			switch (dm.type)
+			{
+			case 0:
+				textColor = ImVec4(1, 1, 1, 1);
+				break;
+
+			case 1:
+				textColor = ImVec4(1, 1, 0, 1);
+				break;
+
+			case 2:
+				textColor = ImVec4(1, 0, 0, 1);
+				break;
+			}
+
+			ImGui::TextColored(textColor, dm.message.c_str());
+			dm.timeDisplayed += deltaTime;
+
+			if (dm.timeDisplayed > _debugMessageDisplayTime)
+				_debugMessages.erase(_debugMessages.begin() + (size_t)i);
+		}
+
+		debugMessagesWindowWidth = ImGui::GetWindowWidth();
+	}
+	ImGui::End();
 
 	//
 	// Debug Stats window
 	//
+	float_t accumulatedWindowHeight = 0.0f;
+	constexpr float_t windowPadding = 8.0f;
+
 	ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight), ImGuiCond_Always);		// @NOTE: the ImGuiCond_Always means that this line will execute always, when set to once, this line will be ignored after the first time it's called
 	ImGui::Begin("##Debug Statistics", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs);
 	{
@@ -3345,7 +3389,6 @@ void VulkanEngine::renderImGui()
 		accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
 	}
 	ImGui::End();
-
 
 	//
 	// PBR Shading Props

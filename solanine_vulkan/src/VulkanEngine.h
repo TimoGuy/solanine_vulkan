@@ -324,6 +324,21 @@ public:
 	} _freeCamMode;
 private:
 	void updateFreeCam(const float_t& deltaTime);
+
+public:
+	//
+	// Debug Messages
+	//
+	struct DebugMessage
+	{
+		std::string message;
+		uint32_t type;  // 0: info | 1: warning | 2: error
+		float_t timeDisplayed = 0.0f;
+	};
+	static void pushDebugMessage(const DebugMessage& message);
+private:
+	const float_t _debugMessageDisplayTime = 5.0f;
+	static std::vector<DebugMessage> _debugMessages;
 	
 	//
 	// Debug
@@ -377,7 +392,7 @@ private:
 		VkDescriptorSet textureLayerBuilder;
 		VkDescriptorSet textureLayerCollision;
 	} _imguiData;
-	void renderImGui();
+	void renderImGui(float_t deltaTime);
 #endif
 
     friend class Entity;
