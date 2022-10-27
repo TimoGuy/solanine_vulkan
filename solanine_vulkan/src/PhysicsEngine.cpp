@@ -283,6 +283,14 @@ std::vector<VkVertexInputBindingDescription> PhysicsEngine::getVertexBindingDesc
 	return bindings;
 }
 
+btCollisionWorld::ClosestRayResultCallback PhysicsEngine::raycast(const btVector3& from, const btVector3& to, uint32_t flags)
+{
+	btCollisionWorld::ClosestRayResultCallback closestResults(from, to);
+	closestResults.m_flags |= flags;
+	_dynamicsWorld->rayTest(from, to, closestResults);
+	return closestResults;
+}
+
 void PhysicsEngine::calculateInterpolatedTransform(RegisteredPhysicsObject& obj, const float_t& physicsAlpha)
 {
 	btTransform currentTransform = obj.body->getWorldTransform();

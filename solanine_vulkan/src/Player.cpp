@@ -22,18 +22,20 @@ Player::Player(VulkanEngine* engine) : Entity(engine)
             .attachedEntityGuid = _guid,
             });
 
+    _collisionShape = new btCapsuleShape(0.5f, 5.0f);
     _physicsObj =
         PhysicsEngine::getInstance().registerPhysicsObject(
             1.0f,
             _position,
             glm::quat(glm::vec3(0.0f)),
-            new btCapsuleShape(0.5f, 5.0f)
+            _collisionShape
         );
     _physicsObj->transformOffset = glm::vec3(0, -2.5f, 0);
-    _physicsObj->body->setAngularFactor(0.0f);
-    _physicsObj->body->setDamping(0.0f, 0.0f);
-    _physicsObj->body->setFriction(0.0f);
-    _physicsObj->body->setActivationState(DISABLE_DEACTIVATION);
+    auto body = _physicsObj->body;
+    body->setAngularFactor(0.0f);
+    body->setDamping(0.0f, 0.0f);
+    body->setFriction(0.0f);
+    body->setActivationState(DISABLE_DEACTIVATION);
 
     _onCollisionStayFunc =
         [&](btPersistentManifold* manifold) { onCollisionStay(manifold); };
@@ -99,6 +101,8 @@ Player::~Player()
     PhysicsEngine::getInstance().unregisterPhysicsObject(_physicsObj);
     PhysicsEngine::getInstance().unregisterPhysicsObject(_physicsObj2);  // @TEMP
     PhysicsEngine::getInstance().unregisterPhysicsObject(_physicsObj3);  // @TEMP
+
+    // @TODO: figure out if I need to call `delete _collisionShape;` or not
 }
 
 void Player::update(const float_t& deltaTime)
@@ -120,6 +124,9 @@ void Player::update(const float_t& deltaTime)
 
 void Player::physicsUpdate(const float_t& physicsDeltaTime)
 {
+    //
+    // Calculate input
+    //
     glm::vec2 input(0.0f);
 	input.x += input::keyLeftPressed ? -1.0f : 0.0f;
 	input.x += input::keyRightPressed ? 1.0f : 0.0f;
@@ -146,59 +153,42 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         cameraViewInput = physutil::clampVector(cameraViewInput, 0.0f, 1.0f);
 
     //
-    // Calculate rigidbody velocity
+    // Update state
     //
     _stepsSinceLastGrounded++;
+    glm::vec3 velocity = physutil::toVec3(_physicsObj->body->getLinearVelocity());
+    if (_onGround || snapToGround(velocity))
+    {
+        _stepsSinceLastGrounded = 0;
+    }
+    
+    //
+    // Calculate rigidbody velocity
+    //
     glm::vec3 desiredVelocity = cameraViewInput * _maxSpeed;  // @NOTE: we just ignore the y component in this desired velocity thing
     float_t acceleration = _onGround ? _maxAcceleration : _maxMidairAcceleration;
     float_t maxSpeedChange = acceleration * physicsDeltaTime;
 
-    btVector3 velocity = _physicsObj->body->getLinearVelocity();
-
-    glm::vec2 a(velocity.x(), velocity.z());
+    glm::vec2 a(velocity.x, velocity.z);
     glm::vec2 b(desiredVelocity.x, desiredVelocity.z);
     glm::vec2 c = physutil::moveTowardsVec2(a, b, maxSpeedChange);
-    velocity.setX(c.x);
-    velocity.setZ(c.y);
-
-    if (_onGround)
-    {
-        _stepsSinceLastGrounded = 0;
-        _physicsObj->body->setGravity(btVector3(0.0f, 0.0f, 0.0f));
-        velocity.setY(velocity.y() - 0.01f);
-
-    }
-    else
-    {
-        _physicsObj->body->setGravity(PhysicsEngine::getInstance().getGravity());
-    }
+    velocity.x = c.x;
+    velocity.z = c.y;
 
     if (_flagJump)
     {
         _flagJump = false;
         if (_onGround)
         {
-            velocity.setY(
-                glm::sqrt(_jumpHeight * 2.0f * PhysicsEngine::getInstance().getGravityStrength())
-            );
+            velocity.y = 
+                glm::sqrt(_jumpHeight * 2.0f * PhysicsEngine::getInstance().getGravityStrength());
         }
     }
 
-    _physicsObj->body->setLinearVelocity(velocity);
+    _physicsObj->body->setLinearVelocity(physutil::toVec3(velocity));
 
     //
-    // Debug message
-    //
-    if (_stepsSinceLastGrounded > 0)
-    {
-        VulkanEngine::pushDebugMessage({
-            .message = "Steps since last grounded: " + std::to_string(_stepsSinceLastGrounded),
-            .type = 0,
-            });
-    }
-
-    //
-    // Clear
+    // Clear state
     //
     _onGround = false;
 }
@@ -210,6 +200,38 @@ void Player::renderImGui()
     ImGui::DragFloat("_maxAcceleration", &_maxAcceleration);
     ImGui::DragFloat("_maxMidairAcceleration", &_maxMidairAcceleration);
     ImGui::DragFloat("_jumpHeight", &_jumpHeight);
+    ImGui::DragFloat("_maxSnapSpeed", &_maxSnapSpeed);
+}
+
+bool Player::snapToGround(glm::vec3& currentVelocity)
+{
+    if (_stepsSinceLastGrounded > 1)
+        return false;
+
+    float_t veloMagnitude2 = glm::length2(currentVelocity);
+    if (veloMagnitude2 < 0.0001f || veloMagnitude2 > _maxSnapSpeed * _maxSnapSpeed)
+        return false;
+
+    float_t rayLength = _collisionShape->getHalfHeight() + _collisionShape->getRadius() * 2.0f;
+    auto bodyPos = _physicsObj->body->getWorldTransform().getOrigin();
+    auto hitInfo = PhysicsEngine::getInstance().raycast(bodyPos, bodyPos + btVector3(0, -rayLength, 0));
+    if (!hitInfo.hasHit())
+        return false;
+
+    if (hitInfo.m_hitNormalWorld.y() <= glm::cos(glm::radians(47.0f)))
+        return false;
+
+    _groundContactNormal = physutil::toVec3(hitInfo.m_hitNormalWorld);
+    float_t veloDNormal = glm::dot(glm::normalize(currentVelocity), _groundContactNormal);
+    if (veloDNormal > 0.0f)
+        currentVelocity = glm::normalize(currentVelocity - _groundContactNormal * veloDNormal) * glm::sqrt(veloMagnitude2);  // Correct the velocity
+
+    VulkanEngine::pushDebugMessage({
+        .message = "Snapped to ground: " + std::to_string(hitInfo.m_hitNormalWorld.x()) + ", " + std::to_string(hitInfo.m_hitNormalWorld.y()) + ", " + std::to_string(hitInfo.m_hitNormalWorld.z()),
+        .type = 0,
+        });
+
+    return true;
 }
 
 void Player::onCollisionStay(btPersistentManifold* manifold)
