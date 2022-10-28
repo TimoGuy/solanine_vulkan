@@ -12,7 +12,7 @@ Player::Player(VulkanEngine* engine) : Entity(engine)
     _prevPosition = _position;
     _facingDirection = 0.0f;
 
-    _characterModel = &_engine->_renderObjectModels.slimeGirl;
+    _characterModel = _engine->getModel("slimeGirl");
 
     _renderObj =
         _engine->registerRenderObject({

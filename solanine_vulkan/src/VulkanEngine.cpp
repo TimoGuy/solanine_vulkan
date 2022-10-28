@@ -7,6 +7,7 @@
 #include "VkInitializers.h"
 #include "VkTextures.h"
 #include "GLSLToSPIRVHelper.h"
+#include "VkglTFModel.h"
 #include "AudioEngine.h"
 #include "PhysicsEngine.h"
 #include "InputManager.h"
@@ -188,9 +189,10 @@ void VulkanEngine::run()
 		static uint32_t animationIndex = 31;    // @NOTE: this is Slimegirl's running inmotion animation
 		static float_t animationTimer = 0.0f;
 		animationTimer += deltaTime;
-		if (animationTimer > _renderObjectModels.slimeGirl.animations[animationIndex].end)    // Loop animation
-			animationTimer -= _renderObjectModels.slimeGirl.animations[animationIndex].end;
-		_renderObjectModels.slimeGirl.updateAnimation(animationIndex, animationTimer);
+		auto slimeGirl = getModel("slimeGirl");
+		if (animationTimer > slimeGirl->animations[animationIndex].end)    // Loop animation
+			animationTimer -= slimeGirl->animations[animationIndex].end;
+		slimeGirl->updateAnimation(animationIndex, animationTimer);
 
 		// Update Audio Engine
 		AudioEngine::getInstance().update();
@@ -219,6 +221,9 @@ void VulkanEngine::cleanup()
 
 		PhysicsEngine::getInstance().cleanup();
 		AudioEngine::getInstance().cleanup();
+
+		for (auto it = _renderObjectModels.begin(); it != _renderObjectModels.end(); it++)
+			it->second->destroy(_allocator);
 
 		_mainDeletionQueue.flush();
 		_swapchainDependentDeletionQueue.flush();
@@ -699,6 +704,22 @@ Material* VulkanEngine::getMaterial(const std::string& name)
 	if (it == _materials.end())
 		return nullptr;
 	return &it->second;
+}
+
+vkglTF::Model* VulkanEngine::createModel(vkglTF::Model* model, const std::string& name)
+{
+	// @NOTE: no need to reserve any size of models for this vector, bc we're just giving
+	// away the pointer to the model itself instead bc the model is created on the heap
+	_renderObjectModels[name] = model;
+	return _renderObjectModels[name];  // Ehhh, we could've just sent back the original model pointer
+}
+
+vkglTF::Model* VulkanEngine::getModel(const std::string& name)
+{
+	auto it = _renderObjectModels.find(name);
+	if (it == _renderObjectModels.end())
+		return nullptr;
+	return it->second;
 }
 
 AllocatedBuffer VulkanEngine::createBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage)
@@ -2266,8 +2287,9 @@ void VulkanEngine::generatePBRCubemaps()
 
 					VkDeviceSize offsets[1] = { 0 };
 
-					_renderObjectModels.skybox.bind(cmd);
-					_renderObjectModels.skybox.draw(cmd);
+					auto skybox = getModel("cube");
+					skybox->bind(cmd);
+					skybox->draw(cmd);
 
 					vkCmdEndRenderPass(cmd);
 
@@ -2844,16 +2866,18 @@ void VulkanEngine::loadMeshes()
 {
 	tf::Executor e;
 	tf::Taskflow taskflow;
+
+	vkglTF::Model
+		*cube,
+		*slimeGirl;
 	taskflow.emplace(
-		[&]() { _renderObjectModels.skybox.loadFromFile(this, "res/models/Box.gltf"); },
-		[&]() { _renderObjectModels.slimeGirl.loadFromFile(this, "res/models/SlimeGirl.glb"); }
+		[&]() { cube = new vkglTF::Model(); cube->loadFromFile(this, "res/models/Box.gltf"); },
+		[&]() { slimeGirl = new vkglTF::Model(); slimeGirl->loadFromFile(this, "res/models/SlimeGirl.glb"); }
 	);
 	e.run(taskflow).wait();
 
-	_mainDeletionQueue.pushFunction([=]() {
-		_renderObjectModels.skybox.destroy(_allocator);
-		_renderObjectModels.slimeGirl.destroy(_allocator);
-		});
+	createModel(cube, "cube");
+	createModel(slimeGirl, "slimeGirl");
 }
 
 void VulkanEngine::uploadCurrentFrameToGPU(const FrameData& currentFrame)
@@ -2901,8 +2925,10 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipeline);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipelineLayout, 1, 1, &skyboxMaterial.textureSet, 0, nullptr);
-		_renderObjectModels.skybox.bind(cmd);
-		_renderObjectModels.skybox.draw(cmd);
+
+		auto skybox = getModel("cube");
+		skybox->bind(cmd);
+		skybox->draw(cmd);
 	}
 
 	//

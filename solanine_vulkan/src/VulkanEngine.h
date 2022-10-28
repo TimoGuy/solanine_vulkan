@@ -1,9 +1,8 @@
 #pragma once
 
 #include "Imports.h"
-#include "VkglTFModel.h"
 
-
+namespace vkglTF { class Model; }
 class Entity;
 
 struct GPUCameraData
@@ -173,17 +172,17 @@ public:
 	// Render Objects
 	//
 	std::vector<RenderObject> _renderObjects;    // @TODO: consider this to be private!
+	std::vector<bool> _renderObjectLayersEnabled = { true, false, false };
 	RenderObject* registerRenderObject(RenderObject renderObjectData);
 	void unregisterRenderObject(RenderObject* objRegistration);
 
 	std::unordered_map<std::string, Material> _materials;
-	std::vector<bool> _renderObjectLayersEnabled = { true, false, false };
+	Material* createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name);
+	Material* getMaterial(const std::string& name);
 
-	struct RenderObjectModels
-	{
-		vkglTF::Model skybox;
-		vkglTF::Model slimeGirl;
-	} _renderObjectModels;
+	std::unordered_map<std::string, vkglTF::Model*> _renderObjectModels;
+	vkglTF::Model* createModel(vkglTF::Model* model, const std::string& name);
+	vkglTF::Model* getModel(const std::string& name);
 
 	struct PBRSceneTextureSet    // @NOTE: these are the textures that are needed for any type of pbr scene (i.e. the irradiance, prefilter, and brdf maps)
 	{
@@ -191,9 +190,6 @@ public:
 		Texture prefilteredCubemap;
 		Texture brdfLUTTexture;
 	} _pbrSceneTextureSet;
-
-	Material* createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name);
-	Material* getMaterial(const std::string& name);
 
 	//
 	// Descriptor Sets
