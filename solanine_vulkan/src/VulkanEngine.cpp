@@ -3093,17 +3093,12 @@ void VulkanEngine::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent
 {
 	if (changeEvent != CameraModeChangeEvent::NONE)
 	{
-		_mainCamMode.orientation = glm::vec2(0.0f);
+		_mainCamMode.orbitAngles = glm::vec2(glm::radians(45.0f), 0.0f);
 		SDL_SetRelativeMouseMode(changeEvent == CameraModeChangeEvent::ENTER ? SDL_TRUE : SDL_FALSE);
 		SDL_WarpMouseInWindow(_window, _windowExtent.width / 2, _windowExtent.height / 2);
 	}
 	if (_cameraMode != _cameraMode_mainCamMode)
 		return;
-
-	//
-	// Calculate Mouse delta
-	//
-	glm::vec2 mousePositionDeltaCooked = (glm::vec2)input::mouseDelta / (float_t)_windowExtent.height * _mainCamMode.sensitivity;
 
 	//
 	// Focus onto target object
@@ -3128,12 +3123,20 @@ void VulkanEngine::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent
 	}
 	constexpr glm::vec3 worldUp = { 0.0f, 1.0f, 0.0f };
 
-	// Update look direction
-	glm::quat lookRotation = ;// @INCOMPLETE: start here!!!!!!!
+	//
+	// Manual rotation via mouse input
+	//
+	if (glm::length2((glm::vec2)input::mouseDelta) > 0.000001f)
+		_mainCamMode.orbitAngles += glm::vec2(input::mouseDelta.y, -input::mouseDelta.x) * glm::radians(_mainCamMode.sensitivity);
 
+	//
+	// Recalculate camera
+	//
+	_mainCamMode.orbitAngles.x = glm::clamp(_mainCamMode.orbitAngles.x, glm::radians(-85.0f), glm::radians(85.0f));
+	glm::quat lookRotation = glm::quat(glm::vec3(_mainCamMode.orbitAngles, 0.0f));
+	_mainCamMode.calculatedLookDirection = lookRotation * glm::vec3(0, 0, 1);
 	_mainCamMode.calculatedCameraPosition = _mainCamMode.focusPosition + _mainCamMode.focusPositionOffset - _mainCamMode.calculatedLookDirection * _mainCamMode.lookDistance;
 
-	// Recalculate camera
 	if (_sceneCamera.facingDirection != _mainCamMode.calculatedLookDirection ||
 		_sceneCamera.gpuCameraData.cameraPosition != _mainCamMode.calculatedCameraPosition)
 	{
@@ -3141,80 +3144,6 @@ void VulkanEngine::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent
 		_sceneCamera.gpuCameraData.cameraPosition = _mainCamMode.calculatedCameraPosition;
 		recalculateSceneCamera();
 	}
-
-
-
-	// @INCOMPLETE: @TODO: continue from here!!!!
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-	//if (input::onRMBPress || input::onRMBRelease)
-	//{
-	//	_freeCamMode.enabled = input::RMBPressed;
-	//	SDL_SetRelativeMouseMode(_freeCamMode.enabled ? SDL_TRUE : SDL_FALSE);		// @NOTE: this causes cursor to disappear and not leave window boundaries (@BUG: Except for if you right click into the window?)
-	//				
-	//	if (_freeCamMode.enabled)
-	//		SDL_GetMouseState(
-	//			&_freeCamMode.savedMousePosition.x,
-	//			&_freeCamMode.savedMousePosition.y
-	//		);
-	//	else
-	//		SDL_WarpMouseInWindow(_window, _freeCamMode.savedMousePosition.x, _freeCamMode.savedMousePosition.y);
-	//}
-
-	std::cout << "MASDFASDF: " << mousePositionDeltaCooked.x << ",\t" << mousePositionDeltaCooked.y << std::endl;
-	//input::mouseDelta = glm::ivec2(0);		// Reset the mouseDelta
-
-	//glm::vec2 inputToVelocity(0.0f);
-	//inputToVelocity.x += input::keyLeftPressed ? -1.0f : 0.0f;
-	//inputToVelocity.x += input::keyRightPressed ? 1.0f : 0.0f;
-	//inputToVelocity.y += input::keyUpPressed ? 1.0f : 0.0f;
-	//inputToVelocity.y += input::keyDownPressed ? -1.0f : 0.0f;
-
-	//float_t worldUpVelocity = 0.0f;
-	//worldUpVelocity += input::keyWorldUpPressed ? 1.0f : 0.0f;
-	//worldUpVelocity += input::keyWorldDownPressed ? -1.0f : 0.0f;
-
-	//if (glm::length(mousePositionDeltaCooked) > 0.0f || glm::length(inputToVelocity) > 0.0f || glm::abs(worldUpVelocity) > 0.0f)
-	//{
-	//	constexpr glm::vec3 worldUp = { 0.0f, 1.0f, 0.0f };
-
-	//	// Update camera facing direction with mouse input
-	//	glm::vec3 newCamFacingDirection =
-	//		glm::rotate(
-	//			_sceneCamera.facingDirection,
-	//			glm::radians(-mousePositionDeltaCooked.y),
-	//			glm::normalize(glm::cross(_sceneCamera.facingDirection, worldUp))
-	//		);
-	//	if (glm::angle(newCamFacingDirection, worldUp) > glm::radians(5.0f) &&
-	//		glm::angle(newCamFacingDirection, -worldUp) > glm::radians(5.0f))
-	//		_sceneCamera.facingDirection = newCamFacingDirection;
-	//	_sceneCamera.facingDirection = glm::rotate(_sceneCamera.facingDirection, glm::radians(-mousePositionDeltaCooked.x), worldUp);
-
-	//	// Update camera position with keyboard input
-	//	float speedMultiplier = input::keyShiftPressed ? 50.0f : 25.0f;
-	//	inputToVelocity *= speedMultiplier * deltaTime;
-	//	worldUpVelocity *= speedMultiplier * deltaTime;
-
-	//	_sceneCamera.gpuCameraData.cameraPosition +=
-	//		inputToVelocity.y * _sceneCamera.facingDirection +
-	//		inputToVelocity.x * glm::normalize(glm::cross(_sceneCamera.facingDirection, worldUp)) +
-	//		glm::vec3(0.0f, worldUpVelocity, 0.0f);
-
-		// Recalculate camera
-		recalculateSceneCamera();
-	//}
 }
 
 #ifdef _DEVELOP
@@ -3242,8 +3171,7 @@ void VulkanEngine::updateFreeCam(const float_t& deltaTime, CameraModeChangeEvent
 	if (!_freeCamMode.enabled)
 		return;
 
-	glm::vec2 mousePositionDeltaCooked = (glm::vec2)input::mouseDelta / (float_t)_windowExtent.height * _freeCamMode.sensitivity;
-	input::mouseDelta = glm::ivec2(0);		// Reset the mouseDelta
+	glm::vec2 mousePositionDeltaCooked = (glm::vec2)input::mouseDelta * _freeCamMode.sensitivity;
 
 	glm::vec2 inputToVelocity(0.0f);
 	inputToVelocity.x += input::keyLeftPressed ? -1.0f : 0.0f;
@@ -3556,10 +3484,10 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 	ImGui::End();
 
 	//
-	// PBR Shading Props
+	// PBR Shading Properties
 	//
 	ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight), ImGuiCond_Always);
-	ImGui::Begin("PBR Shading Props", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
+	ImGui::Begin("PBR Shading Properties", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
 	{
 		if (ImGui::DragFloat3("Light Direction", glm::value_ptr(_pbrRendering.gpuSceneShadingProps.lightDir)))
 			_pbrRendering.gpuSceneShadingProps.lightDir = glm::normalize(_pbrRendering.gpuSceneShadingProps.lightDir);
@@ -3659,6 +3587,26 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 
 			if ((int32_t)fmodf(i + 1, 3) != 0)
 				ImGui::SameLine();
+		}
+
+		accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
+	}
+	ImGui::End();
+
+	//
+	// Scene-level Properties
+	//
+	ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight), ImGuiCond_Always);
+	ImGui::Begin("Scene Properties", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
+	{
+		if (ImGui::CollapsingHeader("Camera Properties", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			ImGui::Text("NOTE: press F10 to change camera types");
+
+			ImGui::SliderFloat("lookDistance", &_mainCamMode.lookDistance, 1.0f, 100.0f);
+			ImGui::DragFloat("focusRadius", &_mainCamMode.focusRadius, 1.0f, 0.0f);
+			ImGui::SliderFloat("focusCentering", &_mainCamMode.focusCentering, 0.0f, 1.0f);
+			ImGui::DragFloat3("focusPositionOffset", &_mainCamMode.focusPositionOffset.x);
 		}
 
 		accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;

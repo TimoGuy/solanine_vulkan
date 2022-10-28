@@ -279,16 +279,16 @@ private:
 	{
 		RenderObject* targetObject = nullptr;
 		glm::vec3 focusPosition = glm::vec3(0);
-		glm::vec2 sensitivity = glm::vec2(100.0f, 50.0f);
-		glm::vec2 orientation = glm::vec2(0.0f);
+		glm::vec2 sensitivity = glm::vec2(0.1f, 0.1f);
+		glm::vec2 orbitAngles = glm::vec2(glm::radians(45.0f), 0.0f);
 		glm::vec3 calculatedCameraPosition = glm::vec3(0);
 		glm::vec3 calculatedLookDirection = glm::vec3(0, -0.707106781, 0.707106781);
 
 		// Tweak variables
 		float_t   lookDistance = 15.0f;
-		float_t   focusRadius = 1.0f;
+		float_t   focusRadius = 3.0f;
 		float_t   focusCentering = 0.75f;
-		glm::vec3 focusPositionOffset = glm::vec3(0);
+		glm::vec3 focusPositionOffset = glm::vec3(0, 7, 0);
 	} _mainCamMode;
 	void updateMainCam(const float_t& deltaTime, CameraModeChangeEvent changeEvent);
 
@@ -302,7 +302,7 @@ public:
 	{
 		bool enabled = false;
 		glm::ivec2 savedMousePosition;
-		float_t sensitivity = 100.0f;
+		float_t sensitivity = 0.1f;
 	} _freeCamMode;
 private:
 	void updateFreeCam(const float_t& deltaTime, CameraModeChangeEvent changeEvent);
