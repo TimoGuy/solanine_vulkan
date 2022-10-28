@@ -2,7 +2,7 @@
 
 #include "Entity.h"
 #include "Imports.h"
-#include "VkglTFModel.h"
+namespace vkglTF { class Model; }
 struct RenderObject;
 struct RegisteredPhysicsObject;
 class btPersistentManifold;

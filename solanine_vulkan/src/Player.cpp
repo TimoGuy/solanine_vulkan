@@ -1,6 +1,7 @@
 #include "Player.h"
 
 #include "VulkanEngine.h"
+#include "VkglTFModel.h"
 #include "PhysicsEngine.h"
 #include "InputManager.h"
 #include "imgui/imgui.h"

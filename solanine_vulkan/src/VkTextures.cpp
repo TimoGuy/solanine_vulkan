@@ -1,6 +1,7 @@
 #include "VkTextures.h"
 #include <stb_image.h>
 #include "VkInitializers.h"
+#include "VulkanEngine.h"
 
 
 bool vkutil::loadImageFromFile(VulkanEngine& engine, const char* fname, VkFormat imageFormat, uint32_t mipLevels, AllocatedImage& outImage)

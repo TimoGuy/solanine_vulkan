@@ -1,6 +1,7 @@
 #pragma once
 #include "Imports.h"
-#include "VulkanEngine.h"
+class VulkanEngine;
+class AllocatedImage;
 
 
 namespace vkutil
