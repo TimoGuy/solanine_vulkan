@@ -22,7 +22,7 @@ Player::Player(VulkanEngine* engine) : Entity(engine)
             .renderLayer = RenderLayer::VISIBLE,
             .attachedEntityGuid = _guid,
             });
-    _engine->setMainCamTargetObject(_renderObj);
+    _engine->setMainCamTargetObject(_renderObj);  // @NOTE: I believe that there should be some kind of main camera system that targets the player by default but when entering different volumes etc. the target changes depending.... essentially the system needs to be more built out imo
 
     _collisionShape = new btCapsuleShape(0.5f, 5.0f);
     _physicsObj =
