@@ -22,6 +22,7 @@ Player::Player(VulkanEngine* engine) : Entity(engine)
             .renderLayer = RenderLayer::VISIBLE,
             .attachedEntityGuid = _guid,
             });
+    _engine->setMainCamTargetObject(_renderObj);
 
     _collisionShape = new btCapsuleShape(0.5f, 5.0f);
     _physicsObj =

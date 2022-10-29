@@ -84,7 +84,6 @@ void VulkanEngine::init()
 
 	// @TEMP
 	auto player = new Player(this);  // This gets automagically deleted by the engine!
-	_mainCamMode.targetObject = &_renderObjects[0];  // This should be the player (@TEMP)
 }
 
 void VulkanEngine::run()
@@ -3170,6 +3169,11 @@ void VulkanEngine::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent
 		_sceneCamera.gpuCameraData.cameraPosition = _mainCamMode.calculatedCameraPosition;
 		recalculateSceneCamera();
 	}
+}
+
+void VulkanEngine::setMainCamTargetObject(RenderObject* targetObject)
+{
+	_mainCamMode.targetObject = targetObject;
 }
 
 #ifdef _DEVELOP

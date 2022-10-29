@@ -287,6 +287,9 @@ private:
 		glm::vec3 focusPositionOffset = glm::vec3(0, 7, 0);
 	} _mainCamMode;
 	void updateMainCam(const float_t& deltaTime, CameraModeChangeEvent changeEvent);
+public:
+	void setMainCamTargetObject(RenderObject* targetObject);
+private:
 
 #ifdef _DEVELOP
 public:
