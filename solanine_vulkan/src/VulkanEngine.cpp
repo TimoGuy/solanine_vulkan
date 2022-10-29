@@ -12,13 +12,12 @@
 #include "PhysicsEngine.h"
 #include "InputManager.h"
 #include "Entity.h"
+#include "SceneManagement.h"
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_sdl.h"
 #include "imgui/imgui_impl_vulkan.h"
 #include "imgui/implot.h"
 #include "imgui/ImGuizmo.h"
-
-#include "Player.h"		// @TEMP: need an entity populator or level loader
 
 
 constexpr uint64_t TIMEOUT_1_SEC = 1000000000;
@@ -82,8 +81,7 @@ void VulkanEngine::init()
 
 	_isInitialized = true;
 
-	// @TEMP
-	auto player = new Player(this);  // This gets automagically deleted by the engine!
+	scene::loadScene("res/scenes/sample_scene_simplified.txt", this);
 }
 
 void VulkanEngine::run()
@@ -179,6 +177,7 @@ void VulkanEngine::run()
 
 		// Add/Remove requested entities
 		INTERNALaddRemoveRequestedEntities();
+	scene::saveScene("res/scenes/example.txt", _entities);
 
 		//
 		// @TODO: loop thru animators and update them!

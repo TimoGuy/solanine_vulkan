@@ -1,37 +1,18 @@
-d161a965-a97d-47c5-a520-a0e6ead290dc    # Scene UUID (First line) (TODO: figure out if this is actually needed?)
-
-
-###############################
-# First part is for entrances #
-###############################
-~3                                      # Entrance Count
-
-:0                                      # Entrance id 0
-0.0                                     # spawn_x
-0.0                                     # spawn_y
-0.0                                     # spawn_z
-1.235122                                # spawn_facing_direction_radians
-
-:1
-69.0
-420.0
-42069.0
-3.141593
-
-:2
-100.0
-10000.0
-100.0
-0.0
-
-# NOTE: in the debug mode, these entrances will likely each have a registered renderobject,
-#       but in reality they'll just be scene properties with no entities running the show.
-
-
 ##############################
 # Second part is for objects #
 ##############################
 ~3                                      # Object Count
+
+:player
+asdfasdfasdfasdfasdfasdfasdfasdf
+0.0 10.0 0.0
+3.1415926666
+20.0
+50.0
+20.0
+5.0
+1.0
+100.0
 
 :trigger
 42bd770b-adf9-444b-a5e6-73c78ed9dd10

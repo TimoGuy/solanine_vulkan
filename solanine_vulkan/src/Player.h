@@ -12,11 +12,17 @@ class btCapsuleShape;
 class Player : public Entity
 {
 public:
-    Player(VulkanEngine* engine);
+    static const std::string TYPE_NAME;
+
+    Player(VulkanEngine* engine, DataSerialized* ds);
     ~Player();
 
     void update(const float_t& deltaTime);
     void physicsUpdate(const float_t& physicsDeltaTime);
+
+    void dump(DataSerializer& ds);
+    void load(DataSerialized& ds);
+    std::string getTypeName() { return TYPE_NAME; };
 
     void renderImGui();
 

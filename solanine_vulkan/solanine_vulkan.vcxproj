@@ -123,8 +123,10 @@ copy $(SolutionDir)libs\fmod_studio\lib\fmodstudio.dll $(OutDirfullPath)fmodstud
     <None Include="shader\skybox.vert" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\SceneManagement.h" />
     <ClInclude Include="src\AudioEngine.h" />
     <ClInclude Include="src\Entity.h" />
+    <ClInclude Include="src\DataSerialization.h" />
     <ClInclude Include="src\GLSLToSPIRVHelper.h" />
     <ClInclude Include="src\imgui\imconfig.h" />
     <ClInclude Include="src\imgui\imgui.h" />
@@ -165,6 +167,8 @@ copy $(SolutionDir)libs\fmod_studio\lib\fmodstudio.dll $(OutDirfullPath)fmodstud
     <ClCompile Include="src\Main.cpp" />
     <ClCompile Include="src\PhysicsEngine.cpp" />
     <ClCompile Include="src\Player.cpp" />
+    <ClCompile Include="src\DataSerialization.cpp" />
+    <ClCompile Include="src\SceneManagement.cpp" />
     <ClCompile Include="src\VkBootstrap.cpp" />
     <ClCompile Include="src\VkglTFModel.cpp" />
     <ClCompile Include="src\VkInitializers.cpp" />

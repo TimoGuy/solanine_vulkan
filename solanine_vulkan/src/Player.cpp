@@ -4,14 +4,21 @@
 #include "VkglTFModel.h"
 #include "PhysicsEngine.h"
 #include "InputManager.h"
+#include "DataSerialization.h"
 #include "imgui/imgui.h"
 
 
-Player::Player(VulkanEngine* engine) : Entity(engine)
+Player::Player(VulkanEngine* engine, DataSerialized* ds) : Entity(engine, ds)
 {
-    _position = glm::vec3(0.0f);
+    if (ds == nullptr)
+    {
+        _position = glm::vec3(0.0f);
+        _facingDirection = 0.0f;
+    }
+    else
+        load(*ds);
+
     _prevPosition = _position;
-    _facingDirection = 0.0f;
 
     _characterModel = _engine->getModel("slimeGirl");
 
@@ -20,7 +27,7 @@ Player::Player(VulkanEngine* engine) : Entity(engine)
             .model = _characterModel,
             .transformMatrix = glm::translate(glm::mat4(1.0f), _position) * glm::toMat4(glm::quat(glm::vec3(0, _facingDirection, 0))),
             .renderLayer = RenderLayer::VISIBLE,
-            .attachedEntityGuid = _guid,
+            .attachedEntityGuid = getGUID(),
             });
     _engine->setMainCamTargetObject(_renderObj);  // @NOTE: I believe that there should be some kind of main camera system that targets the player by default but when entering different volumes etc. the target changes depending.... essentially the system needs to be more built out imo
 
@@ -211,6 +218,32 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     // Clear state
     //
     _onGround = false;
+}
+
+void Player::dump(DataSerializer& ds)
+{
+    Entity::dump(ds);
+    ds.dumpVec3(_position);
+    ds.dumpFloat(_facingDirection);
+    ds.dumpFloat(_maxSpeed);
+    ds.dumpFloat(_maxAcceleration);
+    ds.dumpFloat(_maxMidairAcceleration);
+    ds.dumpFloat(_jumpHeight);
+    ds.dumpFloat(_enableSnapping);
+    ds.dumpFloat(_maxSnapSpeed);
+}
+
+void Player::load(DataSerialized& ds)
+{
+    Entity::load(ds);
+    _position              = ds.loadVec3();
+    _facingDirection       = ds.loadFloat();
+    _maxSpeed              = ds.loadFloat();
+    _maxAcceleration       = ds.loadFloat();
+    _maxMidairAcceleration = ds.loadFloat();
+    _jumpHeight            = ds.loadFloat();
+    _enableSnapping        = (bool)ds.loadFloat();
+    _maxSnapSpeed          = ds.loadFloat();
 }
 
 void Player::renderImGui()
