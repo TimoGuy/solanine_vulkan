@@ -81,7 +81,11 @@ void VulkanEngine::init()
 
 	_isInitialized = true;
 
-	scene::loadScene("res/scenes/sample_scene_simplified.txt", this);
+	std::string startupSceneFname = "res/scenes/sample_scene_simplified.txt";
+	if (scene::loadScene(startupSceneFname, this))
+		pushDebugMessage({
+			.message = "Successfully loaded scene " + startupSceneFname,
+			});
 }
 
 void VulkanEngine::run()
