@@ -50,63 +50,6 @@ Player::Player(VulkanEngine* engine, DataSerialized* ds) : Entity(engine, ds)
         [&](btPersistentManifold* manifold) { onCollisionStay(manifold); };
     _physicsObj->onCollisionStayCallback = &_onCollisionStayFunc;
 
-    _physicsObj2 =  // @TEMP (0deg)
-        PhysicsEngine::getInstance().registerPhysicsObject(
-            false,
-            glm::vec3(0, -10, 0),
-            glm::quat(glm::vec3(0.0f)),
-            new btBoxShape({200, 1, 200})
-        );
-    _physicsObj3 =  // @TEMP (45deg)
-        PhysicsEngine::getInstance().registerPhysicsObject(
-            false,
-            glm::vec3(90, 20, -50),
-            glm::quat(glm::vec3(glm::radians(45.0f), 0.0f, 0.0f)),
-            new btBoxShape({20, 1, 100})
-        );
-    _physicsObj3 =  // @TEMP (30deg)
-        PhysicsEngine::getInstance().registerPhysicsObject(
-            false,
-            glm::vec3(50, 10, -50),
-            glm::quat(glm::vec3(glm::radians(30.0f), 0.0f, 0.0f)),
-            new btBoxShape({20, 1, 100})
-        );
-    _physicsObj3 =  // @TEMP (22.5deg)
-        PhysicsEngine::getInstance().registerPhysicsObject(
-            false,
-            glm::vec3(10, 5, -50),
-            glm::quat(glm::vec3(glm::radians(22.5f), 0.0f, 0.0f)),
-            new btBoxShape({20, 1, 100})
-        );
-    _physicsObj3 =  // @TEMP (10deg)
-        PhysicsEngine::getInstance().registerPhysicsObject(
-            false,
-            glm::vec3(-30, 2, -50),
-            glm::quat(glm::vec3(glm::radians(10.0f), 0.0f, 0.0f)),
-            new btBoxShape({20, 1, 100})
-        );
-    _physicsObj3 =  // @TEMP (5deg)
-        PhysicsEngine::getInstance().registerPhysicsObject(
-            false,
-            glm::vec3(-70, -5, -50),
-            glm::quat(glm::vec3(glm::radians(5.0f), 0.0f, 0.0f)),
-            new btBoxShape({20, 1, 100})
-        );
-    _physicsObj3 =  // @TEMP (50deg)
-        PhysicsEngine::getInstance().registerPhysicsObject(
-            false,
-            glm::vec3(-110, -5, -50),
-            glm::quat(glm::vec3(glm::radians(50.0f), 0.0f, 0.0f)),
-            new btBoxShape({20, 1, 100})
-        );
-    _physicsObj3 =  // @TEMP (step up)
-        PhysicsEngine::getInstance().registerPhysicsObject(
-            false,
-            glm::vec3(0, -9.75f, 150),
-            glm::quat(glm::vec3(0.0f)),
-            new btBoxShape({100, 1, 100})
-        );
-
     _enableUpdate = true;
     _enablePhysicsUpdate = true;
 }
@@ -115,8 +58,6 @@ Player::~Player()
 {
     _engine->unregisterRenderObject(_renderObj);
     PhysicsEngine::getInstance().unregisterPhysicsObject(_physicsObj);
-    PhysicsEngine::getInstance().unregisterPhysicsObject(_physicsObj2);  // @TEMP
-    PhysicsEngine::getInstance().unregisterPhysicsObject(_physicsObj3);  // @TEMP
 
     // @TODO: figure out if I need to call `delete _collisionShape;` or not
 }

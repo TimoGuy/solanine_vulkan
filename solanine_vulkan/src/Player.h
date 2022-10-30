@@ -34,8 +34,6 @@ private:
     RenderObject* _renderObj;
     btCapsuleShape* _collisionShape;
     RegisteredPhysicsObject* _physicsObj;
-    RegisteredPhysicsObject* _physicsObj2;
-    RegisteredPhysicsObject* _physicsObj3;
 
     bool _onGround = false;
     glm::vec3 _groundContactNormal;

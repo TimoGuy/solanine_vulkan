@@ -3,6 +3,7 @@
 #include <fstream>
 #include <sstream>
 #include "DataSerialization.h"
+#include "VulkanEngine.h"
 
 #include "Player.h"
 
@@ -43,14 +44,32 @@ bool spinupNewObject(const std::string& objectName, VulkanEngine* engine, DataSe
 
 namespace scene
 {
-    bool loadScene(const std::string& fname, VulkanEngine* engine)
+    extern std::string currentLoadedScene = "";
+
+    std::vector<std::string> getListOfScenes()
+    {
+        std::vector<std::string> scenes;
+        for (const auto& entry : std::filesystem::recursive_directory_iterator(SCENE_DIRECTORY_PATH))
+        {
+            const auto& path = entry.path();
+            if (std::filesystem::is_directory(path))
+                continue;
+            if (!path.has_extension() || path.extension().compare(".ssdat") != 0)
+                continue;
+            auto relativePath = std::filesystem::relative(path, SCENE_DIRECTORY_PATH);
+            scenes.push_back(relativePath.string());  // @NOTE: that this line could be dangerous if there are any filenames or directory names that have utf8 chars or wchars in it
+        }
+        return scenes;
+    }
+    
+    bool loadScene(const std::string& name, VulkanEngine* engine)
     {
         bool success = true;
 
         DataSerializer ds;
         std::string newObjectType = "";
 
-        std::ifstream infile(fname);
+        std::ifstream infile(SCENE_DIRECTORY_PATH + name);
         std::string line;
         for (size_t lineNum = 1; std::getline(infile, line); lineNum++)
         {
@@ -101,7 +120,7 @@ namespace scene
             {
                 // ERROR
                 std::cerr << "[SCENE MANAGEMENT]" << std::endl
-                    << "ERROR (line " << lineNum << ") (file: " << fname << "): Headless data" << std::endl
+                    << "ERROR (line " << lineNum << ") (file: " << SCENE_DIRECTORY_PATH << name << "): Headless data" << std::endl
                     << "   Trimmed line: " << line << std::endl
                     << "  Original line: " << line << std::endl;
             }
@@ -114,14 +133,32 @@ namespace scene
             success &= spinupNewObject(newObjectType, engine, &dsCooked);
         }
 
+        currentLoadedScene = name;
+
+        if (success)
+            engine->pushDebugMessage({
+			    .message = "Successfully loaded scene \"" + name + "\"",
+			    });
+        else
+            engine->pushDebugMessage({
+                .message = "Loaded scene \"" + name + "\" with errors (see console output)",
+                .type = 1,
+                });
+
         return success;
     }
 
-    bool saveScene(const std::string& fname, const std::vector<Entity*>& entities)
+    bool saveScene(const std::string& name, const std::vector<Entity*>& entities, VulkanEngine* engine)
     {
-        std::ofstream outfile(fname);
+        std::ofstream outfile(SCENE_DIRECTORY_PATH + name);
         if (!outfile.is_open())
+        {
+            engine->pushDebugMessage({
+			    .message = "Could not open file \"" + name + "\" for writing scene data",
+                .type = 2,
+			    });
             return false;
+        }
 
         for (auto ent : entities)
         {
@@ -138,6 +175,10 @@ namespace scene
             outfile << '\n';  // Extra newline for readability
         }
         outfile.close();
+
+        engine->pushDebugMessage({
+			.message = "Successfully saved scene \"" + name + "\"",
+			});
 
         return true;
     }

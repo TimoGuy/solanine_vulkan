@@ -14,6 +14,7 @@
 #include "Entity.h"
 #include "SceneManagement.h"
 #include "imgui/imgui.h"
+#include "imgui/imgui_stdlib.h"
 #include "imgui/imgui_impl_sdl.h"
 #include "imgui/imgui_impl_vulkan.h"
 #include "imgui/implot.h"
@@ -81,11 +82,66 @@ void VulkanEngine::init()
 
 	_isInitialized = true;
 
-	std::string startupSceneFname = "res/scenes/sample_scene_simplified.txt";
-	if (scene::loadScene(startupSceneFname, this))
-		pushDebugMessage({
-			.message = "Successfully loaded scene " + startupSceneFname,
-			});
+	std::string startupSceneFname = "sample_scene_simplified.ssdat";
+	scene::loadScene(startupSceneFname, this);
+	
+
+	// @TEMP (0deg)
+	PhysicsEngine::getInstance().registerPhysicsObject(
+		false,
+		glm::vec3(0, -10, 0),
+		glm::quat(glm::vec3(0.0f)),
+		new btBoxShape({200, 1, 200})
+	);
+	// @TEMP (45deg)
+	PhysicsEngine::getInstance().registerPhysicsObject(
+		false,
+		glm::vec3(90, 20, -50),
+		glm::quat(glm::vec3(glm::radians(45.0f), 0.0f, 0.0f)),
+		new btBoxShape({20, 1, 100})
+	);
+	// @TEMP (30deg)
+	PhysicsEngine::getInstance().registerPhysicsObject(
+		false,
+		glm::vec3(50, 10, -50),
+		glm::quat(glm::vec3(glm::radians(30.0f), 0.0f, 0.0f)),
+		new btBoxShape({20, 1, 100})
+	);
+	// @TEMP (22.5deg)
+	PhysicsEngine::getInstance().registerPhysicsObject(
+		false,
+		glm::vec3(10, 5, -50),
+		glm::quat(glm::vec3(glm::radians(22.5f), 0.0f, 0.0f)),
+		new btBoxShape({20, 1, 100})
+	);
+	// @TEMP (10deg)
+	PhysicsEngine::getInstance().registerPhysicsObject(
+		false,
+		glm::vec3(-30, 2, -50),
+		glm::quat(glm::vec3(glm::radians(10.0f), 0.0f, 0.0f)),
+		new btBoxShape({20, 1, 100})
+	);
+	// @TEMP (5deg)
+	PhysicsEngine::getInstance().registerPhysicsObject(
+		false,
+		glm::vec3(-70, -5, -50),
+		glm::quat(glm::vec3(glm::radians(5.0f), 0.0f, 0.0f)),
+		new btBoxShape({20, 1, 100})
+	);
+	// @TEMP (50deg)
+	PhysicsEngine::getInstance().registerPhysicsObject(
+		false,
+		glm::vec3(-110, -5, -50),
+		glm::quat(glm::vec3(glm::radians(50.0f), 0.0f, 0.0f)),
+		new btBoxShape({20, 1, 100})
+	);
+	// @TEMP (step up)
+	PhysicsEngine::getInstance().registerPhysicsObject(
+		false,
+		glm::vec3(0, -9.75f, 150),
+		glm::quat(glm::vec3(0.0f)),
+		new btBoxShape({100, 1, 100})
+	);
 }
 
 void VulkanEngine::run()
@@ -181,7 +237,6 @@ void VulkanEngine::run()
 
 		// Add/Remove requested entities
 		INTERNALaddRemoveRequestedEntities();
-	scene::saveScene("res/scenes/example.txt", _entities);
 
 		//
 		// @TODO: loop thru animators and update them!
@@ -3497,6 +3552,58 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 	ImGui::End();
 
 	//
+	// Scene Properties window
+	//
+	static float_t scenePropertiesWindowWidth = 0.0f;
+	ImGui::SetNextWindowPos(ImVec2(_windowExtent.width - scenePropertiesWindowWidth, 0.0f), ImGuiCond_Always);
+	ImGui::Begin((scene::currentLoadedScene + " Properties").c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
+	{
+		ImGui::Text(scene::currentLoadedScene.c_str());
+
+		static std::vector<std::string> listOfScenes;
+		if (ImGui::Button("Open Scene.."))
+		{
+			listOfScenes = scene::getListOfScenes();
+			ImGui::OpenPopup("open_scene_popup");
+		}
+		if (ImGui::BeginPopup("open_scene_popup"))
+		{
+			for (auto& path : listOfScenes)
+				if (ImGui::Button(("Open \"" + path + "\"").c_str()))
+				{
+					for (auto& ent : _entities)
+						destroyEntity(ent);
+					scene::loadScene(path, this);
+					ImGui::CloseCurrentPopup();
+				}
+			ImGui::EndPopup();
+		}
+
+		ImGui::SameLine();
+		if (ImGui::Button("Save Scene"))
+			scene::saveScene(scene::currentLoadedScene, _entities, this);
+
+		ImGui::SameLine();
+		if (ImGui::Button("Save Scene As.."))
+			ImGui::OpenPopup("save_scene_as_popup");
+		if (ImGui::BeginPopup("save_scene_as_popup"))
+		{
+			static std::string saveSceneAsFname;
+			ImGui::InputText(".ssdat", &saveSceneAsFname);
+			if (ImGui::Button(("Save As \"" + saveSceneAsFname + ".ssdat\"").c_str()))
+			{
+				scene::saveScene(saveSceneAsFname + ".ssdat", _entities, this);
+				scene::currentLoadedScene = saveSceneAsFname + ".ssdat";
+				ImGui::CloseCurrentPopup();
+			}
+			ImGui::EndPopup();
+		}
+
+		scenePropertiesWindowWidth = ImGui::GetWindowWidth();
+	}
+	ImGui::End();
+
+	//
 	// Debug Stats window
 	//
 	float_t accumulatedWindowHeight = 0.0f;
@@ -3627,10 +3734,10 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 	ImGui::End();
 
 	//
-	// Scene-level Properties
+	// Global Properties
 	//
 	ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight), ImGuiCond_Always);
-	ImGui::Begin("Scene Properties", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
+	ImGui::Begin("Global Properties", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
 	{
 		if (ImGui::CollapsingHeader("Camera Properties", ImGuiTreeNodeFlags_DefaultOpen))
 		{
