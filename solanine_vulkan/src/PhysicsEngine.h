@@ -25,7 +25,7 @@ struct RegisteredPhysicsObject
 
     // Tweakable properties
     glm::vec3 transformOffset;
-    std::function<void(btPersistentManifold*)>* onCollisionStayCallback = nullptr;
+    std::function<void(btPersistentManifold*, bool amIB)>* onCollisionStayCallback = nullptr;
 };
 
 class PhysicsEngine
@@ -44,6 +44,7 @@ public:
     RegisteredPhysicsObject* registerPhysicsObject(float_t mass, glm::vec3 origin, glm::quat rotation, btCollisionShape* shape);    // @NOTE: setting mass=0.0 will make the rigidbody be static
     void unregisterPhysicsObject(RegisteredPhysicsObject* objRegistration);
 
+    void lazyRecreateDebugDrawBuffer();
     void renderDebugDraw(VkCommandBuffer cmd, const VkDescriptorSet& globalDescriptor);
 
 	std::vector<VkVertexInputAttributeDescription> getVertexAttributeDescriptions();
@@ -77,6 +78,7 @@ private:
     VulkanEngine* _engine;
 
     bool _vertexBufferCreated = false;
+    bool _recreateDebugDrawBuffer = false;
     size_t _vertexCount;
     AllocatedBuffer _vertexBuffer;
     AllocatedBuffer _transformsBuffer;

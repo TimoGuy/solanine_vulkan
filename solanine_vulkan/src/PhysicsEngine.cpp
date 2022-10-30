@@ -123,18 +123,26 @@ void PhysicsEngine::update(float_t deltaTime, std::vector<Entity*>* entities)   
 	// Check contact manifolds
 	// @NOTE: using a system similar to Unity's messaging OnCollisionStay() (just oncollisionstay bc that's the only one I use personally)
 	//
-	for (size_t i = 0; i < (size_t)_dispatcher->getNumManifolds(); i++)
+	size_t numManifolds = (size_t)_dispatcher->getNumManifolds();
+	for (size_t i = 0; i < numManifolds; i++)
 	{
 		btPersistentManifold* manifold = _dispatcher->getManifoldByIndexInternal(i);  // @NOTE: a manifold is a set of contacts that came from a collision. Ideally it should store normal hit info too.
 		if (manifold->getNumContacts() <= 0)
 			continue;
 
+		//
+		// @HACK: the `am_i_b` part... holy buttcrack, that's really dumb.
+		//
+		// @TODO: Well, in the future it might be really good to also give the other
+		//        `RegisteredPhysicsObject*` pointer so that tags and whatnot can get
+		//        compared to each other.  -Timo
+		//
 		RegisteredPhysicsObject* obj0 = _rigidBodyToPhysicsObjectMap[(void*)manifold->getBody0()];
 		RegisteredPhysicsObject* obj1 = _rigidBodyToPhysicsObjectMap[(void*)manifold->getBody1()];
 		if (obj0->onCollisionStayCallback)
-			(*obj0->onCollisionStayCallback)(manifold);
+			(*obj0->onCollisionStayCallback)(manifold, false);
 		if (obj1->onCollisionStayCallback)
-			(*obj1->onCollisionStayCallback)(manifold);
+			(*obj1->onCollisionStayCallback)(manifold, true);
 	}
 
 	//
@@ -208,7 +216,7 @@ RegisteredPhysicsObject* PhysicsEngine::registerPhysicsObject(float_t mass, glm:
 	};
 	_physicsObjects.push_back(rpo);
 
-	recreateDebugDrawBuffer();
+	_recreateDebugDrawBuffer = true;
 
 	_rigidBodyToPhysicsObjectMap[(void*)rpo.body] = &_physicsObjects.back();
 	return &_physicsObjects.back();
@@ -227,6 +235,14 @@ void PhysicsEngine::unregisterPhysicsObject(RegisteredPhysicsObject* objRegistra
 			return deleteFlag;
 		}
 	);
+
+	_recreateDebugDrawBuffer = true;
+}
+
+void PhysicsEngine::lazyRecreateDebugDrawBuffer()
+{
+	if (!_recreateDebugDrawBuffer)
+		return;
 
 	recreateDebugDrawBuffer();
 }
@@ -580,6 +596,8 @@ void PhysicsEngine::appendDebugShapeVertices(btCapsuleShape* shape, size_t physO
 
 void PhysicsEngine::recreateDebugDrawBuffer()
 {
+	vkDeviceWaitIdle(_engine->_device);
+
 	//
 	// Assemble vertices with the correct shape sizing
 	//
@@ -633,6 +651,8 @@ void PhysicsEngine::recreateDebugDrawBuffer()
 	vmaMapMemory(_engine->_allocator, _vertexBuffer._allocation, &data);
 	memcpy(data, &vertexList[0], vertexBufferSize);
 	vmaUnmapMemory(_engine->_allocator, _vertexBuffer._allocation);
+
+	_recreateDebugDrawBuffer = false;
 }
 
 namespace physutil

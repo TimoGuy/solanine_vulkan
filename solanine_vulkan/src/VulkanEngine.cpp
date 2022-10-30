@@ -43,7 +43,7 @@ void VulkanEngine::init()
 	// Initialization routine
 	//
 	SDL_Init(SDL_INIT_VIDEO);
-	SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
+	SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN);
 
 	_window = SDL_CreateWindow(
 		("Solanine Prealpha - Vulkan" + buildNumber).c_str(),
@@ -79,6 +79,8 @@ void VulkanEngine::init()
 
 	AudioEngine::getInstance().initialize();
 	PhysicsEngine::getInstance().initialize(this);
+
+	SDL_ShowWindow(_window);
 
 	_isInitialized = true;
 
@@ -257,6 +259,8 @@ void VulkanEngine::run()
 		// Render
 		if (_recreateSwapchain)
 			recreateSwapchain();
+		PhysicsEngine::getInstance().lazyRecreateDebugDrawBuffer();
+
 		renderImGui(deltaTime);
 		render();
 	}
@@ -3554,6 +3558,13 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 	//
 	// Scene Properties window
 	//
+	static std::string _flagNextStepLoadThisPathAsAScene = "";
+	if (!_flagNextStepLoadThisPathAsAScene.empty())
+	{
+		scene::loadScene(_flagNextStepLoadThisPathAsAScene, this);
+		_flagNextStepLoadThisPathAsAScene = "";
+	}
+
 	static float_t scenePropertiesWindowWidth = 0.0f;
 	ImGui::SetNextWindowPos(ImVec2(_windowExtent.width - scenePropertiesWindowWidth, 0.0f), ImGuiCond_Always);
 	ImGui::Begin((scene::currentLoadedScene + " Properties").c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
@@ -3573,7 +3584,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 				{
 					for (auto& ent : _entities)
 						destroyEntity(ent);
-					scene::loadScene(path, this);
+					_flagNextStepLoadThisPathAsAScene = path;  // @HACK: mireba wakaru... but it's needed bc it works when delaying the load by a step...  -Timo 2022/10/30
 					ImGui::CloseCurrentPopup();
 				}
 			ImGui::EndPopup();

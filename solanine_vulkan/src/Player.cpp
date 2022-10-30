@@ -47,7 +47,7 @@ Player::Player(VulkanEngine* engine, DataSerialized* ds) : Entity(engine, ds)
     body->setActivationState(DISABLE_DEACTIVATION);
 
     _onCollisionStayFunc =
-        [&](btPersistentManifold* manifold) { onCollisionStay(manifold); };
+        [&](btPersistentManifold* manifold, bool amIB) { onCollisionStay(manifold, amIB); };
     _physicsObj->onCollisionStayCallback = &_onCollisionStayFunc;
 
     _enableUpdate = true;
@@ -228,13 +228,14 @@ bool Player::snapToGround(const float_t& physicsDeltaTime, glm::vec3& currentVel
     return true;
 }
 
-void Player::onCollisionStay(btPersistentManifold* manifold)
+void Player::onCollisionStay(btPersistentManifold* manifold, bool amIB)
 {
     _groundContactNormal = glm::vec3(0.0f);
-    for (int32_t i = 0; i < manifold->getNumContacts(); i++)
+    size_t numContacts = (size_t)manifold->getNumContacts();
+    for (int32_t i = 0; i < numContacts; i++)
     {
         auto contact = manifold->getContactPoint(i);
-        auto contactNormal = contact.m_normalWorldOnB;
+        auto contactNormal = contact.m_normalWorldOnB * (amIB ? -1.0f : 1.0f);
         bool isGroundContactNormal = contactNormal.y() > glm::cos(glm::radians(47.0f));
         if (isGroundContactNormal)
         {

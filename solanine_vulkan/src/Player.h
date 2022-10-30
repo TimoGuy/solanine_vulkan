@@ -44,8 +44,8 @@ private:
     bool snapToGround(const float_t& physicsDeltaTime, glm::vec3& currentVelocity);
 
     // Callbacks
-    std::function<void(btPersistentManifold*)> _onCollisionStayFunc;
-    void onCollisionStay(btPersistentManifold* manifold);
+    std::function<void(btPersistentManifold*, bool amIB)> _onCollisionStayFunc;
+    void onCollisionStay(btPersistentManifold* manifold, bool amIB);
 
     // Tweak Props
     float_t _maxSpeed = 20.0f;
