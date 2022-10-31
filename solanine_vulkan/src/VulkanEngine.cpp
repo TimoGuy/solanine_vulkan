@@ -219,8 +219,8 @@ void VulkanEngine::cleanup()
 		vkDeviceWaitIdle(_device);
 
 		_flushEntitiesToDestroyRoutine = true;  // @NOTE: all entities must be deleted before the physicsengine can shut down
-		for (auto& entity : _entities)
-			delete entity;
+		for (int32_t i = (int32_t)_entities.size() - 1; i >= 0; i--)  // @NOTE: have to use this backwards iterator for some reason bc `delete` keyword doesn't play well with `for (auto e : _entities)` like... why?
+			delete _entities[i];
 
 		PhysicsEngine::getInstance().cleanup();
 		AudioEngine::getInstance().cleanup();
@@ -3701,6 +3701,26 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 			ImGui::SliderFloat("focusCentering", &_mainCamMode.focusCentering, 0.0f, 1.0f);
 			ImGui::DragFloat3("focusPositionOffset", &_mainCamMode.focusPositionOffset.x);
 		}
+
+		accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
+	}
+	ImGui::End();
+
+	//
+	// Create Entity
+	//
+	ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight), ImGuiCond_Always);
+	ImGui::Begin("Create Entity", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
+	{
+		static int32_t entityToCreateIndex = 0;
+		std::vector<std::string> listEntityTypes = scene::getListOfEntityTypes();
+		std::stringstream allEntityTypes;
+		for (auto entType : listEntityTypes)
+			allEntityTypes << entType << '\0';
+
+		ImGui::Combo("##Entity to create", &entityToCreateIndex, allEntityTypes.str().c_str());
+		if (ImGui::Button("Create!"))
+			scene::spinupNewObject(listEntityTypes[(size_t)entityToCreateIndex], this, nullptr);
 
 		accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
 	}
