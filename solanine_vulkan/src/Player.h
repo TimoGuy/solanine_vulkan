@@ -34,12 +34,18 @@ private:
     RenderObject* _renderObj;
     btCapsuleShape* _collisionShape;
     RegisteredPhysicsObject* _physicsObj;
+    float_t _totalHeight;
+    float_t _maxClimbAngle;
+    float_t _adjustedHalfHeight;
+    float_t _bottomRaycastFeetDist;
+    float_t _bottomRaycastExtraDist;
 
     bool _onGround = false;
     glm::vec3 _groundContactNormal;
     uint32_t _stepsSinceLastGrounded = 0;
     bool _flagJump = false;
     glm::vec3 _prevPosition;
+    glm::vec3 _displacementToTarget = glm::vec3(0.0f);
 
     bool snapToGround(const float_t& physicsDeltaTime, glm::vec3& currentVelocity);
 

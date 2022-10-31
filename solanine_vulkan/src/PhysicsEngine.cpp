@@ -498,7 +498,7 @@ void PhysicsEngine::appendDebugShapeVertices(btCapsuleShape* shape, size_t physO
 		.physObjIndex = static_cast<int32_t>(physObjIndex),
 	};
 	float_t radius = shape->getRadius();
-	float_t halfHeight = shape->getHalfHeight();
+	float_t halfHeight = shape->getHalfHeight() + shape->getMargin();
 	float_t drawHeight = glm::max(0.0f, halfHeight - radius);
 	
 	constexpr int32_t circleSlices = 16;

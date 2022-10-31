@@ -31,7 +31,15 @@ Player::Player(VulkanEngine* engine, DataSerialized* ds) : Entity(engine, ds)
             });
     _engine->setMainCamTargetObject(_renderObj);  // @NOTE: I believe that there should be some kind of main camera system that targets the player by default but when entering different volumes etc. the target changes depending.... essentially the system needs to be more built out imo
 
-    _collisionShape = new btCapsuleShape(0.5f, 5.0f);
+    _totalHeight = 5.0f;
+    _maxClimbAngle= glm::radians(47.0f);
+    float_t r = 0.5f;
+    float_t d = (r - r * glm::sin(_maxClimbAngle)) / glm::sin(_maxClimbAngle);
+    _collisionShape = new btCapsuleShape(r, _totalHeight - d);  // @NOTE: it appears that this shape has a margin in the direction of the sausage (i.e. Y in this case) and then the radius is the actual radius
+    _adjustedHalfHeight = (_totalHeight - d) * 0.5 + _collisionShape->getMargin();
+    _bottomRaycastFeetDist = d;
+    _bottomRaycastExtraDist = 0.5f;
+
     _physicsObj =
         PhysicsEngine::getInstance().registerPhysicsObject(
             1.0f,
@@ -112,9 +120,41 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     //
     // Update state
     //
-    _stepsSinceLastGrounded++;
     glm::vec3 velocity = physutil::toVec3(_physicsObj->body->getLinearVelocity());
-    if (_onGround || snapToGround(physicsDeltaTime, velocity))
+    velocity -= _displacementToTarget;  // Undo the displacement (hopefully no movement bugs)
+    _displacementToTarget = glm::vec3(0.0f);
+
+    const float_t targetLength = _adjustedHalfHeight + _bottomRaycastFeetDist;
+    const float_t rayLength = targetLength + _bottomRaycastExtraDist;
+    auto bodyPos = _physicsObj->body->getWorldTransform().getOrigin();
+    auto hitInfo = PhysicsEngine::getInstance().raycast(bodyPos, bodyPos + btVector3(0, -rayLength, 0));
+    if (hitInfo.hasHit())
+    {
+        // @NOTE: _bottomRaycastExtraDist is meant for if the body is moving upwards like on a slope,
+        //        and then needs to get snapped down, this keeps the body pulled to the ground.
+        //        If the body is level or moving downwards, then we only want to include the actual
+        //        regular _bottomRaycastFeetDist length. Thus we do an extra check that the hit length
+        //        was smaller or equal to that length.
+        if (velocity.y > 0.0f)
+            _onGround = true;
+        else if (hitInfo.m_closestHitFraction * rayLength <= targetLength)
+            _onGround = true;
+
+        if (_onGround)  // Only attempt to correct the distance from ground and this floating body if "_onGround"
+        {
+            float_t targetLengthDifference = targetLength - hitInfo.m_closestHitFraction * rayLength;
+            _displacementToTarget = glm::vec3(0, targetLengthDifference, 0) / physicsDeltaTime;  // Move up even though raycast was down bc we want to go the opposite direction the raycast went.
+        }
+    }
+
+
+
+
+
+
+
+    _stepsSinceLastGrounded++;
+    if (_onGround)// || snapToGround(physicsDeltaTime, velocity))
     {
         _stepsSinceLastGrounded = 0;
     }
@@ -150,10 +190,11 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         {
             velocity.y = 
                 glm::sqrt(_jumpHeight * 2.0f * PhysicsEngine::getInstance().getGravityStrength());
+            _displacementToTarget = glm::vec3(0.0f);
         }
     }
 
-    _physicsObj->body->setLinearVelocity(physutil::toVec3(velocity));
+    _physicsObj->body->setLinearVelocity(physutil::toVec3(velocity + _displacementToTarget));
 
     //
     // Clear state
