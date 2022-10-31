@@ -28,8 +28,9 @@ public:
 private:
     vkglTF::Model* _cubeModel;
     RenderObject* _renderObj;
-    btBoxShape* _collisionShape;
     RegisteredPhysicsObject* _physicsObj;
 
     void updatePhysicsObjFromRenderTransform();
+
+    glm::mat4 _tempLoadedRenderTransform = glm::mat4(1.0f);
 };

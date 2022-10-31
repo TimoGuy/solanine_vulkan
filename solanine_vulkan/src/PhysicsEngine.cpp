@@ -772,4 +772,24 @@ namespace physutil
 	{
 		return ((1.0f - t) * a) + (t * b);
 	}
+
+	bool matrixEquals(const glm::mat4& m1, const glm::mat4& m2, float epsilon)
+	{
+		return (glm::abs(m1[0][0] - m2[0][0]) < epsilon &&
+			glm::abs(m1[0][1] - m2[0][1]) < epsilon &&
+			glm::abs(m1[0][2] - m2[0][2]) < epsilon &&
+			glm::abs(m1[0][3] - m2[0][3]) < epsilon &&
+			glm::abs(m1[1][0] - m2[1][0]) < epsilon &&
+			glm::abs(m1[1][1] - m2[1][1]) < epsilon &&
+			glm::abs(m1[1][2] - m2[1][2]) < epsilon &&
+			glm::abs(m1[1][3] - m2[1][3]) < epsilon &&
+			glm::abs(m1[2][0] - m2[2][0]) < epsilon &&
+			glm::abs(m1[2][1] - m2[2][1]) < epsilon &&
+			glm::abs(m1[2][2] - m2[2][2]) < epsilon &&
+			glm::abs(m1[2][3] - m2[2][3]) < epsilon &&
+			glm::abs(m1[3][0] - m2[3][0]) < epsilon &&
+			glm::abs(m1[3][1] - m2[3][1]) < epsilon &&
+			glm::abs(m1[3][2] - m2[3][2]) < epsilon &&
+			glm::abs(m1[3][3] - m2[3][3]) < epsilon);
+	}
 }

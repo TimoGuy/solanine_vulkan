@@ -11,34 +11,31 @@
 
 Yosemite::Yosemite(VulkanEngine* engine, DataSerialized* ds) : Entity(engine, ds)
 {
+    if (ds)
+        load(*ds);
+
     _cubeModel = _engine->getModel("cube");
 
     _renderObj =
         _engine->registerRenderObject({
             .model = _cubeModel,
-            .transformMatrix = glm::mat4(1.0f),
+            .transformMatrix = _tempLoadedRenderTransform,
             .renderLayer = RenderLayer::VISIBLE,
             .attachedEntityGuid = getGUID(),
             });
-
-    if (ds)
-        load(*ds);
     
     glm::vec3 position;
     glm::vec3 eulerAngles;
     glm::vec3 scale;
     ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(_renderObj->transformMatrix), glm::value_ptr(position), glm::value_ptr(eulerAngles), glm::value_ptr(scale));
 
-    _collisionShape = new btBoxShape(physutil::toVec3(scale * 0.5f));
     _physicsObj =
         PhysicsEngine::getInstance().registerPhysicsObject(
             false,
             position,
-            glm::quat(eulerAngles),
-            _collisionShape
+            glm::quat(glm::radians(eulerAngles)),
+            new btBoxShape(physutil::toVec3(scale * 0.5f))
         );
-
-    updatePhysicsObjFromRenderTransform();
 
     _enablePhysicsUpdate = true;
 }
@@ -66,7 +63,7 @@ void Yosemite::dump(DataSerializer& ds)
 void Yosemite::load(DataSerialized& ds)
 {
     Entity::load(ds);
-    _renderObj->transformMatrix = ds.loadMat4();
+    _tempLoadedRenderTransform = ds.loadMat4();
 }
 
 void Yosemite::renderImGui()
@@ -76,13 +73,25 @@ void Yosemite::renderImGui()
 
 void Yosemite::updatePhysicsObjFromRenderTransform()
 {
-    return;
+    if (physutil::matrixEquals(_renderObj->transformMatrix, _tempLoadedRenderTransform))
+        return;
+    _tempLoadedRenderTransform = _renderObj->transformMatrix;
 
+    //
+    // Just completely recreate it (bc it's a static body)
+    //
+    PhysicsEngine::getInstance().unregisterPhysicsObject(_physicsObj);
 
-	btTransform trans;
-	trans.setFromOpenGLMatrix(glm::value_ptr(_renderObj->transformMatrix));
-    _physicsObj->body->setWorldTransform(trans);
+    glm::vec3 position;  // @COPYPASTA
+    glm::vec3 eulerAngles;
+    glm::vec3 scale;
+    ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(_renderObj->transformMatrix), glm::value_ptr(position), glm::value_ptr(eulerAngles), glm::value_ptr(scale));
 
-    _collisionShape = new btBoxShape(physutil::toVec3(physutil::getScale(_renderObj->transformMatrix) * 0.5f));
-    _physicsObj->body->setCollisionShape(_collisionShape);
+    _physicsObj =
+        PhysicsEngine::getInstance().registerPhysicsObject(
+            false,
+            position,
+            glm::quat(glm::radians(eulerAngles)),
+            new btBoxShape(physutil::toVec3(scale * 0.5f))
+        );
 }

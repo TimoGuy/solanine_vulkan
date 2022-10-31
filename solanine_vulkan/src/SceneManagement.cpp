@@ -46,14 +46,15 @@ namespace scene
         return ENTITY_TYPE_NAMES;
     }
 
-    bool spinupNewObject(const std::string& objectName, VulkanEngine* engine, DataSerialized* ds)
+    Entity* spinupNewObject(const std::string& objectName, VulkanEngine* engine, DataSerialized* ds)
     {
+        Entity* ent = nullptr;
         if (objectName == Player::TYPE_NAME)
-            new Player(engine, ds);
+            ent = new Player(engine, ds);
         if (objectName == Yosemite::TYPE_NAME)
-            new Yosemite(engine, ds);
+            ent = new Yosemite(engine, ds);
 
-        return true;
+        return ent;
     }
 
     extern std::string currentLoadedScene = "";
@@ -109,7 +110,7 @@ namespace scene
                 if (!newObjectType.empty())
                 {
                     auto dsCooked = ds.getSerializedData();
-                    success &= spinupNewObject(newObjectType, engine, &dsCooked);
+                    success &= (spinupNewObject(newObjectType, engine, &dsCooked) != nullptr);
                 }
 
                 // New object
@@ -142,7 +143,7 @@ namespace scene
         if (!newObjectType.empty())
         {
             auto dsCooked = ds.getSerializedData();
-            success &= spinupNewObject(newObjectType, engine, &dsCooked);
+            success &= (spinupNewObject(newObjectType, engine, &dsCooked) != nullptr);
         }
 
         currentLoadedScene = name;

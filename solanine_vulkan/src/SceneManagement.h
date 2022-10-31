@@ -8,7 +8,7 @@ class DataSerialized;
 namespace scene
 {
     std::vector<std::string> getListOfEntityTypes();
-    bool spinupNewObject(const std::string& objectName, VulkanEngine* engine, DataSerialized* ds);
+    Entity* spinupNewObject(const std::string& objectName, VulkanEngine* engine, DataSerialized* ds);
 
     const std::string SCENE_DIRECTORY_PATH = "res/scenes/";
     extern std::string currentLoadedScene;

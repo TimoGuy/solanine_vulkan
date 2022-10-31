@@ -3712,15 +3712,28 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 	ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight), ImGuiCond_Always);
 	ImGui::Begin("Create Entity", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
 	{
-		static int32_t entityToCreateIndex = 0;
+		static int32_t entityToCreateIndex = 1;  // @NOTE: don't want default setting to be `:player` or else you could accidentally create another player entity... and that is not needed for the levels
 		std::vector<std::string> listEntityTypes = scene::getListOfEntityTypes();
 		std::stringstream allEntityTypes;
 		for (auto entType : listEntityTypes)
 			allEntityTypes << entType << '\0';
 
 		ImGui::Combo("##Entity to create", &entityToCreateIndex, allEntityTypes.str().c_str());
+
+		static Entity* _flagAttachToThisEntity = nullptr;  // One frame lag fetch bc the `INTERNALaddRemoveRequestedEntities()` gets run once a frame instead of immediate add when an entity gets constructed.
+		if (_flagAttachToThisEntity)
+		{
+			for (auto& ro : _renderObjects)
+				if (ro.attachedEntityGuid == _flagAttachToThisEntity->getGUID())
+					_movingMatrix.matrixToMove = &ro.transformMatrix;
+			_flagAttachToThisEntity = nullptr;
+		}
+
 		if (ImGui::Button("Create!"))
-			scene::spinupNewObject(listEntityTypes[(size_t)entityToCreateIndex], this, nullptr);
+		{
+			auto newEnt = scene::spinupNewObject(listEntityTypes[(size_t)entityToCreateIndex], this, nullptr);
+			_flagAttachToThisEntity = newEnt;  // @HACK: ... but if it works?
+		}
 
 		accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
 	}

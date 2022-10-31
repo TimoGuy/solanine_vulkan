@@ -105,4 +105,5 @@ namespace physutil
 	glm::quat getRotation(const glm::mat4& transform);
 	glm::vec3 getScale(const glm::mat4& transform);
     float_t lerp(float_t a, float_t b, float_t t);
+    bool matrixEquals(const glm::mat4& m1, const glm::mat4& m2, float epsilon = 0.0001f);
 }
