@@ -102,5 +102,7 @@ namespace physutil
     btVector3 toVec3(const glm::vec3& vector);
     glm::vec3 toVec3(const btVector3& vector);
     glm::vec3 getPosition(const glm::mat4& transform);
+	glm::quat getRotation(const glm::mat4& transform);
+	glm::vec3 getScale(const glm::mat4& transform);
     float_t lerp(float_t a, float_t b, float_t t);
 }

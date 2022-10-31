@@ -86,64 +86,6 @@ void VulkanEngine::init()
 
 	std::string startupSceneFname = "sample_scene_simplified.ssdat";
 	scene::loadScene(startupSceneFname, this);
-	
-
-	// @TEMP (0deg)
-	PhysicsEngine::getInstance().registerPhysicsObject(
-		false,
-		glm::vec3(0, -10, 0),
-		glm::quat(glm::vec3(0.0f)),
-		new btBoxShape({200, 1, 200})
-	);
-	// @TEMP (45deg)
-	PhysicsEngine::getInstance().registerPhysicsObject(
-		false,
-		glm::vec3(90, 20, -50),
-		glm::quat(glm::vec3(glm::radians(45.0f), 0.0f, 0.0f)),
-		new btBoxShape({20, 1, 100})
-	);
-	// @TEMP (30deg)
-	PhysicsEngine::getInstance().registerPhysicsObject(
-		false,
-		glm::vec3(50, 10, -50),
-		glm::quat(glm::vec3(glm::radians(30.0f), 0.0f, 0.0f)),
-		new btBoxShape({20, 1, 100})
-	);
-	// @TEMP (22.5deg)
-	PhysicsEngine::getInstance().registerPhysicsObject(
-		false,
-		glm::vec3(10, 5, -50),
-		glm::quat(glm::vec3(glm::radians(22.5f), 0.0f, 0.0f)),
-		new btBoxShape({20, 1, 100})
-	);
-	// @TEMP (10deg)
-	PhysicsEngine::getInstance().registerPhysicsObject(
-		false,
-		glm::vec3(-30, 2, -50),
-		glm::quat(glm::vec3(glm::radians(10.0f), 0.0f, 0.0f)),
-		new btBoxShape({20, 1, 100})
-	);
-	// @TEMP (5deg)
-	PhysicsEngine::getInstance().registerPhysicsObject(
-		false,
-		glm::vec3(-70, -5, -50),
-		glm::quat(glm::vec3(glm::radians(5.0f), 0.0f, 0.0f)),
-		new btBoxShape({20, 1, 100})
-	);
-	// @TEMP (50deg)
-	PhysicsEngine::getInstance().registerPhysicsObject(
-		false,
-		glm::vec3(-110, -5, -50),
-		glm::quat(glm::vec3(glm::radians(50.0f), 0.0f, 0.0f)),
-		new btBoxShape({20, 1, 100})
-	);
-	// @TEMP (step up)
-	PhysicsEngine::getInstance().registerPhysicsObject(
-		false,
-		glm::vec3(0, -9.75f, 150),
-		glm::quat(glm::vec3(0.0f)),
-		new btBoxShape({100, 1, 100})
-	);
 }
 
 void VulkanEngine::run()

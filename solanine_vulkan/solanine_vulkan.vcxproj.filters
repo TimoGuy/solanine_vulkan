@@ -155,6 +155,9 @@
     <ClInclude Include="src\Player.h">
       <Filter>Header Files\entity</Filter>
     </ClInclude>
+    <ClInclude Include="src\Yosemite.h">
+      <Filter>Header Files\entity</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Main.cpp">
@@ -230,6 +233,9 @@
       <Filter>Source Files\entity</Filter>
     </ClCompile>
     <ClCompile Include="src\Player.cpp">
+      <Filter>Source Files\entity</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Yosemite.cpp">
       <Filter>Source Files\entity</Filter>
     </ClCompile>
   </ItemGroup>

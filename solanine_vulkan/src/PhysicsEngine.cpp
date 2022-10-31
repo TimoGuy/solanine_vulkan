@@ -746,6 +746,28 @@ namespace physutil
 		return glm::vec3(transform[3]);
 	}
 
+	glm::quat getRotation(const glm::mat4& transform)
+	{
+		// NOTE: when the scale gets larger, the quaternion will rotate up to however many dimensions there are, thus we have to scale down/normalize this transform to unit scale before extracting the quaternion
+		glm::vec3 scale = getScale(transform);
+		const glm::mat3 unitScaledRotationMatrix(
+			glm::vec3(transform[0]) / scale[0],
+			glm::vec3(transform[1]) / scale[1],
+			glm::vec3(transform[2]) / scale[2]
+		);
+		return glm::normalize(glm::quat_cast(unitScaledRotationMatrix));		// NOTE: Seems like the quat created here needs to be normalized. Weird.  -Timo 2022-01-19
+	}
+
+	glm::vec3 getScale(const glm::mat4& transform)
+	{
+		glm::vec3 scale = {
+			glm::length(glm::vec3(transform[0])),
+			glm::length(glm::vec3(transform[1])),
+			glm::length(glm::vec3(transform[2])),
+		};
+		return scale;
+	}
+
 	float_t lerp(float_t a, float_t b, float_t t)
 	{
 		return ((1.0f - t) * a) + (t * b);

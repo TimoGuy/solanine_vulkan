@@ -149,6 +149,7 @@ copy $(SolutionDir)libs\fmod_studio\lib\fmodstudio.dll $(OutDirfullPath)fmodstud
     <ClInclude Include="src\VkInitializers.h" />
     <ClInclude Include="src\VkTextures.h" />
     <ClInclude Include="src\VulkanEngine.h" />
+    <ClInclude Include="src\Yosemite.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\AudioEngine.cpp" />
@@ -176,6 +177,7 @@ copy $(SolutionDir)libs\fmod_studio\lib\fmodstudio.dll $(OutDirfullPath)fmodstud
     <ClCompile Include="src\VkInitializers.cpp" />
     <ClCompile Include="src\VkTextures.cpp" />
     <ClCompile Include="src\VulkanEngine.cpp" />
+    <ClCompile Include="src\Yosemite.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\core\core.vcxproj">

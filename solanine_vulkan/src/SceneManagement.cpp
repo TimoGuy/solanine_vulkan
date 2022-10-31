@@ -6,6 +6,7 @@
 #include "VulkanEngine.h"
 
 #include "Player.h"
+#include "Yosemite.h"
 
 
 // @NOTE: copied from https://stackoverflow.com/questions/216823/how-to-trim-an-stdstring
@@ -30,20 +31,31 @@ static inline void trim(std::string &s) {
 }
 
 
-const std::string Player::TYPE_NAME = ":player";
-
-
-bool spinupNewObject(const std::string& objectName, VulkanEngine* engine, DataSerialized* ds)
-{
-    if (objectName == Player::TYPE_NAME)
-        new Player(engine, ds);
-
-    return true;
-}
+const std::vector<std::string> ENTITY_TYPE_NAMES = {
+    ":player",
+    ":yosemite",
+};
+const std::string Player::TYPE_NAME   = ENTITY_TYPE_NAMES[0];
+const std::string Yosemite::TYPE_NAME = ENTITY_TYPE_NAMES[1];
 
 
 namespace scene
 {
+    std::vector<std::string> getListOfEntityTypes()
+    {
+        return ENTITY_TYPE_NAMES;
+    }
+
+    bool spinupNewObject(const std::string& objectName, VulkanEngine* engine, DataSerialized* ds)
+    {
+        if (objectName == Player::TYPE_NAME)
+            new Player(engine, ds);
+        if (objectName == Yosemite::TYPE_NAME)
+            new Yosemite(engine, ds);
+
+        return true;
+    }
+
     extern std::string currentLoadedScene = "";
 
     std::vector<std::string> getListOfScenes()
