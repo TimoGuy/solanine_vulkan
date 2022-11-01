@@ -96,6 +96,11 @@ void PhysicsEngine::initialize(VulkanEngine* engine)
 	};
 	VkWriteDescriptorSet transformsWrite = vkinit::writeDescriptorBuffer(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, _transformsDescriptor, &transformsBufferInfo, 0);
 	vkUpdateDescriptorSets(_engine->_device, 1, &transformsWrite, 0, nullptr);
+
+	//
+	// Reserve extra debug draw vertices
+	//
+	_oneFrameVertexList.reserve(_oneFrameVertexListAllocation);
 }
 
 void PhysicsEngine::update(float_t deltaTime, std::vector<Entity*>* entities)    // https://gafferongames.com/post/fix_your_timestep/
@@ -108,6 +113,8 @@ void PhysicsEngine::update(float_t deltaTime, std::vector<Entity*>* entities)   
 	//
 	for (; _accumulatedTimeForPhysics >= physicsDeltaTime; _accumulatedTimeForPhysics -= physicsDeltaTime)
 	{
+		_oneFrameVertexList.clear();  // Clear the vertex list every time physicsupdate() will get called
+
 		for (auto it = entities->begin(); it != entities->end(); it++)    // @IMPROVEMENT: this could be multithreaded if we're just smart by how we do the physicsupdates
 		{
 			Entity* ent = *it;
@@ -164,6 +171,9 @@ void PhysicsEngine::update(float_t deltaTime, std::vector<Entity*>* entities)   
 		_physicsObjects[i].body->getWorldTransform().getOpenGLMatrix(glm::value_ptr(objectSSBO[i].modelMatrix));  // Extra Dmitri in this one
 	}
 	vmaUnmapMemory(_engine->_allocator, _transformsBuffer._allocation);
+
+	// Load the debug draw lines emplaced from inside the physicsUpdate()'s
+	loadOneFrameDebugDrawLines();
 }
 
 void PhysicsEngine::cleanup()
@@ -253,14 +263,10 @@ void PhysicsEngine::renderDebugDraw(VkCommandBuffer cmd, const VkDescriptorSet& 
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, debugDrawMaterial.pipeline);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, debugDrawMaterial.pipelineLayout, 0, 1, &globalDescriptor, 0, nullptr);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, debugDrawMaterial.pipelineLayout, 1, 1, &_transformsDescriptor, 0, nullptr);
-	ColorPushConstBlock pc = {
-		.color = glm::vec4(0, 1, 0, 1),
-	};	
-	vkCmdPushConstants(cmd, debugDrawMaterial.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ColorPushConstBlock), &pc);
 
 	const VkDeviceSize offsets[1] = { 0 };
 	vkCmdBindVertexBuffers(cmd, 0, 1, &_vertexBuffer._buffer, offsets);
-	vkCmdDraw(cmd, _vertexCount, 1, 0, 0);
+	vkCmdDraw(cmd, _vertexCount + _oneFrameVertexList.size(), 1, 0, 0);
 }
 
 std::vector<VkVertexInputAttributeDescription> PhysicsEngine::getVertexAttributeDescriptions()
@@ -279,9 +285,16 @@ std::vector<VkVertexInputAttributeDescription> PhysicsEngine::getVertexAttribute
 		.format = VK_FORMAT_R32_SINT,
 		.offset = offsetof(DebugDrawVertex, physObjIndex),
 	};
+	VkVertexInputAttributeDescription colorAttribute = {
+		.location = 2,
+		.binding = 0,
+		.format = VK_FORMAT_R32G32B32_SFLOAT,
+		.offset = offsetof(DebugDrawVertex, color),
+	};
 
 	attributes.push_back(posAttribute);
 	attributes.push_back(transformIndexAttribute);
+	attributes.push_back(colorAttribute);
 	return attributes;
 }
 
@@ -352,6 +365,7 @@ void PhysicsEngine::appendDebugShapeVertices(btBoxShape* shape, size_t physObjIn
 {
 	DebugDrawVertex v = {
 		.physObjIndex = static_cast<int32_t>(physObjIndex),
+		.color = glm::vec3(0, 1, 0),
 	};
 	auto temp = shape->getHalfExtentsWithMargin();
 	glm::vec3 he = glm::vec3(temp.getX(), temp.getY(), temp.getZ());  // Short for Half Extents
@@ -413,6 +427,7 @@ void PhysicsEngine::appendDebugShapeVertices(btSphereShape* shape, size_t physOb
 {
 	DebugDrawVertex v = {
 		.physObjIndex = static_cast<int32_t>(physObjIndex),
+		.color = glm::vec3(0, 1, 0),
 	};
 	float_t radius = shape->getRadius();
 
@@ -448,6 +463,7 @@ void PhysicsEngine::appendDebugShapeVertices(btCylinderShape* shape, size_t phys
 {
 	DebugDrawVertex v = {
 		.physObjIndex = static_cast<int32_t>(physObjIndex),
+		.color = glm::vec3(0, 1, 0),
 	};
 	auto temp = shape->getHalfExtentsWithMargin();
 	glm::vec3 he = glm::vec3(temp.getX(), temp.getY(), temp.getZ());  // Short for Half Extents
@@ -496,6 +512,7 @@ void PhysicsEngine::appendDebugShapeVertices(btCapsuleShape* shape, size_t physO
 {
 	DebugDrawVertex v = {
 		.physObjIndex = static_cast<int32_t>(physObjIndex),
+		.color = glm::vec3(0, 1, 0),
 	};
 	float_t radius = shape->getRadius();
 	float_t halfHeight = shape->getHalfHeight() + shape->getMargin();
@@ -637,7 +654,7 @@ void PhysicsEngine::recreateDebugDrawBuffer()
 		_vertexBufferCreated = false;
 	}
 
-	size_t vertexBufferSize = vertexList.size() * sizeof(DebugDrawVertex);
+	size_t vertexBufferSize = (vertexList.size() + _oneFrameVertexListAllocation) * sizeof(DebugDrawVertex);
 	_vertexBuffer =
 		_engine->createBuffer(
 			vertexBufferSize,
@@ -649,11 +666,50 @@ void PhysicsEngine::recreateDebugDrawBuffer()
 
 	void* data;
 	vmaMapMemory(_engine->_allocator, _vertexBuffer._allocation, &data);
-	memcpy(data, &vertexList[0], vertexBufferSize);
+	memcpy(data, &vertexList[0], _vertexCount * sizeof(DebugDrawVertex));
 	vmaUnmapMemory(_engine->_allocator, _vertexBuffer._allocation);
 
 	_recreateDebugDrawBuffer = false;
 }
+
+void PhysicsEngine::loadOneFrameDebugDrawLines()
+{
+	if (_oneFrameVertexList.empty())
+		return;
+	if (!_vertexBuffer._buffer)
+		return;
+
+	void* data;
+	vmaMapMemory(_engine->_allocator, _vertexBuffer._allocation, &data);
+	DebugDrawVertex* ddv = (DebugDrawVertex*)data;
+	ddv += _vertexCount;  // I am starting to get used to Dmitri's presence
+	memcpy(ddv, &_oneFrameVertexList[0], _oneFrameVertexList.size() * sizeof(DebugDrawVertex));
+	vmaUnmapMemory(_engine->_allocator, _vertexBuffer._allocation);
+}
+
+void PhysicsEngine::debugDrawLineOneFrame(const glm::vec3& pos1, const glm::vec3& pos2, const glm::vec3& color)
+{
+	if (_oneFrameVertexList.size() + 2 > _oneFrameVertexListAllocation)
+	{
+		std::cerr << "[DEBUG DRAW LINE ONE FRAME]" << std::endl
+			<< "ERROR: this new line will exceed the allocation" << std::endl
+			<< "       current size of vert list: " << _oneFrameVertexList.size() << std::endl
+			<< "       maximum allocation:        " << _oneFrameVertexListAllocation << std::endl;
+		return;
+	}
+	
+	_oneFrameVertexList.push_back({
+		.pos = pos1,
+		.physObjIndex = -1,  // -1 index for the transform... should mean "world space" or unit matrix
+		.color = color,
+		});
+	_oneFrameVertexList.push_back({
+		.pos = pos2,
+		.physObjIndex = -1,
+		.color = color,
+		});
+}
+
 
 namespace physutil
 {

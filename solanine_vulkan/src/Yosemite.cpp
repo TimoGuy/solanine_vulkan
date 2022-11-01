@@ -19,7 +19,7 @@ Yosemite::Yosemite(VulkanEngine* engine, DataSerialized* ds) : Entity(engine, ds
     _renderObj =
         _engine->registerRenderObject({
             .model = _cubeModel,
-            .transformMatrix = _tempLoadedRenderTransform,
+            .transformMatrix = _load_renderTransform,
             .renderLayer = RenderLayer::VISIBLE,
             .attachedEntityGuid = getGUID(),
             });
@@ -63,7 +63,7 @@ void Yosemite::dump(DataSerializer& ds)
 void Yosemite::load(DataSerialized& ds)
 {
     Entity::load(ds);
-    _tempLoadedRenderTransform = ds.loadMat4();
+    _load_renderTransform = ds.loadMat4();
 }
 
 void Yosemite::renderImGui()
@@ -71,11 +71,12 @@ void Yosemite::renderImGui()
     ImGui::Text("Change the render object's transform to change the yosemite's physicsobj transform");
 }
 
+#ifdef _DEVELOP
 void Yosemite::updatePhysicsObjFromRenderTransform()
 {
-    if (physutil::matrixEquals(_renderObj->transformMatrix, _tempLoadedRenderTransform))
+    if (physutil::matrixEquals(_renderObj->transformMatrix, _load_renderTransform))
         return;
-    _tempLoadedRenderTransform = _renderObj->transformMatrix;
+    _load_renderTransform = _renderObj->transformMatrix;  // @HACK: this isn't production code... that's why it's a _load_* variable despite being used for more than that in actuality
 
     //
     // Just completely recreate it (bc it's a static body)
@@ -95,3 +96,4 @@ void Yosemite::updatePhysicsObjFromRenderTransform()
             new btBoxShape(physutil::toVec3(scale * 0.5f))
         );
 }
+#endif

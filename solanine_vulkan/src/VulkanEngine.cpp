@@ -1521,7 +1521,7 @@ void VulkanEngine::initPipelines()
 	VkShaderModule debugPhysicsObjectVertShader,
 					debugPhysicsObjectFragShader;
 	loadShaderModule("shader/debug_physics_object.vert.spv", &debugPhysicsObjectVertShader);
-	loadShaderModule("shader/color.frag.spv", &debugPhysicsObjectFragShader);
+	loadShaderModule("shader/debug_physics_object.frag.spv", &debugPhysicsObjectFragShader);
 
 	//
 	// Mesh Pipeline
@@ -1707,13 +1707,8 @@ void VulkanEngine::initPipelines()
 	//
 	VkPipelineLayoutCreateInfo debugPhysicsObjectPipelineLayoutInfo = wireframeColorPipelineLayoutInfo;
 
-	pushConstant = {
-		.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-		.offset = 0,
-		.size = sizeof(ColorPushConstBlock)
-	};
-	debugPhysicsObjectPipelineLayoutInfo.pPushConstantRanges = &pushConstant;
-	debugPhysicsObjectPipelineLayoutInfo.pushConstantRangeCount = 1;
+	debugPhysicsObjectPipelineLayoutInfo.pPushConstantRanges = nullptr;
+	debugPhysicsObjectPipelineLayoutInfo.pushConstantRangeCount = 0;
 
 	VkDescriptorSetLayout setLayouts5[] = { _globalSetLayout, _objectSetLayout };
 	debugPhysicsObjectPipelineLayoutInfo.pSetLayouts = setLayouts5;

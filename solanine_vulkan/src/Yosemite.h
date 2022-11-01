@@ -30,7 +30,9 @@ private:
     RenderObject* _renderObj;
     RegisteredPhysicsObject* _physicsObj;
 
+#ifdef _DEVELOP
     void updatePhysicsObjFromRenderTransform();
+#endif
 
-    glm::mat4 _tempLoadedRenderTransform = glm::mat4(1.0f);
+    glm::mat4 _load_renderTransform = glm::mat4(1.0f);
 };

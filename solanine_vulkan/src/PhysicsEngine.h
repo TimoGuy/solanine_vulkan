@@ -74,6 +74,7 @@ private:
     {
         glm::vec3 pos;
         int32_t physObjIndex;
+        glm::vec3 color;
     };
     VulkanEngine* _engine;
 
@@ -88,6 +89,12 @@ private:
     void appendDebugShapeVertices(btCylinderShape* shape, size_t physObjIndex, std::vector<DebugDrawVertex>& vertexList);
     void appendDebugShapeVertices(btCapsuleShape* shape, size_t physObjIndex, std::vector<DebugDrawVertex>& vertexList);
     void recreateDebugDrawBuffer();
+
+    const size_t _oneFrameVertexListAllocation = 10000;
+    std::vector<DebugDrawVertex> _oneFrameVertexList;  // NOTE: one frame is meaning it refreshes after physics update
+    void loadOneFrameDebugDrawLines();
+public:
+    void debugDrawLineOneFrame(const glm::vec3& pos1, const glm::vec3& pos2, const glm::vec3& color);
 };
 
 namespace physutil

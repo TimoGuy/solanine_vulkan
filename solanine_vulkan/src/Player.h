@@ -27,8 +27,6 @@ public:
     void renderImGui();
 
 private:
-    glm::vec3 _position;
-    float_t _facingDirection;
 
     vkglTF::Model* _characterModel;
     RenderObject* _renderObj;
@@ -47,17 +45,18 @@ private:
     glm::vec3 _prevPosition;
     glm::vec3 _displacementToTarget = glm::vec3(0.0f);
 
-    bool snapToGround(const float_t& physicsDeltaTime, glm::vec3& currentVelocity);
-
     // Callbacks
     std::function<void(btPersistentManifold*, bool amIB)> _onCollisionStayFunc;
     void onCollisionStay(btPersistentManifold* manifold, bool amIB);
 
+    // Load Props
+    glm::vec3 _load_position = glm::vec3(0.0f);
+    glm::vec3 _load_transformOffset = glm::vec3(0, -2.5f, 0);
+
     // Tweak Props
+    float_t _facingDirection = 0.0f;
     float_t _maxSpeed = 20.0f;
     float_t _maxAcceleration = 50.0f;
     float_t _maxMidairAcceleration = 20.0f;
     float_t _jumpHeight = 5.0f;
-    bool    _enableSnapping = true;
-    float_t _maxSnapSpeed = 100.0f;
 };

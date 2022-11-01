@@ -109,6 +109,7 @@ copy $(SolutionDir)libs\fmod_studio\lib\fmodstudio.dll $(OutDirfullPath)fmodstud
   </ItemDefinitionGroup>
   <ItemGroup>
     <None Include="shader\color.frag" />
+    <None Include="shader\debug_physics_object.frag" />
     <None Include="shader\debug_physics_object.vert" />
     <None Include="shader\filtercube.vert" />
     <None Include="shader\genbrdflut.frag" />
