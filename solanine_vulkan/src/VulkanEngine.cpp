@@ -13,6 +13,7 @@
 #include "InputManager.h"
 #include "Entity.h"
 #include "SceneManagement.h"
+#include "DataSerialization.h"
 #include "imgui/imgui.h"
 #include "imgui/imgui_stdlib.h"
 #include "imgui/imgui_impl_sdl.h"
@@ -3729,6 +3730,31 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 			auto newEnt = scene::spinupNewObject(listEntityTypes[(size_t)entityToCreateIndex], this, nullptr);
 			_flagAttachToThisEntity = newEnt;  // @HACK: ... but if it works?
 		}
+
+		// Duplicate the selected entity
+		Entity* selectedEntity = nullptr;
+		for (auto& ro : _renderObjects)
+		{
+			if (_movingMatrix.matrixToMove == &ro.transformMatrix)
+				for (auto& ent : _entities)
+					if (ro.attachedEntityGuid == ent->getGUID())
+					{
+						selectedEntity = ent;
+						break;
+					}
+			if (selectedEntity)
+				break;
+		}
+		if (selectedEntity)
+			if (ImGui::Button("Duplicate Selected Entity"))
+			{
+				DataSerializer ds;
+				selectedEntity->dump(ds);
+				auto dsd = ds.getSerializedData();
+				auto newEnt = scene::spinupNewObject(selectedEntity->getTypeName(), this, &dsd);
+				_flagAttachToThisEntity = newEnt;
+			}
+
 
 		accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
 	}

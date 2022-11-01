@@ -28,13 +28,15 @@ Player::Player(VulkanEngine* engine, DataSerialized* ds) : Entity(engine, ds)
 
     _totalHeight = 5.0f;
     _maxClimbAngle = glm::radians(47.0f);
+
     float_t r = 0.5f;
     //float_t d = (r - r * glm::sin(_maxClimbAngle)) / glm::sin(_maxClimbAngle);  // This is the "perfect algorithm", but we want stair stepping abilities too...
-    float_t d = 1.0f;
-    _collisionShape = new btCapsuleShape(r, _totalHeight - d);  // @NOTE: it appears that this shape has a margin in the direction of the sausage (i.e. Y in this case) and then the radius is the actual radius
-    _adjustedHalfHeight = (_totalHeight - d) * 0.5 + _collisionShape->getMargin();
-    _bottomRaycastFeetDist = d;
-    _bottomRaycastExtraDist = _bottomRaycastFeetDist;
+    constexpr float_t raycastMargin = 0.05f;
+    _bottomRaycastFeetDist = 2.0f + raycastMargin;
+    _bottomRaycastExtraDist = 1.0f + raycastMargin;
+
+    _collisionShape = new btCapsuleShape(r, _totalHeight - _bottomRaycastFeetDist);  // @NOTE: it appears that this shape has a margin in the direction of the sausage (i.e. Y in this case) and then the radius is the actual radius
+    _adjustedHalfHeight = (_totalHeight - _bottomRaycastFeetDist) * 0.5 + _collisionShape->getMargin();
 
     _physicsObj =
         PhysicsEngine::getInstance().registerPhysicsObject(
@@ -86,6 +88,11 @@ void Player::update(const float_t& deltaTime)
 void Player::physicsUpdate(const float_t& physicsDeltaTime)
 {
     //
+    // Clear state
+    //
+    _onGround = false;
+
+    //
     // Calculate input
     //
     glm::vec2 input(0.0f);
@@ -119,6 +126,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     _stepsSinceLastGrounded++;
 
     glm::vec3 velocity = physutil::toVec3(_physicsObj->body->getLinearVelocity());
+
     velocity -= _displacementToTarget;  // Undo the displacement (hopefully no movement bugs)
     _displacementToTarget = glm::vec3(0.0f);
 
@@ -130,12 +138,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     PhysicsEngine::getInstance().debugDrawLineOneFrame(physutil::toVec3(bodyPos + btVector3(0, -targetLength, 0)),      physutil::toVec3(bodyPos + btVector3(0, -rayLength, 0)),   glm::vec3(1, 0, 0));
     if (hitInfo.hasHit())
     {
-        // @NOTE: _bottomRaycastExtraDist is meant for if the body is moving upwards like on a slope,
-        //        and then needs to get snapped down, this keeps the body pulled to the ground.
-        //        If the body is level or moving downwards, then we only want to include the actual
-        //        regular _bottomRaycastFeetDist length. Thus we do an extra check that the hit length
-        //        was smaller or equal to that length.
-        if (_stepsSinceLastGrounded <= 1)  // Only snap to the ground if the previous step was a real _onGround situation
+        if (_stepsSinceLastGrounded <= 1)  // @NOTE: Only snap to the ground if the previous step was a real _onGround situation
             _onGround = true;
         else if (hitInfo.m_closestHitFraction * rayLength <= targetLength)
             _onGround = true;
@@ -145,13 +148,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
             float_t targetLengthDifference = targetLength - hitInfo.m_closestHitFraction * rayLength;
             _displacementToTarget = glm::vec3(0, targetLengthDifference, 0) / physicsDeltaTime;  // Move up even though raycast was down bc we want to go the opposite direction the raycast went.
         }
-
-
-        // @INCOMPLETE: for some reason this isn't displacing the velocity for the target to stay floating... fix this!!
-        // @TODO: start working here!!!!!
-        //std::cout << bodyPos.x() << "\t" << bodyPos.y() << "\t" << bodyPos.z() << std::endl;
     }
-    std::cout << _displacementToTarget.x << "\t" << _displacementToTarget.y << "\t" << _displacementToTarget.z << std::endl;
 
 
     if (_onGround)
@@ -202,11 +199,6 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     }
 
     _physicsObj->body->setLinearVelocity(physutil::toVec3(velocity + _displacementToTarget));
-
-    //
-    // Clear state
-    //
-    _onGround = false;
 }
 
 void Player::dump(DataSerializer& ds)
