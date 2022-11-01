@@ -64,6 +64,7 @@ void VulkanEngine::init()
 	initVulkan();
 	initSwapchain();
 	initCommands();
+	initShadowRenderpass();
 	initDefaultRenderpass();
 	initPickingRenderpass();
 	initFramebuffers();
@@ -267,63 +268,95 @@ void VulkanEngine::render()
 		throw std::runtime_error("ERROR: failed to acquire swap chain image!");
 	}
 
-	// After commands finished executing, we can safely resume recording commands
+	// Reset command buffer to start recording commands again
 	VK_CHECK(vkResetCommandBuffer(currentFrame.mainCommandBuffer, 0));
-
-	//
-	// Main Render Pass
-	//
 	VkCommandBuffer cmd = currentFrame.mainCommandBuffer;
-
 	VkCommandBufferBeginInfo cmdBeginInfo = {
 		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
 		.pNext = nullptr,
 		.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
 		.pInheritanceInfo = nullptr,
 	};
-
 	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 
-	VkClearValue clearValue;
-	clearValue.color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
+	//
+	// Shadow Render Pass
+	//
+	{
+		VkClearValue depthClear;
+		depthClear.depthStencil = { 1.0f, 0 };
 
-	VkClearValue depthClear;
-	depthClear.depthStencil.depth = 1.0f;
+		VkRenderPassBeginInfo renderpassInfo = {
+			.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+			.pNext = nullptr,
 
-	VkClearValue clearValues[] = { clearValue, depthClear };
+			.renderPass = _shadowRenderPass,
+			.renderArea = {
+				.offset = VkOffset2D{ 0, 0 },
+				.extent = VkExtent2D{ _shadowMapDimension, _shadowMapDimension },
+			},
 
-	VkRenderPassBeginInfo renderpassInfo = {
-		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-		.pNext = nullptr,
+			.clearValueCount = 1,
+			.pClearValues = &depthClear,
+		};
 
-		.renderPass = _renderPass,
-		.framebuffer = _framebuffers[swapchainImageIndex],		// @NOTE: Framebuffer of the index the swapchain gave
-		.renderArea = {
-			.offset = VkOffset2D{ 0, 0 },
-			.extent = _windowExtent,
-		},
+		Material* shadowDepthPassMaterial = getMaterial("shadowDepthPassMaterial");  // @TODO: @IMPLEMENT this material so we can use the correct shaders
+		for (uint32_t i = 0; i < _shadowMapCascades; i++)
+		{
+			renderpassInfo.framebuffer = _shadowCascades[i].framebuffer;
+			vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
+			vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial->pipeline);
+			// @TODO: draw all the scene in the shadow material right here
+			vkCmdEndRenderPass(cmd);
+		}
+	}
 
-		.clearValueCount = 2,
-		.pClearValues = &clearValues[0],
-	};
+	//
+	// Main Render Pass
+	//
+	{
+		VkClearValue clearValue;
+		clearValue.color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
 
-	// Begin renderpass
-	vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
+		VkClearValue depthClear;
+		depthClear.depthStencil.depth = 1.0f;
 
-	uploadCurrentFrameToGPU(currentFrame);
-	renderRenderObjects(cmd, currentFrame, 0, _renderObjects.size(), true, false, nullptr);
-	renderPickedObject(cmd, currentFrame);
-	if (_showCollisionDebugDraw)
-		PhysicsEngine::getInstance().renderDebugDraw(cmd, currentFrame.globalDescriptor);
-	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
+		VkClearValue clearValues[] = { clearValue, depthClear };
 
-	// End renderpass
-	vkCmdEndRenderPass(cmd);
-	VK_CHECK(vkEndCommandBuffer(cmd));
+		VkRenderPassBeginInfo renderpassInfo = {
+			.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+			.pNext = nullptr,
+
+			.renderPass = _mainRenderPass,
+			.framebuffer = _framebuffers[swapchainImageIndex],		// @NOTE: Framebuffer of the index the swapchain gave
+			.renderArea = {
+				.offset = VkOffset2D{ 0, 0 },
+				.extent = _windowExtent,
+			},
+
+			.clearValueCount = 2,
+			.pClearValues = &clearValues[0],
+		};
+
+		// Begin renderpass
+		vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+		uploadCurrentFrameToGPU(currentFrame);
+		renderRenderObjects(cmd, currentFrame, 0, _renderObjects.size(), true, false, nullptr);
+		renderPickedObject(cmd, currentFrame);
+		if (_showCollisionDebugDraw)
+			PhysicsEngine::getInstance().renderDebugDraw(cmd, currentFrame.globalDescriptor);
+		ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
+
+		// End renderpass
+		vkCmdEndRenderPass(cmd);
+	}
 
 	//
 	// Submit command buffer to gpu for execution
 	//
+	VK_CHECK(vkEndCommandBuffer(cmd));
+
 	VkSubmitInfo submit = {};
 	submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 	submit.pNext = nullptr;
@@ -437,7 +470,7 @@ void VulkanEngine::render()
 			return;
 
 		//
-		// Read from GPU to the CPU
+		// Read from GPU to the CPU (the actual picking part eh!)
 		//
 		// Wait until GPU finishes rendering the previous picking
 		VK_CHECK(vkWaitForFences(_device, 1, &currentFrame.pickingRenderFence, true, TIMEOUT_1_SEC));
@@ -942,6 +975,148 @@ void VulkanEngine::initCommands()
 	VK_CHECK(vkAllocateCommandBuffers(_device, &cmdAllocInfo, &_uploadContext.commandBuffer));
 }
 
+void VulkanEngine::initShadowRenderpass()  // @COPYPASTA
+{
+	//
+	// Initialize the shadow images
+	// @NOTE: I know that this is kind of a waste, and that
+	//        the images should get generated once since recreating the swapchain
+	//        doesn't affect the static image size, however, for readability this
+	//        is right here... I think that a reorganization should warrant @IMPROVEMENT
+	//        in this area.  -Timo 2022/11/1
+	//
+	VkExtent3D shadowImgExtent = {
+		.width = _shadowMapDimension,
+		.height = _shadowMapDimension,
+		.depth = 1,
+	};
+	VkImageCreateInfo shadowImgInfo = vkinit::imageCreateInfo(_depthFormat, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, shadowImgExtent, 1);
+	shadowImgInfo.arrayLayers = _shadowMapCascades;
+	VmaAllocationCreateInfo shadowImgAllocInfo = {
+		.usage = VMA_MEMORY_USAGE_GPU_ONLY,
+		.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
+	};
+	vmaCreateImage(_allocator, &shadowImgInfo, &shadowImgAllocInfo, &_shadowImage._image, &_shadowImage._allocation, nullptr);
+
+	VkImageViewCreateInfo shadowDepthViewInfo = vkinit::imageviewCreateInfo(_depthFormat, _shadowImage._image, VK_IMAGE_ASPECT_DEPTH_BIT, 1);
+	shadowDepthViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+	shadowDepthViewInfo.subresourceRange.layerCount = _shadowMapCascades;
+	VK_CHECK(vkCreateImageView(_device, &shadowDepthViewInfo, nullptr, &_shadowImageView));
+
+	_swapchainDependentDeletionQueue.pushFunction([=]() {
+		vkDestroyImageView(_device, _shadowImageView, nullptr);
+		vmaDestroyImage(_allocator, _shadowImage._image, _shadowImage._allocation);
+		});
+
+	// Once framebuffer and imageview per layer of shadow image
+	for (uint32_t i = 0; i < _shadowMapCascades; i++)
+	{
+		VkImageViewCreateInfo individualViewInfo = vkinit::imageviewCreateInfo(_depthFormat, _shadowImage._image, VK_IMAGE_ASPECT_DEPTH_BIT, 1);
+		individualViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+		individualViewInfo.subresourceRange.baseArrayLayer = i;
+		individualViewInfo.subresourceRange.layerCount = 1;
+		VK_CHECK(vkCreateImageView(_device, &individualViewInfo, nullptr, &_shadowCascades[i].imageView));
+
+		VkFramebufferCreateInfo framebufferInfo = {
+			.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+			.pNext = nullptr,
+
+			.renderPass = _shadowRenderPass,
+			.attachmentCount = 1,
+			.pAttachments = &_shadowCascades[i].imageView,
+			.width = _shadowMapDimension,
+			.height = _shadowMapDimension,
+			.layers = 1,
+		};
+		VK_CHECK(vkCreateFramebuffer(_device, &framebufferInfo, nullptr, &_shadowCascades[i].framebuffer));
+
+		_swapchainDependentDeletionQueue.pushFunction([=]() {
+			vkDestroyFramebuffer(_device, _shadowCascades[i].framebuffer, nullptr);
+			vkDestroyImageView(_device, _shadowCascades[i].imageView, nullptr);
+			});
+	}
+
+	// Shared sampler for cascade depth reads
+	VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(1.0f, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);  // Why linear? it should be nearest if I say so myself.
+	VK_CHECK(vkCreateSampler(_device, &samplerInfo, nullptr, &_shadowSampler));
+
+	_swapchainDependentDeletionQueue.pushFunction([=]() {
+		vkDestroySampler(_device, _shadowSampler, nullptr);
+		});
+
+	//
+	// Depth attachment
+	//
+	VkAttachmentDescription depthAttachment = {
+		.flags = 0,
+		.format = _depthFormat,  // @MAYBE... check sampling ability for this? (See Sascha Willem's `getSupportedDepthFormat(true)`
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+		.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+		.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+	};
+	VkAttachmentReference depthAttachmentRef = {
+		.attachment = 0,
+		.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+	};
+
+	//
+	// Define the subpass to render to the shadow renderpass
+	//
+	VkSubpassDescription subpass = {
+		.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+		.colorAttachmentCount = 0,
+		.pDepthStencilAttachment = &depthAttachmentRef
+	};
+
+	//
+	// GPU work ordering dependencies
+	//
+	VkSubpassDependency dependency0 = {  // I think... this transforms the data to shader depth writing friendly
+		.srcSubpass = VK_SUBPASS_EXTERNAL,
+		.dstSubpass = 0,
+		.srcStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+		.dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
+		.srcAccessMask = VK_ACCESS_SHADER_READ_BIT,
+		.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+		.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT,
+	};
+	VkSubpassDependency dependency1 = {  // This one seems obvious to me that it converts the depth information into a texture to be read by a shader
+		.srcSubpass = 0,
+		.dstSubpass = VK_SUBPASS_EXTERNAL,
+		.srcStageMask = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+		.dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+		.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+		.dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+		.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT,
+	};
+
+	//
+	// Create the renderpass for the subpass
+	//
+	VkSubpassDependency dependencies[] = { dependency0, dependency1 };
+	VkAttachmentDescription attachments[] = { depthAttachment };
+	VkRenderPassCreateInfo renderPassInfo = {
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+		.attachmentCount = 1,
+		.pAttachments = &attachments[0],
+		.subpassCount = 1,
+		.pSubpasses = &subpass,
+		.dependencyCount = 2,
+		.pDependencies = &dependencies[0]
+	};
+
+	VK_CHECK(vkCreateRenderPass(_device, &renderPassInfo, nullptr, &_shadowRenderPass));
+
+	// Add destroy command for cleanup
+	_swapchainDependentDeletionQueue.pushFunction([=]() {
+		vkDestroyRenderPass(_device, _shadowRenderPass, nullptr);
+		});
+}
+
 void VulkanEngine::initDefaultRenderpass()
 {
 	//
@@ -1026,11 +1201,11 @@ void VulkanEngine::initDefaultRenderpass()
 		.pDependencies = &dependencies[0]
 	};
 
-	VK_CHECK(vkCreateRenderPass(_device, &renderPassInfo, nullptr, &_renderPass));
+	VK_CHECK(vkCreateRenderPass(_device, &renderPassInfo, nullptr, &_mainRenderPass));
 
 	// Add destroy command for cleanup
 	_swapchainDependentDeletionQueue.pushFunction([=]() {
-		vkDestroyRenderPass(_device, _renderPass, nullptr);
+		vkDestroyRenderPass(_device, _mainRenderPass, nullptr);
 		});
 }
 
@@ -1168,7 +1343,7 @@ void VulkanEngine::initFramebuffers()
 	fbInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
 	fbInfo.pNext = nullptr;
 
-	fbInfo.renderPass = _renderPass;
+	fbInfo.renderPass = _mainRenderPass;
 	fbInfo.attachmentCount = 2;
 	fbInfo.width = _windowExtent.width;
 	fbInfo.height = _windowExtent.height;
@@ -1582,7 +1757,7 @@ void VulkanEngine::initPipelines()
 		.pDynamicStates = nullptr,
 	};
 
-	auto _meshPipeline = pipelineBuilder.buildPipeline(_device, _renderPass);
+	auto _meshPipeline = pipelineBuilder.buildPipeline(_device, _mainRenderPass);
 	createMaterial(_meshPipeline, _meshPipelineLayout, "defaultMaterial");
 
 	for (auto shaderStage : pipelineBuilder._shaderStages)
@@ -1612,7 +1787,7 @@ void VulkanEngine::initPipelines()
 	pipelineBuilder._depthStencil = vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_NEVER);
 	pipelineBuilder._pipelineLayout = _skyboxPipelineLayout;		// @NOTE: EFFING DON'T FORGET THIS LINE BC THAT'S WHAT CAUSED ME A BUTT TON OF GRIEF!!!!!
 
-	auto _skyboxPipeline = pipelineBuilder.buildPipeline(_device, _renderPass);
+	auto _skyboxPipeline = pipelineBuilder.buildPipeline(_device, _mainRenderPass);
 	createMaterial(_skyboxPipeline, _skyboxPipelineLayout, "skyboxMaterial");
 
 	for (auto shaderStage : pipelineBuilder._shaderStages)
@@ -1693,11 +1868,11 @@ void VulkanEngine::initPipelines()
 	};
 	pipelineBuilder._dynamicState = noDynamicState;    // Turn off dynamic states
 
-	auto _wireframeColorPipeline = pipelineBuilder.buildPipeline(_device, _renderPass);
+	auto _wireframeColorPipeline = pipelineBuilder.buildPipeline(_device, _mainRenderPass);
 	createMaterial(_wireframeColorPipeline, _wireframeColorPipelineLayout, "wireframeColorMaterial");
 
 	pipelineBuilder._depthStencil = vkinit::depthStencilCreateInfo(true, false, VK_COMPARE_OP_GREATER);
-	auto _wireframeColorBehindPipeline = pipelineBuilder.buildPipeline(_device, _renderPass);
+	auto _wireframeColorBehindPipeline = pipelineBuilder.buildPipeline(_device, _mainRenderPass);
 	createMaterial(_wireframeColorBehindPipeline, _wireframeColorPipelineLayout, "wireframeColorBehindMaterial");
 
 	for (auto shaderStage : pipelineBuilder._shaderStages)
@@ -1739,7 +1914,7 @@ void VulkanEngine::initPipelines()
 	pipelineBuilder._depthStencil = vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_NEVER);
 	pipelineBuilder._pipelineLayout = _debugPhysicsObjectPipelineLayout;
 
-	auto _debugPhysicsObjectPipeline = pipelineBuilder.buildPipeline(_device, _renderPass);
+	auto _debugPhysicsObjectPipeline = pipelineBuilder.buildPipeline(_device, _mainRenderPass);
 	createMaterial(_debugPhysicsObjectPipeline, _debugPhysicsObjectPipelineLayout, "debugPhysicsObjectMaterial");
 
 	for (auto shaderStage : pipelineBuilder._shaderStages)
@@ -2767,7 +2942,7 @@ void VulkanEngine::initImgui()
 		.ImageCount = 3,
 		.MSAASamples = VK_SAMPLE_COUNT_1_BIT,
 	};
-	ImGui_ImplVulkan_Init(&initInfo, _renderPass);
+	ImGui_ImplVulkan_Init(&initInfo, _mainRenderPass);
 
 	// Load in imgui font textures
 	immediateSubmit([&](VkCommandBuffer cmd) {
@@ -2801,6 +2976,7 @@ void VulkanEngine::recreateSwapchain()
 	_swapchainDependentDeletionQueue.flush();
 
 	initSwapchain();
+	initShadowRenderpass();
 	initDefaultRenderpass();
 	initPickingRenderpass();
 	initFramebuffers();

@@ -114,6 +114,9 @@ public:
 	bool _isWindowMinimized = false;    // @NOTE: if we don't handle window minimization correctly, we can get the VK_ERROR_DEVICE_LOST(-4) error
 	bool _recreateSwapchain = false;
 
+	//
+	// Vulkan Base
+	//
 	VkInstance _instance;							// Vulkan library handle
 	VkDebugUtilsMessengerEXT _debugMessenger;		// Vulkan debug output handle
 	VkPhysicalDevice _chosenGPU;					// GPU chosen as the default device
@@ -133,8 +136,27 @@ public:
 	VkQueue _graphicsQueue;
 	uint32_t _graphicsQueueFamily;
 
+	//
+	// Shadow Renderpass
+	//
+	const uint32_t _shadowMapDimension = 2048;
+	const uint32_t _shadowMapCascades  = 4;
+	VkRenderPass _shadowRenderPass;
+
+	struct ShadowRenderPassCascade
+	{
+		VkFramebuffer  framebuffer;
+		VkImageView    imageView;  // @NOTE: this will just contain a single layer of the _shadowImage so that it can connect to the framebuffer
+	};
+	std::vector<ShadowRenderPassCascade> _shadowCascades;
+	VkImageView                          _shadowImageView;  // @NOTE: this is the combined together whole _shadowImage as opposed to the ones in the ShadowRenderPassCascade struct
+	AllocatedImage                       _shadowImage;
+	VkSampler                            _shadowSampler;
+
+	//
 	// Main Renderpass
-	VkRenderPass _renderPass;
+	//
+	VkRenderPass _mainRenderPass;
 	std::vector<VkFramebuffer> _framebuffers;
 
 	// Main Depth Buffer
@@ -142,7 +164,9 @@ public:
 	AllocatedImage _depthImage;
 	VkFormat _depthFormat;
 
+	//
 	// Picking Renderpass
+	//
 	VkRenderPass _pickingRenderPass;
 	VkFramebuffer _pickingFramebuffer;
 	VkImageView _pickingImageView;
@@ -213,6 +237,7 @@ private:
 	void initVulkan();
 	void initSwapchain();
 	void initCommands();
+	void initShadowRenderpass();
 	void initDefaultRenderpass();
 	void initPickingRenderpass();
 	void initFramebuffers();
