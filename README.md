@@ -32,3 +32,6 @@
 
 ![Object picking and transformation gizmo set up!](etc/Solanine%20Prealpha%20-%20Vulkan%20-%20Build%20385%2010_21_2022%2023_32_01.png)
 *Object picking and transformation gizmo set up!*
+
+![Various things, but feature is shadows here.](etc/Solanine%20Prealpha%20-%20Vulkan%20-%20Build%20750%2011_2_2022%2002_20_36.png)
+*Various things, but feature is shadows here. Truthfully, there was bullet3 physics integration, the new Yosemite<sup>TM</sup> object (just a model with a cube collision... for now!), saving and loading, a nice object serialization system to make saving and loading easy maintenance, and then finally the CSM shadows. (Build #752)*
