@@ -1083,22 +1083,27 @@ void VulkanEngine::initShadowRenderpass()  // @COPYPASTA
 		.usage = VMA_MEMORY_USAGE_GPU_ONLY,
 		.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
 	};
-	vmaCreateImage(_allocator, &shadowImgInfo, &shadowImgAllocInfo, &_shadowImage._image, &_shadowImage._allocation, nullptr);
+	vmaCreateImage(_allocator, &shadowImgInfo, &shadowImgAllocInfo, &_pbrSceneTextureSet.shadowMap.image._image, &_pbrSceneTextureSet.shadowMap.image._allocation, nullptr);
 
-	VkImageViewCreateInfo shadowDepthViewInfo = vkinit::imageviewCreateInfo(_depthFormat, _shadowImage._image, VK_IMAGE_ASPECT_DEPTH_BIT, 1);
+	VkImageViewCreateInfo shadowDepthViewInfo = vkinit::imageviewCreateInfo(_depthFormat, _pbrSceneTextureSet.shadowMap.image._image, VK_IMAGE_ASPECT_DEPTH_BIT, 1);
 	shadowDepthViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
 	shadowDepthViewInfo.subresourceRange.layerCount = SHADOWMAP_CASCADES;
-	VK_CHECK(vkCreateImageView(_device, &shadowDepthViewInfo, nullptr, &_shadowImageView));
+	VK_CHECK(vkCreateImageView(_device, &shadowDepthViewInfo, nullptr, &_pbrSceneTextureSet.shadowMap.imageView));
+
+	// Shared sampler for combined shadow map
+	VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(1.0f, /*VK_FILTER_LINEAR*/VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);  // Why linear? it should be nearest if I say so myself.
+	VK_CHECK(vkCreateSampler(_device, &samplerInfo, nullptr, &_pbrSceneTextureSet.shadowMap.sampler));
 
 	_swapchainDependentDeletionQueue.pushFunction([=]() {
-		vkDestroyImageView(_device, _shadowImageView, nullptr);
-		vmaDestroyImage(_allocator, _shadowImage._image, _shadowImage._allocation);
+		vkDestroySampler(_device, _pbrSceneTextureSet.shadowMap.sampler, nullptr);
+		vkDestroyImageView(_device, _pbrSceneTextureSet.shadowMap.imageView, nullptr);
+		vmaDestroyImage(_allocator, _pbrSceneTextureSet.shadowMap.image._image, _pbrSceneTextureSet.shadowMap.image._allocation);
 		});
 
 	// Once framebuffer and imageview per layer of shadow image
 	for (uint32_t i = 0; i < SHADOWMAP_CASCADES; i++)
 	{
-		VkImageViewCreateInfo individualViewInfo = vkinit::imageviewCreateInfo(_depthFormat, _shadowImage._image, VK_IMAGE_ASPECT_DEPTH_BIT, 1);
+		VkImageViewCreateInfo individualViewInfo = vkinit::imageviewCreateInfo(_depthFormat, _pbrSceneTextureSet.shadowMap.image._image, VK_IMAGE_ASPECT_DEPTH_BIT, 1);
 		individualViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
 		individualViewInfo.subresourceRange.baseArrayLayer = i;
 		individualViewInfo.subresourceRange.layerCount = 1;
@@ -1122,14 +1127,6 @@ void VulkanEngine::initShadowRenderpass()  // @COPYPASTA
 			vkDestroyImageView(_device, _shadowCascades[i].imageView, nullptr);
 			});
 	}
-
-	// Shared sampler for cascade depth reads
-	VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(1.0f, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);  // Why linear? it should be nearest if I say so myself.
-	VK_CHECK(vkCreateSampler(_device, &samplerInfo, nullptr, &_shadowSampler));
-
-	_swapchainDependentDeletionQueue.pushFunction([=]() {
-		vkDestroySampler(_device, _shadowSampler, nullptr);
-		});
 }
 
 void VulkanEngine::initDefaultRenderpass()
@@ -1480,18 +1477,20 @@ void VulkanEngine::initDescriptors()    // @TODO: don't destroy and then recreat
 	VkDescriptorSetLayoutBinding pbrIrradianceTextureBinding  = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 2);
 	VkDescriptorSetLayoutBinding pbrPrefilteredTextureBinding = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 3);
 	VkDescriptorSetLayoutBinding pbrBRDFLUTTextureBinding     = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 4);
+	VkDescriptorSetLayoutBinding shadowMap                    = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 5);
 	VkDescriptorSetLayoutBinding bindings[] = {
 		cameraBufferBinding,
 		shadingPropsBufferBinding,
 		pbrIrradianceTextureBinding,
 		pbrPrefilteredTextureBinding,
 		pbrBRDFLUTTextureBinding,
+		shadowMap,
 	};
 	VkDescriptorSetLayoutCreateInfo setInfo = {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
 		.pNext = nullptr,
 		.flags = 0,
-		.bindingCount = 5,
+		.bindingCount = 6,
 		.pBindings = bindings,
 	};
 	vkCreateDescriptorSetLayout(_device, &setInfo, nullptr, &_globalSetLayout);
@@ -2991,14 +2990,20 @@ void VulkanEngine::attachPBRDescriptors()
 		.imageView = _pbrSceneTextureSet.brdfLUTTexture.imageView,
 		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 	};
+	VkDescriptorImageInfo shadowMapDescriptor = {
+		.sampler = _pbrSceneTextureSet.shadowMap.sampler,
+		.imageView = _pbrSceneTextureSet.shadowMap.imageView,
+		.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+	};
 
 	// Write the descriptors for the images to the globaldescriptor
 	for (size_t i = 0; i < FRAME_OVERLAP; i++)
 	{
-		std::array<VkWriteDescriptorSet, 3> writeDescriptorSets = {
+		std::array<VkWriteDescriptorSet, 4> writeDescriptorSets = {
 			vkinit::writeDescriptorImage(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, _frames[i].globalDescriptor, &irradianceDescriptor, 2),
 			vkinit::writeDescriptorImage(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, _frames[i].globalDescriptor, &prefilteredDescriptor, 3),
 			vkinit::writeDescriptorImage(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, _frames[i].globalDescriptor, &brdfLUTDescriptor, 4),
+			vkinit::writeDescriptorImage(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, _frames[i].globalDescriptor, &shadowMapDescriptor, 5),
 		};
 		vkUpdateDescriptorSets(_device, static_cast<uint32_t>(writeDescriptorSets.size()), writeDescriptorSets.data(), 0, nullptr);
 	}
@@ -3496,7 +3501,8 @@ void VulkanEngine::recalculateCascadeViewProjs()
 		lastSplitDist = cascadeSplits[i];
 	}
 
-	// Transfer shadow cascades to 
+	// Update far plane ratio
+	_pbrRendering.gpuSceneShadingProps.zFarShadowZFarRatio = _sceneCamera.zFarShadow / _sceneCamera.zFar;
 }
 
 void VulkanEngine::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent changeEvent)

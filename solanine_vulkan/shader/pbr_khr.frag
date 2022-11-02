@@ -8,10 +8,11 @@
 #define SHADOW_MAP_CASCADE_COUNT 4
 
 layout (location = 0) in vec3 inWorldPos;
-layout (location = 1) in vec3 inNormal;
-layout (location = 2) in vec2 inUV0;
-layout (location = 3) in vec2 inUV1;
-layout (location = 4) in vec4 inColor0;
+layout (location = 1) in vec3 inViewPos;
+layout (location = 2) in vec3 inNormal;
+layout (location = 3) in vec2 inUV0;
+layout (location = 4) in vec2 inUV1;
+layout (location = 5) in vec4 inColor0;
 
 layout (location = 0) out vec4 outFragColor;
 
@@ -28,13 +29,14 @@ layout(set = 0, binding = 0) uniform CameraBuffer
 
 layout (set = 0, binding = 1) uniform UBOParams
 {
-	vec4 cascadeSplits;
-	mat4 cascadeViewProjMat[SHADOW_MAP_CASCADE_COUNT];
 	vec4 lightDir;
 	float exposure;
 	float gamma;
 	float prefilteredCubemapMipLevels;
 	float scaleIBLAmbient;
+	vec4 cascadeSplits;
+	mat4 cascadeViewProjMat[SHADOW_MAP_CASCADE_COUNT];
+	float zFarShadowZFarRatio;
 	float debugViewInputs;
 	float debugViewEquation;
 } uboParams;
@@ -231,6 +233,30 @@ float convertMetallic(vec3 diffuse, vec3 specular, float maxSpecular)
 	return clamp((-b + sqrt(D)) / (2.0 * a), 0.0, 1.0);
 }
 
+// Shadow map sampling
+const mat4 BIAS_MAT = mat4( 
+	0.5, 0.0, 0.0, 0.0,
+	0.0, 0.5, 0.0, 0.0,
+	0.0, 0.0, 1.0, 0.0,
+	0.5, 0.5, 0.0, 1.0
+);
+
+float textureProj(vec4 shadowCoord, vec2 offset, uint cascadeIndex)
+{
+	float shadow = 1.0;
+	float bias = 0.005;
+
+	if (shadowCoord.z > -1.0 && shadowCoord.z < 1.0)
+	{
+		float dist = texture(shadowMap, vec3(shadowCoord.st + offset, cascadeIndex)).r;
+		if (shadowCoord.w > 0 && dist < shadowCoord.z - bias)
+			shadow = 0.0;
+	}
+	return shadow;
+
+}
+
+
 void main()
 {
 	float perceptualRoughness;
@@ -369,6 +395,23 @@ void main()
 
 	// Obtain final intensity as reflectance (BRDF) scaled by the energy of the light (cosine law)
 	vec3 color = NdotL * u_LightColor * (diffuseContrib + specContrib);
+
+	// Get shadow cascade index for the current fragment's view position
+	uint cascadeIndex = 0;
+	for (uint i = 0; i < SHADOW_MAP_CASCADE_COUNT - 1; i++)
+		if (inViewPos.z * uboParams.zFarShadowZFarRatio < uboParams.cascadeSplits[i])
+			cascadeIndex = i + 1;
+
+	// Depth compare for shadowing
+	vec4 shadowCoord = (BIAS_MAT * uboParams.cascadeViewProjMat[cascadeIndex]) * vec4(inWorldPos, 1.0);
+
+	float shadow = 0;
+	//if (enablePCF == 1) {
+	//	shadow = filterPCF(shadowCoord / shadowCoord.w, cascadeIndex);
+	//} else {
+	shadow = textureProj(shadowCoord / shadowCoord.w, vec2(0.0), cascadeIndex);
+	//}
+	color *= shadow;  // @HACK: ya did all that calculating of the specular and diffuse just so it can get deflected from the shadow?!?!?!
 
 	// Calculate lighting contribution from image based lighting source (IBL)
 	color += getIBLContribution(pbrInputs, n, reflection);

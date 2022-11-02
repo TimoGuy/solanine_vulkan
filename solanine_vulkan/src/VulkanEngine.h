@@ -28,13 +28,14 @@ struct CascadeIndexPushConstBlock
 
 struct GPUPBRShadingProps
 {
-	glm::vec4 cascadeSplits;
-	glm::mat4 cascadeViewProjMats[SHADOWMAP_CASCADES];
 	glm::vec4 lightDir;
 	float_t exposure = 4.5f;
 	float_t gamma = 2.2f;
 	float_t prefilteredCubemapMipLevels;
 	float_t scaleIBLAmbient = 1.0f;
+	glm::vec4 cascadeSplits;
+	glm::mat4 cascadeViewProjMats[SHADOWMAP_CASCADES];
+	float_t zFarShadowZFarRatio;
 	float_t debugViewInputs = 0;
 	float_t debugViewEquation = 0;
 };
@@ -165,9 +166,6 @@ public:
 		VkImageView    imageView;  // @NOTE: this will just contain a single layer of the _shadowImage so that it can connect to the framebuffer
 	};
 	std::array<ShadowRenderPassCascade, SHADOWMAP_CASCADES> _shadowCascades;
-	VkImageView                                             _shadowImageView;  // @NOTE: this is the combined together whole _shadowImage as opposed to the ones in the ShadowRenderPassCascade struct
-	AllocatedImage                                          _shadowImage;
-	VkSampler                                               _shadowSampler;
 
 	//
 	// Main Renderpass
@@ -229,6 +227,7 @@ public:
 		Texture irradianceCubemap;
 		Texture prefilteredCubemap;
 		Texture brdfLUTTexture;
+		Texture shadowMap;
 	} _pbrSceneTextureSet;
 
 	//
