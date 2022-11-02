@@ -3484,7 +3484,7 @@ void VulkanEngine::recalculateCascadeViewProjs()
 		glm::vec3 maxExtents = glm::vec3(radius);
 		glm::vec3 minExtents = -maxExtents;
 
-		const glm::vec3& lightDir = _pbrRendering.gpuSceneShadingProps.lightDir;
+		const glm::vec3& lightDir = -_pbrRendering.gpuSceneShadingProps.lightDir;  // @NOTE: lightDir is direction from surface point to the direction of the light (optimized for shader), but we want the view direction of the light, which is the opposite
 		glm::mat4 lightViewMatrix = glm::lookAt(frustumCenter - lightDir * -minExtents.z, frustumCenter, glm::vec3(0.0f, 1.0f, 0.0f));
 		glm::mat4 lightOrthoMatrix = glm::ortho(minExtents.x, maxExtents.x, minExtents.y, maxExtents.y, 0.0f, maxExtents.z - minExtents.z);
 
