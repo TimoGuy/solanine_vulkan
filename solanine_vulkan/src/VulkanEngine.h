@@ -13,6 +13,19 @@ struct GPUCameraData
 	glm::vec3 cameraPosition;
 };
 
+constexpr uint32_t SHADOWMAP_DIMENSION = 2048;
+constexpr uint32_t SHADOWMAP_CASCADES  = 4;
+
+struct GPUCascadeViewProjsData
+{
+	glm::mat4 cascadeViewProjs[SHADOWMAP_CASCADES];
+};
+
+struct CascadeIndexPushConstBlock
+{
+	uint32_t cascadeIndex;
+};
+
 struct GPUPBRShadingProps
 {
 	glm::vec4 lightDir;
@@ -51,6 +64,9 @@ struct FrameData
 	AllocatedBuffer cameraBuffer;
 	AllocatedBuffer pbrShadingPropsBuffer;
 	VkDescriptorSet globalDescriptor;
+
+	AllocatedBuffer cascadeViewProjsBuffer;  // For CSM shadow rendering
+	VkDescriptorSet cascadeViewProjsDescriptor;
 
 	AllocatedBuffer objectBuffer;
 	VkDescriptorSet objectDescriptor;
@@ -139,19 +155,19 @@ public:
 	//
 	// Shadow Renderpass
 	//
-	const uint32_t _shadowMapDimension = 2048;
-	const uint32_t _shadowMapCascades  = 4;
 	VkRenderPass _shadowRenderPass;
 
 	struct ShadowRenderPassCascade
 	{
 		VkFramebuffer  framebuffer;
 		VkImageView    imageView;  // @NOTE: this will just contain a single layer of the _shadowImage so that it can connect to the framebuffer
+
+		float_t splitDepth;  // For sampling in the fragment shader for shadow receivers (@MAYBE: this isn't the best place to put this)
 	};
-	std::vector<ShadowRenderPassCascade> _shadowCascades;
-	VkImageView                          _shadowImageView;  // @NOTE: this is the combined together whole _shadowImage as opposed to the ones in the ShadowRenderPassCascade struct
-	AllocatedImage                       _shadowImage;
-	VkSampler                            _shadowSampler;
+	std::array<ShadowRenderPassCascade, SHADOWMAP_CASCADES> _shadowCascades;
+	VkImageView                                             _shadowImageView;  // @NOTE: this is the combined together whole _shadowImage as opposed to the ones in the ShadowRenderPassCascade struct
+	AllocatedImage                                          _shadowImage;
+	VkSampler                                               _shadowSampler;
 
 	//
 	// Main Renderpass
@@ -219,6 +235,7 @@ public:
 	// Descriptor Sets
 	//
 	VkDescriptorSetLayout _globalSetLayout;
+	VkDescriptorSetLayout _cascadeViewProjsSetLayout;
 	VkDescriptorSetLayout _objectSetLayout;
 	VkDescriptorSetLayout _singleTextureSetLayout;
 	VkDescriptorSetLayout _pbrTexturesSetLayout;
@@ -260,7 +277,7 @@ private:
 	void loadMeshes();
 
 	void uploadCurrentFrameToGPU(const FrameData& currentFrame);
-	void renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, size_t offset, size_t count, bool renderSkybox, bool materialOverride, VkPipelineLayout* overrideLayout);
+	void renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, size_t offset, size_t count, bool renderSkybox, bool materialOverride, VkPipelineLayout* overrideLayout, bool injectColorMapIntoMaterialOverride);
 	void renderPickedObject(VkCommandBuffer cmd, const FrameData& currentFrame);
 
 	//
@@ -273,14 +290,17 @@ public:
 	struct SceneCamera
 	{
 		glm::vec3 facingDirection = { 0.0f, 0.0f, 1.0f };
-		float_t fov = glm::radians(70.0f);
+		float_t fov               = glm::radians(70.0f);
 		float_t aspect;
-		float_t zNear = 0.1f;
-		float_t zFar = 1500.0f;
+		float_t zNear             = 0.1f;
+		float_t zFar              = 1500.0f;
+		float_t zFarShadow        = 200.0f;
 		GPUCameraData gpuCameraData;
+		GPUCascadeViewProjsData gpuCascadeViewProjsData;  // This will get calculated from the scene camera since this is a CSM viewprojs
 	} _sceneCamera;
 private:
 	void recalculateSceneCamera();
+	void recalculateCascadeViewProjs();
 
 	const uint32_t
 		_cameraMode_mainCamMode = 0,
@@ -458,17 +478,17 @@ private:
 class PipelineBuilder
 {
 public:
-	std::vector<VkPipelineShaderStageCreateInfo> _shaderStages;
-	VkPipelineVertexInputStateCreateInfo         _vertexInputInfo;
-	VkPipelineInputAssemblyStateCreateInfo       _inputAssembly;
-	VkViewport                                   _viewport;
-	VkRect2D                                     _scissor;
-	VkPipelineRasterizationStateCreateInfo       _rasterizer;
-	VkPipelineColorBlendAttachmentState          _colorBlendAttachment;
-	VkPipelineMultisampleStateCreateInfo         _multisampling;
-	VkPipelineLayout                             _pipelineLayout;
-	VkPipelineDepthStencilStateCreateInfo        _depthStencil;
-	VkPipelineDynamicStateCreateInfo             _dynamicState;
+	std::vector<VkPipelineShaderStageCreateInfo>       _shaderStages;
+	VkPipelineVertexInputStateCreateInfo               _vertexInputInfo;
+	VkPipelineInputAssemblyStateCreateInfo             _inputAssembly;
+	VkViewport                                         _viewport;
+	VkRect2D                                           _scissor;
+	VkPipelineRasterizationStateCreateInfo             _rasterizer;
+	std::vector<VkPipelineColorBlendAttachmentState>   _colorBlendAttachment;
+	VkPipelineMultisampleStateCreateInfo               _multisampling;
+	VkPipelineLayout                                   _pipelineLayout;
+	VkPipelineDepthStencilStateCreateInfo              _depthStencil;
+	VkPipelineDynamicStateCreateInfo                   _dynamicState;
 
 	VkPipeline buildPipeline(VkDevice device, VkRenderPass pass);
 };

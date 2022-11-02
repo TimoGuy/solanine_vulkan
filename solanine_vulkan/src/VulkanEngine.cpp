@@ -64,7 +64,7 @@ void VulkanEngine::init()
 	initVulkan();
 	initSwapchain();
 	initCommands();
-	initShadowRenderpass();
+	initShadowRenderpass();  // @TODO: @NOTE: technically this doesn't have to be recreated bc it's not a screen space from swapchain based renderpass/framebuffer/image/imageview that goes bad/changes size (unless if settings are changed eh!)
 	initDefaultRenderpass();
 	initPickingRenderpass();
 	initFramebuffers();
@@ -293,20 +293,33 @@ void VulkanEngine::render()
 			.renderPass = _shadowRenderPass,
 			.renderArea = {
 				.offset = VkOffset2D{ 0, 0 },
-				.extent = VkExtent2D{ _shadowMapDimension, _shadowMapDimension },
+				.extent = VkExtent2D{ SHADOWMAP_DIMENSION, SHADOWMAP_DIMENSION },
 			},
 
 			.clearValueCount = 1,
 			.pClearValues = &depthClear,
 		};
 
+		// Upload shadow cascades to GPU
+		void* data;
+		vmaMapMemory(_allocator, currentFrame.cascadeViewProjsBuffer._allocation, &data);
+		memcpy(data, &_sceneCamera.gpuCascadeViewProjsData, sizeof(GPUCascadeViewProjsData));
+		vmaUnmapMemory(_allocator, currentFrame.cascadeViewProjsBuffer._allocation);
+
 		Material* shadowDepthPassMaterial = getMaterial("shadowDepthPassMaterial");  // @TODO: @IMPLEMENT this material so we can use the correct shaders
-		for (uint32_t i = 0; i < _shadowMapCascades; i++)
+		for (uint32_t i = 0; i < SHADOWMAP_CASCADES; i++)
 		{
 			renderpassInfo.framebuffer = _shadowCascades[i].framebuffer;
 			vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
 			vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial->pipeline);
-			// @TODO: draw all the scene in the shadow material right here
+			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial->pipelineLayout, 0, 1, &currentFrame.cascadeViewProjsDescriptor, 0, nullptr);
+			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial->pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
+			CascadeIndexPushConstBlock pc = { i };
+			vkCmdPushConstants(cmd, shadowDepthPassMaterial->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(CascadeIndexPushConstBlock), &pc);
+
+			renderRenderObjects(cmd, currentFrame, 0, _renderObjects.size(), false, true, &shadowDepthPassMaterial->pipelineLayout, true);
+			
 			vkCmdEndRenderPass(cmd);
 		}
 	}
@@ -342,7 +355,7 @@ void VulkanEngine::render()
 		vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
 		uploadCurrentFrameToGPU(currentFrame);
-		renderRenderObjects(cmd, currentFrame, 0, _renderObjects.size(), true, false, nullptr);
+		renderRenderObjects(cmd, currentFrame, 0, _renderObjects.size(), true, false, nullptr, false);
 		renderPickedObject(cmd, currentFrame);
 		if (_showCollisionDebugDraw)
 			PhysicsEngine::getInstance().renderDebugDraw(cmd, currentFrame.globalDescriptor);
@@ -449,7 +462,7 @@ void VulkanEngine::render()
 		scissor.extent = { 1, 1 };
 		vkCmdSetScissor(cmd, 0, 1, &scissor);    // @NOTE: the scissor is set to be dynamic state for this pipeline
 
-		renderRenderObjects(cmd, currentFrame, 0, _renderObjects.size(), false, true, &pickingMaterial.pipelineLayout);    // @NOTE: the joint descriptorset will still be bound in here   @HACK: it's using the wrong pipelinelayout but.... it should be fine? Bc the slot is still set=3 for the joints on the picking pipelinelayout too??
+		renderRenderObjects(cmd, currentFrame, 0, _renderObjects.size(), false, true, &pickingMaterial.pipelineLayout, false);    // @NOTE: the joint descriptorset will still be bound in here   @HACK: it's using the wrong pipelinelayout but.... it should be fine? Bc the slot is still set=3 for the joints on the picking pipelinelayout too??
 
 		// End renderpass
 		vkCmdEndRenderPass(cmd);
@@ -978,72 +991,7 @@ void VulkanEngine::initCommands()
 void VulkanEngine::initShadowRenderpass()  // @COPYPASTA
 {
 	//
-	// Initialize the shadow images
-	// @NOTE: I know that this is kind of a waste, and that
-	//        the images should get generated once since recreating the swapchain
-	//        doesn't affect the static image size, however, for readability this
-	//        is right here... I think that a reorganization should warrant @IMPROVEMENT
-	//        in this area.  -Timo 2022/11/1
-	//
-	VkExtent3D shadowImgExtent = {
-		.width = _shadowMapDimension,
-		.height = _shadowMapDimension,
-		.depth = 1,
-	};
-	VkImageCreateInfo shadowImgInfo = vkinit::imageCreateInfo(_depthFormat, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, shadowImgExtent, 1);
-	shadowImgInfo.arrayLayers = _shadowMapCascades;
-	VmaAllocationCreateInfo shadowImgAllocInfo = {
-		.usage = VMA_MEMORY_USAGE_GPU_ONLY,
-		.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
-	};
-	vmaCreateImage(_allocator, &shadowImgInfo, &shadowImgAllocInfo, &_shadowImage._image, &_shadowImage._allocation, nullptr);
-
-	VkImageViewCreateInfo shadowDepthViewInfo = vkinit::imageviewCreateInfo(_depthFormat, _shadowImage._image, VK_IMAGE_ASPECT_DEPTH_BIT, 1);
-	shadowDepthViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
-	shadowDepthViewInfo.subresourceRange.layerCount = _shadowMapCascades;
-	VK_CHECK(vkCreateImageView(_device, &shadowDepthViewInfo, nullptr, &_shadowImageView));
-
-	_swapchainDependentDeletionQueue.pushFunction([=]() {
-		vkDestroyImageView(_device, _shadowImageView, nullptr);
-		vmaDestroyImage(_allocator, _shadowImage._image, _shadowImage._allocation);
-		});
-
-	// Once framebuffer and imageview per layer of shadow image
-	for (uint32_t i = 0; i < _shadowMapCascades; i++)
-	{
-		VkImageViewCreateInfo individualViewInfo = vkinit::imageviewCreateInfo(_depthFormat, _shadowImage._image, VK_IMAGE_ASPECT_DEPTH_BIT, 1);
-		individualViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
-		individualViewInfo.subresourceRange.baseArrayLayer = i;
-		individualViewInfo.subresourceRange.layerCount = 1;
-		VK_CHECK(vkCreateImageView(_device, &individualViewInfo, nullptr, &_shadowCascades[i].imageView));
-
-		VkFramebufferCreateInfo framebufferInfo = {
-			.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-			.pNext = nullptr,
-
-			.renderPass = _shadowRenderPass,
-			.attachmentCount = 1,
-			.pAttachments = &_shadowCascades[i].imageView,
-			.width = _shadowMapDimension,
-			.height = _shadowMapDimension,
-			.layers = 1,
-		};
-		VK_CHECK(vkCreateFramebuffer(_device, &framebufferInfo, nullptr, &_shadowCascades[i].framebuffer));
-
-		_swapchainDependentDeletionQueue.pushFunction([=]() {
-			vkDestroyFramebuffer(_device, _shadowCascades[i].framebuffer, nullptr);
-			vkDestroyImageView(_device, _shadowCascades[i].imageView, nullptr);
-			});
-	}
-
-	// Shared sampler for cascade depth reads
-	VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(1.0f, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);  // Why linear? it should be nearest if I say so myself.
-	VK_CHECK(vkCreateSampler(_device, &samplerInfo, nullptr, &_shadowSampler));
-
-	_swapchainDependentDeletionQueue.pushFunction([=]() {
-		vkDestroySampler(_device, _shadowSampler, nullptr);
-		});
-
+	// Initialize the renderpass object
 	//
 	// Depth attachment
 	//
@@ -1114,6 +1062,73 @@ void VulkanEngine::initShadowRenderpass()  // @COPYPASTA
 	// Add destroy command for cleanup
 	_swapchainDependentDeletionQueue.pushFunction([=]() {
 		vkDestroyRenderPass(_device, _shadowRenderPass, nullptr);
+		});
+
+	//
+	// Initialize the shadow images
+	// @NOTE: I know that this is kind of a waste, and that
+	//        the images should get generated once since recreating the swapchain
+	//        doesn't affect the static image size, however, for readability this
+	//        is right here... I think that a reorganization should warrant @IMPROVEMENT
+	//        in this area.  -Timo 2022/11/1
+	//
+	VkExtent3D shadowImgExtent = {
+		.width = SHADOWMAP_DIMENSION,
+		.height = SHADOWMAP_DIMENSION,
+		.depth = 1,
+	};
+	VkImageCreateInfo shadowImgInfo = vkinit::imageCreateInfo(_depthFormat, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, shadowImgExtent, 1);
+	shadowImgInfo.arrayLayers = SHADOWMAP_CASCADES;
+	VmaAllocationCreateInfo shadowImgAllocInfo = {
+		.usage = VMA_MEMORY_USAGE_GPU_ONLY,
+		.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
+	};
+	vmaCreateImage(_allocator, &shadowImgInfo, &shadowImgAllocInfo, &_shadowImage._image, &_shadowImage._allocation, nullptr);
+
+	VkImageViewCreateInfo shadowDepthViewInfo = vkinit::imageviewCreateInfo(_depthFormat, _shadowImage._image, VK_IMAGE_ASPECT_DEPTH_BIT, 1);
+	shadowDepthViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+	shadowDepthViewInfo.subresourceRange.layerCount = SHADOWMAP_CASCADES;
+	VK_CHECK(vkCreateImageView(_device, &shadowDepthViewInfo, nullptr, &_shadowImageView));
+
+	_swapchainDependentDeletionQueue.pushFunction([=]() {
+		vkDestroyImageView(_device, _shadowImageView, nullptr);
+		vmaDestroyImage(_allocator, _shadowImage._image, _shadowImage._allocation);
+		});
+
+	// Once framebuffer and imageview per layer of shadow image
+	for (uint32_t i = 0; i < SHADOWMAP_CASCADES; i++)
+	{
+		VkImageViewCreateInfo individualViewInfo = vkinit::imageviewCreateInfo(_depthFormat, _shadowImage._image, VK_IMAGE_ASPECT_DEPTH_BIT, 1);
+		individualViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+		individualViewInfo.subresourceRange.baseArrayLayer = i;
+		individualViewInfo.subresourceRange.layerCount = 1;
+		VK_CHECK(vkCreateImageView(_device, &individualViewInfo, nullptr, &_shadowCascades[i].imageView));
+
+		VkFramebufferCreateInfo framebufferInfo = {
+			.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+			.pNext = nullptr,
+
+			.renderPass = _shadowRenderPass,
+			.attachmentCount = 1,
+			.pAttachments = &_shadowCascades[i].imageView,
+			.width = SHADOWMAP_DIMENSION,
+			.height = SHADOWMAP_DIMENSION,
+			.layers = 1,
+		};
+		VK_CHECK(vkCreateFramebuffer(_device, &framebufferInfo, nullptr, &_shadowCascades[i].framebuffer));
+
+		_swapchainDependentDeletionQueue.pushFunction([=]() {
+			vkDestroyFramebuffer(_device, _shadowCascades[i].framebuffer, nullptr);
+			vkDestroyImageView(_device, _shadowCascades[i].imageView, nullptr);
+			});
+	}
+
+	// Shared sampler for cascade depth reads
+	VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(1.0f, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);  // Why linear? it should be nearest if I say so myself.
+	VK_CHECK(vkCreateSampler(_device, &samplerInfo, nullptr, &_shadowSampler));
+
+	_swapchainDependentDeletionQueue.pushFunction([=]() {
+		vkDestroySampler(_device, _shadowSampler, nullptr);
 		});
 }
 
@@ -1482,6 +1497,19 @@ void VulkanEngine::initDescriptors()    // @TODO: don't destroy and then recreat
 	vkCreateDescriptorSetLayout(_device, &setInfo, nullptr, &_globalSetLayout);
 
 	//
+	// Create Descriptor Set Layout for cascade view projections buffer
+	//
+	VkDescriptorSetLayoutBinding cascadeViewProjsBufferBinding = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT, 0);
+	VkDescriptorSetLayoutCreateInfo cascadeViewProjsSetInfo = {
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+		.pNext = nullptr,
+		.flags = 0,
+		.bindingCount = 1,
+		.pBindings = &cascadeViewProjsBufferBinding,
+	};
+	vkCreateDescriptorSetLayout(_device, &cascadeViewProjsSetInfo, nullptr, &_cascadeViewProjsSetLayout);
+
+	//
 	// Create Descriptor Set Layout for object buffer
 	//
 	VkDescriptorSetLayoutBinding objectBufferBinding = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_VERTEX_BIT, 0);
@@ -1588,6 +1616,7 @@ void VulkanEngine::initDescriptors()    // @TODO: don't destroy and then recreat
 		// Create buffers
 		_frames[i].cameraBuffer = createBuffer(sizeof(GPUCameraData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 		_frames[i].pbrShadingPropsBuffer = createBuffer(sizeof(GPUPBRShadingProps), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+		_frames[i].cascadeViewProjsBuffer = createBuffer(sizeof(GPUCascadeViewProjsData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 		_frames[i].objectBuffer = createBuffer(sizeof(GPUObjectData) * RENDER_OBJECTS_MAX_CAPACITY, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
 		_frames[i].pickingSelectedIdBuffer = createBuffer(sizeof(GPUPickingSelectedIdData), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_TO_CPU);    // @NOTE: primary focus is to read from gpu, so gpu_to_cpu
@@ -1601,6 +1630,15 @@ void VulkanEngine::initDescriptors()    // @TODO: don't destroy and then recreat
 			.pSetLayouts = &_globalSetLayout,
 		};
 		vkAllocateDescriptorSets(_device, &allocInfo, &_frames[i].globalDescriptor);
+
+		VkDescriptorSetAllocateInfo cascadeViewProjsAllocInfo = {
+			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+			.pNext = nullptr,
+			.descriptorPool = _descriptorPool,
+			.descriptorSetCount = 1,
+			.pSetLayouts = &_cascadeViewProjsSetLayout,
+		};
+		vkAllocateDescriptorSets(_device, &cascadeViewProjsAllocInfo, &_frames[i].cascadeViewProjsDescriptor);
 
 		VkDescriptorSetAllocateInfo objectSetAllocInfo = {
 			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
@@ -1631,6 +1669,11 @@ void VulkanEngine::initDescriptors()    // @TODO: don't destroy and then recreat
 			.offset = 0,
 			.range = sizeof(GPUPBRShadingProps),
 		};
+		VkDescriptorBufferInfo cascadeViewProjsBufferInfo = {
+			.buffer = _frames[i].cascadeViewProjsBuffer._buffer,
+			.offset = 0,
+			.range = sizeof(GPUCascadeViewProjsData),
+		};
 		VkDescriptorBufferInfo objectBufferInfo = {
 			.buffer = _frames[i].objectBuffer._buffer,
 			.offset = 0,
@@ -1643,15 +1686,17 @@ void VulkanEngine::initDescriptors()    // @TODO: don't destroy and then recreat
 		};
 		VkWriteDescriptorSet cameraWrite = vkinit::writeDescriptorBuffer(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, _frames[i].globalDescriptor, &cameraInfo, 0);
 		VkWriteDescriptorSet shadingPropsWrite = vkinit::writeDescriptorBuffer(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, _frames[i].globalDescriptor, &shadingPropsInfo, 1);
+		VkWriteDescriptorSet cascadeViewProjsWrite = vkinit::writeDescriptorBuffer(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, _frames[i].cascadeViewProjsDescriptor, &cascadeViewProjsBufferInfo, 0);
 		VkWriteDescriptorSet objectWrite = vkinit::writeDescriptorBuffer(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, _frames[i].objectDescriptor, &objectBufferInfo, 0);
 		VkWriteDescriptorSet pickingSelectedIdWrite = vkinit::writeDescriptorBuffer(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, _frames[i].pickingReturnValueDescriptor, &pickingSelectedIdBufferInfo, 0);
-		VkWriteDescriptorSet setWrites[] = { cameraWrite, shadingPropsWrite, objectWrite, pickingSelectedIdWrite };
-		vkUpdateDescriptorSets(_device, 4, setWrites, 0, nullptr);
+		VkWriteDescriptorSet setWrites[] = { cameraWrite, shadingPropsWrite, cascadeViewProjsWrite, objectWrite, pickingSelectedIdWrite };
+		vkUpdateDescriptorSets(_device, 5, setWrites, 0, nullptr);
 	}
 
 	// Add destroy command for cleanup
 	_mainDeletionQueue.pushFunction([=]() {
 		vkDestroyDescriptorSetLayout(_device, _globalSetLayout, nullptr);
+		vkDestroyDescriptorSetLayout(_device, _cascadeViewProjsSetLayout, nullptr);
 		vkDestroyDescriptorSetLayout(_device, _objectSetLayout, nullptr);
 		vkDestroyDescriptorSetLayout(_device, _singleTextureSetLayout, nullptr);
 		vkDestroyDescriptorSetLayout(_device, _pbrTexturesSetLayout, nullptr);
@@ -1663,6 +1708,7 @@ void VulkanEngine::initDescriptors()    // @TODO: don't destroy and then recreat
 		{
 			vmaDestroyBuffer(_allocator, _frames[i].cameraBuffer._buffer, _frames[i].cameraBuffer._allocation);
 			vmaDestroyBuffer(_allocator, _frames[i].pbrShadingPropsBuffer._buffer, _frames[i].pbrShadingPropsBuffer._allocation);
+			vmaDestroyBuffer(_allocator, _frames[i].cascadeViewProjsBuffer._buffer, _frames[i].cascadeViewProjsBuffer._allocation);
 			vmaDestroyBuffer(_allocator, _frames[i].objectBuffer._buffer, _frames[i].objectBuffer._allocation);
 			vmaDestroyBuffer(_allocator, _frames[i].pickingSelectedIdBuffer._buffer, _frames[i].pickingSelectedIdBuffer._allocation);
 		}
@@ -1698,6 +1744,11 @@ void VulkanEngine::initPipelines()
 					debugPhysicsObjectFragShader;
 	loadShaderModule("shader/debug_physics_object.vert.spv", &debugPhysicsObjectVertShader);
 	loadShaderModule("shader/debug_physics_object.frag.spv", &debugPhysicsObjectFragShader);
+
+	VkShaderModule shadowDepthPassVertShader,
+					shadowDepthPassFragShader;
+	loadShaderModule("shader/shadow_depthpass.vert.spv", &shadowDepthPassVertShader);
+	loadShaderModule("shader/shadow_depthpass.frag.spv", &shadowDepthPassFragShader);
 
 	//
 	// Mesh Pipeline
@@ -1747,7 +1798,7 @@ void VulkanEngine::initPipelines()
 	pipelineBuilder._scissor.extent = _windowExtent;
 
 	pipelineBuilder._rasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT);
-	pipelineBuilder._colorBlendAttachment = vkinit::colorBlendAttachmentState();
+	pipelineBuilder._colorBlendAttachment.push_back(vkinit::colorBlendAttachmentState());
 	pipelineBuilder._multisampling = vkinit::multisamplingStateCreateInfo();
 	pipelineBuilder._pipelineLayout = _meshPipelineLayout;
 	pipelineBuilder._depthStencil = vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL);
@@ -1920,6 +1971,63 @@ void VulkanEngine::initPipelines()
 	for (auto shaderStage : pipelineBuilder._shaderStages)
 		vkDestroyShaderModule(_device, shaderStage.module, nullptr);
 
+	//
+	// Shadow Depth Pass pipeline
+	//
+	VkPipelineLayoutCreateInfo shadowDepthPassPipelineLayoutInfo = debugPhysicsObjectPipelineLayoutInfo;
+
+	pushConstant = {
+		.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+		.offset = 0,
+		.size = sizeof(CascadeIndexPushConstBlock)
+	};
+	shadowDepthPassPipelineLayoutInfo.pPushConstantRanges = &pushConstant;
+	shadowDepthPassPipelineLayoutInfo.pushConstantRangeCount = 1;
+
+	VkDescriptorSetLayout setLayouts6[] = { _cascadeViewProjsSetLayout, _objectSetLayout, _skeletalAnimationSetLayout, _pbrTexturesSetLayout };
+	shadowDepthPassPipelineLayoutInfo.pSetLayouts = setLayouts6;
+	shadowDepthPassPipelineLayoutInfo.setLayoutCount = 4;
+
+	VkPipelineLayout _shadowDepthPassPipelineLayout;
+	VK_CHECK(vkCreatePipelineLayout(_device, &shadowDepthPassPipelineLayoutInfo, nullptr, &_shadowDepthPassPipelineLayout));
+
+	pipelineBuilder._shaderStages.clear();
+	pipelineBuilder._shaderStages.push_back(
+		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, shadowDepthPassVertShader));
+	pipelineBuilder._shaderStages.push_back(
+		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, shadowDepthPassFragShader));
+
+	// Revert back to the vkglTF traditional tri-mesh models for the vertex input
+	pipelineBuilder._vertexInputInfo = vkinit::vertexInputStateCreateInfo();
+	pipelineBuilder._vertexInputInfo.pVertexAttributeDescriptions = vertexDescription.attributes.data();
+	pipelineBuilder._vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(vertexDescription.attributes.size());
+	pipelineBuilder._vertexInputInfo.pVertexBindingDescriptions = vertexDescription.bindings.data();
+	pipelineBuilder._vertexInputInfo.vertexBindingDescriptionCount = static_cast<uint32_t>(vertexDescription.bindings.size());
+
+	pipelineBuilder._inputAssembly = vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+
+	pipelineBuilder._viewport.x = 0.0f;
+	pipelineBuilder._viewport.y = 0.0f;
+	pipelineBuilder._viewport.width = (float_t)SHADOWMAP_DIMENSION;
+	pipelineBuilder._viewport.height = (float_t)SHADOWMAP_DIMENSION;
+	pipelineBuilder._viewport.minDepth = 0.0f;
+	pipelineBuilder._viewport.maxDepth = 1.0f;
+
+	pipelineBuilder._scissor.offset = { 0, 0 };
+	pipelineBuilder._scissor.extent = VkExtent2D{ SHADOWMAP_DIMENSION, SHADOWMAP_DIMENSION };
+
+	pipelineBuilder._rasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE);
+	pipelineBuilder._rasterizer.depthClampEnable = VK_TRUE;
+	pipelineBuilder._colorBlendAttachment.clear();  // No color attachment for this pipeline
+	pipelineBuilder._depthStencil = vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL);
+	pipelineBuilder._pipelineLayout = _shadowDepthPassPipelineLayout;
+
+	auto _shadowDepthPassPipeline = pipelineBuilder.buildPipeline(_device, _shadowRenderPass);
+	createMaterial(_shadowDepthPassPipeline, _shadowDepthPassPipelineLayout, "shadowDepthPassMaterial");
+
+	for (auto shaderStage : pipelineBuilder._shaderStages)
+		vkDestroyShaderModule(_device, shaderStage.module, nullptr);
+
 	// Add destroy command for cleanup
 	_swapchainDependentDeletionQueue.pushFunction([=]() {
 		vkDestroyPipeline(_device, _meshPipeline, nullptr);
@@ -1933,6 +2041,8 @@ void VulkanEngine::initPipelines()
 		vkDestroyPipelineLayout(_device, _wireframeColorPipelineLayout, nullptr);
 		vkDestroyPipeline(_device, _debugPhysicsObjectPipeline, nullptr);
 		vkDestroyPipelineLayout(_device, _debugPhysicsObjectPipelineLayout, nullptr);
+		vkDestroyPipeline(_device, _shadowDepthPassPipeline, nullptr);
+		vkDestroyPipelineLayout(_device, _shadowDepthPassPipelineLayout, nullptr);
 		});
 }
 
@@ -3088,7 +3198,7 @@ void VulkanEngine::uploadCurrentFrameToGPU(const FrameData& currentFrame)
 	vmaUnmapMemory(_allocator, currentFrame.objectBuffer._allocation);
 }
 
-void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, size_t offset, size_t count, bool renderSkybox, bool materialOverride, VkPipelineLayout* overrideLayout)
+void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, size_t offset, size_t count, bool renderSkybox, bool materialOverride, VkPipelineLayout* overrideLayout, bool injectColorMapIntoMaterialOverride)
 {
 	//
 	// Render Skybox
@@ -3205,6 +3315,11 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 			
 					vkCmdPushConstants(cmd, defaultMaterial.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PBRMaterialPushConstBlock), &pc);
 				}
+				else if (injectColorMapIntoMaterialOverride)
+				{
+					// PBR data descriptor    (set = 3)
+					vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, *overrideLayout, 3, 1, &primitive->material.calculatedMaterial.textureSet, 0, nullptr);
+				}
 
 				//
 				// Apply joint properties
@@ -3276,7 +3391,7 @@ void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& curr
 		};	
 		vkCmdPushConstants(cmd, material.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ColorPushConstBlock), &pc);
 
-		renderRenderObjects(cmd, currentFrame, pickedROIndex, 1, false, true, &material.pipelineLayout);
+		renderRenderObjects(cmd, currentFrame, pickedROIndex, 1, false, true, &material.pipelineLayout, false);
 	}
 }
 
@@ -3288,6 +3403,99 @@ void VulkanEngine::recalculateSceneCamera()
 	_sceneCamera.gpuCameraData.view = view;
 	_sceneCamera.gpuCameraData.projection = projection;
 	_sceneCamera.gpuCameraData.projectionView = projection * view;
+
+	recalculateCascadeViewProjs();
+}
+
+void VulkanEngine::recalculateCascadeViewProjs()
+{
+	// Copied from Sascha Willem's `shadowmappingcascade` vulkan example
+	constexpr float_t cascadeSplitLambda = 0.95f;  // @TEMP: don't know if this needs tuning
+
+	float_t cascadeSplits[SHADOWMAP_CASCADES];
+
+	const float_t& nearClip = _sceneCamera.zNear;
+	const float_t& farClip = _sceneCamera.zFarShadow;
+	const float_t clipRange = farClip - nearClip;
+
+	const float_t minZ = nearClip;
+	const float_t maxZ = nearClip + clipRange;
+
+	const float_t range = maxZ - minZ;
+	const float_t ratio = maxZ / minZ;
+
+	// Calculate split depths based on view camera frustum
+	// Based on method presented in https://developer.nvidia.com/gpugems/GPUGems3/gpugems3_ch10.html
+	for (uint32_t i = 0; i < SHADOWMAP_CASCADES; i++)
+	{
+		float_t p = (i + 1) / static_cast<float_t>(SHADOWMAP_CASCADES);
+		float_t log = minZ * std::pow(ratio, p);
+		float_t uniform = minZ + range * p;
+		float_t d = cascadeSplitLambda * (log - uniform) + uniform;
+		cascadeSplits[i] = (d - nearClip) / clipRange;
+	}
+
+	// Calculate orthographic projection matrix for each cascade
+	float_t lastSplitDist = 0.0;
+	for (uint32_t i = 0; i < SHADOWMAP_CASCADES; i++)
+	{
+		float_t splitDist = cascadeSplits[i];
+
+		glm::vec3 frustumCorners[8] = {
+			glm::vec3(-1.0f,  1.0f, -1.0f),
+			glm::vec3( 1.0f,  1.0f, -1.0f),
+			glm::vec3( 1.0f, -1.0f, -1.0f),
+			glm::vec3(-1.0f, -1.0f, -1.0f),
+			glm::vec3(-1.0f,  1.0f,  1.0f),
+			glm::vec3( 1.0f,  1.0f,  1.0f),
+			glm::vec3( 1.0f, -1.0f,  1.0f),
+			glm::vec3(-1.0f, -1.0f,  1.0f),
+		};
+
+		// Project frustum corners into world space
+		glm::mat4 invCam = glm::inverse(_sceneCamera.gpuCameraData.projectionView);
+		for (uint32_t i = 0; i < 8; i++)
+		{
+			glm::vec4 invCorner = invCam * glm::vec4(frustumCorners[i], 1.0f);
+			frustumCorners[i] = invCorner / invCorner.w;
+		}
+
+		for (uint32_t i = 0; i < 4; i++)
+		{
+			glm::vec3 dist = frustumCorners[i + 4] - frustumCorners[i];
+			frustumCorners[i + 4] = frustumCorners[i] + (dist * splitDist);
+			frustumCorners[i] = frustumCorners[i] + (dist * lastSplitDist);
+		}
+
+		// Get frustum center
+		glm::vec3 frustumCenter = glm::vec3(0.0f);
+		for (uint32_t i = 0; i < 8; i++)
+			frustumCenter += frustumCorners[i];
+		frustumCenter /= 8.0f;
+
+		float_t radius = 0.0f;
+		for (uint32_t i = 0; i < 8; i++)
+		{
+			float_t distance = glm::length(frustumCorners[i] - frustumCenter);
+			radius = glm::max(radius, distance);
+		}
+		radius = std::ceil(radius * 16.0f) / 16.0f;
+
+		glm::vec3 maxExtents = glm::vec3(radius);
+		glm::vec3 minExtents = -maxExtents;
+
+		const glm::vec3& lightDir = _pbrRendering.gpuSceneShadingProps.lightDir;
+		glm::mat4 lightViewMatrix = glm::lookAt(frustumCenter - lightDir * -minExtents.z, frustumCenter, glm::vec3(0.0f, 1.0f, 0.0f));
+		glm::mat4 lightOrthoMatrix = glm::ortho(minExtents.x, maxExtents.x, minExtents.y, maxExtents.y, 0.0f, maxExtents.z - minExtents.z);
+
+		// Store split distance and matrix in cascade
+		_shadowCascades[i].splitDepth = (nearClip + splitDist * clipRange) * -1.0f;
+		_sceneCamera.gpuCascadeViewProjsData.cascadeViewProjs[i] = lightOrthoMatrix * lightViewMatrix;
+
+		lastSplitDist = cascadeSplits[i];
+	}
+
+	// Transfer shadow cascades to 
 }
 
 void VulkanEngine::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent changeEvent)
@@ -4147,8 +4355,8 @@ VkPipeline PipelineBuilder::buildPipeline(VkDevice device, VkRenderPass pass)
 
 	colorBlending.logicOpEnable = VK_FALSE;
 	colorBlending.logicOp = VK_LOGIC_OP_COPY;
-	colorBlending.attachmentCount = 1;
-	colorBlending.pAttachments = &_colorBlendAttachment;
+	colorBlending.attachmentCount = static_cast<uint32_t>(_colorBlendAttachment.size());
+	colorBlending.pAttachments = _colorBlendAttachment.data();
 
 	//
 	// Build the actual pipeline

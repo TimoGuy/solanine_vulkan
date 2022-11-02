@@ -120,6 +120,8 @@ copy $(SolutionDir)libs\fmod_studio\lib\fmodstudio.dll $(OutDirfullPath)fmodstud
     <None Include="shader\picking.frag" />
     <None Include="shader\picking.vert" />
     <None Include="shader\prefilterenvmap.frag" />
+    <None Include="shader\shadow_depthpass.frag" />
+    <None Include="shader\shadow_depthpass.vert" />
     <None Include="shader\skybox.frag" />
     <None Include="shader\skybox.vert" />
   </ItemGroup>
