@@ -28,6 +28,8 @@ struct CascadeIndexPushConstBlock
 
 struct GPUPBRShadingProps
 {
+	glm::vec4 cascadeSplits;
+	glm::mat4 cascadeViewProjMats[SHADOWMAP_CASCADES];
 	glm::vec4 lightDir;
 	float_t exposure = 4.5f;
 	float_t gamma = 2.2f;
@@ -161,8 +163,6 @@ public:
 	{
 		VkFramebuffer  framebuffer;
 		VkImageView    imageView;  // @NOTE: this will just contain a single layer of the _shadowImage so that it can connect to the framebuffer
-
-		float_t splitDepth;  // For sampling in the fragment shader for shadow receivers (@MAYBE: this isn't the best place to put this)
 	};
 	std::array<ShadowRenderPassCascade, SHADOWMAP_CASCADES> _shadowCascades;
 	VkImageView                                             _shadowImageView;  // @NOTE: this is the combined together whole _shadowImage as opposed to the ones in the ShadowRenderPassCascade struct

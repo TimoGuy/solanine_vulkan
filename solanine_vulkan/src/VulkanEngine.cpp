@@ -3489,8 +3489,9 @@ void VulkanEngine::recalculateCascadeViewProjs()
 		glm::mat4 lightOrthoMatrix = glm::ortho(minExtents.x, maxExtents.x, minExtents.y, maxExtents.y, 0.0f, maxExtents.z - minExtents.z);
 
 		// Store split distance and matrix in cascade
-		_shadowCascades[i].splitDepth = (nearClip + splitDist * clipRange) * -1.0f;
 		_sceneCamera.gpuCascadeViewProjsData.cascadeViewProjs[i] = lightOrthoMatrix * lightViewMatrix;
+		_pbrRendering.gpuSceneShadingProps.cascadeViewProjMats[i] = _sceneCamera.gpuCascadeViewProjsData.cascadeViewProjs[i];
+		_pbrRendering.gpuSceneShadingProps.cascadeSplits[i] = (nearClip + splitDist * clipRange) * -1.0f;
 
 		lastSplitDist = cascadeSplits[i];
 	}

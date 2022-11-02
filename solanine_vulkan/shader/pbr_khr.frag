@@ -4,6 +4,9 @@
 
 #version 460
 
+// @TODO: add in this value as specialized constant... eh or not @MAYBE
+#define SHADOW_MAP_CASCADE_COUNT 4
+
 layout (location = 0) in vec3 inWorldPos;
 layout (location = 1) in vec3 inNormal;
 layout (location = 2) in vec2 inUV0;
@@ -12,8 +15,9 @@ layout (location = 4) in vec4 inColor0;
 
 layout (location = 0) out vec4 outFragColor;
 
+//
 // Scene bindings
-
+//
 layout(set = 0, binding = 0) uniform CameraBuffer
 {
 	mat4 view;
@@ -24,6 +28,8 @@ layout(set = 0, binding = 0) uniform CameraBuffer
 
 layout (set = 0, binding = 1) uniform UBOParams
 {
+	vec4 cascadeSplits;
+	mat4 cascadeViewProjMat[SHADOW_MAP_CASCADE_COUNT];
 	vec4 lightDir;
 	float exposure;
 	float gamma;
@@ -36,9 +42,11 @@ layout (set = 0, binding = 1) uniform UBOParams
 layout (set = 0, binding = 2) uniform samplerCube samplerIrradiance;
 layout (set = 0, binding = 3) uniform samplerCube prefilteredMap;
 layout (set = 0, binding = 4) uniform sampler2D samplerBRDFLUT;
+layout (set = 0, binding = 5) uniform sampler2DArray shadowMap;
 
+//
 // Material bindings
-
+//
 layout (set = 3, binding = 0) uniform sampler2D colorMap;
 layout (set = 3, binding = 1) uniform sampler2D physicalDescriptorMap;
 layout (set = 3, binding = 2) uniform sampler2D normalMap;
