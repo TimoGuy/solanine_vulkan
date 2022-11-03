@@ -29,13 +29,13 @@ Player::Player(VulkanEngine* engine, DataSerialized* ds) : Entity(engine, ds)
     _totalHeight = 5.0f;
     _maxClimbAngle = glm::radians(47.0f);
 
-    float_t r = 0.5f;
+    _capsuleRadius = 0.5f;
     //float_t d = (r - r * glm::sin(_maxClimbAngle)) / glm::sin(_maxClimbAngle);  // This is the "perfect algorithm", but we want stair stepping abilities too...
     constexpr float_t raycastMargin = 0.05f;
     _bottomRaycastFeetDist = 2.0f + raycastMargin;
     _bottomRaycastExtraDist = 1.0f + raycastMargin;
 
-    _collisionShape = new btCapsuleShape(r, _totalHeight - _bottomRaycastFeetDist);  // @NOTE: it appears that this shape has a margin in the direction of the sausage (i.e. Y in this case) and then the radius is the actual radius
+    _collisionShape = new btCapsuleShape(_capsuleRadius, _totalHeight - _bottomRaycastFeetDist);  // @NOTE: it appears that this shape has a margin in the direction of the sausage (i.e. Y in this case) and then the radius is the actual radius
     _adjustedHalfHeight = (_totalHeight - _bottomRaycastFeetDist) * 0.5 + _collisionShape->getMargin();
 
     _physicsObj =
@@ -147,6 +147,47 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         {
             float_t targetLengthDifference = targetLength - hitInfo.m_closestHitFraction * rayLength;
             _displacementToTarget = glm::vec3(0, targetLengthDifference, 0) / physicsDeltaTime;  // Move up even though raycast was down bc we want to go the opposite direction the raycast went.
+        }
+    }
+
+    // Fire rays downwards in circular pattern to find approx what direction to displace
+    // @NOTE: only if the player is falling and ground is inside the faked "knee space"
+    if (!_onGround && velocity.y < 0.0f)
+    {
+        constexpr uint32_t numSamples = 16;
+        constexpr float_t circularPatternAngleFromOrigin = glm::radians(45.0f);
+        constexpr glm::vec3 rotationEulerIncrement = glm::vec3(0, glm::radians(360.0f) / (float_t)numSamples, 0);
+        const glm::quat rotatorQuaternion(rotationEulerIncrement);
+
+        glm::vec3 circularPatternOffset = glm::vec3(0.0f, -glm::sin(circularPatternAngleFromOrigin), glm::cos(circularPatternAngleFromOrigin)) * _capsuleRadius;
+        glm::vec3 accumulatedHitPositions(0.0f);
+
+        const glm::vec3 bodyFootSuckedInPosition = physutil::toVec3(bodyPos - btVector3(0, targetLength - _capsuleRadius, 0));
+
+        for (uint32_t i = 0; i < numSamples; i++)
+        {
+            // Draw deubug
+            glm::vec3 circularPatternR0 = physutil::toVec3(bodyPos) + circularPatternOffset;
+            glm::vec3 circularPatternR1 = bodyFootSuckedInPosition + circularPatternOffset;
+            PhysicsEngine::getInstance().debugDrawLineOneFrame(circularPatternR0, circularPatternR1, glm::vec3(1, 0.5, 0.75));
+            auto hitInfo = PhysicsEngine::getInstance().raycast(physutil::toVec3(circularPatternR0), physutil::toVec3(circularPatternR1));
+            if (hitInfo.hasHit())
+            {
+                accumulatedHitPositions += physutil::toVec3(hitInfo.m_hitPointWorld) - bodyFootSuckedInPosition;
+            }
+
+            // Increment circular pattern
+            circularPatternOffset = rotatorQuaternion * circularPatternOffset;
+        }
+
+        // Normalize the accumulatedHitPositions
+        accumulatedHitPositions.y = 0.0f;
+        if (glm::length2(accumulatedHitPositions) > 0.0001f)
+        {
+            glm::vec3 theVeryBest = glm::normalize(accumulatedHitPositions);
+            std::cout << "x=" << theVeryBest.x << "\ty=0\tz=" << theVeryBest.z << std::endl;
+
+            // @INCOMPLETE: use theVeryBest to actually displace the bean!!!!  -Timo
         }
     }
 

@@ -34,9 +34,10 @@ private:
     RegisteredPhysicsObject* _physicsObj;
     float_t _totalHeight;
     float_t _maxClimbAngle;
-    float_t _adjustedHalfHeight;
+    float_t _capsuleRadius;
     float_t _bottomRaycastFeetDist;
     float_t _bottomRaycastExtraDist;
+    float_t _adjustedHalfHeight;
 
     bool _onGround = false;
     glm::vec3 _groundContactNormal;
