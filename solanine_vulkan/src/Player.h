@@ -27,7 +27,6 @@ public:
     void renderImGui();
 
 private:
-
     vkglTF::Model* _characterModel;
     RenderObject* _renderObj;
     btCapsuleShape* _collisionShape;
