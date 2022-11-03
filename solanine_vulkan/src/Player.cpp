@@ -13,8 +13,6 @@ Player::Player(VulkanEngine* engine, DataSerialized* ds) : Entity(engine, ds)
     if (ds)
         load(*ds);
 
-    _prevPosition = _load_position;
-
     _characterModel = _engine->getModel("slimeGirl");
 
     _renderObj =
@@ -75,13 +73,30 @@ void Player::update(const float_t& deltaTime)
     //
     // Calculate render object transform
     //
+    glm::vec2 input(0.0f);  // @COPYPASTA
+	input.x += input::keyLeftPressed  ? -1.0f : 0.0f;
+	input.x += input::keyRightPressed ?  1.0f : 0.0f;
+	input.y += input::keyUpPressed    ?  1.0f : 0.0f;
+	input.y += input::keyDownPressed  ? -1.0f : 0.0f;
+
+    if (_engine->_freeCamMode.enabled)
+    {
+        input = glm::vec2(0.0f);
+        _flagJump = false;
+    }
+
+    glm::vec3 flatCameraFacingDirection = _engine->_sceneCamera.facingDirection;
+    flatCameraFacingDirection.y = 0.0f;
+    flatCameraFacingDirection = glm::normalize(flatCameraFacingDirection);
+
+    glm::vec3 cameraViewInput =
+        input.y * flatCameraFacingDirection +
+		input.x * glm::normalize(glm::cross(flatCameraFacingDirection, glm::vec3(0, 1, 0)));
+
+    if (glm::length2(cameraViewInput) > 0.01f)
+        _facingDirection = glm::atan(cameraViewInput.x, cameraViewInput.z);
+
     glm::vec3 interpPos = physutil::getPosition(_physicsObj->interpolatedTransform);
-    glm::vec3 deltaPos = interpPos - _prevPosition;
-    _prevPosition = interpPos;
-
-    if (glm::length2(deltaPos) > 0.0001f)
-        _facingDirection = glm::atan(deltaPos.x, deltaPos.z);
-
     _renderObj->transformMatrix = glm::translate(glm::mat4(1.0f), interpPos) * glm::toMat4(glm::quat(glm::vec3(0, _facingDirection, 0)));
 }
 
@@ -127,7 +142,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
 
     glm::vec3 velocity = physutil::toVec3(_physicsObj->body->getLinearVelocity());
 
-    velocity -= _displacementToTarget;  // Undo the displacement (hopefully no movement bugs)
+    velocity -= _displacementToTarget / physicsDeltaTime;  // Undo the displacement (hopefully no movement bugs)
     _displacementToTarget = glm::vec3(0.0f);
 
     const float_t targetLength = _adjustedHalfHeight + _bottomRaycastFeetDist;
@@ -146,7 +161,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         if (_onGround)  // Only attempt to correct the distance from ground and this floating body if "_onGround"
         {
             float_t targetLengthDifference = targetLength - hitInfo.m_closestHitFraction * rayLength;
-            _displacementToTarget = glm::vec3(0, targetLengthDifference, 0) / physicsDeltaTime;  // Move up even though raycast was down bc we want to go the opposite direction the raycast went.
+            _displacementToTarget.y = targetLengthDifference;  // Move up even though raycast was down bc we want to go the opposite direction the raycast went.
         }
     }
 
@@ -155,18 +170,18 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     if (!_onGround && velocity.y < 0.0f)
     {
         constexpr uint32_t numSamples = 16;
-        constexpr float_t circularPatternAngleFromOrigin = glm::radians(45.0f);
+        constexpr float_t circularPatternAngleFromOrigin = glm::radians(47.0f);
         constexpr glm::vec3 rotationEulerIncrement = glm::vec3(0, glm::radians(360.0f) / (float_t)numSamples, 0);
         const glm::quat rotatorQuaternion(rotationEulerIncrement);
 
-        glm::vec3 circularPatternOffset = glm::vec3(0.0f, -glm::sin(circularPatternAngleFromOrigin), glm::cos(circularPatternAngleFromOrigin)) * _capsuleRadius;
+        glm::vec3 circularPatternOffset = glm::vec3(0.0f, -glm::sin(circularPatternAngleFromOrigin), 1.0f) * _capsuleRadius;
         glm::vec3 accumulatedHitPositions(0.0f);
 
         const glm::vec3 bodyFootSuckedInPosition = physutil::toVec3(bodyPos - btVector3(0, targetLength - _capsuleRadius, 0));
 
         for (uint32_t i = 0; i < numSamples; i++)
         {
-            // Draw deubug
+            // Draw debug
             glm::vec3 circularPatternR0 = physutil::toVec3(bodyPos) + circularPatternOffset;
             glm::vec3 circularPatternR1 = bodyFootSuckedInPosition + circularPatternOffset;
             PhysicsEngine::getInstance().debugDrawLineOneFrame(circularPatternR0, circularPatternR1, glm::vec3(1, 0.5, 0.75));
@@ -184,10 +199,20 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         accumulatedHitPositions.y = 0.0f;
         if (glm::length2(accumulatedHitPositions) > 0.0001f)
         {
-            glm::vec3 theVeryBest = glm::normalize(accumulatedHitPositions);
-            std::cout << "x=" << theVeryBest.x << "\ty=0\tz=" << theVeryBest.z << std::endl;
+            glm::vec3 pushAwayDirection = -glm::normalize(accumulatedHitPositions);
 
-            // @INCOMPLETE: use theVeryBest to actually displace the bean!!!!  -Timo
+            float_t pushAwayForce = 1.0f;
+            if (glm::length2(cameraViewInput) > 0.0001f)
+                pushAwayForce = glm::clamp(glm::dot(pushAwayDirection, glm::normalize(cameraViewInput)), 0.0f, 1.0f);  // If you're pushing the stick towards the ledge like to climb up it, then you should be able to do that with the knee-space
+
+            // @HEURISTIC: I dont think this is the "end all be all solution" to this problem
+            //             but I do think it is the "end all be all soltuion" for this game
+            //             (and then have the next step see if needs to increment more)
+            //                 -Timo
+            const float_t displacementMagnitude = (1.0f - glm::cos(circularPatternAngleFromOrigin)) * _capsuleRadius;
+            glm::vec3 flatDisplacement = pushAwayDirection * pushAwayForce * displacementMagnitude;
+            _displacementToTarget.x = flatDisplacement.x;
+            _displacementToTarget.z = flatDisplacement.z;
         }
     }
 
@@ -239,7 +264,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         }
     }
 
-    _physicsObj->body->setLinearVelocity(physutil::toVec3(velocity + _displacementToTarget));
+    _physicsObj->body->setLinearVelocity(physutil::toVec3(velocity + _displacementToTarget / physicsDeltaTime));
 }
 
 void Player::dump(DataSerializer& ds)

@@ -13,7 +13,7 @@ struct GPUCameraData
 	glm::vec3 cameraPosition;
 };
 
-constexpr uint32_t SHADOWMAP_DIMENSION = 2048;
+constexpr uint32_t SHADOWMAP_DIMENSION = 4096;
 constexpr uint32_t SHADOWMAP_CASCADES  = 4;
 
 struct GPUCascadeViewProjsData

@@ -43,7 +43,6 @@ private:
     glm::vec3 _groundContactNormal;
     uint32_t _stepsSinceLastGrounded = 0;
     bool _flagJump = false;
-    glm::vec3 _prevPosition;
     glm::vec3 _displacementToTarget = glm::vec3(0.0f);
 
     // Callbacks
