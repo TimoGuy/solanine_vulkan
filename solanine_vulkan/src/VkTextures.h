@@ -1,5 +1,6 @@
 #pragma once
-#include "Imports.h"
+#include <vector>
+#include <vulkan/vulkan.h>
 class VulkanEngine;
 class AllocatedImage;
 

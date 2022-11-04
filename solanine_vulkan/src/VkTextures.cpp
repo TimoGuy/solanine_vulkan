@@ -1,6 +1,7 @@
 #include "VkTextures.h"
 #include <stb_image.h>
 #include "VkInitializers.h"
+#include "VkDataStructures.h"
 #include "VulkanEngine.h"
 
 

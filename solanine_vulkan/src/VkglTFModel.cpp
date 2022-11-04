@@ -6,6 +6,7 @@
  * This code is licensed under the MIT license (MIT) (http://opensource.org/licenses/MIT)
  */
 
+#include "Imports.h"
 #include "VkglTFModel.h"
 #include "VulkanEngine.h"
 #include "VkTextures.h"

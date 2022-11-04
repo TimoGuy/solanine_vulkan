@@ -1,5 +1,9 @@
 #include "AudioEngine.h"
+
 #include <fmod_errors.h>
+#include <iostream>
+#include <glm/glm.hpp>
+
 
 #define ERRCHECK(_result) errorCheck(_result, __FILE__, __LINE__)
 void errorCheck(FMOD_RESULT result, const char* file, int line)
@@ -56,6 +60,11 @@ void AudioEngine::unloadSound(const std::string& fname)
 
     ERRCHECK(sound->second->release());
     audioAdapter->sounds.erase(sound);
+}
+
+int AudioEngine::playSound(const std::string& fname)
+{
+    return playSound(fname, glm::vec3(0.0f));
 }
 
 int AudioEngine::playSound(const std::string& fname, const glm::vec3& position, float db)

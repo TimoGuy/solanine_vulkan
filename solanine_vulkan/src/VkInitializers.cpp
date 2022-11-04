@@ -1,6 +1,6 @@
 #include "VkInitializers.h"
 
-#include "VulkanEngine.h"
+#include "VkDataStructures.h"
 
 
 extern float_t vkinit::_maxSamplerAnisotropy = 0.0f;

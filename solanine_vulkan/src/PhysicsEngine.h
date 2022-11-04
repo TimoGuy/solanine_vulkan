@@ -1,5 +1,8 @@
 #pragma once
 
+#include <vector>
+#include <map>
+#include <functional>
 #define BT_THREADSAFE 1
 #include <btBulletDynamicsCommon.h>
 #include <btBulletCollisionCommon.h>
@@ -8,7 +11,8 @@
 #include <BulletCollision/NarrowPhaseCollision/btRaycastCallback.h>
 #include <BulletDynamics/Dynamics/btDiscreteDynamicsWorldMt.h>
 #include <BulletDynamics/ConstraintSolver/btSequentialImpulseConstraintSolverMt.h>
-#include "Imports.h"
+#include <glm/glm.hpp>
+#include "VkDataStructures.h"
 
 
 class VulkanEngine;

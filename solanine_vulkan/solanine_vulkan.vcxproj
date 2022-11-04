@@ -148,6 +148,7 @@ copy $(SolutionDir)libs\fmod_studio\lib\fmodstudio.dll $(OutDirfullPath)fmodstud
     <ClInclude Include="src\PhysicsEngine.h" />
     <ClInclude Include="src\Player.h" />
     <ClInclude Include="src\VkBootstrap.h" />
+    <ClInclude Include="src\VkDataStructures.h" />
     <ClInclude Include="src\VkglTFModel.h" />
     <ClInclude Include="src\VkInitializers.h" />
     <ClInclude Include="src\VkTextures.h" />

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Imports.h"
+#include "VkDataStructures.h"
 
 namespace vkglTF { class Model; }
 class Entity;

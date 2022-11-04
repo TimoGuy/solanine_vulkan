@@ -7,8 +7,7 @@
 #include <string>
 #include <map>
 #include <vector>
-#include <iostream>
-#include <glm/glm.hpp>
+#include <glm/fwd.hpp>
 
 struct AudioAdapter_FMOD;
 
@@ -24,7 +23,8 @@ public:
 
     void loadSound(const std::string& fname, bool is3d = true, bool isLooping = false, bool stream = false);
     void unloadSound(const std::string& fname);
-    int playSound(const std::string& fname, const glm::vec3& position = glm::vec3(0.0f), float db = 0.0f);
+    int playSound(const std::string& fname);
+    int playSound(const std::string& fname, const glm::vec3& position, float db = 0.0f);
 
     void setChannel3dPosition(int channelId, const glm::vec3& position);
     void setChannelVolume(int channelId, float db);
@@ -38,7 +38,7 @@ public:
     void setEventParameter(const std::string& eventName, const std::string& parameterName, float value);
     void getEventParameter(const std::string& eventName, const std::string& parameterName, float* outValue);
 
-    void set3dListenerTransform(const glm::vec3& position = glm::vec3(0.0f), const glm::vec3& forward = glm::vec3(0.0f, 0.0f, 1.0f));
+    void set3dListenerTransform(const glm::vec3& position, const glm::vec3& forward);
 
     void stopChannel(int channelId);
     void stopAllChannels();
