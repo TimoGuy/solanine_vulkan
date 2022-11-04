@@ -211,7 +211,14 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 	mainCamMode.orbitAngles.x = glm::clamp(mainCamMode.orbitAngles.x, glm::radians(-85.0f), glm::radians(85.0f));
 	glm::quat lookRotation = glm::quat(glm::vec3(mainCamMode.orbitAngles, 0.0f));
 	mainCamMode.calculatedLookDirection = lookRotation * glm::vec3(0, 0, 1);
-	mainCamMode.calculatedCameraPosition = mainCamMode.focusPosition + mainCamMode.focusPositionOffset - mainCamMode.calculatedLookDirection * mainCamMode.lookDistance;
+
+	const glm::vec3 focusPositionCooked = mainCamMode.focusPosition + mainCamMode.focusPositionOffset;
+	float_t lookDistance = mainCamMode.lookDistance;
+	auto hitInfo = PhysicsEngine::getInstance().raycast(physutil::toVec3(focusPositionCooked), physutil::toVec3(focusPositionCooked - mainCamMode.calculatedLookDirection * lookDistance));
+	if (hitInfo.hasHit())
+		lookDistance *= hitInfo.m_closestHitFraction;
+
+	mainCamMode.calculatedCameraPosition = focusPositionCooked - mainCamMode.calculatedLookDirection * lookDistance;
 
 	if (sceneCamera.facingDirection != mainCamMode.calculatedLookDirection ||
 		sceneCamera.gpuCameraData.cameraPosition != mainCamMode.calculatedCameraPosition)
