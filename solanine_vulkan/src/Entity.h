@@ -2,7 +2,7 @@
 
 #include <cmath>
 #include <string>
-class VulkanEngine;
+class EntityManager;
 class DataSerializer;
 class DataSerialized;
 
@@ -10,7 +10,7 @@ class DataSerialized;
 class Entity
 {
 public:
-    Entity(VulkanEngine* engine, DataSerialized* ds);
+    Entity(EntityManager* em, DataSerialized* ds);
     virtual ~Entity();
     virtual void update(const float_t& deltaTime) { }    // Gets called once per frame
     virtual void physicsUpdate(const float_t& physicsDeltaTime) { }        // Gets called once per physics calculation
@@ -26,7 +26,7 @@ public:
          _enablePhysicsUpdate = false;
 
 protected:
-    VulkanEngine* _engine;
+    EntityManager* _em;
 
 private:
     std::string _guid;

@@ -1,28 +1,30 @@
 #include "Player.h"
 
-//#include "VulkanEgneinfd.h"
 #include "VkglTFModel.h"
 #include "PhysicsEngine.h"
+#include "RenderObject.h"
+#include "Camera.h"
 #include "InputManager.h"
 #include "DataSerialization.h"
 #include "imgui/imgui.h"
 
 
-Player::Player(VulkanEngine* engine, DataSerialized* ds) : Entity(engine, ds)
+Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSerialized* ds) : Entity(em, ds), _rom(rom), _camera(camera)
 {
     if (ds)
         load(*ds);
 
-    _characterModel = _engine->getModel("slimeGirl");
+    _characterModel = _rom->getModel("slimeGirl");
 
     _renderObj =
-        _engine->registerRenderObject({
+        _rom->registerRenderObject({
             .model = _characterModel,
             .transformMatrix = glm::translate(glm::mat4(1.0f), _load_position) * glm::toMat4(glm::quat(glm::vec3(0, _facingDirection, 0))),
             .renderLayer = RenderLayer::VISIBLE,
             .attachedEntityGuid = getGUID(),
             });
-    _engine->setMainCamTargetObject(_renderObj);  // @NOTE: I believe that there should be some kind of main camera system that targets the player by default but when entering different volumes etc. the target changes depending.... essentially the system needs to be more built out imo
+
+    _camera->mainCamMode.setMainCamTargetObject(_renderObj);  // @NOTE: I believe that there should be some kind of main camera system that targets the player by default but when entering different volumes etc. the target changes depending.... essentially the system needs to be more built out imo
 
     _totalHeight = 5.0f;
     _maxClimbAngle = glm::radians(47.0f);
@@ -60,7 +62,7 @@ Player::Player(VulkanEngine* engine, DataSerialized* ds) : Entity(engine, ds)
 
 Player::~Player()
 {
-    _engine->unregisterRenderObject(_renderObj);
+    _rom->unregisterRenderObject(_renderObj);
     PhysicsEngine::getInstance().unregisterPhysicsObject(_physicsObj);
 
     // @TODO: figure out if I need to call `delete _collisionShape;` or not
@@ -79,13 +81,13 @@ void Player::update(const float_t& deltaTime)
 	input.y += input::keyUpPressed    ?  1.0f : 0.0f;
 	input.y += input::keyDownPressed  ? -1.0f : 0.0f;
 
-    if (_engine->_freeCamMode.enabled)
+    if (_camera->freeCamMode.enabled)
     {
         input = glm::vec2(0.0f);
         _flagJump = false;
     }
 
-    glm::vec3 flatCameraFacingDirection = _engine->_sceneCamera.facingDirection;
+    glm::vec3 flatCameraFacingDirection = _camera->sceneCamera.facingDirection;
     flatCameraFacingDirection.y = 0.0f;
     flatCameraFacingDirection = glm::normalize(flatCameraFacingDirection);
 
@@ -116,13 +118,13 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
 	input.y += input::keyUpPressed ? 1.0f : 0.0f;
 	input.y += input::keyDownPressed ? -1.0f : 0.0f;
 
-    if (_engine->_freeCamMode.enabled)
+    if (_camera->freeCamMode.enabled)
     {
         input = glm::vec2(0.0f);
         _flagJump = false;
     }
 
-    glm::vec3 flatCameraFacingDirection = _engine->_sceneCamera.facingDirection;
+    glm::vec3 flatCameraFacingDirection = _camera->sceneCamera.facingDirection;
     flatCameraFacingDirection.y = 0.0f;
     flatCameraFacingDirection = glm::normalize(flatCameraFacingDirection);
 

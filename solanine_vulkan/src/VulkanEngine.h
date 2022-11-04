@@ -1,26 +1,17 @@
 #pragma once
 
 #include "Imports.h"
+#include "Settings.h"
 #include "VkDataStructures.h"
+#include "EntityManager.h"
+#include "SceneManagement.h"
 
-namespace vkglTF { class Model; }
+
+class RenderObject;
+class RenderObjectManager;
 class Entity;
-
-struct GPUCameraData
-{
-	glm::mat4 view;
-	glm::mat4 projection;
-	glm::mat4 projectionView;
-	glm::vec3 cameraPosition;
-};
-
-constexpr uint32_t SHADOWMAP_DIMENSION = 4096;
-constexpr uint32_t SHADOWMAP_CASCADES  = 4;
-
-struct GPUCascadeViewProjsData
-{
-	glm::mat4 cascadeViewProjs[SHADOWMAP_CASCADES];
-};
+class EntityManager;
+class Camera;
 
 struct CascadeIndexPushConstBlock
 {
@@ -107,21 +98,6 @@ struct DeletionQueue
 	}
 };
 
-enum class RenderLayer
-{
-	VISIBLE, INVISIBLE, BUILDER
-};
-
-struct RenderObject
-{
-	vkglTF::Model* model;
-	glm::mat4 transformMatrix;
-	RenderLayer renderLayer;
-	std::string attachedEntityGuid;  // @NOTE: this is just for @DEBUG purposes for the imgui property panel
-};
-
-constexpr unsigned int FRAME_OVERLAP = 2;
-constexpr size_t RENDER_OBJECTS_MAX_CAPACITY = 10000;
 
 class VulkanEngine
 {
@@ -210,18 +186,13 @@ public:
 	//
 	// Render Objects
 	//
-	std::vector<RenderObject> _renderObjects;    // @TODO: consider this to be private!
-	std::vector<bool> _renderObjectLayersEnabled = { true, false, false };
-	RenderObject* registerRenderObject(RenderObject renderObjectData);
-	void unregisterRenderObject(RenderObject* objRegistration);
+	RenderObjectManager* _roManager;
 
 	std::unordered_map<std::string, Material> _materials;
 	Material* createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name);
 	Material* getMaterial(const std::string& name);
 
-	std::unordered_map<std::string, vkglTF::Model*> _renderObjectModels;
-	vkglTF::Model* createModel(vkglTF::Model* model, const std::string& name);
-	vkglTF::Model* getModel(const std::string& name);
+	
 
 	struct PBRSceneTextureSet    // @NOTE: these are the textures that are needed for any type of pbr scene (i.e. the irradiance, prefilter, and brdf maps)
 	{
@@ -281,78 +252,11 @@ private:
 	void renderPickedObject(VkCommandBuffer cmd, const FrameData& currentFrame);
 
 	//
-	// Scene Camera
-	// @NOTE: I think this is a bad name for it. The Scene Camera holds all the data for the GPU,
-	//        however, the Main cam and the Moving Free cam are both virtual cameras that get switched
-	//        to back and forth, and just simply change the scene camera's information
+	// Camera
 	//
+	Camera* _camera;
+
 public:
-	struct SceneCamera
-	{
-		glm::vec3 facingDirection = { 0.0f, 0.0f, 1.0f };
-		float_t fov               = glm::radians(70.0f);
-		float_t aspect;
-		float_t zNear             = 0.1f;
-		float_t zFar              = 1500.0f;
-		float_t zFarShadow        = 200.0f;
-		GPUCameraData gpuCameraData;
-		GPUCascadeViewProjsData gpuCascadeViewProjsData;  // This will get calculated from the scene camera since this is a CSM viewprojs
-	} _sceneCamera;
-private:
-	void recalculateSceneCamera();
-	void recalculateCascadeViewProjs();
-
-	const uint32_t
-		_cameraMode_mainCamMode = 0,
-		_cameraMode_freeCamMode = 1;
-	uint32_t _cameraMode = _cameraMode_freeCamMode;
-	uint32_t _prevCameraMode = (uint32_t)-1;
-	static const uint32_t _numCameraModes = 2;
-	enum class CameraModeChangeEvent { NONE, ENTER, EXIT };
-	CameraModeChangeEvent _changeEvents[_numCameraModes];
-	bool _flagNextStepSetEnterChangeEvent = true;  // For default camera mode event to get triggered with ::ENTER
-
-	//
-	// Main cam mode
-	// (Orbiting camera using just mouse inputs)
-	//
-	struct MainCamMode
-	{
-		RenderObject* targetObject = nullptr;
-		glm::vec3 focusPosition = glm::vec3(0);
-		glm::vec2 sensitivity = glm::vec2(0.1f, 0.1f);
-		glm::vec2 orbitAngles = glm::vec2(glm::radians(45.0f), 0.0f);
-		glm::vec3 calculatedCameraPosition = glm::vec3(0);
-		glm::vec3 calculatedLookDirection = glm::vec3(0, -0.707106781, 0.707106781);
-
-		// Tweak variables
-		float_t   lookDistance = 15.0f;
-		float_t   focusRadius = 3.0f;
-		float_t   focusCentering = 0.75f;
-		glm::vec3 focusPositionOffset = glm::vec3(0, 7, 0);
-	} _mainCamMode;
-	void updateMainCam(const float_t& deltaTime, CameraModeChangeEvent changeEvent);
-public:
-	void setMainCamTargetObject(RenderObject* targetObject);
-private:
-
-#ifdef _DEVELOP
-public:
-	//
-	// Moving Free cam mode
-	// (First person camera using wasd and q and e and RMB+mouse to look and move)
-	//
-	struct FreeCamMode
-	{
-		bool enabled = false;
-		glm::ivec2 savedMousePosition;
-		float_t sensitivity = 0.1f;
-	} _freeCamMode;
-private:
-	void updateFreeCam(const float_t& deltaTime, CameraModeChangeEvent changeEvent);
-#endif
-
-
 	//
 	// PBR rendering
 	//
@@ -369,7 +273,6 @@ private:
 		GPUPBRShadingProps gpuSceneShadingProps;
 	} _pbrRendering;
 
-public:
 	enum PBRWorkflows { PBR_WORKFLOW_METALLIC_ROUGHNESS = 0, PBR_WORKFLOW_SPECULAR_GLOSSINESS = 1 };
 
 	struct PBRMaterialPushConstBlock
@@ -395,32 +298,10 @@ private:
 	//
 	// Entities
 	//
-	void INTERNALaddEntity(Entity* entity);
-	void INTERNALdestroyEntity(Entity* entity);
-	void INTERNALaddRemoveRequestedEntities();
-public:
-	void destroyEntity(Entity* entity);    // Do not use the destructor or INTERNALdestroyEntity(), use this function!
-private:
-	std::vector<Entity*> _entities;
-	std::deque<Entity*> _entitiesToAddQueue;
-	std::deque<Entity*> _entitiesToDestroyQueue;
-	bool _flushEntitiesToDestroyRoutine = false;
+	EntityManager* _entityManager;
 
 #ifdef _DEVELOP
-public:
-	//
-	// Debug Messages
-	//
-	struct DebugMessage
-	{
-		std::string message;
-		uint32_t type = 0;  // 0: info | 1: warning | 2: error
-		float_t timeUntilDeletion = 5.0f;  // @NOTE: use this to lengthen certain messages, like error ones
-	};
-	static void pushDebugMessage(const DebugMessage& message);
-private:
-	static std::vector<DebugMessage> _debugMessages;
-	
+private:	
 	//
 	// Debug
 	//
@@ -472,6 +353,7 @@ private:
 #endif
 
     friend class Entity;
+	friend Entity* scene::spinupNewObject(const std::string& objectName, VulkanEngine* engine, DataSerialized* ds);
 };
 
 

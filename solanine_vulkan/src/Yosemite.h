@@ -3,7 +3,9 @@
 #include "Entity.h"
 #include "Imports.h"
 namespace vkglTF { class Model; }
-struct RenderObject;
+class EntityManager;
+class RenderObject;
+struct RenderObjectManager;
 struct RegisteredPhysicsObject;
 class btPersistentManifold;
 class btBoxShape;
@@ -14,7 +16,7 @@ class Yosemite : public Entity
 public:
     static const std::string TYPE_NAME;
 
-    Yosemite(VulkanEngine* engine, DataSerialized* ds);
+    Yosemite(EntityManager* em, RenderObjectManager* rom, DataSerialized* ds);
     ~Yosemite();
 
     void physicsUpdate(const float_t& physicsDeltaTime);
@@ -28,6 +30,7 @@ public:
 private:
     vkglTF::Model* _cubeModel;
     RenderObject* _renderObj;
+    RenderObjectManager* _rom;
     RegisteredPhysicsObject* _physicsObj;
 
 #ifdef _DEVELOP

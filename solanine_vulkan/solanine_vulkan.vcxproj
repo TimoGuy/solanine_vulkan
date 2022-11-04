@@ -126,7 +126,11 @@ copy $(SolutionDir)libs\fmod_studio\lib\fmodstudio.dll $(OutDirfullPath)fmodstud
     <None Include="shader\skybox.vert" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\Camera.h" />
+    <ClInclude Include="src\Debug.h" />
+    <ClInclude Include="src\EntityManager.h" />
     <ClInclude Include="src\imgui\imgui_stdlib.h" />
+    <ClInclude Include="src\RenderObject.h" />
     <ClInclude Include="src\SceneManagement.h" />
     <ClInclude Include="src\AudioEngine.h" />
     <ClInclude Include="src\Entity.h" />
@@ -147,6 +151,7 @@ copy $(SolutionDir)libs\fmod_studio\lib\fmodstudio.dll $(OutDirfullPath)fmodstud
     <ClInclude Include="src\InputManager.h" />
     <ClInclude Include="src\PhysicsEngine.h" />
     <ClInclude Include="src\Player.h" />
+    <ClInclude Include="src\Settings.h" />
     <ClInclude Include="src\VkBootstrap.h" />
     <ClInclude Include="src\VkDataStructures.h" />
     <ClInclude Include="src\VkglTFModel.h" />
@@ -157,7 +162,10 @@ copy $(SolutionDir)libs\fmod_studio\lib\fmodstudio.dll $(OutDirfullPath)fmodstud
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\AudioEngine.cpp" />
+    <ClCompile Include="src\Camera.cpp" />
+    <ClCompile Include="src\Debug.cpp" />
     <ClCompile Include="src\Entity.cpp" />
+    <ClCompile Include="src\EntityManager.cpp" />
     <ClCompile Include="src\imgui\imgui.cpp" />
     <ClCompile Include="src\imgui\ImGuizmo.cpp" />
     <ClCompile Include="src\imgui\imgui_demo.cpp" />
@@ -175,6 +183,7 @@ copy $(SolutionDir)libs\fmod_studio\lib\fmodstudio.dll $(OutDirfullPath)fmodstud
     <ClCompile Include="src\PhysicsEngine.cpp" />
     <ClCompile Include="src\Player.cpp" />
     <ClCompile Include="src\DataSerialization.cpp" />
+    <ClCompile Include="src\RenderObject.cpp" />
     <ClCompile Include="src\SceneManagement.cpp" />
     <ClCompile Include="src\VkBootstrap.cpp" />
     <ClCompile Include="src\VkglTFModel.cpp" />

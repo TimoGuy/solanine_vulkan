@@ -11,9 +11,13 @@
 #include "AudioEngine.h"
 #include "PhysicsEngine.h"
 #include "InputManager.h"
+#include "RenderObject.h"
 #include "Entity.h"
+#include "EntityManager.h"
+#include "Camera.h"
 #include "SceneManagement.h"
 #include "DataSerialization.h"
+#include "Debug.h"
 #include "imgui/imgui.h"
 #include "imgui/imgui_stdlib.h"
 #include "imgui/imgui_impl_sdl.h"
@@ -55,7 +59,9 @@ void VulkanEngine::init()
 		window_flags
 	);
 
-	_renderObjects.reserve(RENDER_OBJECTS_MAX_CAPACITY);
+	_roManager = new RenderObjectManager(_allocator);
+	_entityManager = new EntityManager();
+	_camera = new Camera(this);
 
 #ifdef _DEVELOP
 	buildResourceList();
@@ -95,9 +101,9 @@ void VulkanEngine::run()
 	//
 	// Initialize Scene Camera
 	//
-	_sceneCamera.aspect = (float_t)_windowExtent.width / (float_t)_windowExtent.height;
-	_sceneCamera.gpuCameraData.cameraPosition = { 0.0f, 0.0f, -30.0f };
-	recalculateSceneCamera();
+	_camera->sceneCamera.aspect = (float_t)_windowExtent.width / (float_t)_windowExtent.height;
+	_camera->sceneCamera.gpuCameraData.cameraPosition = { 0.0f, 0.0f, -30.0f };
+	_camera->sceneCamera.recalculateSceneCamera(_pbrRendering.gpuSceneShadingProps);
 
 	// @HARDCODED: Set the initial light direction
 	_pbrRendering.gpuSceneShadingProps.lightDir = glm::normalize(glm::vec4(0.432f, 0.864f, 0.259f, 0.0f));
@@ -138,51 +144,27 @@ void VulkanEngine::run()
 			continue;
 
 		// Update physics
-		PhysicsEngine::getInstance().update(deltaTime, &_entities);
+		auto& entities = _entityManager->_entities;
+		PhysicsEngine::getInstance().update(deltaTime, &entities);
 
 		// Collect debug stats
 		updateDebugStats(deltaTime);
 
 		// Update entities
 		// @TODO: multithread this sucker!
-		for (auto it = _entities.begin(); it != _entities.end(); it++)
+		// @INCOMPLETE: put this inside the entity manager!
+		for (auto it = entities.begin(); it != entities.end(); it++)
 		{
 			Entity* ent = *it;
 			if (ent->_enableUpdate)
 				ent->update(deltaTime);
 		}
 
-		//
-		// Update camera modes
-		// @TODO: scrunch this into its own function
-		//
-		for (size_t i = 0; i < _numCameraModes; i++)
-			_changeEvents[i] = CameraModeChangeEvent::NONE;
-		if (_flagNextStepSetEnterChangeEvent && !input::onKeyF10Press)  // If we hit the F10 key two frames in a row, I can see bugs happening without this guard  -Timo
-		{
-			_flagNextStepSetEnterChangeEvent = false;
-			_changeEvents[_cameraMode] = CameraModeChangeEvent::ENTER;
-		}
-		if (input::onKeyF10Press)
-		{
-			_prevCameraMode = _cameraMode;
-			_cameraMode = fmodf(_cameraMode + 1, _numCameraModes);
-
-			if (!_flagNextStepSetEnterChangeEvent)  // There is a situation where this flag is still true, and that's if the F10 key was hit two frames in a row. We don't need to call EXIT on a camera mode that never ocurred, hence ignoring doing this if the flag is still on  -Timo
-			{
-				_changeEvents[_prevCameraMode] = CameraModeChangeEvent::EXIT;
-				_flagNextStepSetEnterChangeEvent = true;
-			}
-
-			pushDebugMessage({
-				.message = "Changed to " + std::string(_cameraMode == 0 ? "game camera" : "free camera") + " mode",
-				});
-		}
-		updateMainCam(deltaTime, _changeEvents[_cameraMode_mainCamMode]);
-		updateFreeCam(deltaTime, _changeEvents[_cameraMode_freeCamMode]);
+		// Update camera
+		_camera->update(deltaTime);
 
 		// Add/Remove requested entities
-		INTERNALaddRemoveRequestedEntities();
+		_entityManager->INTERNALaddRemoveRequestedEntities();
 
 		//
 		// @TODO: loop thru animators and update them!
@@ -192,7 +174,7 @@ void VulkanEngine::run()
 		static uint32_t animationIndex = 31;    // @NOTE: this is Slimegirl's running inmotion animation
 		static float_t animationTimer = 0.0f;
 		animationTimer += deltaTime;
-		auto slimeGirl = getModel("slimeGirl");
+		auto slimeGirl = _roManager->getModel("slimeGirl");
 		if (animationTimer > slimeGirl->animations[animationIndex].end)    // Loop animation
 			animationTimer -= slimeGirl->animations[animationIndex].end;
 		slimeGirl->updateAnimation(animationIndex, animationTimer);
@@ -220,15 +202,12 @@ void VulkanEngine::cleanup()
 	{
 		vkDeviceWaitIdle(_device);
 
-		_flushEntitiesToDestroyRoutine = true;  // @NOTE: all entities must be deleted before the physicsengine can shut down
-		for (int32_t i = (int32_t)_entities.size() - 1; i >= 0; i--)  // @NOTE: have to use this backwards iterator for some reason bc `delete` keyword doesn't play well with `for (auto e : _entities)` like... why?
-			delete _entities[i];
+		delete _entityManager;  // @NOTE: all entities must be deleted before the physicsengine can shut down
 
 		PhysicsEngine::getInstance().cleanup();
 		AudioEngine::getInstance().cleanup();
 
-		for (auto it = _renderObjectModels.begin(); it != _renderObjectModels.end(); it++)
-			it->second->destroy(_allocator);
+		delete _roManager;
 
 		_mainDeletionQueue.flush();
 		_swapchainDependentDeletionQueue.flush();
@@ -303,7 +282,7 @@ void VulkanEngine::render()
 		// Upload shadow cascades to GPU
 		void* data;
 		vmaMapMemory(_allocator, currentFrame.cascadeViewProjsBuffer._allocation, &data);
-		memcpy(data, &_sceneCamera.gpuCascadeViewProjsData, sizeof(GPUCascadeViewProjsData));
+		memcpy(data, &_camera->sceneCamera.gpuCascadeViewProjsData, sizeof(GPUCascadeViewProjsData));
 		vmaUnmapMemory(_allocator, currentFrame.cascadeViewProjsBuffer._allocation);
 
 		Material* shadowDepthPassMaterial = getMaterial("shadowDepthPassMaterial");  // @TODO: @IMPLEMENT this material so we can use the correct shaders
@@ -318,7 +297,7 @@ void VulkanEngine::render()
 			CascadeIndexPushConstBlock pc = { i };
 			vkCmdPushConstants(cmd, shadowDepthPassMaterial->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(CascadeIndexPushConstBlock), &pc);
 
-			renderRenderObjects(cmd, currentFrame, 0, _renderObjects.size(), false, true, &shadowDepthPassMaterial->pipelineLayout, true);
+			renderRenderObjects(cmd, currentFrame, 0, _roManager->_renderObjects.size(), false, true, &shadowDepthPassMaterial->pipelineLayout, true);
 			
 			vkCmdEndRenderPass(cmd);
 		}
@@ -355,7 +334,7 @@ void VulkanEngine::render()
 		vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
 		uploadCurrentFrameToGPU(currentFrame);
-		renderRenderObjects(cmd, currentFrame, 0, _renderObjects.size(), true, false, nullptr, false);
+		renderRenderObjects(cmd, currentFrame, 0, _roManager->_renderObjects.size(), true, false, nullptr, false);
 		renderPickedObject(cmd, currentFrame);
 		if (_showCollisionDebugDraw)
 			PhysicsEngine::getInstance().renderDebugDraw(cmd, currentFrame.globalDescriptor);
@@ -394,8 +373,8 @@ void VulkanEngine::render()
 	// Picking Render Pass
 	//
 	if (input::onLMBPress &&
-		_cameraMode == _cameraMode_freeCamMode &&
-		!_freeCamMode.enabled &&
+		_camera->getCameraMode() == Camera::_cameraMode_freeCamMode &&
+		!_camera->freeCamMode.enabled &&
 		!ImGui::GetIO().WantCaptureMouse &&
 		!ImGuizmo::IsUsing() &&
 		!ImGuizmo::IsOver() &&
@@ -462,7 +441,7 @@ void VulkanEngine::render()
 		scissor.extent = { 1, 1 };
 		vkCmdSetScissor(cmd, 0, 1, &scissor);    // @NOTE: the scissor is set to be dynamic state for this pipeline
 
-		renderRenderObjects(cmd, currentFrame, 0, _renderObjects.size(), false, true, &pickingMaterial.pipelineLayout, false);    // @NOTE: the joint descriptorset will still be bound in here   @HACK: it's using the wrong pipelinelayout but.... it should be fine? Bc the slot is still set=3 for the joints on the picking pipelinelayout too??
+		renderRenderObjects(cmd, currentFrame, 0, _roManager->_renderObjects.size(), false, true, &pickingMaterial.pipelineLayout, false);    // @NOTE: the joint descriptorset will still be bound in here   @HACK: it's using the wrong pipelinelayout but.... it should be fine? Bc the slot is still set=3 for the joints on the picking pipelinelayout too??
 
 		// End renderpass
 		vkCmdEndRenderPass(cmd);
@@ -704,34 +683,6 @@ void VulkanEngine::loadImages()
 	//
 }
 
-RenderObject* VulkanEngine::registerRenderObject(RenderObject renderObjectData)
-{
-	// @NOTE: this is required to be here (as well as the .reserve() on init)
-	//        bc if the capacity is overcome, then a new array with a larger
-	//        capacity is allocated, and then the pointer to the part in the
-	//        vector is lost to garbage memory that got deallocated.  -Timo 2022/10/24
-	if (_renderObjects.size() >= RENDER_OBJECTS_MAX_CAPACITY)
-	{
-		std::cerr << "[REGISTER RENDER OBJECT]" << std::endl
-			<< "ERROR: trying to register render object when capacity is at maximum." << std::endl
-			<< "       Current capacity: " << _renderObjects.size() << std::endl
-			<< "       Maximum capacity: " << RENDER_OBJECTS_MAX_CAPACITY << std::endl;
-		return nullptr;
-	}
-
-	_renderObjects.push_back(renderObjectData);
-	return &_renderObjects.back();
-}
-
-void VulkanEngine::unregisterRenderObject(RenderObject* objRegistration)
-{
-	std::erase_if(_renderObjects,
-		[=](RenderObject& x) {
-			return &x == objRegistration;
-		}
-	);
-}
-
 Material* VulkanEngine::createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name)
 {
 	Material material = {};
@@ -754,22 +705,6 @@ Material* VulkanEngine::getMaterial(const std::string& name)
 	if (it == _materials.end())
 		return nullptr;
 	return &it->second;
-}
-
-vkglTF::Model* VulkanEngine::createModel(vkglTF::Model* model, const std::string& name)
-{
-	// @NOTE: no need to reserve any size of models for this vector, bc we're just giving
-	// away the pointer to the model itself instead bc the model is created on the heap
-	_renderObjectModels[name] = model;
-	return _renderObjectModels[name];  // Ehhh, we could've just sent back the original model pointer
-}
-
-vkglTF::Model* VulkanEngine::getModel(const std::string& name)
-{
-	auto it = _renderObjectModels.find(name);
-	if (it == _renderObjectModels.end())
-		return nullptr;
-	return it->second;
 }
 
 AllocatedBuffer VulkanEngine::createBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage)
@@ -1808,7 +1743,7 @@ void VulkanEngine::initPipelines()
 	};
 
 	auto _meshPipeline = pipelineBuilder.buildPipeline(_device, _mainRenderPass);
-	createMaterial(_meshPipeline, _meshPipelineLayout, "defaultMaterial");
+	createMaterial(_meshPipeline, _meshPipelineLayout, "pbrMaterial");
 
 	for (auto shaderStage : pipelineBuilder._shaderStages)
 		vkDestroyShaderModule(_device, shaderStage.module, nullptr);
@@ -2050,7 +1985,7 @@ void VulkanEngine::initScene()    // @TODO: rename this to something better, bc 
 	//
 	// Update defaultMaterial		@TODO: @FIXME: likely we should just have the material get updated with the textures on pipeline creation, not here... plus pipelines are recreated when the screen resizes too so it should be done then.
 	//
-	Material* texturedMaterial = getMaterial("defaultMaterial");
+	Material* texturedMaterial = getMaterial("pbrMaterial");
 	VkDescriptorSetAllocateInfo allocInfo = {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
 		.pNext = nullptr,
@@ -2570,7 +2505,7 @@ void VulkanEngine::generatePBRCubemaps()
 
 					VkDeviceSize offsets[1] = { 0 };
 
-					auto skybox = getModel("cube");
+					auto skybox = _roManager->getModel("cube");
 					skybox->bind(cmd);
 					skybox->draw(cmd);
 
@@ -3086,7 +3021,7 @@ void VulkanEngine::recreateSwapchain()
 
 	_windowExtent.width = w;
 	_windowExtent.height = h;
-	_sceneCamera.aspect = (float_t)w / (float_t)h;
+	_camera->sceneCamera.aspect = (float_t)w / (float_t)h;
 
 	_swapchainDependentDeletionQueue.flush();
 
@@ -3097,7 +3032,7 @@ void VulkanEngine::recreateSwapchain()
 	initFramebuffers();
 	initPipelines();
 
-	recalculateSceneCamera();
+	_camera->sceneCamera.recalculateSceneCamera(_pbrRendering.gpuSceneShadingProps);
 
 	_recreateSwapchain = false;
 }
@@ -3166,8 +3101,8 @@ void VulkanEngine::loadMeshes()
 	);
 	e.run(taskflow).wait();
 
-	createModel(cube, "cube");
-	createModel(slimeGirl, "slimeGirl");
+	_roManager->createModel(cube, "cube");
+	_roManager->createModel(slimeGirl, "slimeGirl");
 }
 
 void VulkanEngine::uploadCurrentFrameToGPU(const FrameData& currentFrame)
@@ -3177,7 +3112,7 @@ void VulkanEngine::uploadCurrentFrameToGPU(const FrameData& currentFrame)
 	//
 	void* data;
 	vmaMapMemory(_allocator, currentFrame.cameraBuffer._allocation, &data);
-	memcpy(data, &_sceneCamera.gpuCameraData, sizeof(GPUCameraData));
+	memcpy(data, &_camera->sceneCamera.gpuCameraData, sizeof(GPUCameraData));
 	vmaUnmapMemory(_allocator, currentFrame.cameraBuffer._allocation);
 
 	//
@@ -3194,9 +3129,9 @@ void VulkanEngine::uploadCurrentFrameToGPU(const FrameData& currentFrame)
 	vmaMapMemory(_allocator, currentFrame.objectBuffer._allocation, &objectData);
 	GPUObjectData* objectSSBO = (GPUObjectData*)objectData;    // @IMPROVE: perhaps multithread this? Or only update when the object moves?
 
-	for (size_t i = 0; i < _renderObjects.size(); i++)
+	for (size_t i = 0; i < _roManager->_renderObjects.size(); i++)
 	{
-		RenderObject& object = _renderObjects[i];
+		RenderObject& object = _roManager->_renderObjects[i];
 		objectSSBO[i].modelMatrix = object.transformMatrix;		// Another evil pointer trick I love... call me Dmitri the Evil
 	}
 
@@ -3216,7 +3151,7 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipelineLayout, 1, 1, &skyboxMaterial.textureSet, 0, nullptr);
 
-		auto skybox = getModel("cube");
+		auto skybox = _roManager->getModel("cube");
 		skybox->bind(cmd);
 		skybox->draw(cmd);
 	}
@@ -3224,16 +3159,16 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 	//
 	// Render all the renderobjects
 	//
-	Material& defaultMaterial = *getMaterial("defaultMaterial");    // @HACK: @TODO: currently, the way that the pipeline is getting used is by just hardcode using it in the draw commands for models... however, each model should get its pipeline set to this material instead (or whatever material its using... that's why we can't hardcode stuff!!!)   @TODO: create some kind of way to propagate the newly created pipeline to the primMat (calculated material in the gltf model) instead of using defaultMaterial directly.  -Timo
+	Material& defaultMaterial = *getMaterial("pbrMaterial");    // @HACK: @TODO: currently, the way that the pipeline is getting used is by just hardcode using it in the draw commands for models... however, each model should get its pipeline set to this material instead (or whatever material its using... that's why we can't hardcode stuff!!!)   @TODO: create some kind of way to propagate the newly created pipeline to the primMat (calculated material in the gltf model) instead of using defaultMaterial directly.  -Timo
 	vkglTF::Model* lastModel = nullptr;
 	Material* lastMaterial = nullptr;
 	VkDescriptorSet* lastJointDescriptor = nullptr;
 
 	for (size_t i = offset; i < offset + count; i++)
 	{
-		RenderObject& object = _renderObjects[i];
+		RenderObject& object = _roManager->_renderObjects[i];
 
-		if (!_renderObjectLayersEnabled[(size_t)object.renderLayer])
+		if (!_roManager->_renderObjectLayersEnabled[(size_t)object.renderLayer])
 			continue;    // Ignore layers that are disabled
 
 		if (!object.model)	// @NOTE: Subdue a warning that a possible nullptr could be dereferenced
@@ -3352,9 +3287,9 @@ void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& curr
 	bool found = false;
 	size_t pickedROIndex = 0;
 
-	for (size_t i = 0; i < _renderObjects.size(); i++)
+	for (size_t i = 0; i < _roManager->_renderObjects.size(); i++)
 	{
-		if (_movingMatrix.matrixToMove == &_renderObjects[i].transformMatrix)
+		if (_movingMatrix.matrixToMove == &_roManager->_renderObjects[i].transformMatrix)
 		{
 			found = true;
 			pickedROIndex = i;
@@ -3400,297 +3335,7 @@ void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& curr
 	}
 }
 
-void VulkanEngine::recalculateSceneCamera()
-{
-	glm::mat4 view = glm::lookAt(_sceneCamera.gpuCameraData.cameraPosition, _sceneCamera.gpuCameraData.cameraPosition + _sceneCamera.facingDirection, { 0.0f, 1.0f, 0.0f });
-	glm::mat4 projection = glm::perspective(_sceneCamera.fov, _sceneCamera.aspect, _sceneCamera.zNear, _sceneCamera.zFar);
-	projection[1][1] *= -1.0f;
-	_sceneCamera.gpuCameraData.view = view;
-	_sceneCamera.gpuCameraData.projection = projection;
-	_sceneCamera.gpuCameraData.projectionView = projection * view;
-
-	recalculateCascadeViewProjs();
-}
-
-void VulkanEngine::recalculateCascadeViewProjs()
-{
-	// Copied from Sascha Willem's `shadowmappingcascade` vulkan example
-	constexpr float_t cascadeSplitLambda = 0.95f;  // @TEMP: don't know if this needs tuning
-
-	float_t cascadeSplits[SHADOWMAP_CASCADES];
-
-	const float_t& nearClip = _sceneCamera.zNear;
-	const float_t& farClip = _sceneCamera.zFarShadow;
-	const float_t clipRange = farClip - nearClip;
-
-	const float_t minZ = nearClip;
-	const float_t maxZ = nearClip + clipRange;
-
-	const float_t range = maxZ - minZ;
-	const float_t ratio = maxZ / minZ;
-
-	// Calculate split depths based on view camera frustum
-	// Based on method presented in https://developer.nvidia.com/gpugems/GPUGems3/gpugems3_ch10.html
-	for (uint32_t i = 0; i < SHADOWMAP_CASCADES; i++)
-	{
-		float_t p = (i + 1) / static_cast<float_t>(SHADOWMAP_CASCADES);
-		float_t log = minZ * std::pow(ratio, p);
-		float_t uniform = minZ + range * p;
-		float_t d = cascadeSplitLambda * (log - uniform) + uniform;
-		cascadeSplits[i] = (d - nearClip) / clipRange;
-	}
-
-	// Calculate orthographic projection matrix for each cascade
-	float_t lastSplitDist = 0.0;
-	for (uint32_t i = 0; i < SHADOWMAP_CASCADES; i++)
-	{
-		float_t splitDist = cascadeSplits[i];
-
-		glm::vec3 frustumCorners[8] = {
-			glm::vec3(-1.0f,  1.0f, -1.0f),
-			glm::vec3( 1.0f,  1.0f, -1.0f),
-			glm::vec3( 1.0f, -1.0f, -1.0f),
-			glm::vec3(-1.0f, -1.0f, -1.0f),
-			glm::vec3(-1.0f,  1.0f,  1.0f),
-			glm::vec3( 1.0f,  1.0f,  1.0f),
-			glm::vec3( 1.0f, -1.0f,  1.0f),
-			glm::vec3(-1.0f, -1.0f,  1.0f),
-		};
-
-		// Project frustum corners into world space
-		glm::mat4 invCam = glm::inverse(_sceneCamera.gpuCameraData.projectionView);
-		for (uint32_t i = 0; i < 8; i++)
-		{
-			glm::vec4 invCorner = invCam * glm::vec4(frustumCorners[i], 1.0f);
-			frustumCorners[i] = invCorner / invCorner.w;
-		}
-
-		for (uint32_t i = 0; i < 4; i++)
-		{
-			glm::vec3 dist = frustumCorners[i + 4] - frustumCorners[i];
-			frustumCorners[i + 4] = frustumCorners[i] + (dist * splitDist);
-			frustumCorners[i] = frustumCorners[i] + (dist * lastSplitDist);
-		}
-
-		// Get frustum center
-		glm::vec3 frustumCenter = glm::vec3(0.0f);
-		for (uint32_t i = 0; i < 8; i++)
-			frustumCenter += frustumCorners[i];
-		frustumCenter /= 8.0f;
-
-		float_t radius = 0.0f;
-		for (uint32_t i = 0; i < 8; i++)
-		{
-			float_t distance = glm::length(frustumCorners[i] - frustumCenter);
-			radius = glm::max(radius, distance);
-		}
-		radius = std::ceil(radius * 16.0f) / 16.0f;
-
-		glm::vec3 maxExtents = glm::vec3(radius);
-		glm::vec3 minExtents = -maxExtents;
-
-		const glm::vec3& lightDir = -_pbrRendering.gpuSceneShadingProps.lightDir;  // @NOTE: lightDir is direction from surface point to the direction of the light (optimized for shader), but we want the view direction of the light, which is the opposite
-		glm::mat4 lightViewMatrix = glm::lookAt(frustumCenter - lightDir * -minExtents.z, frustumCenter, glm::vec3(0.0f, 1.0f, 0.0f));
-		glm::mat4 lightOrthoMatrix = glm::ortho(minExtents.x, maxExtents.x, minExtents.y, maxExtents.y, 0.0f, maxExtents.z - minExtents.z);
-
-		// Store split distance and matrix in cascade
-		_sceneCamera.gpuCascadeViewProjsData.cascadeViewProjs[i] = lightOrthoMatrix * lightViewMatrix;
-		_pbrRendering.gpuSceneShadingProps.cascadeViewProjMats[i] = _sceneCamera.gpuCascadeViewProjsData.cascadeViewProjs[i];
-		_pbrRendering.gpuSceneShadingProps.cascadeSplits[i] = (nearClip + splitDist * clipRange) * -1.0f;
-
-		lastSplitDist = cascadeSplits[i];
-	}
-
-	// Update far plane ratio
-	_pbrRendering.gpuSceneShadingProps.zFarShadowZFarRatio = _sceneCamera.zFarShadow / _sceneCamera.zFar;
-}
-
-void VulkanEngine::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent changeEvent)
-{
-	if (changeEvent != CameraModeChangeEvent::NONE)
-	{
-		_mainCamMode.orbitAngles = glm::vec2(glm::radians(45.0f), 0.0f);
-		SDL_SetRelativeMouseMode(changeEvent == CameraModeChangeEvent::ENTER ? SDL_TRUE : SDL_FALSE);
-		SDL_WarpMouseInWindow(_window, _windowExtent.width / 2, _windowExtent.height / 2);
-	}
-	if (_cameraMode != _cameraMode_mainCamMode)
-		return;
-
-	//
-	// Focus onto target object
-	//
-	if (_mainCamMode.targetObject != nullptr)
-	{
-		// Update the focus position
-		glm::vec3 targetPosition = physutil::getPosition(_mainCamMode.targetObject->transformMatrix);
-		if (_mainCamMode.focusRadius > 0.0f)
-		{
-			glm::vec3 delta = _mainCamMode.focusPosition - targetPosition;
-			float_t distance = glm::length(delta);
-			float_t t = 1.0f;
-			if (distance > 0.01f && _mainCamMode.focusCentering > 0.0f)
-				t = glm::pow(1.0f - _mainCamMode.focusCentering, deltaTime);
-			if (distance > _mainCamMode.focusRadius)
-				t = glm::min(t, _mainCamMode.focusRadius / distance);
-			_mainCamMode.focusPosition = targetPosition + delta * t;
-		}
-		else
-			_mainCamMode.focusPosition = targetPosition;
-	}
-	constexpr glm::vec3 worldUp = { 0.0f, 1.0f, 0.0f };
-
-	//
-	// Manual rotation via mouse input
-	//
-	if (glm::length2((glm::vec2)input::mouseDelta) > 0.000001f)
-		_mainCamMode.orbitAngles += glm::vec2(input::mouseDelta.y, -input::mouseDelta.x) * glm::radians(_mainCamMode.sensitivity);
-
-	//
-	// Recalculate camera
-	//
-	_mainCamMode.orbitAngles.x = glm::clamp(_mainCamMode.orbitAngles.x, glm::radians(-85.0f), glm::radians(85.0f));
-	glm::quat lookRotation = glm::quat(glm::vec3(_mainCamMode.orbitAngles, 0.0f));
-	_mainCamMode.calculatedLookDirection = lookRotation * glm::vec3(0, 0, 1);
-	_mainCamMode.calculatedCameraPosition = _mainCamMode.focusPosition + _mainCamMode.focusPositionOffset - _mainCamMode.calculatedLookDirection * _mainCamMode.lookDistance;
-
-	if (_sceneCamera.facingDirection != _mainCamMode.calculatedLookDirection ||
-		_sceneCamera.gpuCameraData.cameraPosition != _mainCamMode.calculatedCameraPosition)
-	{
-		_sceneCamera.facingDirection = _mainCamMode.calculatedLookDirection;
-		_sceneCamera.gpuCameraData.cameraPosition = _mainCamMode.calculatedCameraPosition;
-		recalculateSceneCamera();
-	}
-}
-
-void VulkanEngine::setMainCamTargetObject(RenderObject* targetObject)
-{
-	_mainCamMode.targetObject = targetObject;
-}
-
 #ifdef _DEVELOP
-void VulkanEngine::updateFreeCam(const float_t& deltaTime, CameraModeChangeEvent changeEvent)
-{
-	if (changeEvent != CameraModeChangeEvent::NONE)
-		_freeCamMode.enabled = false;
-	if (_cameraMode != _cameraMode_freeCamMode)
-		return;
-
-	if (input::onRMBPress || input::onRMBRelease)
-	{
-		_freeCamMode.enabled = (input::RMBPressed && _cameraMode == _cameraMode_freeCamMode);
-		SDL_SetRelativeMouseMode(_freeCamMode.enabled ? SDL_TRUE : SDL_FALSE);		// @NOTE: this causes cursor to disappear and not leave window boundaries (@BUG: Except for if you right click into the window?)
-					
-		if (_freeCamMode.enabled)
-			SDL_GetMouseState(
-				&_freeCamMode.savedMousePosition.x,
-				&_freeCamMode.savedMousePosition.y
-			);
-		else
-			SDL_WarpMouseInWindow(_window, _freeCamMode.savedMousePosition.x, _freeCamMode.savedMousePosition.y);
-	}
-	
-	if (!_freeCamMode.enabled)
-		return;
-
-	glm::vec2 mousePositionDeltaCooked = (glm::vec2)input::mouseDelta * _freeCamMode.sensitivity;
-
-	glm::vec2 inputToVelocity(0.0f);
-	inputToVelocity.x += input::keyLeftPressed ? -1.0f : 0.0f;
-	inputToVelocity.x += input::keyRightPressed ? 1.0f : 0.0f;
-	inputToVelocity.y += input::keyUpPressed ? 1.0f : 0.0f;
-	inputToVelocity.y += input::keyDownPressed ? -1.0f : 0.0f;
-
-	float_t worldUpVelocity = 0.0f;
-	worldUpVelocity += input::keyWorldUpPressed ? 1.0f : 0.0f;
-	worldUpVelocity += input::keyWorldDownPressed ? -1.0f : 0.0f;
-
-	if (glm::length(mousePositionDeltaCooked) > 0.0f || glm::length(inputToVelocity) > 0.0f || glm::abs(worldUpVelocity) > 0.0f)
-	{
-		constexpr glm::vec3 worldUp = { 0.0f, 1.0f, 0.0f };
-
-		// Update camera facing direction with mouse input
-		glm::vec3 newCamFacingDirection =
-			glm::rotate(
-				_sceneCamera.facingDirection,
-				glm::radians(-mousePositionDeltaCooked.y),
-				glm::normalize(glm::cross(_sceneCamera.facingDirection, worldUp))
-			);
-		if (glm::angle(newCamFacingDirection, worldUp) > glm::radians(5.0f) &&
-			glm::angle(newCamFacingDirection, -worldUp) > glm::radians(5.0f))
-			_sceneCamera.facingDirection = newCamFacingDirection;
-		_sceneCamera.facingDirection = glm::rotate(_sceneCamera.facingDirection, glm::radians(-mousePositionDeltaCooked.x), worldUp);
-
-		// Update camera position with keyboard input
-		float speedMultiplier = input::keyShiftPressed ? 50.0f : 25.0f;
-		inputToVelocity *= speedMultiplier * deltaTime;
-		worldUpVelocity *= speedMultiplier * deltaTime;
-
-		_sceneCamera.gpuCameraData.cameraPosition +=
-			inputToVelocity.y * _sceneCamera.facingDirection +
-			inputToVelocity.x * glm::normalize(glm::cross(_sceneCamera.facingDirection, worldUp)) +
-			glm::vec3(0.0f, worldUpVelocity, 0.0f);
-
-		// Recalculate camera
-		recalculateSceneCamera();
-	}
-}
-#endif
-
-void VulkanEngine::INTERNALaddEntity(Entity* entity)
-{
-	_entitiesToAddQueue.push_back(entity);    // @NOTE: this only requests that the entity get added into the system
-}
-
-void VulkanEngine::INTERNALdestroyEntity(Entity* entity)
-{
-	if (!_flushEntitiesToDestroyRoutine)
-	{
-		// Still must destroy this entity, but give a very nasty warning message
-		std::cout << "[DESTROY ENTITY]" << std::endl
-			<< "WARNING: what you're doing is very wrong." << std::endl
-			<< "         Don't use the destructor for entities, instead use destroyEntity()." << std::endl
-			<< "         Crashes could easily happen." << std::endl;
-	}
-
-	_entities.erase(
-		std::remove(
-			_entities.begin(),
-			_entities.end(),
-			entity
-		),
-		_entities.end()
-	);
-}
-
-void VulkanEngine::INTERNALaddRemoveRequestedEntities()
-{
-	// Remove entities requested to be removed
-	_flushEntitiesToDestroyRoutine = true;
-
-	for (auto it = _entitiesToDestroyQueue.begin(); it != _entitiesToDestroyQueue.end(); it++)
-		delete (*it);
-	_entitiesToDestroyQueue.clear();
-
-	_flushEntitiesToDestroyRoutine = false;
-
-	// Add entities requested to be added
-	for (auto it = _entitiesToAddQueue.begin(); it != _entitiesToAddQueue.end(); it++)
-		_entities.push_back(*it);
-	_entitiesToAddQueue.clear();
-}
-
-void VulkanEngine::destroyEntity(Entity* entity)
-{
-	_entitiesToDestroyQueue.push_back(entity);
-}
-
-#ifdef _DEVELOP
-std::vector<VulkanEngine::DebugMessage> VulkanEngine::_debugMessages;
-void VulkanEngine::pushDebugMessage(const DebugMessage& message)
-{
-	_debugMessages.push_back(message);
-}
-
 void VulkanEngine::updateDebugStats(const float_t& deltaTime)
 {
 	_debugStats.currentFPS = (uint32_t)std::roundf(1.0f / deltaTime);
@@ -3824,7 +3469,7 @@ void VulkanEngine::submitSelectedRenderObjectId(int32_t id)
 	}
 
 	// Set a new matrixToMove
-	_movingMatrix.matrixToMove = &_renderObjects[id].transformMatrix;
+	_movingMatrix.matrixToMove = &_roManager->_renderObjects[id].transformMatrix;
 	std::cout << "[PICKING]" << std::endl
 		<< "Selected object " << id << std::endl;
 }
@@ -3848,41 +3493,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 	//
 	// Debug Messages window
 	//
-	static float_t debugMessagesWindowWidth = 0.0f;
-	ImGui::SetNextWindowPos(ImVec2(_windowExtent.width * 0.5f - debugMessagesWindowWidth * 0.5f, 0.0f), ImGuiCond_Always);
-	ImGui::Begin("##Debug Messages", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs);
-	{
-		for (int32_t i = (int32_t)_debugMessages.size() - 1; i >= 0; i--)
-		{
-			DebugMessage& dm = _debugMessages[(size_t)i];
-
-			ImVec4 textColor(1, 1, 1, 1);
-			switch (dm.type)
-			{
-			case 0:
-				textColor = ImVec4(1, 1, 1, 1);
-				break;
-
-			case 1:
-				textColor = ImVec4(1, 1, 0, 1);
-				break;
-
-			case 2:
-				textColor = ImVec4(1, 0, 0, 1);
-				break;
-			}
-			textColor.w = glm::clamp(dm.timeUntilDeletion / 0.35f, 0.0f, 1.0f);
-
-			ImGui::TextColored(textColor, dm.message.c_str());
-			dm.timeUntilDeletion -= deltaTime;
-
-			if (dm.timeUntilDeletion <= 0)
-				_debugMessages.erase(_debugMessages.begin() + (size_t)i);
-		}
-
-		debugMessagesWindowWidth = ImGui::GetWindowWidth();
-	}
-	ImGui::End();
+	debug::renderImguiDebugMessages(_windowExtent.width, deltaTime);
 
 	//
 	// Scene Properties window
@@ -3911,8 +3522,8 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 			for (auto& path : listOfScenes)
 				if (ImGui::Button(("Open \"" + path + "\"").c_str()))
 				{
-					for (auto& ent : _entities)
-						destroyEntity(ent);
+					for (auto& ent : _entityManager->_entities)
+						_entityManager->destroyEntity(ent);
 					_flagNextStepLoadThisPathAsAScene = path;  // @HACK: mireba wakaru... but it's needed bc it works when delaying the load by a step...  -Timo 2022/10/30
 					ImGui::CloseCurrentPopup();
 				}
@@ -3921,7 +3532,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 
 		ImGui::SameLine();
 		if (ImGui::Button("Save Scene"))
-			scene::saveScene(scene::currentLoadedScene, _entities, this);
+			scene::saveScene(scene::currentLoadedScene, _entityManager->_entities, this);
 
 		ImGui::SameLine();
 		if (ImGui::Button("Save Scene As.."))
@@ -3932,7 +3543,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 			ImGui::InputText(".ssdat", &saveSceneAsFname);
 			if (ImGui::Button(("Save As \"" + saveSceneAsFname + ".ssdat\"").c_str()))
 			{
-				scene::saveScene(saveSceneAsFname + ".ssdat", _entities, this);
+				scene::saveScene(saveSceneAsFname + ".ssdat", _entityManager->_entities, this);
 				scene::currentLoadedScene = saveSceneAsFname + ".ssdat";
 				ImGui::CloseCurrentPopup();
 			}
@@ -4018,7 +3629,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 			case 0:
 			case 1:
 			case 2:
-				isLayerActive = _renderObjectLayersEnabled[i];
+				isLayerActive = _roManager->_renderObjectLayersEnabled[i];
 				break;
 
 			case 3:
@@ -4035,11 +3646,11 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 				case 2:
 				{
 					// Toggle render layer
-					_renderObjectLayersEnabled[i] = !_renderObjectLayersEnabled[i];
-					if (!_renderObjectLayersEnabled[i])
+					_roManager->_renderObjectLayersEnabled[i] = !_roManager->_renderObjectLayersEnabled[i];
+					if (!_roManager->_renderObjectLayersEnabled[i])
 					{
 						// Find object that matrixToMove is pulling from (if any)
-						for (auto& ro : _renderObjects)
+						for (auto& ro : _roManager->_renderObjects)
 						{
 							if (_movingMatrix.matrixToMove == &ro.transformMatrix)
 							{
@@ -4083,10 +3694,10 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 		{
 			ImGui::Text("NOTE: press F10 to change camera types");
 
-			ImGui::SliderFloat("lookDistance", &_mainCamMode.lookDistance, 1.0f, 100.0f);
-			ImGui::DragFloat("focusRadius", &_mainCamMode.focusRadius, 1.0f, 0.0f);
-			ImGui::SliderFloat("focusCentering", &_mainCamMode.focusCentering, 0.0f, 1.0f);
-			ImGui::DragFloat3("focusPositionOffset", &_mainCamMode.focusPositionOffset.x);
+			ImGui::SliderFloat("lookDistance", &_camera->mainCamMode.lookDistance, 1.0f, 100.0f);
+			ImGui::DragFloat("focusRadius", &_camera->mainCamMode.focusRadius, 1.0f, 0.0f);
+			ImGui::SliderFloat("focusCentering", &_camera->mainCamMode.focusCentering, 0.0f, 1.0f);
+			ImGui::DragFloat3("focusPositionOffset", &_camera->mainCamMode.focusPositionOffset.x);
 		}
 
 		accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
@@ -4110,7 +3721,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 		static Entity* _flagAttachToThisEntity = nullptr;  // One frame lag fetch bc the `INTERNALaddRemoveRequestedEntities()` gets run once a frame instead of immediate add when an entity gets constructed.
 		if (_flagAttachToThisEntity)
 		{
-			for (auto& ro : _renderObjects)
+			for (auto& ro : _roManager->_renderObjects)
 				if (ro.attachedEntityGuid == _flagAttachToThisEntity->getGUID())
 					_movingMatrix.matrixToMove = &ro.transformMatrix;
 			_flagAttachToThisEntity = nullptr;
@@ -4124,10 +3735,10 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 
 		// Duplicate the selected entity
 		Entity* selectedEntity = nullptr;
-		for (auto& ro : _renderObjects)
+		for (auto& ro : _roManager->_renderObjects)
 		{
 			if (_movingMatrix.matrixToMove == &ro.transformMatrix)
-				for (auto& ent : _entities)
+				for (auto& ent : _entityManager->_entities)
 					if (ro.attachedEntityGuid == ent->getGUID())
 					{
 						selectedEntity = ent;
@@ -4165,13 +3776,13 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 			//
 			// Move the matrix via ImGuizmo
 			//
-			glm::mat4 projection = _sceneCamera.gpuCameraData.projection;
+			glm::mat4 projection = _camera->sceneCamera.gpuCameraData.projection;
 			projection[1][1] *= -1.0f;
 
 			static ImGuizmo::OPERATION manipulateOperation = ImGuizmo::OPERATION::TRANSLATE;
 			static ImGuizmo::MODE manipulateMode           = ImGuizmo::MODE::WORLD;
 			ImGuizmo::Manipulate(
-				glm::value_ptr(_sceneCamera.gpuCameraData.view),
+				glm::value_ptr(_camera->sceneCamera.gpuCameraData.view),
 				glm::value_ptr(projection),
 				manipulateOperation,
 				manipulateMode,
@@ -4291,7 +3902,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 				// Edit props exclusive to render objects
 				//
 				RenderObject* foundRO = nullptr;
-				for (auto& ro : _renderObjects)
+				for (auto& ro : _roManager->_renderObjects)
 				{
 					if (_movingMatrix.matrixToMove == &ro.transformMatrix)
 					{
@@ -4320,7 +3931,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 					Entity* foundEnt = nullptr;
 					if (!foundRO->attachedEntityGuid.empty())
 					{
-						for (auto& ent : _entities)
+						for (auto& ent : _entityManager->_entities)
 						{
 							if (ent->getGUID() == foundRO->attachedEntityGuid)
 							{

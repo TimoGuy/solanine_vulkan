@@ -3,7 +3,9 @@
 #include <fstream>
 #include <sstream>
 #include "DataSerialization.h"
-//#include "VulkanEgneinfd.h"
+#include "VulkanEngine.h"
+#include "Camera.h"
+#include "Debug.h"
 
 #include "Player.h"
 #include "Yosemite.h"
@@ -50,9 +52,9 @@ namespace scene
     {
         Entity* ent = nullptr;
         if (objectName == Player::TYPE_NAME)
-            ent = new Player(engine, ds);
+            ent = new Player(engine->_entityManager, engine->_roManager, engine->_camera, ds);
         if (objectName == Yosemite::TYPE_NAME)
-            ent = new Yosemite(engine, ds);
+            ent = new Yosemite(engine->_entityManager, engine->_roManager, ds);
 
         return ent;
     }
@@ -149,11 +151,11 @@ namespace scene
         currentLoadedScene = name;
 
         if (success)
-            engine->pushDebugMessage({
+            debug::pushDebugMessage({
 			    .message = "Successfully loaded scene \"" + name + "\"",
 			    });
         else
-            engine->pushDebugMessage({
+            debug::pushDebugMessage({
                 .message = "Loaded scene \"" + name + "\" with errors (see console output)",
                 .type = 1,
                 });
@@ -166,7 +168,7 @@ namespace scene
         std::ofstream outfile(SCENE_DIRECTORY_PATH + name);
         if (!outfile.is_open())
         {
-            engine->pushDebugMessage({
+            debug::pushDebugMessage({
 			    .message = "Could not open file \"" + name + "\" for writing scene data",
                 .type = 2,
 			    });
@@ -189,7 +191,7 @@ namespace scene
         }
         outfile.close();
 
-        engine->pushDebugMessage({
+        debug::pushDebugMessage({
 			.message = "Successfully saved scene \"" + name + "\"",
 			});
 

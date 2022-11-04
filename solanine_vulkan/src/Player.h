@@ -4,7 +4,10 @@
 #include "Imports.h"
 namespace vkglTF { class Model; }
 struct RenderObject;
+struct RenderObjectManager;
+class EntityManager;
 struct RegisteredPhysicsObject;
+struct Camera;
 class btPersistentManifold;
 class btCapsuleShape;
 
@@ -14,7 +17,7 @@ class Player : public Entity
 public:
     static const std::string TYPE_NAME;
 
-    Player(VulkanEngine* engine, DataSerialized* ds);
+    Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSerialized* ds);
     ~Player();
 
     void update(const float_t& deltaTime);
@@ -29,8 +32,10 @@ public:
 private:
     vkglTF::Model* _characterModel;
     RenderObject* _renderObj;
+    RenderObjectManager* _rom;
     btCapsuleShape* _collisionShape;
     RegisteredPhysicsObject* _physicsObj;
+    Camera* _camera;
     float_t _totalHeight;
     float_t _maxClimbAngle;
     float_t _capsuleRadius;

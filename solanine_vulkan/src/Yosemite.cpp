@@ -1,6 +1,7 @@
 #include "Yosemite.h"
 
-//#include "VulkanEgneinfd.h"
+#include <glm/gtc/type_ptr.hpp>
+#include "RenderObject.h"
 #include "VkglTFModel.h"
 #include "PhysicsEngine.h"
 #include "InputManager.h"
@@ -9,15 +10,15 @@
 #include "imgui/ImGuizmo.h"
 
 
-Yosemite::Yosemite(VulkanEngine* engine, DataSerialized* ds) : Entity(engine, ds)
+Yosemite::Yosemite(EntityManager* em, RenderObjectManager* rom, DataSerialized* ds) : Entity(em, ds), _rom(rom)
 {
     if (ds)
         load(*ds);
 
-    _cubeModel = _engine->getModel("cube");
+    _cubeModel = _rom->getModel("cube");
 
     _renderObj =
-        _engine->registerRenderObject({
+        _rom->registerRenderObject({
             .model = _cubeModel,
             .transformMatrix = _load_renderTransform,
             .renderLayer = RenderLayer::VISIBLE,
@@ -42,7 +43,7 @@ Yosemite::Yosemite(VulkanEngine* engine, DataSerialized* ds) : Entity(engine, ds
 
 Yosemite::~Yosemite()
 {
-    _engine->unregisterRenderObject(_renderObj);
+    _rom->unregisterRenderObject(_renderObj);
     PhysicsEngine::getInstance().unregisterPhysicsObject(_physicsObj);
 
     // @TODO: figure out if I need to call `delete _collisionShape;` or not

@@ -8,7 +8,7 @@
 
 #include "Imports.h"
 #include "VkglTFModel.h"
-//#include "VulkanEgneinfd.h"
+#include "VulkanEngine.h"
 #include "VkTextures.h"
 #include "VkInitializers.h"
 
@@ -782,7 +782,7 @@ namespace vkglTF
 
 	void Model::loadMaterials(tinygltf::Model& gltfModel, VulkanEngine* engine)
 	{
-		Material* baseMaterial = engine->getMaterial("defaultMaterial");
+		Material* baseMaterial = engine->getMaterial("pbrMaterial");
 
 		//
 		// Create PBRMaterials with the properties

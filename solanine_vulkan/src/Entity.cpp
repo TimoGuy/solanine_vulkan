@@ -1,6 +1,6 @@
 #include "Entity.h"
 
-//#include "VulkanEgneinfd.h"
+#include "EntityManager.h"
 #include "DataSerialization.h"
 
 
@@ -27,16 +27,16 @@ std::string generateHex(const uint32_t numChars)
 }
 
 
-Entity::Entity(VulkanEngine* engine, DataSerialized* ds) : _engine(engine)
+Entity::Entity(EntityManager* em, DataSerialized* ds) : _em(em)
 {
 	if (ds == nullptr)
 		_guid = generateHex(32);
-    _engine->INTERNALaddEntity(this);
+    _em->INTERNALaddEntity(this);
 }
 
 Entity::~Entity()
 {
-    _engine->INTERNALdestroyEntity(this);    // @NOTE: the destructor should only be called thru engine->destroyEntity(), not the destructor
+    _em->INTERNALdestroyEntity(this);    // @NOTE: the destructor should only be called thru engine->destroyEntity(), not the destructor
     // @NOTE: well, if you're the destroyEntities routine, then go right ahead!
     //        By the way, call me Dmitri.
 }
