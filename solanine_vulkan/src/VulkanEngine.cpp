@@ -102,11 +102,13 @@ void VulkanEngine::run()
 	// Initialize Scene Camera
 	//
 	_camera->sceneCamera.aspect = (float_t)_windowExtent.width / (float_t)_windowExtent.height;
-	_camera->sceneCamera.gpuCameraData.cameraPosition = { 0.0f, 0.0f, -30.0f };
-	_camera->sceneCamera.recalculateSceneCamera(_pbrRendering.gpuSceneShadingProps);
-
+	_camera->sceneCamera.gpuCameraData.cameraPosition = {5.43231487, 13.2406960, 1.41502118};
+	_camera->sceneCamera.facingDirection = {-0.570508420, -0.390730739, 0.722388268};
+	
 	// @HARDCODED: Set the initial light direction
 	_pbrRendering.gpuSceneShadingProps.lightDir = glm::normalize(glm::vec4(0.432f, 0.864f, 0.259f, 0.0f));
+
+	_camera->sceneCamera.recalculateSceneCamera(_pbrRendering.gpuSceneShadingProps);
 
 	//
 	// Main Loop

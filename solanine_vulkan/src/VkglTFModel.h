@@ -8,8 +8,7 @@
 
 #pragma once
 
-#include <glm/glm.hpp>
-#include <glm/ext.hpp>
+#include "ImportGLM.h"
 #include <taskflow/taskflow.hpp>
 #include "VkDataStructures.h"
 

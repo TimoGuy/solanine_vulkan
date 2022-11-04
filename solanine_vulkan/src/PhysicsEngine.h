@@ -11,7 +11,7 @@
 #include <BulletCollision/NarrowPhaseCollision/btRaycastCallback.h>
 #include <BulletDynamics/Dynamics/btDiscreteDynamicsWorldMt.h>
 #include <BulletDynamics/ConstraintSolver/btSequentialImpulseConstraintSolverMt.h>
-#include <glm/glm.hpp>
+#include "ImportGLM.h"
 #include "VkDataStructures.h"
 
 

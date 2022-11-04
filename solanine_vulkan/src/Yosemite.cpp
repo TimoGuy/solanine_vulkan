@@ -1,6 +1,6 @@
 #include "Yosemite.h"
 
-#include <glm/gtc/type_ptr.hpp>
+#include "ImportGLM.h"
 #include "RenderObject.h"
 #include "VkglTFModel.h"
 #include "PhysicsEngine.h"

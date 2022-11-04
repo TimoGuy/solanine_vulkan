@@ -2,8 +2,7 @@
 
 #include <string>
 #include <SDL2/SDL.h>
-#include <glm/glm.hpp>
-#include <glm/gtx/vector_angle.hpp>
+#include "ImportGLM.h"
 #include "InputManager.h"
 #include "RenderObject.h"
 #include "PhysicsEngine.h" // physutil::

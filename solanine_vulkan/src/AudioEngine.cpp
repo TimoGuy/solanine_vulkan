@@ -2,7 +2,7 @@
 
 #include <fmod_errors.h>
 #include <iostream>
-#include <glm/glm.hpp>
+#include "ImportGLM.h"
 
 
 #define ERRCHECK(_result) errorCheck(_result, __FILE__, __LINE__)
