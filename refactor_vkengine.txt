@@ -1,0 +1,14 @@
+Entity.cpp          - EngineEntityManagerptr
+Main.cpp            - VulkanEngine Vanilla (init, run, and cleanup functions)
+Yosemite.cpp        - RenderObject class and getModel()
+PhysicsEngine.cpp   - createBuffer(), GPUObjectData, _descriptorPool, _objectSetLayout, _device, _allocator, getMaterial(), 
+Player.cpp          - getModel(), RenderObject class, _freeCamMode.enabled, _sceneCamera, 
+SceneManagement.cpp - pushDebugMessage()
+VkglTFModel.cpp     - createBuffer(), _allocator, _descriptorPool, _skeletalAnimationSetLayout, _device, _gpuProperties, _mainDeletionQueue.pushFunction(), getMaterial(), _pbrTexturesSetLayout, _loadedTextures (wait, shouldn't that be getTexture() or something like that?), immediateSubmit()
+VkTextures.cpp      - createBuffer(), _allocator, immediateSubmit(), _chosenGPU, _mainDeletionQueue.pushFunction(), createBuffer(), 
+
+
+
+
+
+VulkanEngine.cpp    - Needs VulkanEngine.h ofc
