@@ -483,6 +483,8 @@ void VulkanEngine::render()
 		memcpy(data, &resetData, sizeof(GPUPickingSelectedIdData));    // @NOTE: if you don't reset the buffer, then you won't get 0 if you click on an empty spot next time bc you end up just getting garbage data.  -Dmitri
 		vmaUnmapMemory(_allocator, currentFrame.pickingSelectedIdBuffer._allocation);
 
+		// @TODO: Make a pre-check to see if these combination of objects were selected in the previous click, and then choose the 2nd nearest object, 3rd nearest, etc. depending on how many clicks.
+
 		uint32_t nearestSelectedId = 0;
 		float_t nearestDepth = std::numeric_limits<float_t>::max();
 		for (size_t i = 0; i < _roManager->_renderObjects.size(); i++)
