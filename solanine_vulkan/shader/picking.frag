@@ -9,6 +9,7 @@ layout (location = 0) out float outFragColor;
 layout (set = 3, binding = 0) buffer ShaderStorageBufferObject
 {
     uint selectedId;
+
 } ssbo;
 
 

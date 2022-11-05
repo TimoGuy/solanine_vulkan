@@ -314,7 +314,7 @@ private:
 		float_t renderTimesMS[256 * 2];
 		float_t highestRenderTime = -1.0f;
 	} _debugStats;
-	bool _showCollisionDebugDraw = true;
+	bool _showCollisionDebugDraw = false;
 	void updateDebugStats(const float_t& deltaTime);
 
 	//
