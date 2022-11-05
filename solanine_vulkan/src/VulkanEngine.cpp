@@ -382,122 +382,9 @@ void VulkanEngine::render()
 		!ImGuizmo::IsOver() &&
 		ImGui::IsMousePosValid())
 	{
-		//
-		// Transfer the depth buffer to picking depth buffer
-		//
-		//immediateSubmit([&](VkCommandBuffer cmd) {
-		//	// Pipeline barrier to transfer mode
-		//	VkImageMemoryBarrier imageBarrierMainDepth = {
-		//		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-		//		.srcAccessMask = 0,
-		//		.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
-		//		.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-		//		.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-		//		.image = _depthImage._image,
-		//		.subresourceRange = {
-		//			.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
-		//			.baseMipLevel = 0,
-		//			.levelCount = 1,
-		//			.baseArrayLayer = 0,
-		//			.layerCount = 1,
-		//		},
-		//	};
-		//	static bool first = true;
-		//	imageBarrierMainDepth.oldLayout = first ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;  // @INCOMPLETE: you need to change the image layout to depth stencil optimal fist!!!
-		//	first = false;
-		//	imageBarrierMainDepth.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-		//	//imageBarrierMainDepth.srcAccessMask = 0;
-		//	//imageBarrierMainDepth.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-
-		//	VkImageMemoryBarrier imageBarrierPickingDepth = {
-		//		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-		//		.srcAccessMask = 0,
-		//		.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
-		//		.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-		//		.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-		//		.image = _pickingDepthImage._image,
-		//		.subresourceRange = {
-		//			.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
-		//			.baseMipLevel = 0,
-		//			.levelCount = 1,
-		//			.baseArrayLayer = 0,
-		//			.layerCount = 1,
-		//		},
-		//	};
-		//	imageBarrierPickingDepth.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		//	imageBarrierPickingDepth.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-		//	//imageBarrierPickingDepth.srcAccessMask = 0;
-		//	//imageBarrierPickingDepth.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-
-		//	VkImageMemoryBarrier barriers[] = {
-		//		imageBarrierMainDepth,
-		//		imageBarrierPickingDepth
-		//	};
-
-		//	vkCmdPipelineBarrier(
-		//		cmd,
-		//		VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
-		//		0, nullptr,
-		//		0, nullptr,
-		//		2, barriers
-		//	);
-
-		//	// Blit
-		//	VkImageBlit blitRegion = {
-		//		.srcSubresource = {
-		//			.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
-		//			.mipLevel = 0,
-		//			.baseArrayLayer = 0,
-		//			.layerCount = 1,
-		//		},
-		//		.srcOffsets = {
-		//			{ 0, 0, 0 },
-		//			{ (int32_t)_windowExtent.width, (int32_t)_windowExtent.height, 1 },
-		//		},
-		//		.dstSubresource = {
-		//			.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
-		//			.mipLevel = 0,
-		//			.baseArrayLayer = 0,
-		//			.layerCount = 1,
-		//		},
-		//		.dstOffsets = {
-		//			{ 0, 0, 0 },
-		//			{ (int32_t)_windowExtent.width, (int32_t)_windowExtent.height, 1 },
-		//		},
-		//	};
-		//	vkCmdBlitImage(cmd,
-		//		_depthImage._image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-		//		_pickingDepthImage._image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		//		1, &blitRegion,
-		//		VK_FILTER_NEAREST
-		//	);
-
-		//	// Pipeline barrier to shader attachment mode
-		//	imageBarrierMainDepth.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-		//	imageBarrierMainDepth.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-		//	//imageBarrierMainDepth.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-		//	//imageBarrierMainDepth.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
-
-		//	imageBarrierPickingDepth.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-		//	imageBarrierPickingDepth.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-		//	//imageBarrierPickingDepth.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-		//	//imageBarrierPickingDepth.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
-
-		//	barriers[0] = imageBarrierMainDepth;
-		//	barriers[1] = imageBarrierPickingDepth;
-
-		//	vkCmdPipelineBarrier(
-		//		cmd,
-		//		VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
-		//		0, nullptr,
-		//		0, nullptr,
-		//		2, barriers
-		//	);
-		//	});
-		
-		// Reset the command buffer and start the render pass
 		VK_CHECK(vkResetFences(_device, 1, &currentFrame.pickingRenderFence));
 
+		// Reset the command buffer and start the render pass
 		VK_CHECK(vkResetCommandBuffer(currentFrame.pickingCommandBuffer, 0));
 		VkCommandBuffer cmd = currentFrame.pickingCommandBuffer;
 
@@ -529,7 +416,7 @@ void VulkanEngine::render()
 				.extent = _windowExtent,
 			},
 
-			.clearValueCount = 1,
+			.clearValueCount = 2,
 			.pClearValues = &clearValues[0],
 		};
 
@@ -549,16 +436,12 @@ void VulkanEngine::render()
 		// Picking Return value id descriptor (set = 3)
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 3, 1, &currentFrame.pickingReturnValueDescriptor, 0, nullptr);
 
-
 		// Set dynamic scissor
 		VkRect2D scissor = {};
 		scissor.offset.x = (int32_t)ImGui::GetIO().MousePos.x;
 		scissor.offset.y = (int32_t)ImGui::GetIO().MousePos.y;
 		scissor.extent = { 1, 1 };
 		vkCmdSetScissor(cmd, 0, 1, &scissor);    // @NOTE: the scissor is set to be dynamic state for this pipeline
-
-		std::cout << "[PICKING]" << std::endl
-			<< "set picking scissor to: x=" << scissor.offset.x << "  y=" << scissor.offset.y << "  w=" << scissor.extent.width << "  h=" << scissor.extent.height << std::endl;
 
 		renderRenderObjects(cmd, currentFrame, 0, _roManager->_renderObjects.size(), false, true, &pickingMaterial.pipelineLayout, false);    // @NOTE: the joint descriptorset will still be bound in here   @HACK: it's using the wrong pipelinelayout but.... it should be fine? Bc the slot is still set=3 for the joints on the picking pipelinelayout too??
 
@@ -586,255 +469,6 @@ void VulkanEngine::render()
 		// Wait until GPU finishes rendering the previous picking
 		VK_CHECK(vkWaitForFences(_device, 1, &currentFrame.pickingRenderFence, true, TIMEOUT_1_SEC));
 		VK_CHECK(vkResetFences(_device, 1, &currentFrame.pickingRenderFence));
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-		// Source for the copy is the last rendered swapchain image
-		VkImage srcImage = swapChain.images[currentBuffer];
-
-		// Create the linear tiled destination image to copy to and to read the memory from
-		VkImageCreateInfo imageCreateCI(vks::initializers::imageCreateInfo());
-		imageCreateCI.imageType = VK_IMAGE_TYPE_2D;
-		// Note that vkCmdBlitImage (if supported) will also do format conversions if the swapchain color format would differ
-		imageCreateCI.format = VK_FORMAT_R8G8B8A8_UNORM;
-		imageCreateCI.extent.width = width;
-		imageCreateCI.extent.height = height;
-		imageCreateCI.extent.depth = 1;
-		imageCreateCI.arrayLayers = 1;
-		imageCreateCI.mipLevels = 1;
-		imageCreateCI.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		imageCreateCI.samples = VK_SAMPLE_COUNT_1_BIT;
-		imageCreateCI.tiling = VK_IMAGE_TILING_LINEAR;
-		imageCreateCI.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-		// Create the image
-		VkImage dstImage;
-		VK_CHECK_RESULT(vkCreateImage(device, &imageCreateCI, nullptr, &dstImage));
-		// Create memory to back up the image
-		VkMemoryRequirements memRequirements;
-		VkMemoryAllocateInfo memAllocInfo(vks::initializers::memoryAllocateInfo());
-		VkDeviceMemory dstImageMemory;
-		vkGetImageMemoryRequirements(device, dstImage, &memRequirements);
-		memAllocInfo.allocationSize = memRequirements.size;
-		// Memory must be host visible to copy from
-		memAllocInfo.memoryTypeIndex = vulkanDevice->getMemoryType(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-		VK_CHECK_RESULT(vkAllocateMemory(device, &memAllocInfo, nullptr, &dstImageMemory));
-		VK_CHECK_RESULT(vkBindImageMemory(device, dstImage, dstImageMemory, 0));
-
-		// Do the actual blit from the swapchain image to our host visible destination image
-		VkCommandBuffer copyCmd = vulkanDevice->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
-
-		// Transition destination image to transfer destination layout
-		vks::tools::insertImageMemoryBarrier(
-			copyCmd,
-			dstImage,
-			0,
-			VK_ACCESS_TRANSFER_WRITE_BIT,
-			VK_IMAGE_LAYOUT_UNDEFINED,
-			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-			VK_PIPELINE_STAGE_TRANSFER_BIT,
-			VK_PIPELINE_STAGE_TRANSFER_BIT,
-			VkImageSubresourceRange{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 });
-
-		// Transition swapchain image from present to transfer source layout
-		vks::tools::insertImageMemoryBarrier(
-			copyCmd,
-			srcImage,
-			VK_ACCESS_MEMORY_READ_BIT,
-			VK_ACCESS_TRANSFER_READ_BIT,
-			VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-			VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-			VK_PIPELINE_STAGE_TRANSFER_BIT,
-			VK_PIPELINE_STAGE_TRANSFER_BIT,
-			VkImageSubresourceRange{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 });
-
-		// If source and destination support blit we'll blit as this also does automatic format conversion (e.g. from BGR to RGB)
-		if (supportsBlit)
-		{
-			// Define the region to blit (we will blit the whole swapchain image)
-			VkOffset3D blitSize;
-			blitSize.x = width;
-			blitSize.y = height;
-			blitSize.z = 1;
-			VkImageBlit imageBlitRegion{};
-			imageBlitRegion.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-			imageBlitRegion.srcSubresource.layerCount = 1;
-			imageBlitRegion.srcOffsets[1] = blitSize;
-			imageBlitRegion.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-			imageBlitRegion.dstSubresource.layerCount = 1;
-			imageBlitRegion.dstOffsets[1] = blitSize;
-
-			// Issue the blit command
-			vkCmdBlitImage(
-				copyCmd,
-				srcImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-				dstImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-				1,
-				&imageBlitRegion,
-				VK_FILTER_NEAREST);
-		}
-		else
-		{
-			// Otherwise use image copy (requires us to manually flip components)
-			VkImageCopy imageCopyRegion{};
-			imageCopyRegion.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-			imageCopyRegion.srcSubresource.layerCount = 1;
-			imageCopyRegion.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-			imageCopyRegion.dstSubresource.layerCount = 1;
-			imageCopyRegion.extent.width = width;
-			imageCopyRegion.extent.height = height;
-			imageCopyRegion.extent.depth = 1;
-
-			// Issue the copy command
-			vkCmdCopyImage(
-				copyCmd,
-				srcImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-				dstImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-				1,
-				&imageCopyRegion);
-		}
-
-		// Transition destination image to general layout, which is the required layout for mapping the image memory later on
-		vks::tools::insertImageMemoryBarrier(
-			copyCmd,
-			dstImage,
-			VK_ACCESS_TRANSFER_WRITE_BIT,
-			VK_ACCESS_MEMORY_READ_BIT,
-			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-			VK_IMAGE_LAYOUT_GENERAL,
-			VK_PIPELINE_STAGE_TRANSFER_BIT,
-			VK_PIPELINE_STAGE_TRANSFER_BIT,
-			VkImageSubresourceRange{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 });
-
-		// Transition back the swap chain image after the blit is done
-		vks::tools::insertImageMemoryBarrier(
-			copyCmd,
-			srcImage,
-			VK_ACCESS_TRANSFER_READ_BIT,
-			VK_ACCESS_MEMORY_READ_BIT,
-			VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-			VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-			VK_PIPELINE_STAGE_TRANSFER_BIT,
-			VK_PIPELINE_STAGE_TRANSFER_BIT,
-			VkImageSubresourceRange{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 });
-
-		vulkanDevice->flushCommandBuffer(copyCmd, queue);
-
-		// Get layout of the image (including row pitch)
-		VkImageSubresource subResource { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0 };
-		VkSubresourceLayout subResourceLayout;
-		vkGetImageSubresourceLayout(device, dstImage, &subResource, &subResourceLayout);
-
-		// Map image memory so we can start copying from it
-		const char* data;
-		vkMapMemory(device, dstImageMemory, 0, VK_WHOLE_SIZE, 0, (void**)&data);
-		data += subResourceLayout.offset;
-
-		std::ofstream file(filename, std::ios::out | std::ios::binary);
-
-		// ppm header
-		file << "P6\n" << width << "\n" << height << "\n" << 255 << "\n";
-
-		// If source is BGR (destination is always RGB) and we can't use blit (which does automatic conversion), we'll have to manually swizzle color components
-		bool colorSwizzle = false;
-		// Check if source is BGR
-		// Note: Not complete, only contains most common and basic BGR surface formats for demonstration purposes
-		if (!supportsBlit)
-		{
-			std::vector<VkFormat> formatsBGR = { VK_FORMAT_B8G8R8A8_SRGB, VK_FORMAT_B8G8R8A8_UNORM, VK_FORMAT_B8G8R8A8_SNORM };
-			colorSwizzle = (std::find(formatsBGR.begin(), formatsBGR.end(), swapChain.colorFormat) != formatsBGR.end());
-		}
-
-		// ppm binary pixel data
-		for (uint32_t y = 0; y < height; y++)
-		{
-			unsigned int *row = (unsigned int*)data;
-			for (uint32_t x = 0; x < width; x++)
-			{
-				if (colorSwizzle)
-				{
-					file.write((char*)row+2, 1);
-					file.write((char*)row+1, 1);
-					file.write((char*)row, 1);
-				}
-				else
-				{
-					file.write((char*)row, 3);
-				}
-				row++;
-			}
-			data += subResourceLayout.rowPitch;
-		}
-		file.close();
-
-		std::cout << "Screenshot saved to disk" << std::endl;
-
-		// Clean up resources
-		vkUnmapMemory(device, dstImageMemory);
-		vkFreeMemory(device, dstImageMemory, nullptr);
-		vkDestroyImage(device, dstImage, nullptr);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 		// Read from the gpu
 		GPUPickingSelectedIdData resetData = { 0 };
@@ -1212,7 +846,7 @@ void VulkanEngine::initSwapchain()
 	vkb::SwapchainBuilder swapchainBuilder{ _chosenGPU, _device, _surface };
 	vkb::Swapchain vkbSwapchain = swapchainBuilder
 		.use_default_format_selection()
-		.set_desired_present_mode(VK_PRESENT_MODE_MAILBOX_KHR)
+		.set_desired_present_mode(VK_PRESENT_MODE_MAILBOX_KHR)		// @NOTE: this is "soft" v-sync, where it won't go above the monitor hertz, but it won't immediately go down to 1/2 the framerate if dips below.
 		.set_desired_extent(_windowExtent.width, _windowExtent.height)
 		.build()
 		.value();
@@ -1237,7 +871,7 @@ void VulkanEngine::initSwapchain()
 	};
 
 	_depthFormat = VK_FORMAT_D32_SFLOAT;
-	VkImageCreateInfo depthImgInfo = vkinit::imageCreateInfo(_depthFormat, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, depthImgExtent, 1);
+	VkImageCreateInfo depthImgInfo = vkinit::imageCreateInfo(_depthFormat, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, depthImgExtent, 1);
 	VmaAllocationCreateInfo depthImgAllocInfo = {
 		.usage = VMA_MEMORY_USAGE_GPU_ONLY,
 		.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
@@ -1545,7 +1179,7 @@ void VulkanEngine::initPickingRenderpass()    // @NOTE: @COPYPASTA: This is real
 	VK_CHECK(vkCreateImageView(_device, &pickingColorViewInfo, nullptr, &_pickingImageView));
 
 	// Depth image
-	VkImageCreateInfo pickingDepthImgInfo = vkinit::imageCreateInfo(_depthFormat, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, pickingImgExtent, 1);
+	VkImageCreateInfo pickingDepthImgInfo = vkinit::imageCreateInfo(_depthFormat, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, pickingImgExtent, 1);
 	VmaAllocationCreateInfo pickingDepthImgAllocInfo = {
 		.usage = VMA_MEMORY_USAGE_GPU_ONLY,
 		.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
@@ -1589,7 +1223,7 @@ void VulkanEngine::initPickingRenderpass()    // @NOTE: @COPYPASTA: This is real
 		.samples = VK_SAMPLE_COUNT_1_BIT,
 		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
 		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-		.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+		.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
 		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
 		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
 		.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
@@ -1623,8 +1257,8 @@ void VulkanEngine::initPickingRenderpass()    // @NOTE: @COPYPASTA: This is real
 	VkSubpassDependency depthDependency = {
 		.srcSubpass = VK_SUBPASS_EXTERNAL,
 		.dstSubpass = 0,
-		.srcStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
-		.dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
+		.srcStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+		.dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
 		.srcAccessMask = 0,
 		.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT
 	};
@@ -1689,7 +1323,7 @@ void VulkanEngine::initFramebuffers()
 	//
 	VkImageView attachments[] = {
 		_pickingImageView,
-		_depthImageView, //_pickingDepthImageView,
+		_pickingDepthImageView,
 	};
 	fbInfo.renderPass = _pickingRenderPass;
 	fbInfo.attachmentCount = 2;
@@ -2167,7 +1801,7 @@ void VulkanEngine::initPipelines()
 		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, pickingFragShader));
 
 	pipelineBuilder._rasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT);    // Bc we're rendering a box inside-out
-	pipelineBuilder._depthStencil = vkinit::depthStencilCreateInfo(true, false, VK_COMPARE_OP_EQUAL);
+	pipelineBuilder._depthStencil = vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL);
 	pipelineBuilder._pipelineLayout = _pickingPipelineLayout;
 
 	std::array<VkDynamicState, 1> states = { VK_DYNAMIC_STATE_SCISSOR };		// We're using a dynamic scissor here so that we can just render a 1x1 pixel and read from it using an ssbo for picking
