@@ -74,7 +74,7 @@ namespace vkglTF
 
 
 		animatorMeshId = /* Some kind of function that will push_back their UniformBuffer and UniformBlock space and give back an id of which id this mesh is. (@TODO) */
-
+			// @TODO: @NOTE: there needs to be a pointer to the animator at the model level, and then propagate that to the mesh level... if there is none (nullptr), then oh well. Don't run any of the joint information then. @MAYBE need some way of resetting the joints if there is a no-animator version of a model that however has joints.
 
 		uniformBuffer.descriptorBuffer =
 			engine->createBuffer(
