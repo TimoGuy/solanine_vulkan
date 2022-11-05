@@ -116,7 +116,9 @@ namespace vkglTF
 		BoundingBox bb;
 		BoundingBox aabb;
 
-		struct UniformBuffer
+		uint32_t animatorMeshId;
+
+		/*struct UniformBuffer
 		{
 			AllocatedBuffer descriptorBuffer;
 			VkDescriptorSet descriptorSet;
@@ -128,7 +130,7 @@ namespace vkglTF
 			glm::mat4 matrix;
 			glm::mat4 jointMatrix[MAX_NUM_JOINTS]{};
 			float jointcount{ 0 };
-		} uniformBlock;
+		} uniformBlock;*/
 
 		Mesh(VulkanEngine* engine, glm::mat4 matrix);
 		~Mesh();

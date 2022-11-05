@@ -69,13 +69,13 @@ namespace vkglTF
 	Mesh::Mesh(VulkanEngine* engine, glm::mat4 matrix)
 	{
 		this->engine = engine;
-		this->uniformBlock.matrix = matrix;
+		this->uniformBlock.matrix = matrix;  // @INCOMPLETE: transfer these things into an animator:  -The descriptor buffer and descriptor set (UniformBuffer) (it needs to have an applyJointMatrices() copying function that the vkgltfmodel while it's rendering can reference), and then UniformBlock, so that we can insert it in as some kind of function dependency and then it'll fill in all those matrices (use uint32_t to match up the mesh to the uniformblock as it'll be in a vector (along with UniformBuffer will be in a # of meshes in X model sized vector))
 
-		//
-		// @TODO: make this sync up when recreateSwapchain() is executed on vkengine... this will get
-		//        destroyed since the descriptorpool gets destroyed there.... maybe make some kind of init
-		//        function that sets up these descriptorbuffers? That could be good.  -Timo
-		//
+
+
+		animatorMeshId = /* Some kind of function that will push_back their UniformBuffer and UniformBlock space and give back an id of which id this mesh is. (@TODO) */
+
+
 		uniformBuffer.descriptorBuffer =
 			engine->createBuffer(
 				sizeof(uniformBlock),
