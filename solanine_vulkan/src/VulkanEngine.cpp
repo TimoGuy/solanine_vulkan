@@ -443,6 +443,9 @@ void VulkanEngine::render()
 		scissor.extent = { 1, 1 };
 		vkCmdSetScissor(cmd, 0, 1, &scissor);    // @NOTE: the scissor is set to be dynamic state for this pipeline
 
+		std::cout << "[PICKING]" << std::endl
+			<< "set picking scissor to: x=" << scissor.offset.x << "  y=" << scissor.offset.y << "  w=" << scissor.extent.width << "  h=" << scissor.extent.height << std::endl;
+
 		renderRenderObjects(cmd, currentFrame, 0, _roManager->_renderObjects.size(), false, true, &pickingMaterial.pipelineLayout, false);    // @NOTE: the joint descriptorset will still be bound in here   @HACK: it's using the wrong pipelinelayout but.... it should be fine? Bc the slot is still set=3 for the joints on the picking pipelinelayout too??
 
 		// End renderpass
@@ -1258,7 +1261,7 @@ void VulkanEngine::initPickingRenderpass()    // @NOTE: @COPYPASTA: This is real
 		.srcSubpass = VK_SUBPASS_EXTERNAL,
 		.dstSubpass = 0,
 		.srcStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-		.dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+		.dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
 		.srcAccessMask = 0,
 		.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT
 	};
