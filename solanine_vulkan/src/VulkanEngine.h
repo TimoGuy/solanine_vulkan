@@ -39,7 +39,8 @@ struct GPUObjectData
 
 struct GPUPickingSelectedIdData
 {
-	uint32_t selectedId;
+	uint32_t selectedId[RENDER_OBJECTS_MAX_CAPACITY];
+	float_t selectedDepth[RENDER_OBJECTS_MAX_CAPACITY];
 };
 
 struct ColorPushConstBlock

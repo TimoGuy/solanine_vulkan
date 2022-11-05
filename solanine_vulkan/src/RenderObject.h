@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <vma/vk_mem_alloc.h>
 #include "ImportGLM.h"
+#include "Settings.h"
 
 namespace vkglTF { class Model; }
 
@@ -21,9 +22,6 @@ struct RenderObject
 	RenderLayer renderLayer;
 	std::string attachedEntityGuid;  // @NOTE: this is just for @DEBUG purposes for the imgui property panel
 };
-
-
-constexpr size_t RENDER_OBJECTS_MAX_CAPACITY = 10000;
 
 class RenderObjectManager
 {

@@ -474,7 +474,7 @@ void VulkanEngine::render()
 		VK_CHECK(vkResetFences(_device, 1, &currentFrame.pickingRenderFence));
 
 		// Read from the gpu
-		GPUPickingSelectedIdData resetData = { 0 };
+		GPUPickingSelectedIdData resetData = {};
 		GPUPickingSelectedIdData p;
 
 		void* data;
@@ -483,7 +483,21 @@ void VulkanEngine::render()
 		memcpy(data, &resetData, sizeof(GPUPickingSelectedIdData));    // @NOTE: if you don't reset the buffer, then you won't get 0 if you click on an empty spot next time bc you end up just getting garbage data.  -Dmitri
 		vmaUnmapMemory(_allocator, currentFrame.pickingSelectedIdBuffer._allocation);
 
-		submitSelectedRenderObjectId(static_cast<int32_t>(p.selectedId) - 1);
+		uint32_t nearestSelectedId = 0;
+		float_t nearestDepth = std::numeric_limits<float_t>::max();
+		for (size_t i = 0; i < _roManager->_renderObjects.size(); i++)
+		{
+			if (p.selectedId[i] == 0)
+				continue;  // Means that the data never got filled
+
+			if (p.selectedDepth[i] > nearestDepth)
+				continue;
+
+			nearestSelectedId = p.selectedId[i];
+			nearestDepth = p.selectedDepth[i];
+		}
+
+		submitSelectedRenderObjectId(static_cast<int32_t>(nearestSelectedId) - 1);
 	}
 
 	//
@@ -1261,7 +1275,7 @@ void VulkanEngine::initPickingRenderpass()    // @NOTE: @COPYPASTA: This is real
 		.srcSubpass = VK_SUBPASS_EXTERNAL,
 		.dstSubpass = 0,
 		.srcStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-		.dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
+		.dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
 		.srcAccessMask = 0,
 		.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT
 	};
