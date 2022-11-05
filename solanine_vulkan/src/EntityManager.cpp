@@ -11,6 +11,17 @@ EntityManager::~EntityManager()
 		delete _entities[i];
 }
 
+void EntityManager::update(const float_t& deltaTime)
+{
+	// @TODO: multithread this sucker!
+	for (auto it = _entities.begin(); it != _entities.end(); it++)
+	{
+		Entity* ent = *it;
+		if (ent->_enableUpdate)
+			ent->update(deltaTime);
+	}
+}
+
 void EntityManager::INTERNALaddEntity(Entity* entity)
 {
     _entitiesToAddQueue.push_back(entity);    // @NOTE: this only requests that the entity get added into the system

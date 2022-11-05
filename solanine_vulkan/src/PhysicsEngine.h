@@ -8,6 +8,7 @@
 #include <btBulletCollisionCommon.h>
 #include <BulletCollision/CollisionDispatch/btCollisionDispatcherMt.h>
 #include <BulletCollision/CollisionDispatch/btCollisionWorld.h>
+#include <BulletCollision/BroadphaseCollision/btBroadphaseProxy.h>
 #include <BulletCollision/NarrowPhaseCollision/btRaycastCallback.h>
 #include <BulletDynamics/Dynamics/btDiscreteDynamicsWorldMt.h>
 #include <BulletDynamics/ConstraintSolver/btSequentialImpulseConstraintSolverMt.h>
@@ -54,7 +55,7 @@ public:
 	std::vector<VkVertexInputAttributeDescription> getVertexAttributeDescriptions();
     std::vector<VkVertexInputBindingDescription> getVertexBindingDescriptions();
 
-    btCollisionWorld::ClosestRayResultCallback raycast(const btVector3& from, const btVector3& to, uint32_t flags = btTriangleRaycastCallback::kF_FilterBackfaces);
+    btCollisionWorld::ClosestRayResultCallback raycast(const btVector3& from, const btVector3& to, int32_t filterGroups = btBroadphaseProxy::DefaultFilter, int32_t mask = btBroadphaseProxy::AllFilter, uint32_t flags = btTriangleRaycastCallback::kF_FilterBackfaces);
 
 private:
     btITaskScheduler* _mainTaskScheduler              = nullptr;

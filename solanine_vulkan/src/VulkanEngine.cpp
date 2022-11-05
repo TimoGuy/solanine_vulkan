@@ -153,14 +153,7 @@ void VulkanEngine::run()
 		updateDebugStats(deltaTime);
 
 		// Update entities
-		// @TODO: multithread this sucker!
-		// @INCOMPLETE: put this inside the entity manager!
-		for (auto it = entities.begin(); it != entities.end(); it++)
-		{
-			Entity* ent = *it;
-			if (ent->_enableUpdate)
-				ent->update(deltaTime);
-		}
+		_entityManager->update(deltaTime);
 
 		// Update camera
 		_camera->update(deltaTime);

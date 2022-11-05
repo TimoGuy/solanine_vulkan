@@ -864,6 +864,9 @@ CODE
 #include <TargetConditionals.h>
 #endif
 
+// @TIMO: @MOD: Add audioengine
+#include "../AudioEngine.h"
+
 // Visual Studio warnings
 #ifdef _MSC_VER
 #pragma warning (disable: 4127)             // condition expression is constant
@@ -6243,6 +6246,9 @@ bool ImGui::Begin(const char* name, bool* p_open, ImGuiWindowFlags flags)
             if (window->WantCollapseToggle)
             {
                 window->Collapsed = !window->Collapsed;
+                // @TIMO: @MOD: I thought this'd be funny
+                if (!window->Collapsed)
+                    AudioEngine::getInstance().playSound("res/_develop/tbc.ogg");
                 MarkIniSettingsDirty(window);
             }
         }

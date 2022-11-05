@@ -12,6 +12,8 @@ private:
 	EntityManager() = default;
 	~EntityManager();
 
+	void update(const float_t& deltaTime);
+
     void INTERNALaddEntity(Entity* entity);
 	void INTERNALdestroyEntity(Entity* entity);
 	void INTERNALaddRemoveRequestedEntities();

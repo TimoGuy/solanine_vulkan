@@ -312,10 +312,12 @@ std::vector<VkVertexInputBindingDescription> PhysicsEngine::getVertexBindingDesc
 	return bindings;
 }
 
-btCollisionWorld::ClosestRayResultCallback PhysicsEngine::raycast(const btVector3& from, const btVector3& to, uint32_t flags)
+btCollisionWorld::ClosestRayResultCallback PhysicsEngine::raycast(const btVector3& from, const btVector3& to, int32_t filterGroups, int32_t mask, uint32_t flags)
 {
 	btCollisionWorld::ClosestRayResultCallback closestResults(from, to);
 	closestResults.m_flags |= flags;
+	closestResults.m_collisionFilterGroup = filterGroups;
+	closestResults.m_collisionFilterMask = mask;
 	_dynamicsWorld->rayTest(from, to, closestResults);
 	return closestResults;
 }

@@ -214,7 +214,7 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 
 	const glm::vec3 focusPositionCooked = mainCamMode.focusPosition + mainCamMode.focusPositionOffset;
 	float_t lookDistance = mainCamMode.lookDistance;
-	auto hitInfo = PhysicsEngine::getInstance().raycast(physutil::toVec3(focusPositionCooked), physutil::toVec3(focusPositionCooked - mainCamMode.calculatedLookDirection * lookDistance));
+	auto hitInfo = PhysicsEngine::getInstance().raycast(physutil::toVec3(focusPositionCooked), physutil::toVec3(focusPositionCooked - mainCamMode.calculatedLookDirection * lookDistance), btBroadphaseProxy::DefaultFilter, btBroadphaseProxy::StaticFilter | btBroadphaseProxy::KinematicFilter);
 	if (hitInfo.hasHit())
 		lookDistance *= hitInfo.m_closestHitFraction;
 
