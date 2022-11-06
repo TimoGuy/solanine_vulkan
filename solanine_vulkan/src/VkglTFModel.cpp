@@ -1204,9 +1204,27 @@ namespace vkglTF
 		for (auto& state : animStateMachine->states)
 		{
 			if (state.onFinish.useOnFinish)
+			{
+				if (stateNameToIndex.find(state.onFinish.toStateName) == stateNameToIndex.end())  // @COPYPASTA
+				{
+					std::cerr << "[ASM LOADING]" << std::endl
+						<< "ERROR: Reference to non existent state" << std::endl
+						<< "State: \"" << state.onFinish.toStateName << "\" was not found in animation state machine list of states"<< std::endl;
+					return;
+				}
 				state.onFinish.toStateIndex = stateNameToIndex[state.onFinish.toStateName];
+			}
 			for (auto& transition : state.transitions)
+			{
+				if (stateNameToIndex.find(transition.toStateName) == stateNameToIndex.end())  // @COPYPASTA
+				{
+					std::cerr << "[ASM LOADING]" << std::endl
+						<< "ERROR: Reference to non existent state" << std::endl
+						<< "State: \"" << transition.toStateName << "\" was not found in animation state machine list of states"<< std::endl;
+					return;
+				}
 				transition.toStateIndex = stateNameToIndex[transition.toStateName];
+			}
 		}
 
 		//
@@ -1559,7 +1577,7 @@ namespace vkglTF
 			node->mesh->animatorMeshId = meshId++;
 
 			UniformBlock uBlock = {};
-			uBlock.matrix = node->getMatrix();  // @INCOMPLETE: transfer these things into an animator:  -The descriptor buffer and descriptor set (UniformBuffer) (it needs to have an applyJointMatrices() copying function that the vkgltfmodel while it's rendering can reference), and then UniformBlock, so that we can insert it in as some kind of function dependency and then it'll fill in all those matrices (use uint32_t to match up the mesh to the uniformblock as it'll be in a vector (along with UniformBuffer will be in a # of meshes in X model sized vector))
+			uBlock.matrix = node->getMatrix();
 
 			UniformBuffer uBuffer = {};
 			uBuffer.descriptorBuffer =
