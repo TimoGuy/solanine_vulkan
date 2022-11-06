@@ -1597,7 +1597,9 @@ namespace vkglTF
 			node->generateCalculateJointMatrixTaskflow(this, calculateJointMatricesTaskflow, nullptr);
 
 		// Calculate Initial Pose
-		playAnimation(0);
+		uint32_t animIndex = animStateMachine ? animStateMachine->states[asmStateIndex].animationIndex : 0;
+		bool loop          = animStateMachine ? animStateMachine->states[asmStateIndex].loop           : true;
+		playAnimation(animIndex, loop);
 		updateAnimation();
 	}
 
@@ -1663,7 +1665,7 @@ namespace vkglTF
 		return &emptyUBuffer.descriptorSet;
 	}
 
-	void Animator::playAnimation(uint32_t animationIndex, float_t time)
+	void Animator::playAnimation(uint32_t animationIndex, bool loop, float_t time)
 	{
 		if (model->animations.empty())
 		{
@@ -1677,6 +1679,7 @@ namespace vkglTF
 		}
 
 		this->animationIndex = animationIndex;
+		this->loop = loop;
 		this->time = time;
 
 		// @TODO: Do we need to hit updateAnimation()? This playAnimation() function will be run likely in the entity updates, so it's not like the update will be a frame late. I'm just gonna not worry about it  -Timo 2022/11/5
@@ -1684,30 +1687,98 @@ namespace vkglTF
 
 	void Animator::update(const float_t& deltaTime)
 	{
-		//
-		// @TODO: for the implementatino of the animatino state machine:
-		//        - Have the triggers be there and have a flag bool_deleteall and set to true unless if
-		//          one of the triggers actually processes to do something... and if it does, then turn
-		//          off that trigger, and keep going until either all triggers are off or the state doesn't
-		//          use any of the active triggers, then turn off all the triggers in that case and move on!
-		//        - HOWEVER, make sure to give priority to the onFinish event!!!!! over the Transitions
-		//
-
-
-
-
-
-
-
-
-
 		time += deltaTime;
 
-		// Loop animation
-		if (time > model->animations[animationIndex].end)
-			time -= model->animations[animationIndex].end;
+		bool animEndedThisFrame = false;
+		if (loop)
+		{
+			// Loop animation
+			if (time > model->animations[animationIndex].end)
+			{
+				time -= model->animations[animationIndex].end;
+				animEndedThisFrame = true;
+			}
+		}
+		else
+		{
+			// Clamp animation
+			if (time > model->animations[animationIndex].end)
+			{
+				time = model->animations[animationIndex].end;
+				animEndedThisFrame = true;
+			}
+		}
 
+		// Update the state machine
+		if (animStateMachine)
+		{
+			//
+			// The implementatino of the animatino state machine:
+			//        - Have the triggers be there and have a flag bool resettriggers and set to true unless if
+			//          one of the triggers actually processes to do something... and if it does, then turn
+			//          off that trigger, and keep going until either all triggers are off or the state doesn't
+			//          use any of the active triggers, then turn off all the triggers in that case and move on!
+			//        - HOWEVER, make sure to give priority to the onFinish event!!!!! over the Transitions
+			//
+			size_t prevAsmStateIndex = asmStateIndex;
+			bool resetTriggers;
+			do
+			{
+				resetTriggers = true;
+				auto& currentState = animStateMachine->states[asmStateIndex];
+			
+				// First priority, see if onFinish should get triggered
+				if (animEndedThisFrame && currentState.onFinish.useOnFinish)
+				{
+					asmStateIndex = currentState.onFinish.toStateIndex;
+					resetTriggers = false;
+					animEndedThisFrame = false;  // New state entered; anim just started so reset this!
+				}
+			
+				// Second priority, everything else (triggers)
+				else
+				{
+					for (size_t i = 0; i < animStateMachine->triggers.size() && resetTriggers; i++)  // @NOTE: resetTriggers is also used as a flag for if a trigger got applied and the asmStateIndex updated
+					{
+						if (!animStateMachine->triggers[i].activated)
+							continue;
+
+						for (auto& transition : currentState.transitions)
+						{
+							if (transition.triggerIndex != i)
+								continue;
+
+							// Apply transition via trigger
+							asmStateIndex = transition.toStateIndex;
+							animStateMachine->triggers[i].activated = false;  // Reset that one trigger used
+							resetTriggers = false;
+							animEndedThisFrame = false;  // New state entered; anim just started so reset this!
+						}
+					}
+				}
+			}
+			while (!resetTriggers);
+
+			// Reset triggers
+			for (auto& trigger : animStateMachine->triggers)
+				trigger.activated = false;
+
+			// Apply new animation if changed
+			if (prevAsmStateIndex != asmStateIndex)
+			{
+				auto& state = animStateMachine->states[asmStateIndex];
+				playAnimation(state.animationIndex, state.loop);
+			}
+		}
+
+		// Process animation
 		updateAnimation();
+	}
+
+	void Animator::setTrigger(const std::string& triggerName)
+	{
+		size_t triggerIndex = animStateMachine->triggerNameToIndex[triggerName];
+		animStateMachine->triggers[triggerIndex].activated = true;
 	}
 
 	void Animator::updateAnimation()

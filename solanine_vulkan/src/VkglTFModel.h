@@ -323,8 +323,10 @@ namespace vkglTF
 		static void destroyEmpty(VulkanEngine* engine);
 		static VkDescriptorSet* getEmptyJointDescriptorSet();
 
-		void playAnimation(uint32_t animationIndex, float_t time = 0.0f);
+		void playAnimation(uint32_t animationIndex, bool loop, float_t time = 0.0f);  // This is for direct control of the animation index
 		void update(const float_t& deltaTime);
+
+		void setTrigger(const std::string& triggerName);
 
 	private:
 		vkglTF::Model* model;
@@ -337,6 +339,7 @@ namespace vkglTF
 
 		uint32_t animationIndex;
 		float_t  time;
+		bool     loop;
 
 		struct UniformBuffer
 		{

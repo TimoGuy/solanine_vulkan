@@ -1,7 +1,7 @@
 :StateIdle
 animation Idle_Hip
 loop      1
-trigger   goto_run     StateRunning
+trigger   goto_run     StateRun
 trigger   goto_jump    StateJumpFromIdle
 trigger   goto_fall    StateFall
 
