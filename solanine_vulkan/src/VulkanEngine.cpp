@@ -3536,6 +3536,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 			for (auto& path : listOfScenes)
 				if (ImGui::Button(("Open \"" + path + "\"").c_str()))
 				{
+					_movingMatrix.matrixToMove = nullptr;  // @HACK: just a safeguard in case if the matrixtomove happened to be on an entity that will get deleted in the next line  -Timo 2022/11/05
 					for (auto& ent : _entityManager->_entities)
 						_entityManager->destroyEntity(ent);
 					_flagNextStepLoadThisPathAsAScene = path;  // @HACK: mireba wakaru... but it's needed bc it works when delaying the load by a step...  -Timo 2022/10/30

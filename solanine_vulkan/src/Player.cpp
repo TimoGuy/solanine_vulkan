@@ -49,7 +49,7 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
             glm::quat(glm::vec3(0.0f)),
             _collisionShape
         );
-    _physicsObj->transformOffset = _load_transformOffset;
+    _physicsObj->transformOffset = glm::vec3(0, -4, 0);
     auto body = _physicsObj->body;
     body->setAngularFactor(0.0f);
     body->setDamping(0.0f, 0.0f);
@@ -75,7 +75,11 @@ Player::~Player()
 
 void Player::update(const float_t& deltaTime)
 {
-    _flagJump |= input::onKeyJumpPress;
+    if (input::onKeyJumpPress)
+    {
+        _flagJump = true;
+        _jumpInputBufferFramesTimer = _jumpInputBufferFrames;
+    }
 
     //
     // Calculate render object transform
@@ -250,25 +254,52 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     //        into a nick.
     //
     glm::vec3 desiredVelocity = cameraViewInput * _maxSpeed;  // @NOTE: we just ignore the y component in this desired velocity thing
-    float_t acceleration = _onGround ? _maxAcceleration : _maxMidairAcceleration;
-    float_t maxSpeedChange = acceleration * physicsDeltaTime;
 
     glm::vec2 a(velocity.x, velocity.z);
     glm::vec2 b(desiredVelocity.x, desiredVelocity.z);
+
+    bool useAcceleration;
+    if (glm::length2(b) < 0.0001f)
+        useAcceleration = false;
+    else if (glm::length2(a) < 0.0001f)
+        useAcceleration = true;
+    else
+    {
+        float_t AdotB = glm::dot(glm::normalize(a), glm::normalize(b));
+        if (glm::length(a) * AdotB > glm::length(b))    // @TODO: use your head and think of how to use length2 for this
+            useAcceleration = false;
+        else
+            useAcceleration = true;
+    }
+
+    float_t acceleration    = _onGround ? _maxAcceleration : _maxMidairAcceleration;
+    if (!useAcceleration)
+        acceleration        = _onGround ? _maxDeceleration : _maxMidairDeceleration;
+    float_t maxSpeedChange  = acceleration * physicsDeltaTime;
+
     glm::vec2 c = physutil::moveTowardsVec2(a, b, maxSpeedChange);
     velocity.x = c.x;
     velocity.z = c.y;
 
     if (_flagJump)
     {
-        _flagJump = false;
-        if (_onGround)
+        if (_onGround || _stepsSinceLastGrounded <= _jumpCoyoteFrames)
         {
+            std::cout << "[JUMP INFO]" << std::endl
+                << "Buffer Frames left:         " << _jumpInputBufferFramesTimer << std::endl
+                << "Frames since last grounded: " << _stepsSinceLastGrounded << std::endl;
             velocity.y = 
                 glm::sqrt(_jumpHeight * 2.0f * PhysicsEngine::getInstance().getGravityStrength());
             _displacementToTarget = glm::vec3(0.0f);
             _stepsSinceLastGrounded = 1;  // This is to prevent ground sticking right after a jump
+            
+            // Turn off flag for sure if successfully jumped
+            _flagJump = false;
         }
+
+        // Turn off flag if jump buffer frames got exhausted
+        if (_jumpInputBufferFramesTimer-- < 0)
+            _flagJump = false;
     }
 
     _physicsObj->body->setLinearVelocity(physutil::toVec3(velocity + _displacementToTarget / physicsDeltaTime));
@@ -279,11 +310,6 @@ void Player::dump(DataSerializer& ds)
     Entity::dump(ds);
     ds.dumpVec3(physutil::getPosition(_renderObj->transformMatrix));
     ds.dumpFloat(_facingDirection);
-    ds.dumpFloat(_maxSpeed);
-    ds.dumpFloat(_maxAcceleration);
-    ds.dumpFloat(_maxMidairAcceleration);
-    ds.dumpFloat(_jumpHeight);
-    ds.dumpVec3(_physicsObj->transformOffset);
 }
 
 void Player::load(DataSerialized& ds)
@@ -291,11 +317,6 @@ void Player::load(DataSerialized& ds)
     Entity::load(ds);
     _load_position         = ds.loadVec3();
     _facingDirection       = ds.loadFloat();
-    _maxSpeed              = ds.loadFloat();
-    _maxAcceleration       = ds.loadFloat();
-    _maxMidairAcceleration = ds.loadFloat();
-    _jumpHeight            = ds.loadFloat();
-    _load_transformOffset  = ds.loadVec3();
 }
 
 void Player::renderImGui()
@@ -303,9 +324,13 @@ void Player::renderImGui()
     ImGui::Text(("_onGround: " + std::to_string(_onGround)).c_str());
     ImGui::DragFloat("_maxSpeed", &_maxSpeed);
     ImGui::DragFloat("_maxAcceleration", &_maxAcceleration);
+    ImGui::DragFloat("_maxDeceleration", &_maxDeceleration);
     ImGui::DragFloat("_maxMidairAcceleration", &_maxMidairAcceleration);
+    ImGui::DragFloat("_maxMidairDeceleration", &_maxMidairDeceleration);
     ImGui::DragFloat("_jumpHeight", &_jumpHeight);
     ImGui::DragFloat3("_physicsObj->transformOffset", &_physicsObj->transformOffset[0]);
+    ImGui::DragInt("_jumpCoyoteFrames", &_jumpCoyoteFrames, 1.0f, 0, 10);
+    ImGui::DragInt("_jumpInputBufferFrames", &_jumpInputBufferFrames, 1.0f, 0, 10);
 }
 
 void Player::onCollisionStay(btPersistentManifold* manifold, bool amIB)

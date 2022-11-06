@@ -49,18 +49,23 @@ private:
     bool _flagJump = false;
     glm::vec3 _displacementToTarget = glm::vec3(0.0f);
 
+    int32_t _jumpInputBufferFramesTimer = -1;
+
     // Callbacks
     std::function<void(btPersistentManifold*, bool amIB)> _onCollisionStayFunc;
     void onCollisionStay(btPersistentManifold* manifold, bool amIB);
 
     // Load Props
     glm::vec3 _load_position = glm::vec3(0.0f);
-    glm::vec3 _load_transformOffset = glm::vec3(0, -2.5f, 0);
 
     // Tweak Props
     float_t _facingDirection = 0.0f;
     float_t _maxSpeed = 20.0f;
     float_t _maxAcceleration = 150.0f;
-    float_t _maxMidairAcceleration = 20.0f;
+    float_t _maxDeceleration = 150.0f;
+    float_t _maxMidairAcceleration = 80.0f;
+    float_t _maxMidairDeceleration = 20.0f;
     float_t _jumpHeight = 5.0f;
+    int32_t _jumpCoyoteFrames = 4;       // @NOTE: frames are measured with the constant 0.02f seconds per frame in the physics delta time
+    int32_t _jumpInputBufferFrames = 4;  //        Thus, 4 frames in that measurement is 4.8 frames in 60 fps
 };
