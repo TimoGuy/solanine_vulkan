@@ -18,8 +18,9 @@ RenderObject* RenderObjectManager::registerRenderObject(RenderObject renderObjec
 			<< "       Maximum capacity: " << RENDER_OBJECTS_MAX_CAPACITY << std::endl;
 		return nullptr;
 	}
-
 	_renderObjects.push_back(renderObjectData);
+	recalculateAnimatorIndices();
+
 	return &_renderObjects.back();
 }
 
@@ -30,6 +31,7 @@ void RenderObjectManager::unregisterRenderObject(RenderObject* objRegistration)
 			return &x == objRegistration;
 		}
 	);
+	recalculateAnimatorIndices();
 }
 
 vkglTF::Model* RenderObjectManager::getModel(const std::string& name)
@@ -51,17 +53,23 @@ RenderObjectManager::~RenderObjectManager()
 		it->second->destroy(_allocator);
 }
 
+void RenderObjectManager::recalculateAnimatorIndices()
+{
+	_renderObjectsWithAnimatorIndices.clear();
+	for (size_t i = 0; i < _renderObjects.size(); i++)
+	{
+		if (_renderObjects[i].animator == nullptr)
+			continue;
+
+		_renderObjectsWithAnimatorIndices.push_back(i);
+	}
+}
+
 void RenderObjectManager::updateAnimators(const float_t& deltaTime)
 {
 	// @TODO: make this multithreaded....
-	for (auto it = _renderObjects.begin(); it != _renderObjects.end(); it++)
-	{
-		auto& ro = *it;
-		if (ro.animator == nullptr)
-			continue;
-
-		ro.animator->update(deltaTime);
-	}
+	for (size_t& i : _renderObjectsWithAnimatorIndices)
+		_renderObjects[i].animator->update(deltaTime);
 }
 
 vkglTF::Model* RenderObjectManager::createModel(vkglTF::Model* model, const std::string& name)

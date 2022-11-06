@@ -35,6 +35,8 @@ private:
 	RenderObjectManager(VmaAllocator& allocator);
 	~RenderObjectManager();
 
+	std::vector<size_t> _renderObjectsWithAnimatorIndices;
+	void recalculateAnimatorIndices();
 	void updateAnimators(const float_t& deltaTime);
 
     std::vector<RenderObject> _renderObjects;
