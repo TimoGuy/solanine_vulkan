@@ -111,28 +111,13 @@ namespace vkglTF
 
 	struct Mesh
 	{
-		VulkanEngine* engine;
 		std::vector<Primitive*> primitives;
 		BoundingBox bb;
 		BoundingBox aabb;
 
 		uint32_t animatorMeshId;
 
-		/*struct UniformBuffer
-		{
-			AllocatedBuffer descriptorBuffer;
-			VkDescriptorSet descriptorSet;
-			void* mapped;
-		} uniformBuffer;
-
-		struct UniformBlock
-		{
-			glm::mat4 matrix;
-			glm::mat4 jointMatrix[MAX_NUM_JOINTS]{};
-			float jointcount{ 0 };
-		} uniformBlock;*/
-
-		Mesh(VulkanEngine* engine, glm::mat4 matrix);
+		Mesh();
 		~Mesh();
 		void setBoundingBox(glm::vec3 min, glm::vec3 max);
 	};
@@ -144,6 +129,8 @@ namespace vkglTF
 		std::vector<glm::mat4> inverseBindMatrices;
 		std::vector<Node*> joints;
 	};
+
+	struct Animator;
 
 	struct Node
 	{
@@ -161,10 +148,10 @@ namespace vkglTF
 		BoundingBox bvh;
 		BoundingBox aabb;
 
-		void generateCalculateJointMatrixTaskflow(tf::Taskflow& taskflow, tf::Task* taskPrerequisite);
+		void generateCalculateJointMatrixTaskflow(Animator* animator, tf::Taskflow& taskflow, tf::Task* taskPrerequisite);
 		glm::mat4 localMatrix();
 		glm::mat4 getMatrix();
-		void update();
+		void update(Animator* animator);
 		~Node();
 	};
 
@@ -256,15 +243,15 @@ namespace vkglTF
 
 		void destroy(VmaAllocator allocator);
 	private:
-		void loadNode(VulkanEngine* engine, vkglTF::Node* parent, const tinygltf::Node& node, uint32_t nodeIndex, const tinygltf::Model& model, LoaderInfo& loaderInfo, float globalscale);
+		void loadNode(vkglTF::Node* parent, const tinygltf::Node& node, uint32_t nodeIndex, const tinygltf::Model& model, LoaderInfo& loaderInfo, float globalscale);
 		void getNodeProps(const tinygltf::Node& node, const tinygltf::Model& model, size_t& vertexCount, size_t& indexCount);
 		void loadSkins(tinygltf::Model& gltfModel);
-		void loadTextures(tinygltf::Model& gltfModel, VulkanEngine* engine);
+		void loadTextures(tinygltf::Model& gltfModel);
 		VkSamplerAddressMode getVkWrapMode(int32_t wrapMode);
 		VkFilter getVkFilterMode(int32_t filterMode);
 		VkSamplerMipmapMode getVkMipmapModeMode(int32_t filterMode);
 		void loadTextureSamplers(tinygltf::Model& gltfModel);
-		void loadMaterials(tinygltf::Model& gltfModel, VulkanEngine* engine);    // @NOTE: someday it might be beneficial to have some kind of material override for any model.  -Timo
+		void loadMaterials(tinygltf::Model& gltfModel);    // @NOTE: someday it might be beneficial to have some kind of material override for any model.  -Timo
 		void loadAnimations(tinygltf::Model& gltfModel);
 	public:
 		void loadFromFile(VulkanEngine* engine, std::string filename, float scale = 1.0f);
@@ -276,13 +263,63 @@ namespace vkglTF
 		void calculateBoundingBox(Node* node, Node* parent);
 	public:
 		void getSceneDimensions();
-		void updateAnimation(uint32_t index, float time);
 	private:
 		Node* findNode(Node* parent, uint32_t index);
 		Node* nodeFromIndex(uint32_t index);
 
 	private:
-		tf::Taskflow _calculateJointMatricesTaskflow;
-		tf::Executor _taskflowExecutor;
+		VulkanEngine* engine;
+
+		friend struct Animator;
+	};
+
+	struct Animator
+	{
+		Animator(vkglTF::Model* model);
+		~Animator();
+
+		static void initializeEmpty(VulkanEngine* engine);
+		static void destroyEmpty(VulkanEngine* engine);
+		static VkDescriptorSet* getEmptyJointDescriptorSet();
+
+		void playAnimation(uint32_t animationIndex, float_t time = 0.0f);
+		void update(const float_t& deltaTime);
+
+	private:
+		VulkanEngine* engine;
+		vkglTF::Model* model;
+
+		void updateAnimation();
+		void updateJointMatrices(uint32_t animatorMeshId, vkglTF::Skin* skin, glm::mat4& m);
+
+		uint32_t animationIndex;
+		float_t  time;
+
+		struct UniformBuffer
+		{
+			AllocatedBuffer descriptorBuffer;
+			VkDescriptorSet descriptorSet;
+			void* mapped;
+		};
+		std::vector<UniformBuffer> uniformBuffers;
+
+		struct UniformBlock
+		{
+			glm::mat4 matrix;
+			glm::mat4 jointMatrix[MAX_NUM_JOINTS]{};
+			float_t jointcount{ 0 };
+		};
+		std::vector<UniformBlock> uniformBlocks;
+
+		tf::Taskflow calculateJointMatricesTaskflow;
+		tf::Executor taskflowExecutor;
+
+		// @SPECIAL: empty animator for empty joint descriptor sets
+		static UniformBuffer emptyUBuffer;
+		static UniformBlock  emptyUBlock;
+	public:
+		UniformBuffer& getUniformBuffer(size_t index);
+
+		friend struct Node;
 	};
 }

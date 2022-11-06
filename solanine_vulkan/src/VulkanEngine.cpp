@@ -85,6 +85,7 @@ void VulkanEngine::init()
 	generateBRDFLUT();
 	attachPBRDescriptors();
 
+	vkglTF::Animator::initializeEmpty(this);
 	AudioEngine::getInstance().initialize();
 	PhysicsEngine::getInstance().initialize(this);
 
@@ -161,18 +162,8 @@ void VulkanEngine::run()
 		// Add/Remove requested entities
 		_entityManager->INTERNALaddRemoveRequestedEntities();
 
-		//
-		// @TODO: loop thru animators and update them!
-		//
-		// @TEMP: Play Slimegirl animation
-		//
-		static uint32_t animationIndex = 31;    // @NOTE: this is Slimegirl's running inmotion animation
-		static float_t animationTimer = 0.0f;
-		animationTimer += deltaTime;
-		auto slimeGirl = _roManager->getModel("slimeGirl");
-		if (animationTimer > slimeGirl->animations[animationIndex].end)    // Loop animation
-			animationTimer -= slimeGirl->animations[animationIndex].end;
-		slimeGirl->updateAnimation(animationIndex, animationTimer);
+		// Update animators
+		_roManager->updateAnimators(deltaTime);
 
 		// Update Audio Engine
 		AudioEngine::getInstance().update();
@@ -203,6 +194,8 @@ void VulkanEngine::cleanup()
 		AudioEngine::getInstance().cleanup();
 
 		delete _roManager;
+
+		vkglTF::Animator::destroyEmpty(this);
 
 		_mainDeletionQueue.flush();
 		_swapchainDependentDeletionQueue.flush();
@@ -3278,7 +3271,10 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 				//
 				// Apply joint properties
 				//
-				VkDescriptorSet* jointDescriptor = &node->mesh->uniformBuffer.descriptorSet;
+				VkDescriptorSet* jointDescriptor =
+					object.animator ?
+					&object.animator->getUniformBuffer((size_t)node->mesh->animatorMeshId).descriptorSet :
+					vkglTF::Animator::getEmptyJointDescriptorSet();
 				if (lastJointDescriptor != jointDescriptor)
 				{
 					// Joint Descriptor (set = 2) (i.e. skeletal animations)

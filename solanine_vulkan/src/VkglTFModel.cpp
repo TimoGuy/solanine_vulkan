@@ -66,50 +66,12 @@ namespace vkglTF
 	//
 	// Mesh
 	//
-	Mesh::Mesh(VulkanEngine* engine, glm::mat4 matrix)
+	Mesh::Mesh() : animatorMeshId((uint32_t)-1)
 	{
-		this->engine = engine;
-		this->uniformBlock.matrix = matrix;  // @INCOMPLETE: transfer these things into an animator:  -The descriptor buffer and descriptor set (UniformBuffer) (it needs to have an applyJointMatrices() copying function that the vkgltfmodel while it's rendering can reference), and then UniformBlock, so that we can insert it in as some kind of function dependency and then it'll fill in all those matrices (use uint32_t to match up the mesh to the uniformblock as it'll be in a vector (along with UniformBuffer will be in a # of meshes in X model sized vector))
-
-
-
-		animatorMeshId = /* Some kind of function that will push_back their UniformBuffer and UniformBlock space and give back an id of which id this mesh is. (@TODO) */
-			// @TODO: @NOTE: there needs to be a pointer to the animator at the model level, and then propagate that to the mesh level... if there is none (nullptr), then oh well. Don't run any of the joint information then. @MAYBE need some way of resetting the joints if there is a no-animator version of a model that however has joints.
-
-		uniformBuffer.descriptorBuffer =
-			engine->createBuffer(
-				sizeof(uniformBlock),
-				VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-				VMA_MEMORY_USAGE_CPU_TO_GPU
-			);
-		vmaMapMemory(engine->_allocator, uniformBuffer.descriptorBuffer._allocation, &uniformBuffer.mapped);    // So we can just grab a pointer and hit memcpy() tons of times per frame!
-
-		VkDescriptorSetAllocateInfo skeletalAnimationSetAllocInfo = {
-			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-			.pNext = nullptr,
-			.descriptorPool = engine->_descriptorPool,
-			.descriptorSetCount = 1,
-			.pSetLayouts = &engine->_skeletalAnimationSetLayout,
-		};
-		vkAllocateDescriptorSets(engine->_device, &skeletalAnimationSetAllocInfo, &uniformBuffer.descriptorSet);
-
-		VkDescriptorBufferInfo bufferInfo = {
-			.buffer = uniformBuffer.descriptorBuffer._buffer,
-			.offset = 0,
-			.range = sizeof(uniformBlock),
-		};
-		VkWriteDescriptorSet writeDescriptorSet = vkinit::writeDescriptorBuffer(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, uniformBuffer.descriptorSet, &bufferInfo, 0);
-		vkUpdateDescriptorSets(engine->_device, 1, &writeDescriptorSet, 0, nullptr);
-
-
-		// @TODO: make sure all this stuff is in the descructor too!!!
-	};
+	}
 
 	Mesh::~Mesh()
 	{
-		vmaUnmapMemory(engine->_allocator, uniformBuffer.descriptorBuffer._allocation);
-		vmaDestroyBuffer(engine->_allocator, uniformBuffer.descriptorBuffer._buffer, uniformBuffer.descriptorBuffer._allocation);
-
 		for (Primitive* p : primitives)
 			delete p;
 	}
@@ -124,10 +86,10 @@ namespace vkglTF
 	//
 	// Node
 	//
-	void Node::generateCalculateJointMatrixTaskflow(tf::Taskflow& taskflow, tf::Task* taskPrerequisite)
+	void Node::generateCalculateJointMatrixTaskflow(Animator* animator, tf::Taskflow& taskflow, tf::Task* taskPrerequisite)
 	{
-		auto smolTask = taskflow.emplace([&]() {
-			update();
+		auto smolTask = taskflow.emplace([&, animator]() {
+			update(animator);
 			});
 
 		if (taskPrerequisite != nullptr)
@@ -135,7 +97,7 @@ namespace vkglTF
 
 		for (auto& child : children)
 		{
-			child->generateCalculateJointMatrixTaskflow(taskflow, &smolTask);
+			child->generateCalculateJointMatrixTaskflow(animator, taskflow, &smolTask);
 		}
 	}
 
@@ -156,31 +118,12 @@ namespace vkglTF
 		return m;
 	}
 
-	void Node::update()
+	void Node::update(Animator* animator)
 	{
 		if (mesh)
 		{
 			glm::mat4 m = getMatrix();
-			if (skin)
-			{
-				mesh->uniformBlock.matrix = m;
-				// Update join matrices
-				glm::mat4 inverseTransform = glm::inverse(m);
-				size_t numJoints = std::min((uint32_t)skin->joints.size(), MAX_NUM_JOINTS);
-				for (size_t i = 0; i < numJoints; i++)
-				{
-					vkglTF::Node* jointNode = skin->joints[i];
-					glm::mat4 jointMat = jointNode->getMatrix() * skin->inverseBindMatrices[i];
-					jointMat = inverseTransform * jointMat;
-					mesh->uniformBlock.jointMatrix[i] = jointMat;
-				}
-				mesh->uniformBlock.jointcount = (float)numJoints;
-				memcpy(mesh->uniformBuffer.mapped, &mesh->uniformBlock, sizeof(mesh->uniformBlock));
-			}
-			else
-			{
-				memcpy(mesh->uniformBuffer.mapped, &m, sizeof(glm::mat4));
-			}
+			animator->updateJointMatrices(mesh->animatorMeshId, skin, m);
 		}
 	}
 
@@ -304,7 +247,7 @@ namespace vkglTF
 		skins.resize(0);
 	};
 
-	void Model::loadNode(VulkanEngine* engine, vkglTF::Node* parent, const tinygltf::Node& node, uint32_t nodeIndex, const tinygltf::Model& model, LoaderInfo& loaderInfo, float globalscale)
+	void Model::loadNode(vkglTF::Node* parent, const tinygltf::Node& node, uint32_t nodeIndex, const tinygltf::Model& model, LoaderInfo& loaderInfo, float globalscale)
 	{
 		vkglTF::Node* newNode = new Node{};
 		newNode->index = nodeIndex;
@@ -342,7 +285,7 @@ namespace vkglTF
 		{
 			for (size_t i = 0; i < node.children.size(); i++)
 			{
-				loadNode(engine, newNode, model.nodes[node.children[i]], node.children[i], model, loaderInfo, globalscale);
+				loadNode(newNode, model.nodes[node.children[i]], node.children[i], model, loaderInfo, globalscale);
 			}
 		}
 
@@ -350,7 +293,7 @@ namespace vkglTF
 		if (node.mesh > -1)
 		{
 			const tinygltf::Mesh mesh = model.meshes[node.mesh];
-			Mesh* newMesh = new Mesh(engine, newNode->matrix);
+			Mesh* newMesh = new Mesh();
 			for (size_t j = 0; j < mesh.primitives.size(); j++)
 			{
 				const tinygltf::Primitive& primitive = mesh.primitives[j];
@@ -627,7 +570,7 @@ namespace vkglTF
 		}
 	}
 
-	void Model::loadTextures(tinygltf::Model& gltfModel, VulkanEngine* engine)
+	void Model::loadTextures(tinygltf::Model& gltfModel)
 	{
 		for (tinygltf::Texture& tex : gltfModel.textures)
 		{
@@ -780,7 +723,7 @@ namespace vkglTF
 		}
 	}
 
-	void Model::loadMaterials(tinygltf::Model& gltfModel, VulkanEngine* engine)
+	void Model::loadMaterials(tinygltf::Model& gltfModel)
 	{
 		Material* baseMaterial = engine->getMaterial("pbrMaterial");
 
@@ -1117,6 +1060,7 @@ namespace vkglTF
 
 	void Model::loadFromFile(VulkanEngine* engine, std::string filename, float scale)
 	{
+		this->engine = engine;
 		auto tStart = std::chrono::high_resolution_clock::now();
 
 		//
@@ -1149,8 +1093,8 @@ namespace vkglTF
 		// Load gltf data into data structures
 		//
 		loadTextureSamplers(gltfModel);		// @TODO: RE-ENABLE THESE. THESE ARE ALREADY IMPLEMENTED BUT THEY ARE SLOW
-		loadTextures(gltfModel, engine);		// @TODO: RE-ENABLE THESE. THESE ARE ALREADY IMPLEMENTED BUT THEY ARE SLOW
-		loadMaterials(gltfModel, engine);
+		loadTextures(gltfModel);		// @TODO: RE-ENABLE THESE. THESE ARE ALREADY IMPLEMENTED BUT THEY ARE SLOW
+		loadMaterials(gltfModel);
 
 		const tinygltf::Scene& scene = gltfModel.scenes[gltfModel.defaultScene > -1 ? gltfModel.defaultScene : 0];		// TODO: scene handling with no default scene
 
@@ -1165,7 +1109,7 @@ namespace vkglTF
 		for (size_t i = 0; i < scene.nodes.size(); i++)
 		{
 			const tinygltf::Node node = gltfModel.nodes[scene.nodes[i]];
-			loadNode(engine, nullptr, node, scene.nodes[i], gltfModel, loaderInfo, scale);
+			loadNode(nullptr, node, scene.nodes[i], gltfModel, loaderInfo, scale);
 		}
 
 		// Load in animations
@@ -1179,14 +1123,6 @@ namespace vkglTF
 			if (node->skinIndex > -1)
 				node->skin = skins[node->skinIndex];
 		}
-
-		// Build animation joint matrices calculation taskflow
-		_calculateJointMatricesTaskflow.clear();
-		for (auto& node : nodes)
-		{
-			node->generateCalculateJointMatrixTaskflow(_calculateJointMatricesTaskflow, nullptr);
-		}
-		_taskflowExecutor.run(_calculateJointMatricesTaskflow).wait();    // Calculate Initial Pose
 
 		extensions = gltfModel.extensionsUsed;
 
@@ -1387,20 +1323,197 @@ namespace vkglTF
 		aabb[3][2] = dimensions.min[2];
 	}
 
-	void Model::updateAnimation(uint32_t index, float time)
+	Node* Model::findNode(Node* parent, uint32_t index)
 	{
-		if (animations.empty())
+		Node* nodeFound = nullptr;
+		if (parent->index == index)
+		{
+			return parent;
+		}
+		for (auto& child : parent->children)
+		{
+			nodeFound = findNode(child, index);
+			if (nodeFound)
+			{
+				break;
+			}
+		}
+		return nodeFound;
+	}
+
+	Node* Model::nodeFromIndex(uint32_t index)
+	{
+		Node* nodeFound = nullptr;
+		for (auto& node : nodes)
+		{
+			nodeFound = findNode(node, index);
+			if (nodeFound)
+			{
+				break;
+			}
+		}
+		return nodeFound;
+	}
+
+	//
+	// Animator
+	//
+	Animator::UniformBuffer Animator::emptyUBuffer;
+	Animator::UniformBlock  Animator::emptyUBlock;
+
+	Animator::Animator(vkglTF::Model* model) : model(model)
+	{
+		if (model == nullptr)
+			return;  // @NOTE: emptyAnimator does this on purpose
+
+		this->engine = model->engine;
+
+		size_t meshId = 0;
+		for (auto node : model->linearNodes)  // @NOTE: linearnodes is used to access all of the meshes bc just nodes just gives top level unless if you recurse thru it
+		{
+			if (!node->mesh)
+				continue;
+
+			node->mesh->animatorMeshId = meshId++;
+
+			UniformBlock uBlock = {};
+			uBlock.matrix = node->getMatrix();  // @INCOMPLETE: transfer these things into an animator:  -The descriptor buffer and descriptor set (UniformBuffer) (it needs to have an applyJointMatrices() copying function that the vkgltfmodel while it's rendering can reference), and then UniformBlock, so that we can insert it in as some kind of function dependency and then it'll fill in all those matrices (use uint32_t to match up the mesh to the uniformblock as it'll be in a vector (along with UniformBuffer will be in a # of meshes in X model sized vector))
+
+			UniformBuffer uBuffer = {};
+			uBuffer.descriptorBuffer =
+				engine->createBuffer(
+					sizeof(uBlock),
+					VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+					VMA_MEMORY_USAGE_CPU_TO_GPU
+				);
+			vmaMapMemory(engine->_allocator, uBuffer.descriptorBuffer._allocation, &uBuffer.mapped);    // So we can just grab a pointer and hit memcpy() tons of times per frame!
+
+			VkDescriptorSetAllocateInfo skeletalAnimationSetAllocInfo = {
+				.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+				.pNext = nullptr,
+				.descriptorPool = engine->_descriptorPool,
+				.descriptorSetCount = 1,
+				.pSetLayouts = &engine->_skeletalAnimationSetLayout,
+			};
+			vkAllocateDescriptorSets(engine->_device, &skeletalAnimationSetAllocInfo, &uBuffer.descriptorSet);
+
+			VkDescriptorBufferInfo bufferInfo = {
+				.buffer = uBuffer.descriptorBuffer._buffer,
+				.offset = 0,
+				.range = sizeof(uBlock),
+			};
+			VkWriteDescriptorSet writeDescriptorSet = vkinit::writeDescriptorBuffer(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, uBuffer.descriptorSet, &bufferInfo, 0);
+			vkUpdateDescriptorSets(engine->_device, 1, &writeDescriptorSet, 0, nullptr);
+
+			uniformBlocks.push_back(uBlock);
+			uniformBuffers.push_back(uBuffer);
+		}
+
+		// Build animation joint matrices calculation taskflow
+		calculateJointMatricesTaskflow.clear();
+		for (auto& node : model->nodes)
+			node->generateCalculateJointMatrixTaskflow(this, calculateJointMatricesTaskflow, nullptr);
+
+		// Calculate Initial Pose
+		playAnimation(0);
+		updateAnimation();
+	}
+
+	Animator::~Animator()
+	{
+		for (auto& uniformBuffer : uniformBuffers)
+		{
+			vmaUnmapMemory(engine->_allocator, uniformBuffer.descriptorBuffer._allocation);
+			vmaDestroyBuffer(engine->_allocator, uniformBuffer.descriptorBuffer._buffer, uniformBuffer.descriptorBuffer._allocation);
+		}
+	}
+
+	void Animator::initializeEmpty(VulkanEngine* engine)
+	{
+		//
+		// @SPECIAL: create an empty animator and don't update the animation
+		//
+		UniformBlock uBlock = {};
+		uBlock.matrix = glm::mat4(1.0f);
+
+		UniformBuffer uBuffer = {};
+		uBuffer.descriptorBuffer =
+			engine->createBuffer(
+				sizeof(uBlock),
+				VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+				VMA_MEMORY_USAGE_CPU_TO_GPU
+			);
+
+		VkDescriptorSetAllocateInfo skeletalAnimationSetAllocInfo = {
+			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+			.pNext = nullptr,
+			.descriptorPool = engine->_descriptorPool,
+			.descriptorSetCount = 1,
+			.pSetLayouts = &engine->_skeletalAnimationSetLayout,
+		};
+		vkAllocateDescriptorSets(engine->_device, &skeletalAnimationSetAllocInfo, &uBuffer.descriptorSet);
+
+		VkDescriptorBufferInfo bufferInfo = {
+			.buffer = uBuffer.descriptorBuffer._buffer,
+			.offset = 0,
+			.range = sizeof(uBlock),
+		};
+		VkWriteDescriptorSet writeDescriptorSet = vkinit::writeDescriptorBuffer(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, uBuffer.descriptorSet, &bufferInfo, 0);
+		vkUpdateDescriptorSets(engine->_device, 1, &writeDescriptorSet, 0, nullptr);
+
+		emptyUBlock  = uBlock;
+		emptyUBuffer = uBuffer;
+
+		// Copy non-skinned override uniform block
+		vmaMapMemory(engine->_allocator, emptyUBuffer.descriptorBuffer._allocation, &emptyUBuffer.mapped);
+		memcpy(emptyUBuffer.mapped, &emptyUBlock, sizeof(emptyUBlock));
+		vmaUnmapMemory(engine->_allocator, emptyUBuffer.descriptorBuffer._allocation);
+	}
+
+	void Animator::destroyEmpty(VulkanEngine* engine)
+	{
+		// @SPECIAL: destroy created descriptor set
+		vmaDestroyBuffer(engine->_allocator, emptyUBuffer.descriptorBuffer._buffer, emptyUBuffer.descriptorBuffer._allocation);
+	}
+
+	VkDescriptorSet* Animator::getEmptyJointDescriptorSet()
+	{
+		return &emptyUBuffer.descriptorSet;
+	}
+
+	void Animator::playAnimation(uint32_t animationIndex, float_t time)
+	{
+		if (model->animations.empty())
 		{
 			std::cout << ".glTF does not contain animation." << std::endl;
 			return;
 		}
-		if (index > static_cast<uint32_t>(animations.size()) - 1)
+		if (animationIndex > static_cast<uint32_t>(model->animations.size()) - 1)
 		{
-			std::cout << "No animation with index " << index << std::endl;
+			std::cout << "No animation with index " << animationIndex << std::endl;
 			return;
 		}
 
-		Animation& animation = animations[index];
+		this->animationIndex = animationIndex;
+		this->time = time;
+
+		// @TODO: Do we need to hit updateAnimation()? This playAnimation() function will be run likely in the entity updates, so it's not like the update will be a frame late. I'm just gonna not worry about it  -Timo 2022/11/5
+	}
+
+	void Animator::update(const float_t& deltaTime)
+	{
+		time += deltaTime;
+
+		// Loop animation
+		if (time > model->animations[animationIndex].end)
+			time -= model->animations[animationIndex].end;
+
+		updateAnimation();
+	}
+
+	void Animator::updateAnimation()
+	{
+		Animation& animation = model->animations[animationIndex];
 
 		bool updated = false;
 		for (auto& channel : animation.channels)
@@ -1455,40 +1568,37 @@ namespace vkglTF
 		}
 		if (updated)
 		{
-			_taskflowExecutor.run(_calculateJointMatricesTaskflow).wait();
+			taskflowExecutor.run(calculateJointMatricesTaskflow).wait();
 		}
 	}
 
-	Node* Model::findNode(Node* parent, uint32_t index)
+	void Animator::updateJointMatrices(uint32_t animatorMeshId, vkglTF::Skin* skin, glm::mat4& m)
 	{
-		Node* nodeFound = nullptr;
-		if (parent->index == index)
+		if (skin)
 		{
-			return parent;
-		}
-		for (auto& child : parent->children)
-		{
-			nodeFound = findNode(child, index);
-			if (nodeFound)
+			auto& uniformBlock = uniformBlocks[animatorMeshId];
+			uniformBlock.matrix = m;
+			// Update join matrices
+			glm::mat4 inverseTransform = glm::inverse(m);
+			size_t numJoints = std::min((uint32_t)skin->joints.size(), MAX_NUM_JOINTS);
+			for (size_t i = 0; i < numJoints; i++)
 			{
-				break;
+				vkglTF::Node* jointNode = skin->joints[i];
+				glm::mat4 jointMat = jointNode->getMatrix() * skin->inverseBindMatrices[i];
+				jointMat = inverseTransform * jointMat;
+				uniformBlock.jointMatrix[i] = jointMat;
 			}
+			uniformBlock.jointcount = (float)numJoints;
+			memcpy(uniformBuffers[animatorMeshId].mapped, &uniformBlock, sizeof(uniformBlock));
 		}
-		return nodeFound;
+		else
+		{
+			memcpy(uniformBuffers[animatorMeshId].mapped, &m, sizeof(glm::mat4));
+		}
 	}
 
-	Node* Model::nodeFromIndex(uint32_t index)
+	Animator::UniformBuffer& Animator::getUniformBuffer(size_t index)
 	{
-		Node* nodeFound = nullptr;
-		for (auto& node : nodes)
-		{
-			nodeFound = findNode(node, index);
-			if (nodeFound)
-			{
-				break;
-			}
-		}
-		return nodeFound;
+		return uniformBuffers[index];
 	}
-
 }

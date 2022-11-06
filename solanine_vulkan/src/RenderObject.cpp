@@ -4,17 +4,6 @@
 #include "VkglTFModel.h"
 
 
-RenderObjectManager::RenderObjectManager(VmaAllocator& allocator) : _allocator(allocator)
-{
-    _renderObjects.reserve(RENDER_OBJECTS_MAX_CAPACITY);
-}
-
-RenderObjectManager::~RenderObjectManager()
-{
-    for (auto it = _renderObjectModels.begin(); it != _renderObjectModels.end(); it++)
-		it->second->destroy(_allocator);
-}
-
 RenderObject* RenderObjectManager::registerRenderObject(RenderObject renderObjectData)
 {
     // @NOTE: this is required to be here (as well as the .reserve() on init)
@@ -49,6 +38,30 @@ vkglTF::Model* RenderObjectManager::getModel(const std::string& name)
 	if (it == _renderObjectModels.end())
 		return nullptr;
 	return it->second;
+}
+
+RenderObjectManager::RenderObjectManager(VmaAllocator& allocator) : _allocator(allocator)
+{
+    _renderObjects.reserve(RENDER_OBJECTS_MAX_CAPACITY);
+}
+
+RenderObjectManager::~RenderObjectManager()
+{
+    for (auto it = _renderObjectModels.begin(); it != _renderObjectModels.end(); it++)
+		it->second->destroy(_allocator);
+}
+
+void RenderObjectManager::updateAnimators(const float_t& deltaTime)
+{
+	// @TODO: make this multithreaded....
+	for (auto it = _renderObjects.begin(); it != _renderObjects.end(); it++)
+	{
+		auto& ro = *it;
+		if (ro.animator == nullptr)
+			continue;
+
+		ro.animator->update(deltaTime);
+	}
 }
 
 vkglTF::Model* RenderObjectManager::createModel(vkglTF::Model* model, const std::string& name)

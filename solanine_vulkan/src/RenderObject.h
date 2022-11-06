@@ -7,7 +7,7 @@
 #include "ImportGLM.h"
 #include "Settings.h"
 
-namespace vkglTF { class Model; }
+namespace vkglTF { class Model; struct Animator; }
 
 
 enum class RenderLayer
@@ -18,6 +18,7 @@ enum class RenderLayer
 struct RenderObject
 {
 	vkglTF::Model* model;
+	vkglTF::Animator* animator = nullptr;
 	glm::mat4 transformMatrix;
 	RenderLayer renderLayer;
 	std::string attachedEntityGuid;  // @NOTE: this is just for @DEBUG purposes for the imgui property panel
@@ -33,6 +34,8 @@ public:
 private:
 	RenderObjectManager(VmaAllocator& allocator);
 	~RenderObjectManager();
+
+	void updateAnimators(const float_t& deltaTime);
 
     std::vector<RenderObject> _renderObjects;
 	std::vector<bool> _renderObjectLayersEnabled = { true, false, false };
