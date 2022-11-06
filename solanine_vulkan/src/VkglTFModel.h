@@ -187,6 +187,45 @@ namespace vkglTF
 		VkPipelineVertexInputStateCreateFlags flags = 0;
 	};
 
+	// Animator State Machine held by Model for the Animator
+	struct StateMachine
+	{
+		struct OnFinish
+		{
+			bool useOnFinish = false;
+			std::string toStateName;  // @NOTE: just for setup
+			size_t      toStateIndex;
+		};
+
+		struct Transition
+		{
+			std::string triggerName;  // @NOTE: just for setup
+			size_t      triggerIndex;
+			std::string toStateName;  // @NOTE: just for setup
+			size_t      toStateIndex;
+		};
+
+		struct Trigger
+		{
+			std::string triggerName;  // @NOTE: this is just for setup referencing. Indices should be used once this setup finishes (i.e. don't do any string comps after setup)
+			bool        activated = false;
+		};
+
+		struct State
+		{
+			std::string             stateName = "";  // @NOTE: just for referencing for debugging etc. after setup
+			std::string             animationName;
+			uint32_t                animationIndex;
+			bool                    loop;
+			OnFinish                onFinish;
+			std::vector<Transition> transitions;
+		};
+
+		std::vector<Trigger>          triggers;
+		std::vector<State>            states;
+		std::map<std::string, size_t> triggerNameToIndex;  // @NOTE: at the very most, the entity owning the animator should be using this, not the internal animator code!
+	};
+
 	struct Model
 	{
 		struct Vertex
@@ -253,6 +292,7 @@ namespace vkglTF
 		void loadTextureSamplers(tinygltf::Model& gltfModel);
 		void loadMaterials(tinygltf::Model& gltfModel);    // @NOTE: someday it might be beneficial to have some kind of material override for any model.  -Timo
 		void loadAnimations(tinygltf::Model& gltfModel);
+		void loadAnimationStateMachine(const std::string& filename, tinygltf::Model& gltfModel);
 	public:
 		void loadFromFile(VulkanEngine* engine, std::string filename, float scale = 1.0f);
 		void bind(VkCommandBuffer commandBuffer);
@@ -269,6 +309,7 @@ namespace vkglTF
 
 	private:
 		VulkanEngine* engine;
+		StateMachine* animStateMachine;
 
 		friend struct Animator;
 	};
@@ -286,8 +327,10 @@ namespace vkglTF
 		void update(const float_t& deltaTime);
 
 	private:
-		VulkanEngine* engine;
 		vkglTF::Model* model;
+		VulkanEngine* engine;
+		StateMachine* animStateMachine;
+		size_t asmStateIndex;
 
 		void updateAnimation();
 		void updateJointMatrices(uint32_t animatorMeshId, vkglTF::Skin* skin, glm::mat4& m);

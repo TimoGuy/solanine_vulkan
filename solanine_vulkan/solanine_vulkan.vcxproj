@@ -160,6 +160,7 @@ copy $(SolutionDir)libs\fmod_studio\lib\fmodstudio.dll $(OutDirfullPath)fmodstud
     <ClInclude Include="src\VkTextures.h" />
     <ClInclude Include="src\VulkanEngine.h" />
     <ClInclude Include="src\Yosemite.h" />
+    <ClInclude Include="src\StringHelper.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\AudioEngine.cpp" />

@@ -11,6 +11,7 @@
 #include "VulkanEngine.h"
 #include "VkTextures.h"
 #include "VkInitializers.h"
+#include "StringHelper.h"
 
 
 namespace vkglTF
@@ -1058,6 +1059,182 @@ namespace vkglTF
 		}
 	}
 
+	void Model::loadAnimationStateMachine(const std::string& filename, tinygltf::Model& gltfModel)
+	{
+		std::string fnameCooked = (filename + ".hasm");
+		std::ifstream inFile(fnameCooked);  // .hasm: Hawsoo Animation State Machine
+		if (!inFile.is_open())
+		{
+			std::cerr << "[ASM LOADING]" << std::endl
+				<< "WARNING: file \"" << fnameCooked << "\" not found, thus could not load the animation state machine." << std::endl;
+			return;
+		}
+
+		animStateMachine = new StateMachine();
+		{
+			StateMachine::State newState = {};
+
+			std::string line;
+			for (size_t lineNum = 1; std::getline(inFile, line); lineNum++)  // @COPYPASTA with SceneManagement.cpp
+			{
+				// Prep line data
+				std::string originalLine = line;
+
+				size_t found = line.find('#');
+				if (found != std::string::npos)
+				{
+					line = line.substr(0, found);
+				}
+
+				trim(line);
+				if (line.empty())
+					continue;
+
+				// Process line
+				if (line[0] == ':')
+				{
+					line = line.substr(1);  // Cut out the colon
+					trim(line);
+
+					// Wrap up the previous state under creation if there was one
+					if (!newState.stateName.empty())
+						animStateMachine->states.push_back(newState);  // @TODO: that'd be good if there were a check on the data to make sure it has an animation assigned at the very least
+
+					// New state
+					newState = {};
+					newState.stateName = line;
+				}
+				else if (!newState.stateName.empty())
+				{
+					// Find type of information to attach
+					if (line.rfind("animation ", 0) == 0)
+					{
+						line = line.substr(sizeof("animation ") - 1);
+						trim(line);
+
+						// Assign animation
+						newState.animationName = line;
+					}
+					else if (line.rfind("loop ", 0) == 0)
+					{
+						line = line.substr(sizeof("loop ") - 1);
+						trim(line);
+
+						// Assign loop
+						newState.loop = (bool)std::stoi(line);
+					}
+					else if (line.rfind("on_finish ", 0) == 0)
+					{
+						line = line.substr(sizeof("on_finish ") - 1);
+						trim(line);
+
+						// Assign OnFinish
+						StateMachine::OnFinish newOnFinish = {};
+						newOnFinish.useOnFinish = true;
+						newOnFinish.toStateName = line;
+						newState.onFinish = newOnFinish;
+					}
+					else if (line.rfind("trigger ", 0) == 0)
+					{
+						line = line.substr(sizeof("trigger ") - 1);
+						trim(line);
+
+						// Assign transition
+						StateMachine::Transition newTransition = {};
+						newTransition.triggerName = line.substr(0, line.find(' '));
+						newTransition.toStateName = line.substr(line.find(' '));
+						trim(newTransition.triggerName);
+						trim(newTransition.toStateName);
+						newState.transitions.push_back(newTransition);
+					}
+				}
+				else
+				{
+					// ERROR
+					std::cerr << "[ASM LOADING]" << std::endl
+						<< "ERROR (line " << lineNum << ") (file: " << fnameCooked << "): Headless data" << std::endl
+						<< "   Trimmed line: " << line << std::endl
+						<< "  Original line: " << line << std::endl;
+				}
+			}
+
+			// @COPYPASTA: @COPYPASTA: Wrap up the previous state under creation if there was one
+			if (!newState.stateName.empty())
+				animStateMachine->states.push_back(newState);
+		}
+
+		//
+		// Compile transition trigger names to trigger indices
+		//
+		for (auto& state : animStateMachine->states)
+		{
+			for (auto& transition : state.transitions)
+			{
+				bool foundInTriggerList = false;
+				for (size_t i = 0; i < animStateMachine->triggers.size(); i++)
+				{
+					auto& trigger = animStateMachine->triggers[i];
+					if (trigger.triggerName == transition.triggerName)
+					{
+						transition.triggerIndex = i;
+						foundInTriggerList = true;
+						break;
+					}
+				}
+
+				if (!foundInTriggerList)
+				{
+					// Create new trigger in trigger list
+					size_t index = animStateMachine->triggers.size();
+					transition.triggerIndex = index;
+					animStateMachine->triggerNameToIndex[transition.triggerName] = index;
+					animStateMachine->triggers.push_back({ transition.triggerName, false });
+				}
+			}
+		}
+
+		//
+		// Compile state names to state indices
+		//
+		std::map<std::string, size_t> stateNameToIndex;
+		size_t stateIndex = 0;
+		for (auto& state : animStateMachine->states)
+			stateNameToIndex[state.stateName] = stateIndex++;
+
+		for (auto& state : animStateMachine->states)
+		{
+			if (state.onFinish.useOnFinish)
+				state.onFinish.toStateIndex = stateNameToIndex[state.onFinish.toStateName];
+			for (auto& transition : state.transitions)
+				transition.toStateIndex = stateNameToIndex[transition.toStateName];
+		}
+
+		//
+		// Compile state animation names to animation indices
+		//
+		for (auto& state : animStateMachine->states)
+		{
+			bool foundIndex = false;
+			for (size_t animInd = 0; animInd < gltfModel.animations.size(); animInd++)
+			{
+				auto& anim = gltfModel.animations[animInd];
+				if (anim.name == state.animationName)
+				{
+					state.animationIndex = animInd;
+					foundIndex = true;
+					break;
+				}
+			}
+
+			if (!foundIndex)
+			{
+				std::cerr << "[ASM LOADING]" << std::endl
+					<< "ERROR: Unknown animation" << std::endl
+					<< "Anim: \"" << state.animationName << "\" was not found in model \"" << fnameCooked << "\""<< std::endl;
+			}
+		}
+	}
+
 	void Model::loadFromFile(VulkanEngine* engine, std::string filename, float scale)
 	{
 		this->engine = engine;
@@ -1114,7 +1291,10 @@ namespace vkglTF
 
 		// Load in animations
 		if (gltfModel.animations.size() > 0)
+		{
 			loadAnimations(gltfModel);
+			loadAnimationStateMachine(filename, gltfModel);
+		}
 		loadSkins(gltfModel);
 
 		for (auto node : linearNodes)
@@ -1366,7 +1546,9 @@ namespace vkglTF
 		if (model == nullptr)
 			return;  // @NOTE: emptyAnimator does this on purpose
 
-		this->engine = model->engine;
+		engine           = model->engine;
+		animStateMachine = model->animStateMachine;
+		asmStateIndex    = 0;
 
 		size_t meshId = 0;
 		for (auto node : model->linearNodes)  // @NOTE: linearnodes is used to access all of the meshes bc just nodes just gives top level unless if you recurse thru it
@@ -1502,6 +1684,23 @@ namespace vkglTF
 
 	void Animator::update(const float_t& deltaTime)
 	{
+		//
+		// @TODO: for the implementatino of the animatino state machine:
+		//        - Have the triggers be there and have a flag bool_deleteall and set to true unless if
+		//          one of the triggers actually processes to do something... and if it does, then turn
+		//          off that trigger, and keep going until either all triggers are off or the state doesn't
+		//          use any of the active triggers, then turn off all the triggers in that case and move on!
+		//        - HOWEVER, make sure to give priority to the onFinish event!!!!! over the Transitions
+		//
+
+
+
+
+
+
+
+
+
 		time += deltaTime;
 
 		// Loop animation

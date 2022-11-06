@@ -1,0 +1,49 @@
+:StateIdle
+animation Idle_Hip
+loop      1
+trigger   goto_run     StateRunning
+trigger   goto_jump    StateJumpFromIdle
+trigger   goto_fall    StateFall
+
+
+:StateRun
+animation Running.inmotion
+loop      1
+trigger   goto_idle    StateIdle
+trigger   goto_jump    StateJumpFromRun
+trigger   goto_fall    StateFall
+
+
+:StateJumpFromIdle
+animation Jumping_From_Idle
+loop      0
+trigger   goto_idle    StateLandIdle
+trigger   goto_run     StateLandRun
+
+
+:StateJumpFromRun
+animation Jumping_From_Run
+loop      0
+trigger   goto_idle    StateLandIdle
+trigger   goto_run     StateLandRun
+
+
+:StateFall
+animation Falling
+loop      0
+trigger   goto_idle    StateLandIdle
+trigger   goto_run     StateLandRun
+
+
+:StateLandIdle
+animation Land_From_Jumping_From_Idle
+loop      0
+on_finish StateIdle
+
+
+:StateLandRun
+animation Land_From_Jumping_From_Run
+loop      0
+on_finish StateRun
+
+
