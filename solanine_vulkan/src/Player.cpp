@@ -26,7 +26,7 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
             });
 
     // @TEMP
-    _renderObj->animator->playAnimation(1);  // Running anim for "slimeGirl" model
+    _renderObj->animator->playAnimation(31);  // Running anim for "slimeGirl" model
 
     _camera->mainCamMode.setMainCamTargetObject(_renderObj);  // @NOTE: I believe that there should be some kind of main camera system that targets the player by default but when entering different volumes etc. the target changes depending.... essentially the system needs to be more built out imo
 

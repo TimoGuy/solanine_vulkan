@@ -227,6 +227,7 @@ private:
 	void initSwapchain();
 	void initCommands();
 	void initShadowRenderpass();
+	void initShadowImages();
 	void initDefaultRenderpass();
 	void initPickingRenderpass();
 	void initFramebuffers();

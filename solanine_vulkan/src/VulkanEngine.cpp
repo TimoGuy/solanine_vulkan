@@ -70,7 +70,8 @@ void VulkanEngine::init()
 	initVulkan();
 	initSwapchain();
 	initCommands();
-	initShadowRenderpass();  // @TODO: @NOTE: technically this doesn't have to be recreated bc it's not a screen space from swapchain based renderpass/framebuffer/image/imageview that goes bad/changes size (unless if settings are changed eh!)
+	initShadowRenderpass();
+	initShadowImages();  // @NOTE: this isn't screen space, so no need to recreate on swapchain recreation
 	initDefaultRenderpass();
 	initPickingRenderpass();
 	initFramebuffers();
@@ -1005,7 +1006,10 @@ void VulkanEngine::initShadowRenderpass()  // @COPYPASTA
 	_swapchainDependentDeletionQueue.pushFunction([=]() {
 		vkDestroyRenderPass(_device, _shadowRenderPass, nullptr);
 		});
+}
 
+void VulkanEngine::initShadowImages()
+{
 	//
 	// Initialize the shadow images
 	// @NOTE: I know that this is kind of a waste, and that
@@ -1036,7 +1040,7 @@ void VulkanEngine::initShadowRenderpass()  // @COPYPASTA
 	VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(1.0f, /*VK_FILTER_LINEAR*/VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);  // Why linear? it should be nearest if I say so myself.
 	VK_CHECK(vkCreateSampler(_device, &samplerInfo, nullptr, &_pbrSceneTextureSet.shadowMap.sampler));
 
-	_swapchainDependentDeletionQueue.pushFunction([=]() {
+	_mainDeletionQueue.pushFunction([=]() {
 		vkDestroySampler(_device, _pbrSceneTextureSet.shadowMap.sampler, nullptr);
 		vkDestroyImageView(_device, _pbrSceneTextureSet.shadowMap.imageView, nullptr);
 		vmaDestroyImage(_allocator, _pbrSceneTextureSet.shadowMap.image._image, _pbrSceneTextureSet.shadowMap.image._allocation);
@@ -1064,7 +1068,7 @@ void VulkanEngine::initShadowRenderpass()  // @COPYPASTA
 		};
 		VK_CHECK(vkCreateFramebuffer(_device, &framebufferInfo, nullptr, &_shadowCascades[i].framebuffer));
 
-		_swapchainDependentDeletionQueue.pushFunction([=]() {
+		_mainDeletionQueue.pushFunction([=]() {
 			vkDestroyFramebuffer(_device, _shadowCascades[i].framebuffer, nullptr);
 			vkDestroyImageView(_device, _shadowCascades[i].imageView, nullptr);
 			});
