@@ -60,7 +60,7 @@ private:
     // Tweak Props
     float_t _facingDirection = 0.0f;
     float_t _maxSpeed = 20.0f;
-    float_t _maxAcceleration = 50.0f;
+    float_t _maxAcceleration = 150.0f;
     float_t _maxMidairAcceleration = 20.0f;
     float_t _jumpHeight = 5.0f;
 };

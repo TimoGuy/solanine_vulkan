@@ -57,9 +57,10 @@ struct MainCamMode
 	glm::vec3 calculatedLookDirection = glm::vec3(0, -0.707106781, 0.707106781);
 
 	// Tweak variables
-	float_t   lookDistance = 15.0f;
-	float_t   focusRadius = 3.0f;
-	float_t   focusCentering = 0.75f;
+	float_t   lookDistance        = 15.0f;
+	float_t   focusRadiusXZ       = 3.0f;
+	float_t   focusRadiusY        = 7.0f;
+	float_t   focusCentering      = 0.75f;
 	glm::vec3 focusPositionOffset = glm::vec3(0, 7, 0);
 
 	void setMainCamTargetObject(RenderObject* targetObject);

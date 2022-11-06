@@ -183,16 +183,27 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 	{
 		// Update the focus position
 		glm::vec3 targetPosition = physutil::getPosition(mainCamMode.targetObject->transformMatrix);
-		if (mainCamMode.focusRadius > 0.0f)
+		if (mainCamMode.focusRadiusXZ > 0.0f || mainCamMode.focusRadiusY > 0.0f)
 		{
-			glm::vec3 delta = mainCamMode.focusPosition - targetPosition;
-			float_t distance = glm::length(delta);
-			float_t t = 1.0f;
-			if (distance > 0.01f && mainCamMode.focusCentering > 0.0f)
-				t = glm::pow(1.0f - mainCamMode.focusCentering, deltaTime);
-			if (distance > mainCamMode.focusRadius)
-				t = glm::min(t, mainCamMode.focusRadius / distance);
-			mainCamMode.focusPosition = targetPosition + delta * t;
+			const glm::vec3 delta = mainCamMode.focusPosition - targetPosition;
+
+			// XZ axes focusing
+			float_t distanceXZ = glm::length(glm::vec2(delta.x, delta.z));
+			float_t tXZ = 1.0f;
+			if (distanceXZ > 0.01f && mainCamMode.focusCentering > 0.0f)
+				tXZ = glm::pow(1.0f - mainCamMode.focusCentering, deltaTime);
+			if (distanceXZ > mainCamMode.focusRadiusXZ)
+				tXZ = glm::min(tXZ, mainCamMode.focusRadiusXZ / distanceXZ);
+			
+			// Y axis focusing
+			float_t distanceY = glm::length(delta.y);
+			float_t tY = 1.0f;
+			if (distanceY > 0.01f && mainCamMode.focusCentering > 0.0f)
+				tY = glm::pow(1.0f - mainCamMode.focusCentering, deltaTime);
+			if (distanceY > mainCamMode.focusRadiusY)
+				tY = glm::min(tY, mainCamMode.focusRadiusY / distanceY);
+
+			mainCamMode.focusPosition = targetPosition + delta * glm::vec3(tXZ, tY, tXZ);
 		}
 		else
 			mainCamMode.focusPosition = targetPosition;

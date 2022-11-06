@@ -3709,7 +3709,8 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 			ImGui::Text("NOTE: press F10 to change camera types");
 
 			ImGui::SliderFloat("lookDistance", &_camera->mainCamMode.lookDistance, 1.0f, 100.0f);
-			ImGui::DragFloat("focusRadius", &_camera->mainCamMode.focusRadius, 1.0f, 0.0f);
+			ImGui::DragFloat("focusRadiusXZ", &_camera->mainCamMode.focusRadiusXZ, 1.0f, 0.0f);
+			ImGui::DragFloat("focusRadiusY", &_camera->mainCamMode.focusRadiusY, 1.0f, 0.0f);
 			ImGui::SliderFloat("focusCentering", &_camera->mainCamMode.focusCentering, 0.0f, 1.0f);
 			ImGui::DragFloat3("focusPositionOffset", &_camera->mainCamMode.focusPositionOffset.x);
 		}
