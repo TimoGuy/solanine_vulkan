@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vector>
+#include <array>
 #include <map>
 #include <functional>
 #define BT_THREADSAFE 1

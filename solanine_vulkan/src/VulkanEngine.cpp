@@ -286,7 +286,7 @@ void VulkanEngine::render()
 			CascadeIndexPushConstBlock pc = { i };
 			vkCmdPushConstants(cmd, shadowDepthPassMaterial->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(CascadeIndexPushConstBlock), &pc);
 
-			renderRenderObjects(cmd, currentFrame, 0, _roManager->_renderObjects.size(), false, true, &shadowDepthPassMaterial->pipelineLayout, true);
+			renderRenderObjects(cmd, currentFrame, 0, _roManager->_renderObjectsIndices.size(), false, true, &shadowDepthPassMaterial->pipelineLayout, true);
 			
 			vkCmdEndRenderPass(cmd);
 		}
@@ -323,7 +323,7 @@ void VulkanEngine::render()
 		vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
 		uploadCurrentFrameToGPU(currentFrame);
-		renderRenderObjects(cmd, currentFrame, 0, _roManager->_renderObjects.size(), true, false, nullptr, false);
+		renderRenderObjects(cmd, currentFrame, 0, _roManager->_renderObjectsIndices.size(), true, false, nullptr, false);
 		renderPickedObject(cmd, currentFrame);
 		if (_showCollisionDebugDraw)
 			PhysicsEngine::getInstance().renderDebugDraw(cmd, currentFrame.globalDescriptor);
@@ -434,7 +434,7 @@ void VulkanEngine::render()
 		std::cout << "[PICKING]" << std::endl
 			<< "set picking scissor to: x=" << scissor.offset.x << "  y=" << scissor.offset.y << "  w=" << scissor.extent.width << "  h=" << scissor.extent.height << std::endl;
 
-		renderRenderObjects(cmd, currentFrame, 0, _roManager->_renderObjects.size(), false, true, &pickingMaterial.pipelineLayout, false);    // @NOTE: the joint descriptorset will still be bound in here   @HACK: it's using the wrong pipelinelayout but.... it should be fine? Bc the slot is still set=3 for the joints on the picking pipelinelayout too??
+		renderRenderObjects(cmd, currentFrame, 0, _roManager->_renderObjectsIndices.size(), false, true, &pickingMaterial.pipelineLayout, false);    // @NOTE: the joint descriptorset will still be bound in here   @HACK: it's using the wrong pipelinelayout but.... it should be fine? Bc the slot is still set=3 for the joints on the picking pipelinelayout too??
 
 		// End renderpass
 		vkCmdEndRenderPass(cmd);
@@ -475,16 +475,16 @@ void VulkanEngine::render()
 
 		uint32_t nearestSelectedId = 0;
 		float_t nearestDepth = std::numeric_limits<float_t>::max();
-		for (size_t i = 0; i < _roManager->_renderObjects.size(); i++)
+		for (size_t poolIndex : _roManager->_renderObjectsIndices)
 		{
-			if (p.selectedId[i] == 0)
+			if (p.selectedId[poolIndex] == 0)
 				continue;  // Means that the data never got filled
 
-			if (p.selectedDepth[i] > nearestDepth)
+			if (p.selectedDepth[poolIndex] > nearestDepth)
 				continue;
 
-			nearestSelectedId = p.selectedId[i];
-			nearestDepth = p.selectedDepth[i];
+			nearestSelectedId = p.selectedId[poolIndex];
+			nearestDepth = p.selectedDepth[poolIndex];
 		}
 
 		submitSelectedRenderObjectId(static_cast<int32_t>(nearestSelectedId) - 1);
@@ -3141,10 +3141,10 @@ void VulkanEngine::uploadCurrentFrameToGPU(const FrameData& currentFrame)
 	vmaMapMemory(_allocator, currentFrame.objectBuffer._allocation, &objectData);
 	GPUObjectData* objectSSBO = (GPUObjectData*)objectData;    // @IMPROVE: perhaps multithread this? Or only update when the object moves?
 
-	for (size_t i = 0; i < _roManager->_renderObjects.size(); i++)
+	for (size_t poolIndex : _roManager->_renderObjectsIndices)  // @NOTE: bc of the pool system these indices will be scattered, but that should work just fine
 	{
-		RenderObject& object = _roManager->_renderObjects[i];
-		objectSSBO[i].modelMatrix = object.transformMatrix;		// Another evil pointer trick I love... call me Dmitri the Evil
+		RenderObject& object = _roManager->_renderObjectPool[poolIndex];
+		objectSSBO[poolIndex].modelMatrix = object.transformMatrix;		// Another evil pointer trick I love... call me Dmitri the Evil
 	}
 
 	vmaUnmapMemory(_allocator, currentFrame.objectBuffer._allocation);
@@ -3178,7 +3178,8 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 
 	for (size_t i = offset; i < offset + count; i++)
 	{
-		RenderObject& object = _roManager->_renderObjects[i];
+		size_t poolIndex = _roManager->_renderObjectsIndices[i];
+		RenderObject& object = _roManager->_renderObjectPool[poolIndex];
 
 		if (!_roManager->_renderObjectLayersEnabled[(size_t)object.renderLayer])
 			continue;    // Ignore layers that are disabled
@@ -3199,7 +3200,7 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 		//
 		// Render it out
 		//
-		object.model->draw(cmd, (uint32_t)i,
+		object.model->draw(cmd, (uint32_t)poolIndex,
 			[&](vkglTF::Primitive* primitive, vkglTF::Node* node) {
 				//
 				// Apply all of the material properties
@@ -3302,12 +3303,13 @@ void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& curr
 	bool found = false;
 	size_t pickedROIndex = 0;
 
-	for (size_t i = 0; i < _roManager->_renderObjects.size(); i++)
+	for (size_t i = 0; i < _roManager->_renderObjectsIndices.size(); i++)
 	{
-		if (_movingMatrix.matrixToMove == &_roManager->_renderObjects[i].transformMatrix)
+		size_t poolIndex = _roManager->_renderObjectsIndices[i];
+		if (_movingMatrix.matrixToMove == &_roManager->_renderObjectPool[poolIndex].transformMatrix)
 		{
 			found = true;
-			pickedROIndex = i;
+			pickedROIndex = i;  // @NOTE: this is not the pool index, but rather the index of the pool
 			break;
 		}
 	}
@@ -3472,9 +3474,9 @@ void VulkanEngine::teardownResourceList()
 }
 #endif
 
-void VulkanEngine::submitSelectedRenderObjectId(int32_t id)
+void VulkanEngine::submitSelectedRenderObjectId(int32_t poolIndex)
 {
-	if (id < 0)
+	if (poolIndex < 0)
 	{
 		// Nullify the matrixToMove pointer
 		_movingMatrix.matrixToMove = nullptr;
@@ -3484,9 +3486,9 @@ void VulkanEngine::submitSelectedRenderObjectId(int32_t id)
 	}
 
 	// Set a new matrixToMove
-	_movingMatrix.matrixToMove = &_roManager->_renderObjects[id].transformMatrix;
+	_movingMatrix.matrixToMove = &_roManager->_renderObjectPool[poolIndex].transformMatrix;
 	std::cout << "[PICKING]" << std::endl
-		<< "Selected object " << id << std::endl;
+		<< "Selected object " << poolIndex << std::endl;
 }
 
 void VulkanEngine::renderImGui(float_t deltaTime)
@@ -3671,8 +3673,9 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 					if (!_roManager->_renderObjectLayersEnabled[i])
 					{
 						// Find object that matrixToMove is pulling from (if any)
-						for (auto& ro : _roManager->_renderObjects)
+						for (size_t poolIndex : _roManager->_renderObjectsIndices)
 						{
+							auto& ro = _roManager->_renderObjectPool[poolIndex];
 							if (_movingMatrix.matrixToMove == &ro.transformMatrix)
 							{
 								// @HACK: Reset the _movingMatrix.matrixToMove
@@ -3743,9 +3746,12 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 		static Entity* _flagAttachToThisEntity = nullptr;  // One frame lag fetch bc the `INTERNALaddRemoveRequestedEntities()` gets run once a frame instead of immediate add when an entity gets constructed.
 		if (_flagAttachToThisEntity)
 		{
-			for (auto& ro : _roManager->_renderObjects)
+			for (size_t poolIndex : _roManager->_renderObjectsIndices)
+			{
+				auto& ro = _roManager->_renderObjectPool[poolIndex];
 				if (ro.attachedEntityGuid == _flagAttachToThisEntity->getGUID())
 					_movingMatrix.matrixToMove = &ro.transformMatrix;
+			}
 			_flagAttachToThisEntity = nullptr;
 		}
 
@@ -3757,8 +3763,9 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 
 		// Manipulate the selected entity
 		Entity* selectedEntity = nullptr;
-		for (auto& ro : _roManager->_renderObjects)
+		for (size_t poolIndex : _roManager->_renderObjectsIndices)
 		{
+			auto& ro = _roManager->_renderObjectPool[poolIndex];
 			if (_movingMatrix.matrixToMove == &ro.transformMatrix)
 				for (auto& ent : _entityManager->_entities)
 					if (ro.attachedEntityGuid == ent->getGUID())
@@ -3951,8 +3958,9 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 			// Edit props exclusive to render objects
 			//
 			RenderObject* foundRO = nullptr;
-			for (auto& ro : _roManager->_renderObjects)
+			for (size_t poolIndex : _roManager->_renderObjectsIndices)
 			{
+				auto& ro = _roManager->_renderObjectPool[poolIndex];
 				if (_movingMatrix.matrixToMove == &ro.transformMatrix)
 				{
 					foundRO = &ro;

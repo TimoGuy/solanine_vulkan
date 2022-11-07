@@ -161,8 +161,8 @@ void PhysicsEngine::update(float_t deltaTime, std::vector<Entity*>* entities)   
 	//	physicsAlpha = 1.0f;
 #endif
 
-	for (size_t i : _physicsObjectsIndices)    // @IMPROVEMENT: @TODO: oh man, this should definitely be multithreaded. However, taskflow doesn't seem like the best choice.  @TOOD: look into the c++11 multithreaded for loop
-		calculateInterpolatedTransform(_physicsObjectPool[i], physicsAlpha);
+	for (size_t poolIndex : _physicsObjectsIndices)    // @IMPROVEMENT: @TODO: oh man, this should definitely be multithreaded. However, taskflow doesn't seem like the best choice.  @TOOD: look into the c++11 multithreaded for loop
+		calculateInterpolatedTransform(_physicsObjectPool[poolIndex], physicsAlpha);
 
 	// Load the debug draw lines emplaced from inside the physicsUpdate()'s
 	loadOneFrameDebugDrawLines();
@@ -193,11 +193,6 @@ btVector3 PhysicsEngine::getGravity()
 
 RegisteredPhysicsObject* PhysicsEngine::registerPhysicsObject(float_t mass, glm::vec3 origin, glm::quat rotation, btCollisionShape* shape)
 {
-	// @NOTE: this is required to be here (as well as the .reserve() on init)
-	//        bc if the capacity is overcome, then a new array with a larger
-	//        capacity is allocated, and then the pointer to the part in the
-	//        vector is lost to garbage memory that got deallocated.  -Timo 2022/10/24
-	//
 	// @NOTE: I'm putting in a new system where instead of a reserved vector,
 	//        there's now a pool where you can register physics objects from
 	//        and indices of the objects are kept track of... so it's harder
@@ -237,11 +232,13 @@ RegisteredPhysicsObject* PhysicsEngine::registerPhysicsObject(float_t mass, glm:
 	//        time you try to register a new physics object in the pool.  -Timo 2022/11/06
 	size_t registerIndex = 0;
 	for (size_t i = 0; i < _physicsObjectsIsRegistered.size(); i++)
+	{
 		if (!_physicsObjectsIsRegistered[i])
 		{
 			registerIndex = i;
 			break;
 		}
+	}
 
 	// Register object
 	_physicsObjectPool[registerIndex] = rpo;
@@ -257,15 +254,15 @@ RegisteredPhysicsObject* PhysicsEngine::registerPhysicsObject(float_t mass, glm:
 void PhysicsEngine::unregisterPhysicsObject(RegisteredPhysicsObject* objRegistration)
 {
 	size_t indicesIndex = 0;
-	for (size_t i : _physicsObjectsIndices)
+	for (size_t poolIndex : _physicsObjectsIndices)
 	{
-		auto& rpo = _physicsObjectPool[i];
+		auto& rpo = _physicsObjectPool[poolIndex];
 		if (&rpo == objRegistration)
 		{
 			// Unregister object
 			_dynamicsWorld->removeRigidBody(rpo.body);
 			_rigidBodyToPhysicsObjectMap.erase((void*)rpo.body);
-			_physicsObjectsIsRegistered[i] = false;
+			_physicsObjectsIsRegistered[poolIndex] = false;
 			_physicsObjectsIndices.erase(_physicsObjectsIndices.begin() + indicesIndex);
 
 			_recreateDebugDrawBuffer = true;
@@ -278,8 +275,6 @@ void PhysicsEngine::unregisterPhysicsObject(RegisteredPhysicsObject* objRegistra
 
 	std::cerr << "[UNREGISTER PHYSICS OBJECT]" << std::endl
 		<< "ERROR: physics object " << objRegistration << " was not found. Nothing unregistered." << std::endl;
-
-	return;
 }
 
 void PhysicsEngine::lazyRecreateDebugDrawBuffer()
@@ -654,23 +649,23 @@ void PhysicsEngine::recreateDebugDrawBuffer()
 	// Assemble vertices with the correct shape sizing
 	//
 	std::vector<DebugDrawVertex> vertexList;
-	for (size_t i : _physicsObjectsIndices)
+	for (size_t poolIndex : _physicsObjectsIndices)
 	{
-		btCollisionShape* shape = _physicsObjectPool[i].body->getCollisionShape();
+		btCollisionShape* shape = _physicsObjectPool[poolIndex].body->getCollisionShape();
 
 		switch (shape->getShapeType())
 		{
 		case BOX_SHAPE_PROXYTYPE:
-			appendDebugShapeVertices((btBoxShape*)shape, i, vertexList);
+			appendDebugShapeVertices((btBoxShape*)shape, poolIndex, vertexList);
 			break;
 		case SPHERE_SHAPE_PROXYTYPE:
-			appendDebugShapeVertices((btSphereShape*)shape, i, vertexList);
+			appendDebugShapeVertices((btSphereShape*)shape, poolIndex, vertexList);
 			break;
 		case CYLINDER_SHAPE_PROXYTYPE:
-			appendDebugShapeVertices((btCylinderShape*)shape, i, vertexList);
+			appendDebugShapeVertices((btCylinderShape*)shape, poolIndex, vertexList);
 			break;
 		case CAPSULE_SHAPE_PROXYTYPE:
-			appendDebugShapeVertices((btCapsuleShape*)shape, i, vertexList);
+			appendDebugShapeVertices((btCapsuleShape*)shape, poolIndex, vertexList);
 			break;
 		default:
 			std::cerr << "[CREATING PHYSICS ENGINE DEBUG DRAW BUFFER]" << std::endl
@@ -699,10 +694,13 @@ void PhysicsEngine::recreateDebugDrawBuffer()
 	_vertexCount = vertexList.size();
 	_vertexBufferCreated = true;
 
-	void* data;
-	vmaMapMemory(_engine->_allocator, _vertexBuffer._allocation, &data);
-	memcpy(data, &vertexList[0], _vertexCount * sizeof(DebugDrawVertex));
-	vmaUnmapMemory(_engine->_allocator, _vertexBuffer._allocation);
+	if (_vertexCount > 0)
+	{
+		void* data;
+		vmaMapMemory(_engine->_allocator, _vertexBuffer._allocation, &data);
+		memcpy(data, &vertexList[0], _vertexCount * sizeof(DebugDrawVertex));
+		vmaUnmapMemory(_engine->_allocator, _vertexBuffer._allocation);
+	}
 
 	_recreateDebugDrawBuffer = false;
 }

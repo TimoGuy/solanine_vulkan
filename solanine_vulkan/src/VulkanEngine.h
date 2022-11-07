@@ -339,7 +339,7 @@ private:
 	{
 		glm::mat4* matrixToMove = nullptr;
 	} _movingMatrix;
-	void submitSelectedRenderObjectId(int32_t id);
+	void submitSelectedRenderObjectId(int32_t poolIndex);
 
 	//
 	// ImGui Stuff
