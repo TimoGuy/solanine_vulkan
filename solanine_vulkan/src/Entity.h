@@ -30,4 +30,6 @@ protected:
 
 private:
     std::string _guid;
+
+    friend class EntityManager;
 };

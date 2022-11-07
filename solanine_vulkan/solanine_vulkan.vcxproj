@@ -129,6 +129,7 @@ copy $(SolutionDir)libs\fmod_studio\lib\fmodstudio.dll $(OutDirfullPath)fmodstud
     <ClInclude Include="src\Camera.h" />
     <ClInclude Include="src\Debug.h" />
     <ClInclude Include="src\EntityManager.h" />
+    <ClInclude Include="src\GenerateGUID.h" />
     <ClInclude Include="src\imgui\imgui_stdlib.h" />
     <ClInclude Include="src\ImportGLM.h" />
     <ClInclude Include="src\RenderObject.h" />
@@ -168,6 +169,7 @@ copy $(SolutionDir)libs\fmod_studio\lib\fmodstudio.dll $(OutDirfullPath)fmodstud
     <ClCompile Include="src\Debug.cpp" />
     <ClCompile Include="src\Entity.cpp" />
     <ClCompile Include="src\EntityManager.cpp" />
+    <ClCompile Include="src\GenerateGUID.cpp" />
     <ClCompile Include="src\imgui\imgui.cpp" />
     <ClCompile Include="src\imgui\ImGuizmo.cpp" />
     <ClCompile Include="src\imgui\imgui_demo.cpp" />
