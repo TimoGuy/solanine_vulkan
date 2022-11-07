@@ -27,6 +27,7 @@ namespace input
 		keyWPressed,
 		keyEPressed,
 		keyRPressed,
+		keyDPressed,
 		onKeyJumpPress,
 		onKeyF10Press;
 

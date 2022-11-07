@@ -62,23 +62,25 @@ void EntityManager::INTERNALaddRemoveRequestedEntities()
 
 	// Add entities requested to be added
 	for (auto it = _entitiesToAddQueue.begin(); it != _entitiesToAddQueue.end(); it++)
-	{
-		for (auto& ent : _entities)
-			if (ent->getGUID() == (*it)->getGUID())
-			{
-				// Resolve guid collision
-				// @NOTE: @INCOMPLETE: this doesn't solve if there are any references that use the guid. Hopefully that can be thought out before that issue can happen.
-				std::string newGuid = generateGUID();
-				std::cerr << "[ENTITY INSERTION ROUTINE]" << std::endl
-					<< "WARNING: GUID collision found. GUID regenerated for object with GUID: " << (*it)->getGUID() << std::endl
-					<< "                                                New regenerated GUID: " << newGuid << std::endl;
-				(*it)->_guid = newGuid;
-				break;
-			}
-
 		_entities.push_back(*it);
-	}
 	_entitiesToAddQueue.clear();
+}
+
+bool EntityManager::INTERNALcheckGUIDCollision(Entity* entity)
+{
+	// @IMPROVE: add short circuit for the collision evaluation
+	std::string guid = entity->getGUID();
+	bool collision = false;
+	for (auto& ent : _entitiesToDestroyQueue)
+		if (ent != entity)
+			collision |= (ent->getGUID() == guid);
+	for (auto& ent : _entitiesToAddQueue)
+		if (ent != entity)
+			collision |= (ent->getGUID() == guid);
+	for (auto& ent : _entities)
+		if (ent != entity)
+			collision |= (ent->getGUID() == guid);
+	return collision;
 }
 
 void EntityManager::destroyEntity(Entity* entity)

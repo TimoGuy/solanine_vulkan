@@ -1,5 +1,6 @@
 #pragma once
 
+#include <string>
 #include <vector>
 #include <queue>
 
@@ -17,6 +18,7 @@ private:
     void INTERNALaddEntity(Entity* entity);
 	void INTERNALdestroyEntity(Entity* entity);
 	void INTERNALaddRemoveRequestedEntities();
+	bool INTERNALcheckGUIDCollision(Entity* entity);
 
 public:
 	void destroyEntity(Entity* entity);    // Do not use the destructor or INTERNALdestroyEntity(), use this function!

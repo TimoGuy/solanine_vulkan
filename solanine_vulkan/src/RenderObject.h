@@ -39,7 +39,7 @@ private:
 	void recalculateAnimatorIndices();
 	void updateAnimators(const float_t& deltaTime);
 
-    std::vector<RenderObject> _renderObjects;
+    std::array<RenderObject, RENDER_OBJECTS_MAX_CAPACITY> _renderObjects;
 	std::vector<bool> _renderObjectLayersEnabled = { true, false, false };
 
 	std::unordered_map<std::string, vkglTF::Model*> _renderObjectModels;

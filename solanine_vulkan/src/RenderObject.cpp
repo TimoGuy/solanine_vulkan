@@ -44,7 +44,6 @@ vkglTF::Model* RenderObjectManager::getModel(const std::string& name)
 
 RenderObjectManager::RenderObjectManager(VmaAllocator& allocator) : _allocator(allocator)
 {
-    _renderObjects.reserve(RENDER_OBJECTS_MAX_CAPACITY);
 }
 
 RenderObjectManager::~RenderObjectManager()

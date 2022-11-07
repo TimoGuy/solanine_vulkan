@@ -365,8 +365,9 @@ void VulkanEngine::render()
 		_camera->getCameraMode() == Camera::_cameraMode_freeCamMode &&
 		!_camera->freeCamMode.enabled &&
 		!ImGui::GetIO().WantCaptureMouse &&
-		!ImGuizmo::IsUsing() &&
-		!ImGuizmo::IsOver() &&
+		(_movingMatrix.matrixToMove != nullptr ?
+			!ImGuizmo::IsUsing() && !ImGuizmo::IsOver() :
+			true) &&
 		ImGui::IsMousePosValid())
 	{
 		VK_CHECK(vkResetFences(_device, 1, &currentFrame.pickingRenderFence));
@@ -3504,6 +3505,11 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 
 	ImPlot::ShowDemoWindow();
 
+	bool allowKeyboardShortcuts =
+		_camera->getCameraMode() == Camera::_cameraMode_freeCamMode &&
+		!_camera->freeCamMode.enabled &&
+		!ImGui::GetIO().WantTextInput;
+
 	//
 	// Debug Messages window
 	//
@@ -3749,7 +3755,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 			_flagAttachToThisEntity = newEnt;  // @HACK: ... but if it works?
 		}
 
-		// Duplicate the selected entity
+		// Manipulate the selected entity
 		Entity* selectedEntity = nullptr;
 		for (auto& ro : _roManager->_renderObjects)
 		{
@@ -3764,14 +3770,47 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 				break;
 		}
 		if (selectedEntity)
-			if (ImGui::Button("Duplicate Selected Entity"))
+		{
+			// Duplicate
+			static bool canRunDuplicateProc = true;
+			if (ImGui::Button("Duplicate Selected Entity") || (allowKeyboardShortcuts && input::keyCtrlPressed && input::keyDPressed))
 			{
-				DataSerializer ds;
-				selectedEntity->dump(ds);
-				auto dsd = ds.getSerializedData();
-				auto newEnt = scene::spinupNewObject(selectedEntity->getTypeName(), this, &dsd);
-				_flagAttachToThisEntity = newEnt;
+				if (canRunDuplicateProc)
+				{
+					DataSerializer ds;
+					selectedEntity->dump(ds);
+					auto dsd = ds.getSerializedData();
+					auto newEnt = scene::spinupNewObject(selectedEntity->getTypeName(), this, &dsd);
+					_flagAttachToThisEntity = newEnt;
+				}
+
+				canRunDuplicateProc = false;
 			}
+			else
+				canRunDuplicateProc = true;
+
+			// Delete
+			static bool canRunDeleteProc = true;
+			
+            ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0.0f, 0.5f, 0.6f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0.0f, 0.7f, 0.7f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0.0f, 0.8f, 0.8f));
+
+			if (ImGui::Button("Delete Selected Entity!") || (allowKeyboardShortcuts && input::keyDelPressed))
+			{
+				if (canRunDeleteProc)
+				{
+					_entityManager->destroyEntity(selectedEntity);
+					_movingMatrix.matrixToMove = nullptr;
+				}
+
+				canRunDeleteProc = false;
+			}
+			else
+				canRunDeleteProc = true;
+
+            ImGui::PopStyleColor(3);
+		}
 
 
 		accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
@@ -3783,190 +3822,183 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 	//
 	if (_movingMatrix.matrixToMove != nullptr)
 	{
-		if (input::keyDelPressed)
-		{
-			_movingMatrix.matrixToMove = nullptr;    // @NOTE: this is based off the assumption that likely if you're pressing delete while selecting an object, you're about to delete the object, so we need to dereference this instead of crashing!
-		}
-		else
-		{
-			//
-			// Move the matrix via ImGuizmo
-			//
-			glm::mat4 projection = _camera->sceneCamera.gpuCameraData.projection;
-			projection[1][1] *= -1.0f;
+		//
+		// Move the matrix via ImGuizmo
+		//
+		glm::mat4 projection = _camera->sceneCamera.gpuCameraData.projection;
+		projection[1][1] *= -1.0f;
 
-			static ImGuizmo::OPERATION manipulateOperation = ImGuizmo::OPERATION::TRANSLATE;
-			static ImGuizmo::MODE manipulateMode           = ImGuizmo::MODE::WORLD;
-			ImGuizmo::Manipulate(
-				glm::value_ptr(_camera->sceneCamera.gpuCameraData.view),
-				glm::value_ptr(projection),
-				manipulateOperation,
-				manipulateMode,
-				glm::value_ptr(*_movingMatrix.matrixToMove)
-			);
+		static ImGuizmo::OPERATION manipulateOperation = ImGuizmo::OPERATION::TRANSLATE;
+		static ImGuizmo::MODE manipulateMode           = ImGuizmo::MODE::WORLD;
+		ImGuizmo::Manipulate(
+			glm::value_ptr(_camera->sceneCamera.gpuCameraData.view),
+			glm::value_ptr(projection),
+			manipulateOperation,
+			manipulateMode,
+			glm::value_ptr(*_movingMatrix.matrixToMove)
+		);
 
-			//
-			// Move the matrix via the cached matrix components
-			//
-			ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight), ImGuiCond_Always);
-			ImGui::Begin("Edit Selected", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
+		//
+		// Move the matrix via the cached matrix components
+		//
+		ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight), ImGuiCond_Always);
+		ImGui::Begin("Edit Selected", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
+		{
+			if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen))
 			{
-				if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen))
+				glm::vec3 position, eulerAngles, scale;
+				ImGuizmo::DecomposeMatrixToComponents(
+					glm::value_ptr(*_movingMatrix.matrixToMove),
+					glm::value_ptr(position),
+					glm::value_ptr(eulerAngles),
+					glm::value_ptr(scale)
+				);
+
+				bool changed = false;
+				changed |= ImGui::DragFloat3("Pos##ASDFASDFASDFJAKSDFKASDHF", glm::value_ptr(position));
+				changed |= ImGui::DragFloat3("Rot##ASDFASDFASDFJAKSDFKASDHF", glm::value_ptr(eulerAngles));
+				changed |= ImGui::DragFloat3("Sca##ASDFASDFASDFJAKSDFKASDHF", glm::value_ptr(scale));
+
+				if (changed)
 				{
-					glm::vec3 position, eulerAngles, scale;
-					ImGuizmo::DecomposeMatrixToComponents(
-						glm::value_ptr(*_movingMatrix.matrixToMove),
+					// Recompose the matrix
+					// @TODO: Figure out when to invalidate the cache bc the euler angles will reset!
+					//        Or... maybe invalidating the cache isn't necessary for this window????
+					ImGuizmo::RecomposeMatrixFromComponents(
 						glm::value_ptr(position),
 						glm::value_ptr(eulerAngles),
-						glm::value_ptr(scale)
+						glm::value_ptr(scale),
+						glm::value_ptr(*_movingMatrix.matrixToMove)
 					);
-
-					bool changed = false;
-					changed |= ImGui::DragFloat3("Pos##ASDFASDFASDFJAKSDFKASDHF", glm::value_ptr(position));
-					changed |= ImGui::DragFloat3("Rot##ASDFASDFASDFJAKSDFKASDHF", glm::value_ptr(eulerAngles));
-					changed |= ImGui::DragFloat3("Sca##ASDFASDFASDFJAKSDFKASDHF", glm::value_ptr(scale));
-
-					if (changed)
-					{
-						// Recompose the matrix
-						// @TODO: Figure out when to invalidate the cache bc the euler angles will reset!
-						//        Or... maybe invalidating the cache isn't necessary for this window????
-						ImGuizmo::RecomposeMatrixFromComponents(
-							glm::value_ptr(position),
-							glm::value_ptr(eulerAngles),
-							glm::value_ptr(scale),
-							glm::value_ptr(*_movingMatrix.matrixToMove)
-						);
-					}
 				}
+			}
 
-				static bool forceRecalculation = false;    // @NOTE: this is a flag for the key bindings below
-				static int operationIndex = 0;
-				static int modeIndex = 0;
-				if (ImGui::CollapsingHeader("Manipulation Gizmo", ImGuiTreeNodeFlags_DefaultOpen))
+			static bool forceRecalculation = false;    // @NOTE: this is a flag for the key bindings below
+			static int operationIndex = 0;
+			static int modeIndex = 0;
+			if (ImGui::CollapsingHeader("Manipulation Gizmo", ImGuiTreeNodeFlags_DefaultOpen))
+			{
+				if (ImGui::Combo("Operation", &operationIndex, "Translate\0Rotate\0Scale") || forceRecalculation)
 				{
-					if (ImGui::Combo("Operation", &operationIndex, "Translate\0Rotate\0Scale") || forceRecalculation)
+					switch (operationIndex)
 					{
-						switch (operationIndex)
-						{
-						case 0:
-							manipulateOperation = ImGuizmo::OPERATION::TRANSLATE;
-							break;
-						case 1:
-							manipulateOperation = ImGuizmo::OPERATION::ROTATE;
-							break;
-						case 2:
-							manipulateOperation = ImGuizmo::OPERATION::SCALE;
-							break;
-						}
-					}
-					if (ImGui::Combo("Mode", &modeIndex, "World\0Local") || forceRecalculation)
-					{
-						switch (modeIndex)
-						{
-						case 0:
-							manipulateMode = ImGuizmo::MODE::WORLD;
-							break;
-						case 1:
-							manipulateMode = ImGuizmo::MODE::LOCAL;
-							break;
-						}
-					}
-				}
-
-				// Key bindings for switching the operation and mode
-				forceRecalculation = false;
-
-				bool hasMouseButtonDown = false;
-				for (size_t i = 0; i < 5; i++)
-					hasMouseButtonDown |= io.MouseDown[i];    // @NOTE: this covers cases of gizmo operation changing while left clicking on the gizmo (or anywhere else) or flying around with right click.  -Timo
-				if (!hasMouseButtonDown)
-				{
-					static bool qKeyLock = false;
-					if (input::keyQPressed)
-					{
-						if (!qKeyLock)
-						{
-							modeIndex = (int)!(bool)modeIndex;
-							qKeyLock = true;
-							forceRecalculation = true;
-						}
-					}
-					else
-					{
-						qKeyLock = false;
-					}
-
-					if (input::keyWPressed)
-					{
-						operationIndex = 0;
-						forceRecalculation = true;
-					}
-					if (input::keyEPressed)
-					{
-						operationIndex = 1;
-						forceRecalculation = true;
-					}
-					if (input::keyRPressed)
-					{
-						operationIndex = 2;
-						forceRecalculation = true;
-					}
-				}
-
-				//
-				// Edit props exclusive to render objects
-				//
-				RenderObject* foundRO = nullptr;
-				for (auto& ro : _roManager->_renderObjects)
-				{
-					if (_movingMatrix.matrixToMove == &ro.transformMatrix)
-					{
-						foundRO = &ro;
+					case 0:
+						manipulateOperation = ImGuizmo::OPERATION::TRANSLATE;
+						break;
+					case 1:
+						manipulateOperation = ImGuizmo::OPERATION::ROTATE;
+						break;
+					case 2:
+						manipulateOperation = ImGuizmo::OPERATION::SCALE;
 						break;
 					}
 				}
-
-				if (foundRO != nullptr)
+				if (ImGui::Combo("Mode", &modeIndex, "World\0Local") || forceRecalculation)
 				{
-					if (ImGui::CollapsingHeader("Render Object", ImGuiTreeNodeFlags_DefaultOpen))
+					switch (modeIndex)
 					{
-						int32_t temp = (int32_t)foundRO->renderLayer;
-						if (ImGui::Combo("Render Layer##asdfasdfasgasgcombo", &temp, "VISIBLE\0INVISIBLE\0BUILDER"))
-							foundRO->renderLayer = RenderLayer(temp);
-					}
-
-					//
-					// @TODO: see if you can't implement one for physics objects
-					//
-
-					//
-					// @NOTE: first see if there is an entity attached to the renderobject via guid
-					// Edit props connected to the entity
-					//
-					Entity* foundEnt = nullptr;
-					if (!foundRO->attachedEntityGuid.empty())
-					{
-						for (auto& ent : _entityManager->_entities)
-						{
-							if (ent->getGUID() == foundRO->attachedEntityGuid)
-							{
-								foundEnt = ent;
-								break;
-							}
-						}
-
-						if (ImGui::CollapsingHeader(("Entity " + foundEnt->getGUID()).c_str(), ImGuiTreeNodeFlags_DefaultOpen))
-						{
-							foundEnt->renderImGui();
-						}
+					case 0:
+						manipulateMode = ImGuizmo::MODE::WORLD;
+						break;
+					case 1:
+						manipulateMode = ImGuizmo::MODE::LOCAL;
+						break;
 					}
 				}
-
-				accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
 			}
-			ImGui::End();
+
+			// Key bindings for switching the operation and mode
+			forceRecalculation = false;
+
+			bool hasMouseButtonDown = false;
+			for (size_t i = 0; i < 5; i++)
+				hasMouseButtonDown |= io.MouseDown[i];    // @NOTE: this covers cases of gizmo operation changing while left clicking on the gizmo (or anywhere else) or flying around with right click.  -Timo
+			if (!hasMouseButtonDown && allowKeyboardShortcuts)
+			{
+				static bool qKeyLock = false;
+				if (input::keyQPressed)
+				{
+					if (!qKeyLock)
+					{
+						modeIndex = (int)!(bool)modeIndex;
+						qKeyLock = true;
+						forceRecalculation = true;
+					}
+				}
+				else
+				{
+					qKeyLock = false;
+				}
+
+				if (input::keyWPressed)
+				{
+					operationIndex = 0;
+					forceRecalculation = true;
+				}
+				if (input::keyEPressed)
+				{
+					operationIndex = 1;
+					forceRecalculation = true;
+				}
+				if (input::keyRPressed)
+				{
+					operationIndex = 2;
+					forceRecalculation = true;
+				}
+			}
+
+			//
+			// Edit props exclusive to render objects
+			//
+			RenderObject* foundRO = nullptr;
+			for (auto& ro : _roManager->_renderObjects)
+			{
+				if (_movingMatrix.matrixToMove == &ro.transformMatrix)
+				{
+					foundRO = &ro;
+					break;
+				}
+			}
+
+			if (foundRO)
+			{
+				if (ImGui::CollapsingHeader("Render Object", ImGuiTreeNodeFlags_DefaultOpen))
+				{
+					int32_t temp = (int32_t)foundRO->renderLayer;
+					if (ImGui::Combo("Render Layer##asdfasdfasgasgcombo", &temp, "VISIBLE\0INVISIBLE\0BUILDER"))
+						foundRO->renderLayer = RenderLayer(temp);
+				}
+
+				//
+				// @TODO: see if you can't implement one for physics objects
+				//
+
+				//
+				// @NOTE: first see if there is an entity attached to the renderobject via guid
+				// Edit props connected to the entity
+				//
+				Entity* foundEnt = nullptr;
+				if (!foundRO->attachedEntityGuid.empty())
+				{
+					for (auto& ent : _entityManager->_entities)
+					{
+						if (ent->getGUID() == foundRO->attachedEntityGuid)
+						{
+							foundEnt = ent;
+							break;
+						}
+					}
+
+					if (foundEnt && ImGui::CollapsingHeader(("Entity " + foundEnt->getGUID()).c_str(), ImGuiTreeNodeFlags_DefaultOpen))
+					{
+						foundEnt->renderImGui();
+					}
+				}
+			}
+
+			accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
 		}
+		ImGui::End();
 	}
 
 	ImGui::Render();
