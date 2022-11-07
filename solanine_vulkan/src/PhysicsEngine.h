@@ -69,7 +69,9 @@ private:
     btVector3 _gravityDirection;
     float_t   _accumulatedTimeForPhysics = 0.0f;
 
-    std::vector<RegisteredPhysicsObject> _physicsObjects;
+    std::vector<size_t>                                               _physicsObjectsIndices;
+    std::array<bool,                    PHYSICS_OBJECTS_MAX_CAPACITY> _physicsObjectsIsRegistered;  // @NOTE: this will be filled with `false` on init  (https://stackoverflow.com/questions/67648693/safely-initializing-a-stdarray-of-bools)
+    std::array<RegisteredPhysicsObject, PHYSICS_OBJECTS_MAX_CAPACITY> _physicsObjectPool;
     void calculateInterpolatedTransform(RegisteredPhysicsObject& obj, const float_t& physicsAlpha);
 
     std::map<void*, RegisteredPhysicsObject*> _rigidBodyToPhysicsObjectMap;

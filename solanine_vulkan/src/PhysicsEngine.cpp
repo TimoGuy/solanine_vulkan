@@ -68,12 +68,11 @@ void PhysicsEngine::initialize(VulkanEngine* engine)
 	_gravityDirection = _dynamicsWorld->getGravity().normalized();
 
 	//
-	// Reserve the transforms
+	// Create 
 	//
-	_physicsObjects.reserve(PHYSICS_OBJECTS_MAX_CAPACITY);
 	_transformsBuffer =
 		_engine->createBuffer(
-			sizeof(GPUObjectData) * PHYSICS_OBJECTS_MAX_CAPACITY,  // Pray that GPUObjectData doesn't change!
+			sizeof(GPUObjectData) * _physicsObjectPool.size(),  // Pray that GPUObjectData doesn't change!
 			VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
 			VMA_MEMORY_USAGE_CPU_TO_GPU
 		);
@@ -92,7 +91,7 @@ void PhysicsEngine::initialize(VulkanEngine* engine)
 	VkDescriptorBufferInfo transformsBufferInfo = {
 		.buffer = _transformsBuffer._buffer,
 		.offset = 0,
-		.range = sizeof(GPUObjectData) * PHYSICS_OBJECTS_MAX_CAPACITY,
+		.range = sizeof(GPUObjectData) * _physicsObjectPool.size(),
 	};
 	VkWriteDescriptorSet transformsWrite = vkinit::writeDescriptorBuffer(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, _transformsDescriptor, &transformsBufferInfo, 0);
 	vkUpdateDescriptorSets(_engine->_device, 1, &transformsWrite, 0, nullptr);
@@ -161,16 +160,9 @@ void PhysicsEngine::update(float_t deltaTime, std::vector<Entity*>* entities)   
 	//if (!playMode)
 	//	physicsAlpha = 1.0f;
 #endif
-	
-	void* objectData;
-	vmaMapMemory(_engine->_allocator, _transformsBuffer._allocation, &objectData);   // And what happens if you overwrite the memory during a frame? Well, idk, but it shouldn't be too bad for debugging purposes I think  -Timo 2022/10/24
-	GPUObjectData* objectSSBO = (GPUObjectData*)objectData;    // @IMPROVE: perhaps multithread this? Or only update when the object moves?
-	for (size_t i = 0; i < _physicsObjects.size(); i++)    // @IMPROVEMENT: @TODO: oh man, this should definitely be multithreaded. However, taskflow doesn't seem like the best choice.  @TOOD: look into the c++11 multithreaded for loop
-	{
-		calculateInterpolatedTransform(_physicsObjects[i], physicsAlpha);
-		_physicsObjects[i].body->getWorldTransform().getOpenGLMatrix(glm::value_ptr(objectSSBO[i].modelMatrix));  // Extra Dmitri in this one
-	}
-	vmaUnmapMemory(_engine->_allocator, _transformsBuffer._allocation);
+
+	for (size_t i : _physicsObjectsIndices)    // @IMPROVEMENT: @TODO: oh man, this should definitely be multithreaded. However, taskflow doesn't seem like the best choice.  @TOOD: look into the c++11 multithreaded for loop
+		calculateInterpolatedTransform(_physicsObjectPool[i], physicsAlpha);
 
 	// Load the debug draw lines emplaced from inside the physicsUpdate()'s
 	loadOneFrameDebugDrawLines();
@@ -205,12 +197,18 @@ RegisteredPhysicsObject* PhysicsEngine::registerPhysicsObject(float_t mass, glm:
 	//        bc if the capacity is overcome, then a new array with a larger
 	//        capacity is allocated, and then the pointer to the part in the
 	//        vector is lost to garbage memory that got deallocated.  -Timo 2022/10/24
-	if (_physicsObjects.size() >= PHYSICS_OBJECTS_MAX_CAPACITY)
+	//
+	// @NOTE: I'm putting in a new system where instead of a reserved vector,
+	//        there's now a pool where you can register physics objects from
+	//        and indices of the objects are kept track of... so it's harder
+	//        to create the idea above (allocating new pool as soon as capacity
+	//        is met)  -Timo 2022/11/06
+	if (_physicsObjectsIndices.size() >= PHYSICS_OBJECTS_MAX_CAPACITY)
 	{
 		std::cerr << "[REGISTER PHYSICS OBJECT]" << std::endl
 			<< "ERROR: trying to register physics object when capacity is at maximum." << std::endl
-			<< "       Current capacity: " << _physicsObjects.size() << std::endl
-			<< "       Maximum capacity: " << PHYSICS_OBJECTS_MAX_CAPACITY << std::endl;
+			<< "       Current capacity: " << _physicsObjectsIndices.size() << std::endl
+			<< "       Maximum capacity: " << _physicsObjectPool.size() << std::endl;
 		return nullptr;
 	}
 
@@ -224,29 +222,64 @@ RegisteredPhysicsObject* PhysicsEngine::registerPhysicsObject(float_t mass, glm:
 		.prevTransform = trans,    // Set it to this so there's a basis to do the interpolation from
 		.interpolatedTransform = glmTrans,
 	};
-	_physicsObjects.push_back(rpo);
+
+	// Find next open spot in pool
+	// @NOTE: I'm sure there are many things to improve the speed
+	//        of this... but I don't think we'll be adding physics objects
+	//        very often except for just loading them in initially. But,
+	//        if you do happen to need to, the idea I had was to keep a cursor index
+	//        of the next open spot in the pool, and then when using up an open spot
+	//        just incrementing the cursor once, so when you try to register another
+	//        one, you just increment the cursor forwards, wrapping, until you find
+	//        another open slot, then increment to the next one, then repeat.
+	//        Of course, if the next one you incremented to happened to be an open spot
+	//        already, you dno't have to do the keep incrementing, wrapping, thing next
+	//        time you try to register a new physics object in the pool.  -Timo 2022/11/06
+	size_t registerIndex = 0;
+	for (size_t i = 0; i < _physicsObjectsIsRegistered.size(); i++)
+		if (!_physicsObjectsIsRegistered[i])
+		{
+			registerIndex = i;
+			break;
+		}
+
+	// Register object
+	_physicsObjectPool[registerIndex] = rpo;
+	_physicsObjectsIsRegistered[registerIndex] = true;
+	_physicsObjectsIndices.push_back(registerIndex);
+	_rigidBodyToPhysicsObjectMap[(void*)rpo.body] = &_physicsObjectPool[registerIndex];
 
 	_recreateDebugDrawBuffer = true;
 
-	_rigidBodyToPhysicsObjectMap[(void*)rpo.body] = &_physicsObjects.back();
-	return &_physicsObjects.back();
+	return &_physicsObjectPool[registerIndex];
 }
 
 void PhysicsEngine::unregisterPhysicsObject(RegisteredPhysicsObject* objRegistration)
 {
-	std::erase_if(_physicsObjects,
-		[&](RegisteredPhysicsObject& x) {
-			bool deleteFlag = (&x == objRegistration);
-			if (deleteFlag)
-			{
-				_dynamicsWorld->removeRigidBody(x.body);
-				_rigidBodyToPhysicsObjectMap.erase((void*)x.body);
-			}
-			return deleteFlag;
-		}
-	);
+	size_t indicesIndex = 0;
+	for (size_t i : _physicsObjectsIndices)
+	{
+		auto& rpo = _physicsObjectPool[i];
+		if (&rpo == objRegistration)
+		{
+			// Unregister object
+			_dynamicsWorld->removeRigidBody(rpo.body);
+			_rigidBodyToPhysicsObjectMap.erase((void*)rpo.body);
+			_physicsObjectsIsRegistered[i] = false;
+			_physicsObjectsIndices.erase(_physicsObjectsIndices.begin() + indicesIndex);
 
-	_recreateDebugDrawBuffer = true;
+			_recreateDebugDrawBuffer = true;
+
+			return;
+		}
+
+		indicesIndex++;
+	}
+
+	std::cerr << "[UNREGISTER PHYSICS OBJECT]" << std::endl
+		<< "ERROR: physics object " << objRegistration << " was not found. Nothing unregistered." << std::endl;
+
+	return;
 }
 
 void PhysicsEngine::lazyRecreateDebugDrawBuffer()
@@ -621,9 +654,9 @@ void PhysicsEngine::recreateDebugDrawBuffer()
 	// Assemble vertices with the correct shape sizing
 	//
 	std::vector<DebugDrawVertex> vertexList;
-	for (size_t i = 0; i < _physicsObjects.size(); i++)
+	for (size_t i : _physicsObjectsIndices)
 	{
-		btCollisionShape* shape = _physicsObjects[i].body->getCollisionShape();
+		btCollisionShape* shape = _physicsObjectPool[i].body->getCollisionShape();
 
 		switch (shape->getShapeType())
 		{
