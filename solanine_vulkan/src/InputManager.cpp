@@ -89,6 +89,9 @@ void input::processInput(bool* isRunning, bool* isWindowMinimized)
 		case SDL_KEYDOWN:
 		case SDL_KEYUP:
 		{
+			if (e.key.repeat)
+				break;  // @NOTE: ignore key repeats (i.e. when you hold a key down and it repeats the character) (e.g. aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa)
+
 			if (e.key.keysym.sym == SDLK_w)                                           input::keyUpPressed = (e.key.type == SDL_KEYDOWN);
 			if (e.key.keysym.sym == SDLK_s)                                           input::keyDownPressed = (e.key.type == SDL_KEYDOWN);
 			if (e.key.keysym.sym == SDLK_a)                                           input::keyLeftPressed = (e.key.type == SDL_KEYDOWN);

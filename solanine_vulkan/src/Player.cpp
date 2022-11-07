@@ -299,6 +299,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
             _stepsSinceLastGrounded = 1;  // This is to prevent ground sticking right after a jump
             
             // Turn off flag for sure if successfully jumped
+            _jumpInputBufferFramesTimer = -1;
             _flagJump = false;
         }
 
