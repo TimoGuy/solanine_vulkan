@@ -169,6 +169,7 @@ void Camera::update(const float_t& deltaTime)
 
 void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent changeEvent)
 {
+	bool allowInput = true;
 	if (changeEvent != CameraModeChangeEvent::NONE)
 	{
 		// Calculate orbit angles from the delta angle to focus position
@@ -176,7 +177,11 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 		mainCamMode.orbitAngles = glm::vec2(-atan2f(fd.y, glm::length(glm::vec2(fd.x, fd.z))), atan2f(fd.x, fd.z));
 
 		SDL_SetRelativeMouseMode(changeEvent == CameraModeChangeEvent::ENTER ? SDL_TRUE : SDL_FALSE);
-		SDL_WarpMouseInWindow(_engine->_window, _engine->_windowExtent.width / 2, _engine->_windowExtent.height / 2);
+
+		if (changeEvent == CameraModeChangeEvent::EXIT)  // Not doing a warp on enter prevents the orbit camera from moving the delta to snap the cursor to the center of the screen which is disorienting
+			SDL_WarpMouseInWindow(_engine->_window, _engine->_windowExtent.width / 2, _engine->_windowExtent.height / 2);
+
+		allowInput = false;
 	}
 	if (_cameraMode != _cameraMode_mainCamMode)
 		return;
@@ -218,7 +223,7 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 	//
 	// Manual rotation via mouse input
 	//
-	if (glm::length2((glm::vec2)input::mouseDelta) > 0.000001f)
+	if (allowInput && glm::length2((glm::vec2)input::mouseDelta) > 0.000001f)
 		mainCamMode.orbitAngles += glm::vec2(input::mouseDelta.y, -input::mouseDelta.x) * glm::radians(mainCamMode.sensitivity);
 
 	//
