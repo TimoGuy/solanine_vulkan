@@ -161,8 +161,34 @@ void PhysicsEngine::update(float_t deltaTime, std::vector<Entity*>* entities)   
 	//	physicsAlpha = 1.0f;
 #endif
 
+	// Calculate all the interpolated transforms
 	for (size_t poolIndex : _physicsObjectsIndices)    // @IMPROVEMENT: @TODO: oh man, this should definitely be multithreaded. However, taskflow doesn't seem like the best choice.  @TOOD: look into the c++11 multithreaded for loop
 		calculateInterpolatedTransform(_physicsObjectPool[poolIndex], physicsAlpha);
+
+#ifdef _DEVELOP
+	// Fill in the transform buffer with the original transforms (For debug view)
+	void* objectData;
+	vmaMapMemory(_engine->_allocator, _transformsBuffer._allocation, &objectData);   // And what happens if you overwrite the memory during a frame? Well, idk, but it shouldn't be too bad for debugging purposes I think  -Timo 2022/10/24
+	GPUObjectData* objectSSBO = (GPUObjectData*)objectData;
+	for (size_t poolIndex : _physicsObjectsIndices)
+	{
+		_physicsObjectPool[poolIndex].body->getWorldTransform().getOpenGLMatrix(glm::value_ptr(objectSSBO->modelMatrix));
+		objectSSBO++;  // Extra Dmitri in this one
+	}
+	vmaUnmapMemory(_engine->_allocator, _transformsBuffer._allocation);
+#endif
+
+
+
+
+
+
+
+
+
+
+
+	
 
 	// Load the debug draw lines emplaced from inside the physicsUpdate()'s
 	loadOneFrameDebugDrawLines();

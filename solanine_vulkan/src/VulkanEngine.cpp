@@ -2517,7 +2517,7 @@ void VulkanEngine::generatePBRCubemaps()
 
 					VkDeviceSize offsets[1] = { 0 };
 
-					auto skybox = _roManager->getModel("cube");
+					auto skybox = _roManager->getModel("box");
 					skybox->bind(cmd);
 					skybox->draw(cmd);
 
@@ -3105,15 +3105,18 @@ void VulkanEngine::loadMeshes()
 	tf::Taskflow taskflow;
 
 	vkglTF::Model
-		*cube,
+		*box,
+		*devBoxWood,
 		*slimeGirl;
 	taskflow.emplace(
-		[&]() { cube = new vkglTF::Model(); cube->loadFromFile(this, "res/models/Box.gltf"); },
+		[&]() { box = new vkglTF::Model(); box->loadFromFile(this, "res/models/Box.gltf"); },
+		[&]() { devBoxWood = new vkglTF::Model(); devBoxWood->loadFromFile(this, "res/models/DevBoxWood.glb"); },
 		[&]() { slimeGirl = new vkglTF::Model(); slimeGirl->loadFromFile(this, "res/models/SlimeGirl.glb"); }
 	);
 	e.run(taskflow).wait();
 
-	_roManager->createModel(cube, "cube");
+	_roManager->createModel(box, "box");
+	_roManager->createModel(devBoxWood, "devBoxWood");
 	_roManager->createModel(slimeGirl, "slimeGirl");
 }
 
@@ -3163,7 +3166,7 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipelineLayout, 1, 1, &skyboxMaterial.textureSet, 0, nullptr);
 
-		auto skybox = _roManager->getModel("cube");
+		auto skybox = _roManager->getModel("box");
 		skybox->bind(cmd);
 		skybox->draw(cmd);
 	}
