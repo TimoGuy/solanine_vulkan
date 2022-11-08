@@ -131,7 +131,10 @@ void MainCamMode::setMainCamTargetObject(RenderObject* targetObject)
 // Camera
 //
 Camera::Camera(VulkanEngine* engine) : _engine(engine)
-{}
+{
+	// Setup the initial camera mode with ::ENTER event
+	_changeEvents[_cameraMode] = CameraModeChangeEvent::ENTER;
+}
 
 void Camera::update(const float_t& deltaTime)
 {
@@ -139,47 +142,41 @@ void Camera::update(const float_t& deltaTime)
 	// Update camera modes
 	// @TODO: scrunch this into its own function
 	//
-	for (size_t i = 0; i < _numCameraModes; i++)
-		_changeEvents[i] = CameraModeChangeEvent::NONE;
-	if (_flagNextStepSetEnterChangeEvent && !input::onKeyF10Press)  // If we hit the F10 key two frames in a row, I can see bugs happening without this guard  -Timo
+	if (_flagNextStepSetEnterChangeEvent)
 	{
 		_flagNextStepSetEnterChangeEvent = false;
-		_changeEvents[_cameraMode] = CameraModeChangeEvent::ENTER;
-	}
-	if (input::onKeyF10Press)
-	{
-		_prevCameraMode = _cameraMode;
-		_cameraMode = (uint32_t)fmodf((float_t)(_cameraMode + 1), (float_t)_numCameraModes);
 
-		if (!_flagNextStepSetEnterChangeEvent)  // There is a situation where this flag is still true, and that's if the F10 key was hit two frames in a row. We don't need to call EXIT on a camera mode that never ocurred, hence ignoring doing this if the flag is still on  -Timo
-		{
-			_changeEvents[_prevCameraMode] = CameraModeChangeEvent::EXIT;
-			_flagNextStepSetEnterChangeEvent = true;
-		}
+		_cameraMode = (_cameraMode + 1) % _numCameraModes;
+		_changeEvents[_cameraMode] = CameraModeChangeEvent::ENTER;
 
 		debug::pushDebugMessage({
 			.message = "Changed to " + std::string(_cameraMode == 0 ? "game camera" : "free camera") + " mode",
 			});
 	}
+	else if (input::onKeyF10Press)  // @NOTE: we never want a state where _flagNextStepSetEnterChangeEvent==true and onKeyF10Press==true are processed. Only one at a time so that there is a dedicated frame for ::ENTER and ::EXIT
+	{
+		_changeEvents[_cameraMode] = CameraModeChangeEvent::EXIT;
+		_flagNextStepSetEnterChangeEvent = true;
+	}
+
 	updateMainCam(deltaTime, _changeEvents[_cameraMode_mainCamMode]);
 	updateFreeCam(deltaTime, _changeEvents[_cameraMode_freeCamMode]);
+	
+	// Reset all camera mode change events
+	for (size_t i = 0; i < _numCameraModes; i++)
+		_changeEvents[i] = CameraModeChangeEvent::NONE;
 }
 
 void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent changeEvent)
 {
-		glm::vec3 fd = glm::quat(sceneCamera.gpuCameraData.view) * glm::vec3(0, 0, 1);
-		glm::vec2 viewEuler = glm::vec2(glm::radians(90.0f) - atan2f(glm::length(glm::vec2(fd.x, fd.z)), fd.y), atan2f(fd.z, fd.x) + glm::radians(90.0f));  //glm::eulerAngles(glm::quat(sceneCamera.gpuCameraData.view));
-		if (!input::keyCtrlPressed)
-		std::cout << "X: " << glm::degrees(viewEuler.x) << "\tY: " << glm::degrees(viewEuler.y) << std::endl
-			<< "   " << glm::degrees(mainCamMode.orbitAngles.x) << "\t   " << glm::degrees(mainCamMode.orbitAngles.y) << std::endl;
 	if (changeEvent != CameraModeChangeEvent::NONE)
 	{
-		// Calculate orbit angles from the camera facing direction
-		// mainCamMode.orbitAngles = glm::vec2(atan2f(glm::length(glm::vec2(fd.x, fd.z)), fd.y), atan2f(fd.x, fd.z));
-		mainCamMode.orbitAngles = glm::vec2(viewEuler.x, viewEuler.y);
+		// Calculate orbit angles from the delta angle to focus position
+		const glm::vec3& fd = sceneCamera.facingDirection;
+		mainCamMode.orbitAngles = glm::vec2(-atan2f(fd.y, glm::length(glm::vec2(fd.x, fd.z))), atan2f(fd.x, fd.z));
 
-		//SDL_SetRelativeMouseMode(changeEvent == CameraModeChangeEvent::ENTER ? SDL_TRUE : SDL_FALSE);
-		//SDL_WarpMouseInWindow(_engine->_window, _engine->_windowExtent.width / 2, _engine->_windowExtent.height / 2);
+		SDL_SetRelativeMouseMode(changeEvent == CameraModeChangeEvent::ENTER ? SDL_TRUE : SDL_FALSE);
+		SDL_WarpMouseInWindow(_engine->_window, _engine->_windowExtent.width / 2, _engine->_windowExtent.height / 2);
 	}
 	if (_cameraMode != _cameraMode_mainCamMode)
 		return;
