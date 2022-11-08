@@ -178,18 +178,6 @@ void PhysicsEngine::update(float_t deltaTime, std::vector<Entity*>* entities)   
 	vmaUnmapMemory(_engine->_allocator, _transformsBuffer._allocation);
 #endif
 
-
-
-
-
-
-
-
-
-
-
-	
-
 	// Load the debug draw lines emplaced from inside the physicsUpdate()'s
 	loadOneFrameDebugDrawLines();
 }
