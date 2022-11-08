@@ -24,6 +24,7 @@ public:
     void loadSound(const std::string& fname, bool is3d = true, bool isLooping = false, bool stream = false);
     void unloadSound(const std::string& fname);
     int playSound(const std::string& fname);
+    int playSoundFromList(const std::vector<std::string>& fnames);
     int playSound(const std::string& fname, const glm::vec3& position, float db = 0.0f);
 
     void setChannel3dPosition(int channelId, const glm::vec3& position);

@@ -5,6 +5,7 @@
 #include "RenderObject.h"
 #include "Camera.h"
 #include "InputManager.h"
+#include "AudioEngine.h"
 #include "DataSerialization.h"
 #include "imgui/imgui.h"
 
@@ -304,6 +305,12 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
                 glm::sqrt(_jumpHeight * 2.0f * PhysicsEngine::getInstance().getGravityStrength());
             _displacementToTarget = glm::vec3(0.0f);
             _stepsSinceLastGrounded = 1;  // This is to prevent ground sticking right after a jump
+
+            // @TODO: add some kind of audio event system, or even better, figure out how to use FMOD!!! Bc it's freakign integrated lol
+            AudioEngine::getInstance().playSoundFromList({
+                "res/sfx/wip_jump1.ogg",
+                "res/sfx/wip_jump2.ogg"
+                });
             
             // Turn off flag for sure if successfully jumped
             _jumpPreventOnGroundCheckFramesTimer = _jumpPreventOnGroundCheckFrames;

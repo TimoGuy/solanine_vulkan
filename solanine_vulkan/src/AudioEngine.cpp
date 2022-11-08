@@ -67,6 +67,12 @@ int AudioEngine::playSound(const std::string& fname)
     return playSound(fname, glm::vec3(0.0f));
 }
 
+int AudioEngine::playSoundFromList(const std::vector<std::string>& fnames)
+{
+    size_t index = rand() % fnames.size();
+    return playSound(fnames[index]);
+}
+
 int AudioEngine::playSound(const std::string& fname, const glm::vec3& position, float db)
 {
     int channelId = audioAdapter->nextChannelId++;
