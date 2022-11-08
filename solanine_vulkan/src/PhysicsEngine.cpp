@@ -663,7 +663,7 @@ void PhysicsEngine::recreateDebugDrawBuffer()
 	// Assemble vertices with the correct shape sizing
 	//
 	std::vector<DebugDrawVertex> vertexList;
-	size_t ssboIndex = 0;
+	size_t ssboIndex = 0;  // @NOTE: since the ssbo gets added in in a linear fashion, this also needs to increment in a linear fashion instead of relying on the poolIndex  -Timo
 	for (size_t poolIndex : _physicsObjectsIndices)
 	{
 		btCollisionShape* shape = _physicsObjectPool[poolIndex].body->getCollisionShape();
