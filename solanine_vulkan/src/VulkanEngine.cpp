@@ -3840,12 +3840,22 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 
 		static ImGuizmo::OPERATION manipulateOperation = ImGuizmo::OPERATION::TRANSLATE;
 		static ImGuizmo::MODE manipulateMode           = ImGuizmo::MODE::WORLD;
+
+		glm::vec3 snapValues(0.0f);
+		if (input::keyCtrlPressed)
+			if (manipulateOperation == ImGuizmo::OPERATION::ROTATE)
+				snapValues = glm::vec3(45.0f);
+			else
+				snapValues = glm::vec3(0.5f);
+
 		ImGuizmo::Manipulate(
 			glm::value_ptr(_camera->sceneCamera.gpuCameraData.view),
 			glm::value_ptr(projection),
 			manipulateOperation,
 			manipulateMode,
-			glm::value_ptr(*_movingMatrix.matrixToMove)
+			glm::value_ptr(*_movingMatrix.matrixToMove),
+			nullptr,
+			glm::value_ptr(snapValues)
 		);
 
 		//
