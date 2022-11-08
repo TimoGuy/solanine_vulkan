@@ -663,6 +663,7 @@ void PhysicsEngine::recreateDebugDrawBuffer()
 	// Assemble vertices with the correct shape sizing
 	//
 	std::vector<DebugDrawVertex> vertexList;
+	size_t ssboIndex = 0;
 	for (size_t poolIndex : _physicsObjectsIndices)
 	{
 		btCollisionShape* shape = _physicsObjectPool[poolIndex].body->getCollisionShape();
@@ -670,22 +671,23 @@ void PhysicsEngine::recreateDebugDrawBuffer()
 		switch (shape->getShapeType())
 		{
 		case BOX_SHAPE_PROXYTYPE:
-			appendDebugShapeVertices((btBoxShape*)shape, poolIndex, vertexList);
+			appendDebugShapeVertices((btBoxShape*)shape, ssboIndex, vertexList);
 			break;
 		case SPHERE_SHAPE_PROXYTYPE:
-			appendDebugShapeVertices((btSphereShape*)shape, poolIndex, vertexList);
+			appendDebugShapeVertices((btSphereShape*)shape, ssboIndex, vertexList);
 			break;
 		case CYLINDER_SHAPE_PROXYTYPE:
-			appendDebugShapeVertices((btCylinderShape*)shape, poolIndex, vertexList);
+			appendDebugShapeVertices((btCylinderShape*)shape, ssboIndex, vertexList);
 			break;
 		case CAPSULE_SHAPE_PROXYTYPE:
-			appendDebugShapeVertices((btCapsuleShape*)shape, poolIndex, vertexList);
+			appendDebugShapeVertices((btCapsuleShape*)shape, ssboIndex, vertexList);
 			break;
 		default:
 			std::cerr << "[CREATING PHYSICS ENGINE DEBUG DRAW BUFFER]" << std::endl
 				<< "ERROR: shape type currently not supported: " << shape->getShapeType() << std::endl;
 			break;
 		}
+		ssboIndex++;
 	}
 
 	//
