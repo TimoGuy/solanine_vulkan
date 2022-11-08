@@ -2,9 +2,9 @@
 
 #include "Entity.h"
 #include "Imports.h"
-namespace vkglTF { class Model; }
+namespace vkglTF { struct Model; }
 struct RenderObject;
-struct RenderObjectManager;
+class RenderObjectManager;
 class EntityManager;
 struct RegisteredPhysicsObject;
 struct Camera;

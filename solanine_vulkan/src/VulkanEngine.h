@@ -7,11 +7,11 @@
 #include "SceneManagement.h"
 
 
-class RenderObject;
+struct RenderObject;
 class RenderObjectManager;
 class Entity;
 class EntityManager;
-class Camera;
+struct Camera;
 
 struct CascadeIndexPushConstBlock
 {

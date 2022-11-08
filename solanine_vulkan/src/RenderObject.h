@@ -8,7 +8,7 @@
 #include "ImportGLM.h"
 #include "Settings.h"
 
-namespace vkglTF { class Model; struct Animator; }
+namespace vkglTF { struct Model; struct Animator; }
 
 
 enum class RenderLayer

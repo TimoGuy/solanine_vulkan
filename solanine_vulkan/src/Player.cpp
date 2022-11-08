@@ -37,7 +37,7 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
     _bottomRaycastExtraDist = 1.0f + raycastMargin;
 
     _collisionShape = new btCapsuleShape(_capsuleRadius, _totalHeight - _bottomRaycastFeetDist);  // @NOTE: it appears that this shape has a margin in the direction of the sausage (i.e. Y in this case) and then the radius is the actual radius
-    _adjustedHalfHeight = (_totalHeight - _bottomRaycastFeetDist) * 0.5 + _collisionShape->getMargin();
+    _adjustedHalfHeight = (_totalHeight - _bottomRaycastFeetDist) * 0.5f + _collisionShape->getMargin();
 
     _physicsObj =
         PhysicsEngine::getInstance().registerPhysicsObject(
@@ -288,7 +288,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
 
     if (_flagJump)
     {
-        if (_onGround || _stepsSinceLastGrounded <= _jumpCoyoteFrames)
+        if (_onGround || (int32_t)_stepsSinceLastGrounded <= _jumpCoyoteFrames)
         {
             std::cout << "[JUMP INFO]" << std::endl
                 << "Buffer Frames left:         " << _jumpInputBufferFramesTimer << std::endl

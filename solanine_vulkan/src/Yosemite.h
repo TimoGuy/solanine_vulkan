@@ -2,10 +2,10 @@
 
 #include "Entity.h"
 #include "Imports.h"
-namespace vkglTF { class Model; }
+namespace vkglTF { struct Model; }
 class EntityManager;
-class RenderObject;
-struct RenderObjectManager;
+struct RenderObject;
+class RenderObjectManager;
 struct RegisteredPhysicsObject;
 class btPersistentManifold;
 class btBoxShape;

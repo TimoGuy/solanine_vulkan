@@ -2,7 +2,7 @@
 #include <vector>
 #include <vulkan/vulkan.h>
 class VulkanEngine;
-class AllocatedImage;
+struct AllocatedImage;
 
 
 namespace vkutil

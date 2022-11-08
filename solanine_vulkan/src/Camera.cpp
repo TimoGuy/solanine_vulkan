@@ -149,7 +149,7 @@ void Camera::update(const float_t& deltaTime)
 	if (input::onKeyF10Press)
 	{
 		_prevCameraMode = _cameraMode;
-		_cameraMode = fmodf(_cameraMode + 1, _numCameraModes);
+		_cameraMode = (uint32_t)fmodf((float_t)(_cameraMode + 1), (float_t)_numCameraModes);
 
 		if (!_flagNextStepSetEnterChangeEvent)  // There is a situation where this flag is still true, and that's if the F10 key was hit two frames in a row. We don't need to call EXIT on a camera mode that never ocurred, hence ignoring doing this if the flag is still on  -Timo
 		{

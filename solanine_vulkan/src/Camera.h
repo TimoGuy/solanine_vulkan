@@ -3,8 +3,8 @@
 #include "ImportGLM.h"
 #include "Settings.h"
 class VulkanEngine;
-class RenderObject;
-class GPUPBRShadingProps;
+struct RenderObject;
+struct GPUPBRShadingProps;
 
 
 struct GPUCameraData

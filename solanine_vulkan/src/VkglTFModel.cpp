@@ -1238,7 +1238,7 @@ namespace vkglTF
 				auto& anim = gltfModel.animations[animInd];
 				if (anim.name == state.animationName)
 				{
-					state.animationIndex = animInd;
+					state.animationIndex = (uint32_t)animInd;
 					foundIndex = true;
 					break;
 				}
@@ -1568,7 +1568,7 @@ namespace vkglTF
 		animStateMachine = model->animStateMachine;
 		asmStateIndex    = 0;
 
-		size_t meshId = 0;
+		uint32_t meshId = 0;
 		for (auto node : model->linearNodes)  // @NOTE: linearnodes is used to access all of the meshes bc just nodes just gives top level unless if you recurse thru it
 		{
 			if (!node->mesh)

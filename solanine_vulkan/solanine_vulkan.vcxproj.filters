@@ -116,9 +116,6 @@
     <ClInclude Include="src\imgui\implot_internal.h">
       <Filter>Header Files\imgui</Filter>
     </ClInclude>
-    <ClInclude Include="src\AudioEngine.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="src\InputManager.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -194,6 +191,9 @@
     <ClInclude Include="src\GenerateGUID.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\AudioEngine.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Main.cpp">
@@ -228,9 +228,6 @@
     </ClCompile>
     <ClCompile Include="src\imgui\implot_items.cpp">
       <Filter>Source Files\imgui</Filter>
-    </ClCompile>
-    <ClCompile Include="src\AudioEngine.cpp">
-      <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\InputManager.cpp">
       <Filter>Source Files</Filter>
@@ -287,6 +284,9 @@
       <Filter>Source Files\render_engine</Filter>
     </ClCompile>
     <ClCompile Include="src\GenerateGUID.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\AudioEngine.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

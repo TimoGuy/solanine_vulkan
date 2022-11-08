@@ -126,6 +126,7 @@ copy $(SolutionDir)libs\fmod_studio\lib\fmodstudio.dll $(OutDirfullPath)fmodstud
     <None Include="shader\skybox.vert" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\AudioEngine.h" />
     <ClInclude Include="src\Camera.h" />
     <ClInclude Include="src\Debug.h" />
     <ClInclude Include="src\EntityManager.h" />
@@ -134,7 +135,6 @@ copy $(SolutionDir)libs\fmod_studio\lib\fmodstudio.dll $(OutDirfullPath)fmodstud
     <ClInclude Include="src\ImportGLM.h" />
     <ClInclude Include="src\RenderObject.h" />
     <ClInclude Include="src\SceneManagement.h" />
-    <ClInclude Include="src\AudioEngine.h" />
     <ClInclude Include="src\Entity.h" />
     <ClInclude Include="src\DataSerialization.h" />
     <ClInclude Include="src\GLSLToSPIRVHelper.h" />

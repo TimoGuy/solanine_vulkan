@@ -132,7 +132,7 @@ void PhysicsEngine::update(float_t deltaTime, std::vector<Entity*>* entities)   
 	size_t numManifolds = (size_t)_dispatcher->getNumManifolds();
 	for (size_t i = 0; i < numManifolds; i++)
 	{
-		btPersistentManifold* manifold = _dispatcher->getManifoldByIndexInternal(i);  // @NOTE: a manifold is a set of contacts that came from a collision. Ideally it should store normal hit info too.
+		btPersistentManifold* manifold = _dispatcher->getManifoldByIndexInternal((int32_t)i);  // @NOTE: a manifold is a set of contacts that came from a collision. Ideally it should store normal hit info too.
 		if (manifold->getNumContacts() <= 0)
 			continue;
 
@@ -294,7 +294,7 @@ void PhysicsEngine::renderDebugDraw(VkCommandBuffer cmd, const VkDescriptorSet& 
 
 	const VkDeviceSize offsets[1] = { 0 };
 	vkCmdBindVertexBuffers(cmd, 0, 1, &_vertexBuffer._buffer, offsets);
-	vkCmdDraw(cmd, _vertexCount + _oneFrameVertexList.size(), 1, 0, 0);
+	vkCmdDraw(cmd, static_cast<uint32_t>(_vertexCount + _oneFrameVertexList.size()), 1, 0, 0);
 }
 
 std::vector<VkVertexInputAttributeDescription> PhysicsEngine::getVertexAttributeDescriptions()

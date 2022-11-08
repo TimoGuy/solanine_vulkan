@@ -3515,7 +3515,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 	//
 	// Debug Messages window
 	//
-	debug::renderImguiDebugMessages(_windowExtent.width, deltaTime);
+	debug::renderImguiDebugMessages((float_t)_windowExtent.width, deltaTime);
 
 	//
 	// Scene Properties window
@@ -3700,7 +3700,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 					AudioEngine::getInstance().playSound(buttonTurnOnSfx[i]);
 			}
 
-			if ((int32_t)fmodf(i + 1, 3) != 0)
+			if ((int32_t)fmodf((float_t)(i + 1), 3.0f) != 0)
 				ImGui::SameLine();
 		}
 
