@@ -153,78 +153,84 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     velocity -= _displacementToTarget / physicsDeltaTime;  // Undo the displacement (hopefully no movement bugs)
     _displacementToTarget = glm::vec3(0.0f);
 
-    const float_t targetLength = _adjustedHalfHeight + _bottomRaycastFeetDist;
-    const float_t rayLength = targetLength + _bottomRaycastExtraDist;
-    auto bodyPos = _physicsObj->body->getWorldTransform().getOrigin();
-    auto hitInfo = PhysicsEngine::getInstance().raycast(bodyPos, bodyPos + btVector3(0, -rayLength, 0));
-    PhysicsEngine::getInstance().debugDrawLineOneFrame(                                 physutil::toVec3(bodyPos),   physutil::toVec3(bodyPos + btVector3(0, -targetLength, 0)),   glm::vec3(1, 1, 0));
-    PhysicsEngine::getInstance().debugDrawLineOneFrame(physutil::toVec3(bodyPos + btVector3(0, -targetLength, 0)),      physutil::toVec3(bodyPos + btVector3(0, -rayLength, 0)),   glm::vec3(1, 0, 0));
-    if (hitInfo.hasHit())
+    // Check if on ground
+    if (_jumpPreventOnGroundCheckFramesTimer < 0)
     {
-        if (_stepsSinceLastGrounded <= 1)  // @NOTE: Only snap to the ground if the previous step was a real _onGround situation
-            _onGround = true;
-        else if (hitInfo.m_closestHitFraction * rayLength <= targetLength)
-            _onGround = true;
-
-        if (_onGround)  // Only attempt to correct the distance from ground and this floating body if "_onGround"
+        const float_t targetLength = _adjustedHalfHeight + _bottomRaycastFeetDist;
+        const float_t rayLength = targetLength + _bottomRaycastExtraDist;
+        auto bodyPos = _physicsObj->body->getWorldTransform().getOrigin();
+        auto hitInfo = PhysicsEngine::getInstance().raycast(bodyPos, bodyPos + btVector3(0, -rayLength, 0));
+        PhysicsEngine::getInstance().debugDrawLineOneFrame(                                 physutil::toVec3(bodyPos),   physutil::toVec3(bodyPos + btVector3(0, -targetLength, 0)),   glm::vec3(1, 1, 0));
+        PhysicsEngine::getInstance().debugDrawLineOneFrame(physutil::toVec3(bodyPos + btVector3(0, -targetLength, 0)),      physutil::toVec3(bodyPos + btVector3(0, -rayLength, 0)),   glm::vec3(1, 0, 0));
+        if (hitInfo.hasHit())
         {
-            float_t targetLengthDifference = targetLength - hitInfo.m_closestHitFraction * rayLength;
-            _displacementToTarget.y = targetLengthDifference;  // Move up even though raycast was down bc we want to go the opposite direction the raycast went.
-        }
-    }
+            if (_stepsSinceLastGrounded <= 1)  // @NOTE: Only snap to the ground if the previous step was a real _onGround situation
+                _onGround = true;
+            else if (hitInfo.m_closestHitFraction * rayLength <= targetLength)
+                _onGround = true;
 
-    // Fire rays downwards in circular pattern to find approx what direction to displace
-    // @NOTE: only if the player is falling and ground is inside the faked "knee space"
-    if (!_onGround && velocity.y < 0.0f)
-    {
-        constexpr uint32_t numSamples = 16;
-        constexpr float_t circularPatternAngleFromOrigin = glm::radians(47.0f);
-        constexpr glm::vec3 rotationEulerIncrement = glm::vec3(0, glm::radians(360.0f) / (float_t)numSamples, 0);
-        const glm::quat rotatorQuaternion(rotationEulerIncrement);
-
-        glm::vec3 circularPatternOffset = glm::vec3(0.0f, -glm::sin(circularPatternAngleFromOrigin), 1.0f) * _capsuleRadius;
-        glm::vec3 accumulatedHitPositions(0.0f);
-
-        const glm::vec3 bodyFootSuckedInPosition = physutil::toVec3(bodyPos - btVector3(0, targetLength - _capsuleRadius, 0));
-
-        for (uint32_t i = 0; i < numSamples; i++)
-        {
-            // Draw debug
-            glm::vec3 circularPatternR0 = physutil::toVec3(bodyPos) + circularPatternOffset;
-            glm::vec3 circularPatternR1 = bodyFootSuckedInPosition + circularPatternOffset;
-            PhysicsEngine::getInstance().debugDrawLineOneFrame(circularPatternR0, circularPatternR1, glm::vec3(1, 0.5, 0.75));
-            auto hitInfo = PhysicsEngine::getInstance().raycast(physutil::toVec3(circularPatternR0), physutil::toVec3(circularPatternR1));
-            if (hitInfo.hasHit())
+            if (_onGround)  // Only attempt to correct the distance from ground and this floating body if "_onGround"
             {
-                accumulatedHitPositions += physutil::toVec3(hitInfo.m_hitPointWorld) - bodyFootSuckedInPosition;
+                float_t targetLengthDifference = targetLength - hitInfo.m_closestHitFraction * rayLength;
+                _displacementToTarget.y = targetLengthDifference;  // Move up even though raycast was down bc we want to go the opposite direction the raycast went.
+            }
+        }
+
+        // Fire rays downwards in circular pattern to find approx what direction to displace
+        // @NOTE: only if the player is falling and ground is inside the faked "knee space"
+        if (!_onGround && velocity.y < 0.0f)
+        {
+            constexpr uint32_t numSamples = 16;
+            constexpr float_t circularPatternAngleFromOrigin = glm::radians(47.0f);
+            constexpr glm::vec3 rotationEulerIncrement = glm::vec3(0, glm::radians(360.0f) / (float_t)numSamples, 0);
+            const glm::quat rotatorQuaternion(rotationEulerIncrement);
+
+            glm::vec3 circularPatternOffset = glm::vec3(0.0f, -glm::sin(circularPatternAngleFromOrigin), 1.0f) * _capsuleRadius;
+            glm::vec3 accumulatedHitPositions(0.0f);
+
+            const glm::vec3 bodyFootSuckedInPosition = physutil::toVec3(bodyPos - btVector3(0, targetLength - _capsuleRadius, 0));
+
+            for (uint32_t i = 0; i < numSamples; i++)
+            {
+                // Draw debug
+                glm::vec3 circularPatternR0 = physutil::toVec3(bodyPos) + circularPatternOffset;
+                glm::vec3 circularPatternR1 = bodyFootSuckedInPosition + circularPatternOffset;
+                PhysicsEngine::getInstance().debugDrawLineOneFrame(circularPatternR0, circularPatternR1, glm::vec3(1, 0.5, 0.75));
+                auto hitInfo = PhysicsEngine::getInstance().raycast(physutil::toVec3(circularPatternR0), physutil::toVec3(circularPatternR1));
+                if (hitInfo.hasHit())
+                {
+                    accumulatedHitPositions += physutil::toVec3(hitInfo.m_hitPointWorld) - bodyFootSuckedInPosition;
+                }
+
+                // Increment circular pattern
+                circularPatternOffset = rotatorQuaternion * circularPatternOffset;
             }
 
-            // Increment circular pattern
-            circularPatternOffset = rotatorQuaternion * circularPatternOffset;
-        }
+            // Normalize the accumulatedHitPositions
+            accumulatedHitPositions.y = 0.0f;
+            if (glm::length2(accumulatedHitPositions) > 0.0001f)
+            {
+                glm::vec3 pushAwayDirection = -glm::normalize(accumulatedHitPositions);
 
-        // Normalize the accumulatedHitPositions
-        accumulatedHitPositions.y = 0.0f;
-        if (glm::length2(accumulatedHitPositions) > 0.0001f)
-        {
-            glm::vec3 pushAwayDirection = -glm::normalize(accumulatedHitPositions);
+                float_t pushAwayForce = 1.0f;
+                if (glm::length2(cameraViewInput) > 0.0001f)
+                    pushAwayForce = glm::clamp(glm::dot(pushAwayDirection, glm::normalize(cameraViewInput)), 0.0f, 1.0f);  // If you're pushing the stick towards the ledge like to climb up it, then you should be able to do that with the knee-space
 
-            float_t pushAwayForce = 1.0f;
-            if (glm::length2(cameraViewInput) > 0.0001f)
-                pushAwayForce = glm::clamp(glm::dot(pushAwayDirection, glm::normalize(cameraViewInput)), 0.0f, 1.0f);  // If you're pushing the stick towards the ledge like to climb up it, then you should be able to do that with the knee-space
-
-            // @HEURISTIC: I dont think this is the "end all be all solution" to this problem
-            //             but I do think it is the "end all be all soltuion" for this game
-            //             (and then have the next step see if needs to increment more)
-            //                 -Timo
-            const float_t displacementMagnitude = (1.0f - glm::cos(circularPatternAngleFromOrigin)) * _capsuleRadius;
-            glm::vec3 flatDisplacement = pushAwayDirection * pushAwayForce * displacementMagnitude;
-            _displacementToTarget.x = flatDisplacement.x;
-            _displacementToTarget.z = flatDisplacement.z;
+                // @HEURISTIC: I dont think this is the "end all be all solution" to this problem
+                //             but I do think it is the "end all be all soltuion" for this game
+                //             (and then have the next step see if needs to increment more)
+                //                 -Timo
+                const float_t displacementMagnitude = (1.0f - glm::cos(circularPatternAngleFromOrigin)) * _capsuleRadius;
+                glm::vec3 flatDisplacement = pushAwayDirection * pushAwayForce * displacementMagnitude;
+                _displacementToTarget.x = flatDisplacement.x;
+                _displacementToTarget.z = flatDisplacement.z;
+            }
         }
     }
+    else
+        _jumpPreventOnGroundCheckFramesTimer--;
 
-
+    // Process if grounded or not
     if (_onGround)
     {
         _stepsSinceLastGrounded = 0;
@@ -300,6 +306,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
             _stepsSinceLastGrounded = 1;  // This is to prevent ground sticking right after a jump
             
             // Turn off flag for sure if successfully jumped
+            _jumpPreventOnGroundCheckFramesTimer = _jumpPreventOnGroundCheckFrames;
             _jumpInputBufferFramesTimer = -1;
             _flagJump = false;
         }
@@ -336,6 +343,7 @@ void Player::renderImGui()
     ImGui::DragFloat("_maxMidairDeceleration", &_maxMidairDeceleration);
     ImGui::DragFloat("_jumpHeight", &_jumpHeight);
     ImGui::DragFloat3("_physicsObj->transformOffset", &_physicsObj->transformOffset[0]);
+    ImGui::DragInt("_jumpPreventOnGroundCheckFrames", &_jumpPreventOnGroundCheckFrames, 1.0f, 0, 10);
     ImGui::DragInt("_jumpCoyoteFrames", &_jumpCoyoteFrames, 1.0f, 0, 10);
     ImGui::DragInt("_jumpInputBufferFrames", &_jumpInputBufferFrames, 1.0f, 0, 10);
 }
