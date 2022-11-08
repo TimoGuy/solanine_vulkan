@@ -24,17 +24,16 @@ Yosemite::Yosemite(EntityManager* em, RenderObjectManager* rom, DataSerialized* 
             .renderLayer = RenderLayer::VISIBLE,
             .attachedEntityGuid = getGUID(),
             });
-    
-    glm::vec3 position;
-    glm::vec3 eulerAngles;
-    glm::vec3 scale;
-    ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(_renderObj->transformMatrix), glm::value_ptr(position), glm::value_ptr(eulerAngles), glm::value_ptr(scale));
+
+    glm::vec3 position = physutil::getPosition(_renderObj->transformMatrix);  // @COPYPASTA
+    glm::quat rotation = physutil::getRotation(_renderObj->transformMatrix);
+    glm::vec3 scale    = physutil::getScale(_renderObj->transformMatrix);
 
     _physicsObj =
         PhysicsEngine::getInstance().registerPhysicsObject(
             false,
             position,
-            glm::quat(glm::radians(eulerAngles)),
+            rotation,
             new btBoxShape(physutil::toVec3(scale * 0.5f))
         );
 
@@ -84,16 +83,15 @@ void Yosemite::updatePhysicsObjFromRenderTransform()
     //
     PhysicsEngine::getInstance().unregisterPhysicsObject(_physicsObj);
 
-    glm::vec3 position;  // @COPYPASTA
-    glm::vec3 eulerAngles;
-    glm::vec3 scale;
-    ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(_renderObj->transformMatrix), glm::value_ptr(position), glm::value_ptr(eulerAngles), glm::value_ptr(scale));
+    glm::vec3 position = physutil::getPosition(_renderObj->transformMatrix);  // @COPYPASTA
+    glm::quat rotation = physutil::getRotation(_renderObj->transformMatrix);
+    glm::vec3 scale    = physutil::getScale(_renderObj->transformMatrix);
 
     _physicsObj =
         PhysicsEngine::getInstance().registerPhysicsObject(
             false,
             position,
-            glm::quat(glm::radians(eulerAngles)),
+            rotation,
             new btBoxShape(physutil::toVec3(scale * 0.5f))
         );
 }
