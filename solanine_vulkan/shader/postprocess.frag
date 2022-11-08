@@ -19,7 +19,7 @@ layout (set = 0, binding = 1) uniform UBOParams  // @TODO: just add in the globa
 	//float debugViewEquation;
 } uboParams;
 
-layout (set = 1, binding = 0) uniform sampler2D mainImage;  // @NOCHECKIN: create the mainImage Descriptorset
+layout (set = 1, binding = 0) uniform sampler2D mainImage;
 
 
 #define MANUAL_SRGB 1
@@ -60,6 +60,6 @@ vec4 SRGBtoLINEAR(vec4 srgbIn)
 
 void main()
 {
-	vec3 color = SRGBtoLINEAR(tonemap(texture(mainImage))).rgb;
+	vec3 color = SRGBtoLINEAR(tonemap(texture(mainImage, inUV))).rgb;
 	outColor = vec4(color, 1.0);
 }

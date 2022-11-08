@@ -220,6 +220,7 @@ public:
 	VkDescriptorSetLayout _pbrTexturesSetLayout;
 	VkDescriptorSetLayout _pickingReturnValueSetLayout;
 	VkDescriptorSetLayout _skeletalAnimationSetLayout;    // @NOTE: for this one, descriptor sets are created inside of the vkglTFModels themselves, they're not global
+	VkDescriptorSetLayout _postprocessSetLayout;
 	VkDescriptorPool _descriptorPool;
 
 	AllocatedBuffer createBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
