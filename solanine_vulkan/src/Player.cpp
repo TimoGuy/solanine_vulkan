@@ -290,9 +290,10 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     {
         if (_onGround || (int32_t)_stepsSinceLastGrounded <= _jumpCoyoteFrames)
         {
-            std::cout << "[JUMP INFO]" << std::endl
-                << "Buffer Frames left:         " << _jumpInputBufferFramesTimer << std::endl
-                << "Frames since last grounded: " << _stepsSinceLastGrounded << std::endl;
+            // @DEBUG: if you want something to look at coyote time and jump buffering metrics, uncomment
+            //std::cout << "[JUMP INFO]" << std::endl
+            //    << "Buffer Frames left:         " << _jumpInputBufferFramesTimer << std::endl
+            //    << "Frames since last grounded: " << _stepsSinceLastGrounded << std::endl;
             velocity.y = 
                 glm::sqrt(_jumpHeight * 2.0f * PhysicsEngine::getInstance().getGravityStrength());
             _displacementToTarget = glm::vec3(0.0f);
