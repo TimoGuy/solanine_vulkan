@@ -167,11 +167,19 @@ void Camera::update(const float_t& deltaTime)
 
 void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent changeEvent)
 {
+		glm::vec3 fd = glm::quat(sceneCamera.gpuCameraData.view) * glm::vec3(0, 0, 1);
+		glm::vec2 viewEuler = glm::vec2(glm::radians(90.0f) - atan2f(glm::length(glm::vec2(fd.x, fd.z)), fd.y), atan2f(fd.z, fd.x) + glm::radians(90.0f));  //glm::eulerAngles(glm::quat(sceneCamera.gpuCameraData.view));
+		if (!input::keyCtrlPressed)
+		std::cout << "X: " << glm::degrees(viewEuler.x) << "\tY: " << glm::degrees(viewEuler.y) << std::endl
+			<< "   " << glm::degrees(mainCamMode.orbitAngles.x) << "\t   " << glm::degrees(mainCamMode.orbitAngles.y) << std::endl;
 	if (changeEvent != CameraModeChangeEvent::NONE)
 	{
-		mainCamMode.orbitAngles = glm::vec2(glm::radians(45.0f), 0.0f);
-		SDL_SetRelativeMouseMode(changeEvent == CameraModeChangeEvent::ENTER ? SDL_TRUE : SDL_FALSE);
-		SDL_WarpMouseInWindow(_engine->_window, _engine->_windowExtent.width / 2, _engine->_windowExtent.height / 2);
+		// Calculate orbit angles from the camera facing direction
+		// mainCamMode.orbitAngles = glm::vec2(atan2f(glm::length(glm::vec2(fd.x, fd.z)), fd.y), atan2f(fd.x, fd.z));
+		mainCamMode.orbitAngles = glm::vec2(viewEuler.x, viewEuler.y);
+
+		//SDL_SetRelativeMouseMode(changeEvent == CameraModeChangeEvent::ENTER ? SDL_TRUE : SDL_FALSE);
+		//SDL_WarpMouseInWindow(_engine->_window, _engine->_windowExtent.width / 2, _engine->_windowExtent.height / 2);
 	}
 	if (_cameraMode != _cameraMode_mainCamMode)
 		return;
