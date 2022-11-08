@@ -125,12 +125,13 @@ public:
 		_swapchainDependentDeletionQueue,
 		_mainDeletionQueue;
 
-	VkSwapchainKHR _swapchain;						// The swapchain
-	VkFormat _swapchainImageFormat;					// Image format expected by SDL2
-	std::vector<VkImage> _swapchainImages;			// Images from the swapchain
-	std::vector<VkImageView> _swapchainImageViews;	// Image views from the swapchain
+	VkSwapchainKHR             _swapchain;				// The swapchain
+	VkFormat                   _swapchainImageFormat;	// Image format expected by SDL2
+	std::vector<VkImage>       _swapchainImages;		// Images from the swapchain
+	std::vector<VkImageView>   _swapchainImageViews;	// Image views from the swapchain
+	std::vector<VkFramebuffer> _swapchainFramebuffers;
 
-	VkQueue _graphicsQueue;
+	VkQueue  _graphicsQueue;
 	uint32_t _graphicsQueueFamily;
 
 	//
@@ -148,13 +149,19 @@ public:
 	//
 	// Main Renderpass
 	//
-	VkRenderPass _mainRenderPass;
-	std::vector<VkFramebuffer> _framebuffers;
+	VkRenderPass  _mainRenderPass;
+	VkFramebuffer _mainFramebuffer;
+	Texture       _mainImage;
 
 	// Main Depth Buffer
-	VkImageView _depthImageView;
 	AllocatedImage _depthImage;
+	VkImageView _depthImageView;
 	VkFormat _depthFormat;
+
+	//
+	// Postprocessing Renderpass
+	//
+	VkRenderPass _postprocessRenderPass;  // @NOTE: no framebuffers defined here, bc this will write to the swapchain framebuffers
 
 	//
 	// Picking Renderpass
@@ -228,7 +235,8 @@ private:
 	void initCommands();
 	void initShadowRenderpass();
 	void initShadowImages();
-	void initDefaultRenderpass();
+	void initMainRenderpass();
+	void initPostprocessRenderpass();
 	void initPickingRenderpass();
 	void initFramebuffers();
 	void initSyncStructures();

@@ -71,8 +71,9 @@ void VulkanEngine::init()
 	initSwapchain();
 	initCommands();
 	initShadowRenderpass();
-	initShadowImages();  // @NOTE: this isn't screen space, so no need to recreate on swapchain recreation
-	initDefaultRenderpass();
+	initShadowImages();  // @NOTE: this isn't screen space, so no need to recreate images on swapchain recreation
+	initMainRenderpass();
+	initPostprocessRenderpass();
 	initPickingRenderpass();
 	initFramebuffers();
 	initSyncStructures();
@@ -309,7 +310,7 @@ void VulkanEngine::render()
 			.pNext = nullptr,
 
 			.renderPass = _mainRenderPass,
-			.framebuffer = _framebuffers[swapchainImageIndex],		// @NOTE: Framebuffer of the index the swapchain gave
+			.framebuffer = _mainFramebuffer,
 			.renderArea = {
 				.offset = VkOffset2D{ 0, 0 },
 				.extent = _windowExtent,
@@ -327,6 +328,42 @@ void VulkanEngine::render()
 		renderPickedObject(cmd, currentFrame);
 		if (_showCollisionDebugDraw)
 			PhysicsEngine::getInstance().renderDebugDraw(cmd, currentFrame.globalDescriptor);
+
+		// End renderpass
+		vkCmdEndRenderPass(cmd);
+	}
+
+	//
+	// Postprocess Render Pass
+	//
+	{
+		VkClearValue clearValue;
+		clearValue.color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
+
+		VkRenderPassBeginInfo renderpassInfo = {
+			.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+			.pNext = nullptr,
+
+			.renderPass = _postprocessRenderPass,
+			.framebuffer = _swapchainFramebuffers[swapchainImageIndex],		// @NOTE: Framebuffer of the index the swapchain gave
+			.renderArea = {
+				.offset = VkOffset2D{ 0, 0 },
+				.extent = _windowExtent,
+			},
+
+			.clearValueCount = 1,
+			.pClearValues = &clearValue,
+		};
+
+		// Begin renderpass
+		vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+		//----------------------------------
+		// @NOCHECKIN: perform the tonemapping right here!!!!
+		//----------------------------------
+		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _postprocessMaterial.pipeline);
+		vkCmdDraw(cmd, 3, 1, 0, 0);
+
 		ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
 
 		// End renderpass
@@ -359,7 +396,7 @@ void VulkanEngine::render()
 		return;
 
 	//
-	// Picking Render Pass
+	// Picking Render Pass (OPTIONAL AND SEPARATE)
 	//
 	if (input::onLMBPress &&
 		_camera->getCameraMode() == Camera::_cameraMode_freeCamMode &&
@@ -1076,13 +1113,13 @@ void VulkanEngine::initShadowImages()
 	}
 }
 
-void VulkanEngine::initDefaultRenderpass()
+void VulkanEngine::initMainRenderpass()
 {
 	//
 	// Color Attachment
 	//
 	VkAttachmentDescription colorAttachment = {
-		.format = _swapchainImageFormat,
+		.format = VK_FORMAT_R16G16B16A16_SFLOAT,  // Do we really need the alpha channel?????
 		.samples = VK_SAMPLE_COUNT_1_BIT,
 		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
 		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
@@ -1166,9 +1203,91 @@ void VulkanEngine::initDefaultRenderpass()
 	_swapchainDependentDeletionQueue.pushFunction([=]() {
 		vkDestroyRenderPass(_device, _mainRenderPass, nullptr);
 		});
+
+	//
+	// Create image for renderpass  (@NOTE: Depthmap is already created at this point... idk where it's at though.)
+	//
+	// Color image
+	VkExtent3D mainImgExtent = {
+		.width = _windowExtent.width,
+		.height = _windowExtent.height,
+		.depth = 1,
+	};
+	VkImageCreateInfo mainColorImgInfo = vkinit::imageCreateInfo(VK_FORMAT_R16G16B16A16_SFLOAT, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, mainImgExtent, 1);
+	VmaAllocationCreateInfo mainImgAllocInfo = {
+		.usage = VMA_MEMORY_USAGE_GPU_ONLY,
+	};
+	vmaCreateImage(_allocator, &mainColorImgInfo, &mainImgAllocInfo, &_mainImage.image._image, &_mainImage.image._allocation, nullptr);
+
+	VkImageViewCreateInfo mainColorViewInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R16G16B16A16_SFLOAT, _mainImage.image._image, VK_IMAGE_ASPECT_COLOR_BIT, 1);
+	VK_CHECK(vkCreateImageView(_device, &mainColorViewInfo, nullptr, &_mainImage.imageView));
+
+	// @NOCHECKIN: create an image sampler so can use for shader input later
 }
 
-void VulkanEngine::initPickingRenderpass()    // @NOTE: @COPYPASTA: This is really copypasta of the above function (initDefaultRenderpass)
+void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is really copypasta of the above function (initMainRenderpass)
+{
+	//
+	// Color Attachment  (@NOTE: based off the swapchain images)
+	//
+	VkAttachmentDescription colorAttachment = {
+		.format = _swapchainImageFormat,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+		.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+		.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR		// @NOTE: After this renderpass, the image needs to be ready for the display
+	};
+	VkAttachmentReference colorAttachmentRef = {
+		.attachment = 0,
+		.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+	};
+
+	//
+	// Define the subpass to render to the default renderpass
+	//
+	VkSubpassDescription subpass = {
+		.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+		.colorAttachmentCount = 1,
+		.pColorAttachments = &colorAttachmentRef
+	};
+
+	//
+	// GPU work ordering dependencies
+	//
+	VkSubpassDependency colorDependency = {
+		.srcSubpass = VK_SUBPASS_EXTERNAL,
+		.dstSubpass = 0,
+		.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.srcAccessMask = 0,
+		.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+	};
+
+	//
+	// Create the renderpass for the subpass
+	//
+	VkRenderPassCreateInfo renderPassInfo = {
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+		.attachmentCount = 1,
+		.pAttachments = &colorAttachment,
+		.subpassCount = 1,
+		.pSubpasses = &subpass,
+		.dependencyCount = 1,
+		.pDependencies = &colorDependency
+	};
+
+	VK_CHECK(vkCreateRenderPass(_device, &renderPassInfo, nullptr, &_postprocessRenderPass));
+
+	// Add destroy command for cleanup
+	_swapchainDependentDeletionQueue.pushFunction([=]() {
+		vkDestroyRenderPass(_device, _postprocessRenderPass, nullptr);
+		});
+}
+
+void VulkanEngine::initPickingRenderpass()    // @NOTE: @COPYPASTA: This is really copypasta of the above function (initMainRenderpass)
 {
 	//
 	// Initialize the picking images
@@ -1298,52 +1417,76 @@ void VulkanEngine::initPickingRenderpass()    // @NOTE: @COPYPASTA: This is real
 
 void VulkanEngine::initFramebuffers()
 {
+	//
+	// Create framebuffers for postprocess renderpass
+	// @NOTE: this one writes straight to the khr framebuffers
+	//
 	VkFramebufferCreateInfo fbInfo = {};
 	fbInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
 	fbInfo.pNext = nullptr;
 
-	fbInfo.renderPass = _mainRenderPass;
-	fbInfo.attachmentCount = 2;
+	fbInfo.renderPass = _postprocessRenderPass;
+	fbInfo.attachmentCount = 1;
 	fbInfo.width = _windowExtent.width;
 	fbInfo.height = _windowExtent.height;
 	fbInfo.layers = 1;
 
 	const uint32_t swapchainImagecount = static_cast<uint32_t>(_swapchainImages.size());
-	_framebuffers = std::vector<VkFramebuffer>(swapchainImagecount);
+	_swapchainFramebuffers = std::vector<VkFramebuffer>(swapchainImagecount);
 
-	for (size_t i = 0; i < swapchainImagecount; i++)
+	for (size_t i = 0; i < (size_t)swapchainImagecount; i++)
 	{
 		VkImageView attachments[] = {
 			_swapchainImageViews[i],
-			_depthImageView
 		};
 		fbInfo.pAttachments = &attachments[0];
 
-		VK_CHECK(vkCreateFramebuffer(_device, &fbInfo, nullptr, &_framebuffers[i]));
+		VK_CHECK(vkCreateFramebuffer(_device, &fbInfo, nullptr, &_swapchainFramebuffers[i]));
 
 		// Add destroy command for cleanup
 		_swapchainDependentDeletionQueue.pushFunction([=]() {
-			vkDestroyFramebuffer(_device, _framebuffers[i], nullptr);
+			vkDestroyFramebuffer(_device, _swapchainFramebuffers[i], nullptr);
 			vkDestroyImageView(_device, _swapchainImageViews[i], nullptr);
+			});
+	}
+
+	//
+	// Create framebuffer for main renderpass
+	//
+	{
+		VkImageView attachments[] = {
+			_mainImage.imageView,
+			_depthImageView,
+		};
+		fbInfo.renderPass = _mainRenderPass;
+		fbInfo.attachmentCount = 2;
+		fbInfo.pAttachments = &attachments[0];
+
+		VK_CHECK(vkCreateFramebuffer(_device, &fbInfo, nullptr, &_mainFramebuffer));
+
+		_swapchainDependentDeletionQueue.pushFunction([=]() {
+			vkDestroyFramebuffer(_device, _mainFramebuffer, nullptr);
 			});
 	}
 
 	//
 	// Create framebuffer for the picking renderpass
 	//
-	VkImageView attachments[] = {
-		_pickingImageView,
-		_pickingDepthImageView,
-	};
-	fbInfo.renderPass = _pickingRenderPass;
-	fbInfo.attachmentCount = 2;
-	fbInfo.pAttachments = &attachments[0];
+	{
+		VkImageView attachments[] = {
+			_pickingImageView,
+			_pickingDepthImageView,
+		};
+		fbInfo.renderPass = _pickingRenderPass;
+		fbInfo.attachmentCount = 2;
+		fbInfo.pAttachments = &attachments[0];
 
-	VK_CHECK(vkCreateFramebuffer(_device, &fbInfo, nullptr, &_pickingFramebuffer));
+		VK_CHECK(vkCreateFramebuffer(_device, &fbInfo, nullptr, &_pickingFramebuffer));
 
-	_swapchainDependentDeletionQueue.pushFunction([=]() {
-		vkDestroyFramebuffer(_device, _pickingFramebuffer, nullptr);
-		});
+		_swapchainDependentDeletionQueue.pushFunction([=]() {
+			vkDestroyFramebuffer(_device, _pickingFramebuffer, nullptr);
+			});
+	}
 }
 
 void VulkanEngine::initSyncStructures()
@@ -3004,7 +3147,7 @@ void VulkanEngine::initImgui()
 		.ImageCount = 3,
 		.MSAASamples = VK_SAMPLE_COUNT_1_BIT,
 	};
-	ImGui_ImplVulkan_Init(&initInfo, _mainRenderPass);
+	ImGui_ImplVulkan_Init(&initInfo, _postprocessRenderPass);  // @NOCHECKIN: is this supposed to hook into the postprocess renderpass now????
 
 	// Load in imgui font textures
 	immediateSubmit([&](VkCommandBuffer cmd) {
@@ -3039,7 +3182,8 @@ void VulkanEngine::recreateSwapchain()
 
 	initSwapchain();
 	initShadowRenderpass();
-	initDefaultRenderpass();
+	initMainRenderpass();
+	initPostprocessRenderpass();
 	initPickingRenderpass();
 	initFramebuffers();
 	initPipelines();
