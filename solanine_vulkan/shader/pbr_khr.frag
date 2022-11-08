@@ -98,27 +98,8 @@ const float c_MinRoughness = 0.04;
 const float PBR_WORKFLOW_METALLIC_ROUGHNESS = 0.0;
 const float PBR_WORKFLOW_SPECULAR_GLOSSINESS = 1.0f;
 
-#define MANUAL_SRGB 1
 
-// @TODO: @NOCHECKIN
-//vec3 Uncharted2Tonemap(vec3 color)
-//{
-//	float A = 0.15;
-//	float B = 0.50;
-//	float C = 0.10;
-//	float D = 0.20;
-//	float E = 0.02;
-//	float F = 0.30;
-//	float W = 11.2;
-//	return ((color*(A*color+C*B)+D*E)/(color*(A*color+B)+D*F))-E/F;
-//}
-//
-//vec4 tonemap(vec4 color)
-//{
-//	vec3 outcol = Uncharted2Tonemap(color.rgb * uboParams.exposure);
-//	outcol = outcol * (1.0f / Uncharted2Tonemap(vec3(11.2f)));
-//	return vec4(pow(outcol, vec3(1.0f / uboParams.gamma)), color.a);
-//}
+#define MANUAL_SRGB 1
 
 vec4 SRGBtoLINEAR(vec4 srgbIn)
 {
@@ -163,9 +144,9 @@ vec3 getIBLContribution(PBRInfo pbrInputs, vec3 n, vec3 reflection)
 	float lod = (pbrInputs.perceptualRoughness * uboParams.prefilteredCubemapMipLevels);
 	// retrieve a scale and bias to F0. See [1], Figure 3
 	vec3 brdf = (texture(samplerBRDFLUT, vec2(pbrInputs.NdotV, 1.0 - pbrInputs.perceptualRoughness))).rgb;
-	vec3 diffuseLight = SRGBtoLINEAR(/*tonemap*/(texture(samplerIrradiance, n))).rgb;
+	vec3 diffuseLight = texture(samplerIrradiance, n).rgb;
 
-	vec3 specularLight = SRGBtoLINEAR(/*tonemap*/(textureLod(prefilteredMap, reflection, lod))).rgb;  // @TODO: @NOCHECKIN: I don;t completely understand what's going on here, but I do know that tonemapping comes before gamma correction
+	vec3 specularLight = textureLod(prefilteredMap, reflection, lod).rgb;
 
 	vec3 diffuse = diffuseLight * pbrInputs.diffuseColor;
 	vec3 specular = specularLight * (pbrInputs.specularColor * brdf.x + brdf.y);
