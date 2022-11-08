@@ -105,7 +105,7 @@ private:
 	static const uint32_t _numCameraModes = 2;
 	uint32_t _cameraMode = _cameraMode_freeCamMode;
 	CameraModeChangeEvent _changeEvents[_numCameraModes];
-	bool _flagNextStepSetEnterChangeEvent = false;
+	bool _flagNextStepChangeCameraMode = false;
 
 	void updateMainCam(const float_t& deltaTime, CameraModeChangeEvent changeEvent);
 	void updateFreeCam(const float_t& deltaTime, CameraModeChangeEvent changeEvent);

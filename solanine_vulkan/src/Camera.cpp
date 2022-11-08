@@ -142,9 +142,9 @@ void Camera::update(const float_t& deltaTime)
 	// Update camera modes
 	// @TODO: scrunch this into its own function
 	//
-	if (_flagNextStepSetEnterChangeEvent)
+	if (_flagNextStepChangeCameraMode)
 	{
-		_flagNextStepSetEnterChangeEvent = false;
+		_flagNextStepChangeCameraMode = false;
 
 		_cameraMode = (_cameraMode + 1) % _numCameraModes;
 		_changeEvents[_cameraMode] = CameraModeChangeEvent::ENTER;
@@ -153,10 +153,10 @@ void Camera::update(const float_t& deltaTime)
 			.message = "Changed to " + std::string(_cameraMode == 0 ? "game camera" : "free camera") + " mode",
 			});
 	}
-	else if (input::onKeyF10Press)  // @NOTE: we never want a state where _flagNextStepSetEnterChangeEvent==true and onKeyF10Press==true are processed. Only one at a time so that there is a dedicated frame for ::ENTER and ::EXIT
+	else if (input::onKeyF10Press)  // @NOTE: we never want a state where _flagNextStepChangeCameraMode==true and onKeyF10Press==true are processed. Only one at a time so that there is a dedicated frame for ::ENTER and ::EXIT
 	{
 		_changeEvents[_cameraMode] = CameraModeChangeEvent::EXIT;
-		_flagNextStepSetEnterChangeEvent = true;
+		_flagNextStepChangeCameraMode = true;
 	}
 
 	updateMainCam(deltaTime, _changeEvents[_cameraMode_mainCamMode]);
