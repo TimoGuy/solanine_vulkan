@@ -44,7 +44,7 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <LinkIncremental>false</LinkIncremental>
+    <LinkIncremental>true</LinkIncremental>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
@@ -57,13 +57,16 @@
       <AdditionalIncludeDirectories>$(VK_SDK_PATH)\Include;$(SolutionDir)libs;$(SolutionDir)libs\fmod_core\inc;$(SolutionDir)libs\fmod_fsbank\inc;$(SolutionDir)libs\fmod_studio\inc;$(SolutionDir)..\bullet3\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <WholeProgramOptimization>false</WholeProgramOptimization>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
-      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <GenerateDebugInformation>DebugFastLink</GenerateDebugInformation>
       <AdditionalLibraryDirectories>$(VK_SDK_PATH)\Lib;$(SolutionDir)libs\fmod_core\lib;$(SolutionDir)libs\fmod_fsbank\lib;$(SolutionDir)libs\fmod_studio\lib;$(SolutionDir)..\bullet3\lib\$(ConfigurationName);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>SDL2.lib;SDL2main.lib;vulkan-1.lib;fmod$(Suffix)_vc.lib;fmodstudio$(Suffix)_vc.lib;Bullet3Common_Debug.lib;BulletSoftBody_Debug.lib;BulletDynamics_Debug.lib;BulletCollision_Debug.lib;BulletInverseDynamicsUtils_Debug.lib;BulletInverseDynamics_Debug.lib;LinearMath_Debug.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+      <LinkTimeCodeGeneration>Default</LinkTimeCodeGeneration>
     </Link>
     <PostBuildEvent>
       <Command>set /p BuildNumberForSolanine=&lt;build_number.txt
@@ -88,6 +91,8 @@ copy $(SolutionDir)libs\fmod_studio\lib\fmodstudio.dll $(OutDirfullPath)fmodstud
       <AdditionalIncludeDirectories>$(VK_SDK_PATH)\Include;$(SolutionDir)libs;$(SolutionDir)libs\fmod_core\inc;$(SolutionDir)libs\fmod_fsbank\inc;$(SolutionDir)libs\fmod_studio\inc;$(SolutionDir)..\bullet3\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -133,6 +138,7 @@ copy $(SolutionDir)libs\fmod_studio\lib\fmodstudio.dll $(OutDirfullPath)fmodstud
     <ClInclude Include="src\GenerateGUID.h" />
     <ClInclude Include="src\imgui\imgui_stdlib.h" />
     <ClInclude Include="src\ImportGLM.h" />
+    <ClInclude Include="src\pch.h" />
     <ClInclude Include="src\RenderObject.h" />
     <ClInclude Include="src\SceneManagement.h" />
     <ClInclude Include="src\Entity.h" />
@@ -184,6 +190,10 @@ copy $(SolutionDir)libs\fmod_studio\lib\fmodstudio.dll $(OutDirfullPath)fmodstud
     <ClCompile Include="src\imgui\implot_items.cpp" />
     <ClCompile Include="src\InputManager.cpp" />
     <ClCompile Include="src\Main.cpp" />
+    <ClCompile Include="src\pch.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="src\PhysicsEngine.cpp" />
     <ClCompile Include="src\Player.cpp" />
     <ClCompile Include="src\DataSerialization.cpp" />

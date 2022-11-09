@@ -194,6 +194,9 @@
     <ClInclude Include="src\AudioEngine.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\pch.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Main.cpp">
@@ -284,6 +287,9 @@
       <Filter>Source Files\render_engine</Filter>
     </ClCompile>
     <ClCompile Include="src\GenerateGUID.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\pch.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\AudioEngine.cpp">
