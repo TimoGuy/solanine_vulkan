@@ -20,6 +20,7 @@ layout (set = 0, binding = 1) uniform UBOParams  // @TODO: just add in the globa
 } uboParams;
 
 layout (set = 1, binding = 0) uniform sampler2D mainImage;
+layout (set = 1, binding = 1) uniform sampler2D bloomImage;
 
 
 #define MANUAL_SRGB 1
@@ -60,6 +61,13 @@ vec4 SRGBtoLINEAR(vec4 srgbIn)
 
 void main()
 {
-	vec3 color = SRGBtoLINEAR(tonemap(texture(mainImage, inUV))).rgb;
+	vec4 combinedBloom =
+		textureLod(bloomImage, inUV, 0.0) +
+		textureLod(bloomImage, inUV, 1.0) +
+		textureLod(bloomImage, inUV, 2.0) +
+		textureLod(bloomImage, inUV, 3.0) +
+		textureLod(bloomImage, inUV, 4.0);
+	vec4 rawColor = mix(texture(mainImage, inUV), combinedBloom, 0.04);
+	vec3 color = SRGBtoLINEAR(tonemap(rawColor)).rgb;
 	outColor = vec4(color, 1.0);
 }

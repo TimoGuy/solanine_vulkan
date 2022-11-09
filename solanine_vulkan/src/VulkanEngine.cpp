@@ -28,6 +28,15 @@
 
 constexpr uint64_t TIMEOUT_1_SEC = 1000000000;
 
+constexpr std::array<uint32_t, 5> BLOOM_BUFFER_HEIGHTS = {
+	512,
+	256,
+	128,
+	64,
+	32,
+};
+
+
 void VulkanEngine::init()
 {
 	//
@@ -337,6 +346,190 @@ void VulkanEngine::render()
 	// Postprocess Render Pass
 	//
 	{
+		//
+		// Blit bloom
+		// @NOTE: @IMPROVE: the bloom render pass has obvious artifacts when a camera pans slowly.
+		//                  Might wanna implement this in the future: (https://learnopengl.com/Guest-Articles/2022/Phys.-Based-Bloom)
+		//                    -Timo 2022/11/09
+		//
+
+		// Change bloom image all mips to dst transfer layout
+		{
+			VkImageMemoryBarrier imageBarrier = {
+				.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+				.srcAccessMask = 0,
+				.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+				.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+				.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+				.image = _bloomPostprocessImage.image._image,
+				.subresourceRange = {
+					.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+					.baseMipLevel   = 0,
+					.levelCount     = static_cast<uint32_t>(_bloomPostprocessImage.image._mipLevels),
+					.baseArrayLayer = 0,
+					.layerCount     = 1,
+				},
+			};
+			vkCmdPipelineBarrier(cmd,
+				VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+				0, nullptr,
+				0, nullptr,
+				1, &imageBarrier
+			);
+		}
+
+		// Copy mainRenderPass image to bloom buffer
+		VkImageBlit blitRegion = {
+			.srcSubresource = {
+				.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+				.mipLevel       = 0,
+				.baseArrayLayer = 0,
+				.layerCount     = 1,
+			},
+			.srcOffsets = {
+				{ 0, 0, 0 },
+				{ (int32_t)_windowExtent.width, (int32_t)_windowExtent.height, 1 },
+			},
+			.dstSubresource = {
+				.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+				.mipLevel       = 0,
+				.baseArrayLayer = 0,
+				.layerCount     = 1,
+			},
+			.dstOffsets = {
+				{ 0, 0, 0 },
+				{
+					(int32_t)_bloomPostprocessImageExtent.width,
+					(int32_t)_bloomPostprocessImageExtent.height,
+					1
+				},
+			},
+		};
+		vkCmdBlitImage(cmd,
+			_mainImage.image._image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,  // @NOTE: the renderpass for the _mainImage makes it turn into VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL at the end, so a manual change to SHADER_READ_ONLY_OPTIMAL is necessary
+			_bloomPostprocessImage.image._image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			1, &blitRegion,
+			VK_FILTER_LINEAR
+		);
+
+		// Change mainRenderPass image to shader optimal image layout
+		// Change mip0 of bloom image to src transfer layout
+		{
+			VkImageMemoryBarrier imageBarrier = {
+				.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+				.srcAccessMask = 0,
+				.dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+				.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+				.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+				.image = _mainImage.image._image,
+				.subresourceRange = {
+					.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+					.baseMipLevel   = 0,
+					.levelCount     = 1,
+					.baseArrayLayer = 0,
+					.layerCount     = 1,
+				},
+			};
+			vkCmdPipelineBarrier(cmd,
+				VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+				0, nullptr,
+				0, nullptr,
+				1, &imageBarrier
+			);
+		}
+
+		// Blit out all remaining mip levels of the chain
+		VkImageMemoryBarrier imageBarrier = {
+			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+			.image = _bloomPostprocessImage.image._image,
+			.subresourceRange = {
+				.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+				.baseMipLevel   = 0,
+				.levelCount     = 1,
+				.baseArrayLayer = 0,
+				.layerCount     = 1,
+			},
+		};
+
+		int32_t mipWidth = _bloomPostprocessImageExtent.width;
+		int32_t mipHeight = _bloomPostprocessImageExtent.height;
+
+		for (uint32_t mipLevel = 1; mipLevel < _bloomPostprocessImage.image._mipLevels; mipLevel++)
+		{
+			// Change previous mip to src optimal image
+			imageBarrier.subresourceRange.baseMipLevel = mipLevel - 1;
+			imageBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+			imageBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+			imageBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+			imageBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+			vkCmdPipelineBarrier(cmd,
+				VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+				0, nullptr,
+				0, nullptr,
+				1, &imageBarrier
+			);
+
+			// Blit image to next mip
+			VkImageBlit blitRegion = {
+				.srcSubresource = {
+					.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+					.mipLevel = mipLevel - 1,
+					.baseArrayLayer = 0,
+					.layerCount = 1,
+				},
+				.srcOffsets = {
+					{ 0, 0, 0 },
+					{ mipWidth, mipHeight, 1 },
+				},
+				.dstSubresource = {
+					.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+					.mipLevel = mipLevel,
+					.baseArrayLayer = 0,
+					.layerCount = 1,
+				},
+				.dstOffsets = {
+					{ 0, 0, 0 },
+					{ mipWidth > 1 ? mipWidth / 2 : 1, mipHeight > 1 ? mipHeight / 2 : 1, 1 },
+				},
+			};
+			vkCmdBlitImage(cmd,
+				_bloomPostprocessImage.image._image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+				_bloomPostprocessImage.image._image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+				1, &blitRegion,
+				VK_FILTER_LINEAR
+			);
+
+			// Change previous (src) mip to shader readonly layout
+			imageBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+			imageBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			imageBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+			imageBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+			vkCmdPipelineBarrier(cmd,
+				VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+				0, nullptr,
+				0, nullptr,
+				1, &imageBarrier
+			);
+
+			// Update mip sizes
+			if (mipWidth > 1) mipWidth /= 2;
+			if (mipHeight > 1) mipHeight /= 2;
+		}
+
+		// Change final mip to shader readonly layout
+		imageBarrier.subresourceRange.baseMipLevel = _bloomPostprocessImage.image._mipLevels - 1;
+		imageBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		imageBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		vkCmdPipelineBarrier(cmd,
+			VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+			0, nullptr,
+			0, nullptr,
+			1, &imageBarrier
+		);
+
+		//
+		// Apply all postprocessing
+		//
 		VkClearValue clearValue;
 		clearValue.color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
 
@@ -1126,7 +1319,7 @@ void VulkanEngine::initMainRenderpass()
 		.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
 		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
 		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-		.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+		.finalLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL  // @NOTE: this is for bloom, use VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL if not using bloom
 	};
 	VkAttachmentReference colorAttachmentRef = {
 		.attachment = 0,
@@ -1213,7 +1406,7 @@ void VulkanEngine::initMainRenderpass()
 		.height = _windowExtent.height,
 		.depth = 1,
 	};
-	VkImageCreateInfo mainColorImgInfo = vkinit::imageCreateInfo(VK_FORMAT_R16G16B16A16_SFLOAT, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, mainImgExtent, 1);
+	VkImageCreateInfo mainColorImgInfo = vkinit::imageCreateInfo(VK_FORMAT_R16G16B16A16_SFLOAT, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, mainImgExtent, 1);
 	VmaAllocationCreateInfo mainImgAllocInfo = {
 		.usage = VMA_MEMORY_USAGE_GPU_ONLY,
 	};
@@ -1225,7 +1418,7 @@ void VulkanEngine::initMainRenderpass()
 	VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(1.0f, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
 	VK_CHECK(vkCreateSampler(_device, &samplerInfo, nullptr, &_mainImage.sampler));
 
-	_mainDeletionQueue.pushFunction([=]() {
+	_swapchainDependentDeletionQueue.pushFunction([=]() {
 		vkDestroySampler(_device, _mainImage.sampler, nullptr);
 		vkDestroyImageView(_device, _mainImage.imageView, nullptr);
 		vmaDestroyImage(_allocator, _mainImage.image._image, _mainImage.image._allocation);
@@ -1291,6 +1484,34 @@ void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is 
 	// Add destroy command for cleanup
 	_swapchainDependentDeletionQueue.pushFunction([=]() {
 		vkDestroyRenderPass(_device, _postprocessRenderPass, nullptr);
+		});
+
+	//
+	// Create bloom image
+	//
+	uint32_t numBloomMips = static_cast<uint32_t>(BLOOM_BUFFER_HEIGHTS.size());
+	_bloomPostprocessImageExtent = {
+		.width = (uint32_t)((float_t)BLOOM_BUFFER_HEIGHTS[0] * (float_t)_windowExtent.width / (float_t)_windowExtent.height),
+		.height = BLOOM_BUFFER_HEIGHTS[0],
+	};
+	VkExtent3D bloomImgExtent = { _bloomPostprocessImageExtent.width, _bloomPostprocessImageExtent.height, 1 };
+	VkImageCreateInfo bloomImgInfo = vkinit::imageCreateInfo(VK_FORMAT_R16G16B16A16_SFLOAT, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, bloomImgExtent, numBloomMips);
+	VmaAllocationCreateInfo bloomImgAllocInfo = {
+		.usage = VMA_MEMORY_USAGE_GPU_ONLY,
+	};
+	vmaCreateImage(_allocator, &bloomImgInfo, &bloomImgAllocInfo, &_bloomPostprocessImage.image._image, &_bloomPostprocessImage.image._allocation, nullptr);
+	_bloomPostprocessImage.image._mipLevels = numBloomMips;
+
+	VkImageViewCreateInfo bloomImgViewInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R16G16B16A16_SFLOAT, _bloomPostprocessImage.image._image, VK_IMAGE_ASPECT_COLOR_BIT, numBloomMips);
+	VK_CHECK(vkCreateImageView(_device, &bloomImgViewInfo, nullptr, &_bloomPostprocessImage.imageView));
+
+	VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo((float_t)numBloomMips, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
+	VK_CHECK(vkCreateSampler(_device, &samplerInfo, nullptr, &_bloomPostprocessImage.sampler));
+
+	_swapchainDependentDeletionQueue.pushFunction([=]() {
+		vkDestroySampler(_device, _bloomPostprocessImage.sampler, nullptr);
+		vkDestroyImageView(_device, _bloomPostprocessImage.imageView, nullptr);
+		vmaDestroyImage(_allocator, _bloomPostprocessImage.image._image, _bloomPostprocessImage.image._allocation);
 		});
 }
 
@@ -1635,12 +1856,17 @@ void VulkanEngine::initDescriptors()    // @TODO: don't destroy and then recreat
 	// Create Descriptor Set Layout for postprocessing
 	//
 	VkDescriptorSetLayoutBinding postprocessingHDRMainBufferBinding = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 0);
+	VkDescriptorSetLayoutBinding postprocessingBloomBufferBinding = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 1);
+	VkDescriptorSetLayoutBinding postprocessingBufferBindings[] = {
+		postprocessingHDRMainBufferBinding,
+		postprocessingBloomBufferBinding,
+	};
 	VkDescriptorSetLayoutCreateInfo setInfo3p1 = {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
 		.pNext = nullptr,
 		.flags = 0,
-		.bindingCount = 1,
-		.pBindings = &postprocessingHDRMainBufferBinding,
+		.bindingCount = 2,
+		.pBindings = postprocessingBufferBindings
 	};
 	vkCreateDescriptorSetLayout(_device, &setInfo3p1, nullptr, &_postprocessSetLayout);
 
@@ -2216,6 +2442,47 @@ void VulkanEngine::initPipelines()
 		vkDestroyPipeline(_device, _postprocessPipeline, nullptr);
 		vkDestroyPipelineLayout(_device, _postprocessPipelineLayout, nullptr);
 		});
+
+	
+
+
+
+
+
+
+
+
+	//
+	// Update postprocessMaterial @FIXME: this shouldn't be right here.
+	//
+	{
+		Material* postprocessMaterial = getMaterial("postprocessMaterial");
+		VkDescriptorSetAllocateInfo allocInfo = {
+			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+			.pNext = nullptr,
+			.descriptorPool = _descriptorPool,
+			.descriptorSetCount = 1,
+			.pSetLayouts = &_postprocessSetLayout,
+		};
+		vkAllocateDescriptorSets(_device, &allocInfo, &postprocessMaterial->textureSet);
+
+		// Main HDR Buffer image
+		VkDescriptorImageInfo mainHDRImageDescriptor = {
+			.sampler = _mainImage.sampler,
+			.imageView = _mainImage.imageView,
+			.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		};
+		VkDescriptorImageInfo bloomImageDescriptor = {
+			.sampler = _bloomPostprocessImage.sampler,
+			.imageView = _bloomPostprocessImage.imageView,
+			.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		};
+		std::array<VkWriteDescriptorSet, 2> writeDescriptorSets = {
+			vkinit::writeDescriptorImage(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, postprocessMaterial->textureSet, &mainHDRImageDescriptor, 0),
+			vkinit::writeDescriptorImage(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, postprocessMaterial->textureSet, &bloomImageDescriptor, 1),
+		};
+		vkUpdateDescriptorSets(_device, static_cast<uint32_t>(writeDescriptorSets.size()), writeDescriptorSets.data(), 0, nullptr);
+	}
 }
 
 void VulkanEngine::initScene()    // @TODO: rename this to something better, bc all it's doing is allocating image descriptorsets... or even better is including this in maybe loadImages()?  -Timo 2022/10/24
@@ -2243,36 +2510,6 @@ void VulkanEngine::initScene()    // @TODO: rename this to something better, bc 
 			vkinit::writeDescriptorImage(
 				VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
 				texturedMaterial->textureSet,
-				&imageBufferInfo,
-				0
-			);
-		vkUpdateDescriptorSets(_device, 1, &texture1, 0, nullptr);
-	}
-
-	//
-	// Update postprocessMaterial @FIXME: this shouldn't be right here.
-	//
-	{
-		Material* postprocessMaterial = getMaterial("postprocessMaterial");
-		VkDescriptorSetAllocateInfo allocInfo = {
-			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-			.pNext = nullptr,
-			.descriptorPool = _descriptorPool,
-			.descriptorSetCount = 1,
-			.pSetLayouts = &_postprocessSetLayout,
-		};
-		vkAllocateDescriptorSets(_device, &allocInfo, &postprocessMaterial->textureSet);
-
-		// Main HDR Buffer image
-		VkDescriptorImageInfo imageBufferInfo = {
-			.sampler = _mainImage.sampler,
-			.imageView = _mainImage.imageView,
-			.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-		};
-		VkWriteDescriptorSet texture1 =
-			vkinit::writeDescriptorImage(
-				VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-				postprocessMaterial->textureSet,
 				&imageBufferInfo,
 				0
 			);

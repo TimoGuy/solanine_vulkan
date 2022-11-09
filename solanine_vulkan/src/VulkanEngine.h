@@ -162,6 +162,8 @@ public:
 	// Postprocessing Renderpass
 	//
 	VkRenderPass _postprocessRenderPass;  // @NOTE: no framebuffers defined here, bc this will write to the swapchain framebuffers
+	Texture      _bloomPostprocessImage;
+	VkExtent2D   _bloomPostprocessImageExtent;
 
 	//
 	// Picking Renderpass
