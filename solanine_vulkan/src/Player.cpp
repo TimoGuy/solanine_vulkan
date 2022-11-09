@@ -120,10 +120,10 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     // Calculate input
     //
     glm::vec2 input(0.0f);
-	input.x += input::keyLeftPressed ? -1.0f : 0.0f;
-	input.x += input::keyRightPressed ? 1.0f : 0.0f;
-	input.y += input::keyUpPressed ? 1.0f : 0.0f;
-	input.y += input::keyDownPressed ? -1.0f : 0.0f;
+	input.x += input::keyLeftPressed  ? -1.0f : 0.0f;
+	input.x += input::keyRightPressed ?  1.0f : 0.0f;
+	input.y += input::keyUpPressed    ?  1.0f : 0.0f;
+	input.y += input::keyDownPressed  ? -1.0f : 0.0f;
 
     if (_camera->freeCamMode.enabled)
     {
@@ -165,21 +165,41 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         PhysicsEngine::getInstance().debugDrawLineOneFrame(physutil::toVec3(bodyPos + btVector3(0, -targetLength, 0)),      physutil::toVec3(bodyPos + btVector3(0, -rayLength, 0)),   glm::vec3(1, 0, 0));
         if (hitInfo.hasHit())
         {
-            if (_stepsSinceLastGrounded <= 1)  // @NOTE: Only snap to the ground if the previous step was a real _onGround situation
-                _onGround = true;
-            else if (hitInfo.m_closestHitFraction * rayLength <= targetLength)
-                _onGround = true;
-
-            if (_onGround)  // Only attempt to correct the distance from ground and this floating body if "_onGround"
+            bool isOnFlatGround = hitInfo.m_hitNormalWorld.y() > glm::cos(glm::radians(47.0f));
+            if (isOnFlatGround)
             {
-                float_t targetLengthDifference = targetLength - hitInfo.m_closestHitFraction * rayLength;
-                _displacementToTarget.y = targetLengthDifference;  // Move up even though raycast was down bc we want to go the opposite direction the raycast went.
+                // See if on ground (raycast hit generally flat ground)
+                if (_stepsSinceLastGrounded <= 1)  // @NOTE: Only snap to the ground if the previous step was a real _onGround situation
+                    _onGround = true;
+                else if (hitInfo.m_closestHitFraction * rayLength <= targetLength)
+                    _onGround = true;
+
+                if (_onGround)  // Correct the distance from ground and this floating body if "_onGround"
+                {
+                    float_t targetLengthDifference = targetLength - hitInfo.m_closestHitFraction * rayLength;
+                    _displacementToTarget.y = targetLengthDifference;  // Move up even though raycast was down bc we want to go the opposite direction the raycast went.
+                }
+            }
+            else
+            {
+                // See if hit ray length is <=targetLength (to enact displacement)
+                bool enactDisplacement = false;
+                if (hitInfo.m_closestHitFraction * rayLength <= targetLength)  // @COPYPASTA
+                    enactDisplacement = true;
+
+                if (enactDisplacement)  // Correct if the knee space ray is hitting the ground underneath while on a steep slope
+                {
+                    glm::vec3 hitNormalWorld = physutil::toVec3(hitInfo.m_hitNormalWorld);
+                    float_t targetLengthDifference = targetLength - hitInfo.m_closestHitFraction * rayLength;
+                    float_t UdotN = glm::dot(hitNormalWorld, glm::vec3(0, 1, 0));
+                    _displacementToTarget = hitNormalWorld * targetLengthDifference * UdotN;
+                }
             }
         }
 
         // Fire rays downwards in circular pattern to find approx what direction to displace
         // @NOTE: only if the player is falling and ground is inside the faked "knee space"
-        if (!_onGround && velocity.y < 0.0f)
+        if (!hitInfo.hasHit() && !_onGround && velocity.y < 0.0f)
         {
             constexpr uint32_t numSamples = 16;
             constexpr float_t circularPatternAngleFromOrigin = glm::radians(47.0f);
@@ -234,6 +254,13 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     // Process if grounded or not
     if (_onGround)
     {
+        if (_stepsSinceLastGrounded > 8)  // @NOTE: @HARDCODED just a random number
+            AudioEngine::getInstance().playSoundFromList({
+                "res/sfx/wip_OOT_Steps_Dirt1.wav",
+                "res/sfx/wip_OOT_Steps_Dirt2.wav",
+                "res/sfx/wip_OOT_Steps_Dirt3.wav",
+                "res/sfx/wip_OOT_Steps_Dirt4.wav",
+                });
         _stepsSinceLastGrounded = 0;
         _physicsObj->body->setGravity(btVector3(0, 0, 0));
         velocity.y = 0.0f;
