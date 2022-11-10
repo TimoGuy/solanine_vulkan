@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Entity.h"
+#include "ReplaySystem.h"
 #include "Imports.h"
 namespace vkglTF { struct Model; }
 struct RenderObject;
@@ -43,14 +44,21 @@ private:
     float_t _bottomRaycastExtraDist;
     float_t _adjustedHalfHeight;
 
+    glm::vec3 _worldSpaceInput = glm::vec3(0.0f);
+    bool      _flagJump        = false;
+
     bool _onGround = false;
     glm::vec3 _groundContactNormal;
     uint32_t _stepsSinceLastGrounded = 0;
-    bool _flagJump = false;
     glm::vec3 _displacementToTarget = glm::vec3(0.0f);
 
     int32_t _jumpPreventOnGroundCheckFramesTimer = -1;
     int32_t _jumpInputBufferFramesTimer          = -1;
+
+    // Replay system
+    ReplayData _replayData;
+    enum class RecordingState { NONE, RECORDING, PLAYING };
+    RecordingState _recordingState = RecordingState::NONE;
 
     // Callbacks
     std::function<void(btPersistentManifold*, bool amIB)> _onCollisionStayFunc;

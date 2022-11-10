@@ -7,6 +7,7 @@
 #include "InputManager.h"
 #include "AudioEngine.h"
 #include "DataSerialization.h"
+#include "Debug.h"
 #include "imgui/imgui.h"
 
 
@@ -79,31 +80,92 @@ void Player::update(const float_t& deltaTime)
         _jumpInputBufferFramesTimer = _jumpInputBufferFrames;
     }
 
+    if (input::onKeyF9Press)
+    {
+        if (_recordingState != RecordingState::RECORDING)
+        {
+            _recordingState = RecordingState::RECORDING;
+
+            // Start the recording
+            glm::vec3 sp = physutil::toVec3(_physicsObj->body->getWorldTransform().getOrigin());
+            float_t   sd = _facingDirection;
+            _replayData.startRecording(sp, sd);
+
+            debug::pushDebugMessage({
+                .message = "Started Recording",
+            });
+        }
+        else
+        {
+            _recordingState = RecordingState::NONE;
+            
+            size_t recordingSize = _replayData.getRecordingSize();
+
+            debug::pushDebugMessage({
+                .message = "Stopped Recording. Current Length is " + std::to_string(recordingSize) + " bytes",
+            });
+        }
+    }
+
+    if (input::onKeyF8Press)
+    {
+        if (_recordingState != RecordingState::PLAYING)
+        {
+            _recordingState = RecordingState::PLAYING;
+
+            // Start the playback
+            glm::vec3 sp;
+            float_t   sd;
+            _replayData.playRecording(sp, sd);
+
+            _physicsObj->body->setWorldTransform(
+                btTransform(btQuaternion::getIdentity(), btVector3(sp.x, sp.y, sp.z))
+            );
+            _facingDirection = sd;
+
+            debug::pushDebugMessage({
+                .message = "Started Playing Recording",
+            });
+        }
+        else
+        {
+            _recordingState = RecordingState::NONE;
+
+            debug::pushDebugMessage({
+                .message = "Stopped Playing Recording Midway",
+            });
+        }
+    }
+
     //
     // Calculate render object transform
     //
-    glm::vec2 input(0.0f);  // @COPYPASTA
-	input.x += input::keyLeftPressed  ? -1.0f : 0.0f;
-	input.x += input::keyRightPressed ?  1.0f : 0.0f;
-	input.y += input::keyUpPressed    ?  1.0f : 0.0f;
-	input.y += input::keyDownPressed  ? -1.0f : 0.0f;
-
-    if (_camera->freeCamMode.enabled)
+    if (_recordingState != RecordingState::PLAYING)
     {
-        input = glm::vec2(0.0f);
-        _flagJump = false;
+        glm::vec2 input(0.0f);  // @COPYPASTA
+        input.x += input::keyLeftPressed  ? -1.0f : 0.0f;
+        input.x += input::keyRightPressed ?  1.0f : 0.0f;
+        input.y += input::keyUpPressed    ?  1.0f : 0.0f;
+        input.y += input::keyDownPressed  ? -1.0f : 0.0f;
+
+        if (_camera->freeCamMode.enabled)
+        {
+            input = glm::vec2(0.0f);
+            _flagJump = false;
+        }
+
+        glm::vec3 flatCameraFacingDirection = _camera->sceneCamera.facingDirection;
+        flatCameraFacingDirection.y = 0.0f;
+        flatCameraFacingDirection = glm::normalize(flatCameraFacingDirection);
+
+        _worldSpaceInput =
+            input.y * flatCameraFacingDirection +
+            input.x * glm::normalize(glm::cross(flatCameraFacingDirection, glm::vec3(0, 1, 0)));
     }
 
-    glm::vec3 flatCameraFacingDirection = _camera->sceneCamera.facingDirection;
-    flatCameraFacingDirection.y = 0.0f;
-    flatCameraFacingDirection = glm::normalize(flatCameraFacingDirection);
-
-    glm::vec3 cameraViewInput =
-        input.y * flatCameraFacingDirection +
-		input.x * glm::normalize(glm::cross(flatCameraFacingDirection, glm::vec3(0, 1, 0)));
-
-    if (glm::length2(cameraViewInput) > 0.01f)
-        _facingDirection = glm::atan(cameraViewInput.x, cameraViewInput.z);
+    // Update render transform
+    if (glm::length2(_worldSpaceInput) > 0.01f)
+        _facingDirection = glm::atan(_worldSpaceInput.x, _worldSpaceInput.z);
 
     glm::vec3 interpPos = physutil::getPosition(_physicsObj->interpolatedTransform);
     _renderObj->transformMatrix = glm::translate(glm::mat4(1.0f), interpPos) * glm::toMat4(glm::quat(glm::vec3(0, _facingDirection, 0)));
@@ -119,30 +181,57 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     //
     // Calculate input
     //
-    glm::vec2 input(0.0f);
-	input.x += input::keyLeftPressed  ? -1.0f : 0.0f;
-	input.x += input::keyRightPressed ?  1.0f : 0.0f;
-	input.y += input::keyUpPressed    ?  1.0f : 0.0f;
-	input.y += input::keyDownPressed  ? -1.0f : 0.0f;
-
-    if (_camera->freeCamMode.enabled)
+    if (_recordingState != RecordingState::PLAYING)
     {
-        input = glm::vec2(0.0f);
-        _flagJump = false;
+        glm::vec2 input(0.0f);
+        input.x += input::keyLeftPressed  ? -1.0f : 0.0f;
+        input.x += input::keyRightPressed ?  1.0f : 0.0f;
+        input.y += input::keyUpPressed    ?  1.0f : 0.0f;
+        input.y += input::keyDownPressed  ? -1.0f : 0.0f;
+
+        if (_camera->freeCamMode.enabled)
+        {
+            input = glm::vec2(0.0f);
+            _flagJump = false;
+        }
+
+        glm::vec3 flatCameraFacingDirection = _camera->sceneCamera.facingDirection;
+        flatCameraFacingDirection.y = 0.0f;
+        flatCameraFacingDirection = glm::normalize(flatCameraFacingDirection);
+
+        _worldSpaceInput =
+            input.y * flatCameraFacingDirection +
+            input.x * glm::normalize(glm::cross(flatCameraFacingDirection, glm::vec3(0, 1, 0)));
+
+        if (glm::length2(_worldSpaceInput) < 0.01f)
+            _worldSpaceInput = glm::vec3(0.0f);
+        else
+            _worldSpaceInput = physutil::clampVector(_worldSpaceInput, 0.0f, 1.0f);
     }
 
-    glm::vec3 flatCameraFacingDirection = _camera->sceneCamera.facingDirection;
-    flatCameraFacingDirection.y = 0.0f;
-    flatCameraFacingDirection = glm::normalize(flatCameraFacingDirection);
+    //
+    // Record/Play Replay Data
+    //
+    if (_recordingState == RecordingState::RECORDING)
+    {
+        _replayData.recordStep(glm::vec2(_worldSpaceInput.x, _worldSpaceInput.z), _flagJump);
+    }
+    else if (_recordingState == RecordingState::PLAYING)
+    {
+        glm::vec2 wsi;
+        if (_replayData.playRecordingStep(wsi, _flagJump))
+        {
+            _recordingState = RecordingState::NONE;
 
-    glm::vec3 cameraViewInput =
-        input.y * flatCameraFacingDirection +
-		input.x * glm::normalize(glm::cross(flatCameraFacingDirection, glm::vec3(0, 1, 0)));
-
-    if (glm::length2(cameraViewInput) < 0.01f)
-        cameraViewInput = glm::vec3(0.0f);
-    else
-        cameraViewInput = physutil::clampVector(cameraViewInput, 0.0f, 1.0f);
+            debug::pushDebugMessage({
+                .message = "Recording Finished",
+            });
+        }
+        else
+        {
+            _worldSpaceInput = glm::vec3(wsi.x, 0, wsi.y);
+        }
+    }
 
     //
     // Update state
@@ -265,8 +354,8 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
                     glm::vec3 pushAwayDirection = -glm::normalize(accumulatedHitPositions);
 
                     float_t pushAwayForce = 1.0f;
-                    if (glm::length2(cameraViewInput) > 0.0001f)
-                        pushAwayForce = glm::clamp(glm::dot(pushAwayDirection, glm::normalize(cameraViewInput)), 0.0f, 1.0f);  // If you're pushing the stick towards the ledge like to climb up it, then you should be able to do that with the knee-space
+                    if (glm::length2(_worldSpaceInput) > 0.0001f)
+                        pushAwayForce = glm::clamp(glm::dot(pushAwayDirection, glm::normalize(_worldSpaceInput)), 0.0f, 1.0f);  // If you're pushing the stick towards the ledge like to climb up it, then you should be able to do that with the knee-space
 
                     // @HEURISTIC: I dont think this is the "end all be all solution" to this problem
                     //             but I do think it is the "end all be all soltuion" for this game
@@ -334,7 +423,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     //        the character tripped because of the sudden velocity speed drop when running
     //        into a nick.
     //
-    glm::vec3 desiredVelocity = cameraViewInput * _maxSpeed;  // @NOTE: we just ignore the y component in this desired velocity thing
+    glm::vec3 desiredVelocity = _worldSpaceInput * _maxSpeed;  // @NOTE: we just ignore the y component in this desired velocity thing
 
     glm::vec2 a(velocity.x, velocity.z);
     glm::vec2 b(desiredVelocity.x, desiredVelocity.z);

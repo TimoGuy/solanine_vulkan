@@ -33,6 +33,8 @@ extern bool input::keyRPressed = false;
 extern bool input::keyDPressed = false;
 extern bool input::onKeyJumpPress = false;
 extern bool input::onKeyF10Press = false;
+extern bool input::onKeyF9Press = false;
+extern bool input::onKeyF8Press = false;
 
 
 void input::processInput(bool* isRunning, bool* isWindowMinimized)
@@ -43,6 +45,8 @@ void input::processInput(bool* isRunning, bool* isWindowMinimized)
     input::onRMBRelease = false;
 	input::onKeyJumpPress = false;
 	input::onKeyF10Press = false;
+	input::onKeyF9Press = false;
+	input::onKeyF8Press = false;
 	input::mouseDelta = { 0, 0 };
 
 	SDL_Event e;
@@ -108,6 +112,8 @@ void input::processInput(bool* isRunning, bool* isWindowMinimized)
 			if (e.key.keysym.sym == SDLK_d)                                           input::keyDPressed = (e.key.type == SDL_KEYDOWN);
 			if (e.key.keysym.sym == SDLK_SPACE)                                       input::onKeyJumpPress = (e.key.type == SDL_KEYDOWN);
 			if (e.key.keysym.sym == SDLK_F10)                                         input::onKeyF10Press = (e.key.type == SDL_KEYDOWN);
+			if (e.key.keysym.sym == SDLK_F9)                                          input::onKeyF9Press = (e.key.type == SDL_KEYDOWN);
+			if (e.key.keysym.sym == SDLK_F8)                                          input::onKeyF8Press = (e.key.type == SDL_KEYDOWN);
 			break;
 		}
 
