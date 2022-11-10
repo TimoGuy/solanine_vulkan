@@ -213,6 +213,17 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
 
         // Fire rays downwards in circular pattern to find approx what direction to displace
         // @NOTE: only if the player is falling and ground is inside the faked "knee space"
+        //
+        // @THOUGHTS: @MAYBE: try this out @@TODO
+        //                    Instead of these being supplementary checks to push the player away, what is these were simply onground checkers like the main downcast?
+        //                    And then we don't have to do any displacing. It would make the bottom of the collider like a cylinder, bc these supplementary main downcasts
+        //                    should end at the same Y position as the main one, and should also have the extra distance to find stairs underneath and whatnot.
+        //                    Now, these only fire if the main downcast fails, and this would run on the average hit normal and the average spot that it collided. This way
+        //                    we can have an animation where it's like 'ooohhh I'm on the edge' too. If going up stairs or slopes, bc the main downcast will shortcircuit if
+        //                    it suceeds, then it still has the appearance of being the point at which stuff happens, but it should also be able to happen at any of these
+        //                    16 spots too.
+        //                      -Timo 2022/11/09
+        //            @PS: I don't really think it'd work extremely well if the radius of the capsule collider were so small that a thin piece of geometry would be able to slide between raycasts however.
         if (!hitInfo.hasHit() && !_onGround && velocity.y < 0.0f)
         {
             constexpr uint32_t numSamples = 16;
