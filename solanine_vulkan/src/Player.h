@@ -68,6 +68,6 @@ private:
     float_t _maxMidairDeceleration = 20.0f;
     float_t _jumpHeight = 5.0f;
     int32_t _jumpPreventOnGroundCheckFrames = 4;
-    int32_t _jumpCoyoteFrames = 4;       // @NOTE: frames are measured with the constant 0.02f seconds per frame in the physics delta time
+    int32_t _jumpCoyoteFrames = 6;       // @NOTE: frames are measured with the constant 0.02f seconds per frame in the physics delta time
     int32_t _jumpInputBufferFrames = 4;  //        Thus, 4 frames in that measurement is 4.8 frames in 60 fps
 };
