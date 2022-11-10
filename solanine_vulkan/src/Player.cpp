@@ -193,6 +193,20 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
                     float_t targetLengthDifference = targetLength - hitInfo.m_closestHitFraction * rayLength;
                     float_t UdotN = glm::dot(hitNormalWorld, glm::vec3(0, 1, 0));
                     _displacementToTarget = hitNormalWorld * targetLengthDifference * UdotN;
+
+                    // Additional displacement to make sure player doesn't push into the slope (using velocity)
+                    glm::vec3 flatVelocity = glm::vec3(velocity.x, 0, velocity.z);
+                    if (glm::length2(flatVelocity) > 0.0001f)
+                    {
+                        glm::vec3 flatHitNormalWorldNormalized = glm::normalize(glm::vec3(hitNormalWorld.x, 0, hitNormalWorld.z));
+                        float_t NVdotNN = glm::dot(glm::normalize(flatVelocity), flatHitNormalWorldNormalized);
+                        if (NVdotNN < 0.0f)
+                        {
+                            const float_t extraDisplacementStrength = -NVdotNN;
+                            // _displacementToTarget += flatVelocity * physicsDeltaTime * extraDisplacementStrength;
+                            _displacementToTarget += flatHitNormalWorldNormalized * glm::length(flatVelocity) * physicsDeltaTime * extraDisplacementStrength;
+                        }
+                    }
                 }
             }
         }
@@ -207,7 +221,8 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
             const glm::quat rotatorQuaternion(rotationEulerIncrement);
 
             glm::vec3 circularPatternOffset = glm::vec3(0.0f, -glm::sin(circularPatternAngleFromOrigin), 1.0f) * _capsuleRadius;
-            glm::vec3 accumulatedHitPositions(0.0f);
+            glm::vec3 accumulatedHitPositions(0.0f),
+                      averageHitNormals(0.0f);
 
             const glm::vec3 bodyFootSuckedInPosition = physutil::toVec3(bodyPos - btVector3(0, targetLength - _capsuleRadius, 0));
 
@@ -221,6 +236,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
                 if (hitInfo.hasHit())
                 {
                     accumulatedHitPositions += physutil::toVec3(hitInfo.m_hitPointWorld) - bodyFootSuckedInPosition;
+                    averageHitNormals       += physutil::toVec3(hitInfo.m_hitNormalWorld);
                 }
 
                 // Increment circular pattern
@@ -231,20 +247,41 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
             accumulatedHitPositions.y = 0.0f;
             if (glm::length2(accumulatedHitPositions) > 0.0001f)
             {
-                glm::vec3 pushAwayDirection = -glm::normalize(accumulatedHitPositions);
+                averageHitNormals = glm::normalize(averageHitNormals);
+                bool isOnFlatGround = averageHitNormals.y > glm::cos(glm::radians(47.0f));
+                if (isOnFlatGround)
+                {
+                    glm::vec3 pushAwayDirection = -glm::normalize(accumulatedHitPositions);
 
-                float_t pushAwayForce = 1.0f;
-                if (glm::length2(cameraViewInput) > 0.0001f)
-                    pushAwayForce = glm::clamp(glm::dot(pushAwayDirection, glm::normalize(cameraViewInput)), 0.0f, 1.0f);  // If you're pushing the stick towards the ledge like to climb up it, then you should be able to do that with the knee-space
+                    float_t pushAwayForce = 1.0f;
+                    if (glm::length2(cameraViewInput) > 0.0001f)
+                        pushAwayForce = glm::clamp(glm::dot(pushAwayDirection, glm::normalize(cameraViewInput)), 0.0f, 1.0f);  // If you're pushing the stick towards the ledge like to climb up it, then you should be able to do that with the knee-space
 
-                // @HEURISTIC: I dont think this is the "end all be all solution" to this problem
-                //             but I do think it is the "end all be all soltuion" for this game
-                //             (and then have the next step see if needs to increment more)
-                //                 -Timo
-                const float_t displacementMagnitude = (1.0f - glm::cos(circularPatternAngleFromOrigin)) * _capsuleRadius;
-                glm::vec3 flatDisplacement = pushAwayDirection * pushAwayForce * displacementMagnitude;
-                _displacementToTarget.x = flatDisplacement.x;
-                _displacementToTarget.z = flatDisplacement.z;
+                    // @HEURISTIC: I dont think this is the "end all be all solution" to this problem
+                    //             but I do think it is the "end all be all soltuion" for this game
+                    //             (and then have the next step see if needs to increment more)
+                    //                 -Timo
+                    const float_t displacementMagnitude = (1.0f - glm::cos(circularPatternAngleFromOrigin)) * _capsuleRadius;
+                    glm::vec3 flatDisplacement = pushAwayDirection * pushAwayForce * displacementMagnitude;
+                    _displacementToTarget.x += flatDisplacement.x;
+                    _displacementToTarget.z += flatDisplacement.z;
+                }
+                else
+                {
+                    // @COPYPASTA
+                    // Additional displacement to make sure player doesn't push into the slope (using velocity)
+                    glm::vec3 flatVelocity = glm::vec3(velocity.x, 0, velocity.z);
+                    if (glm::length2(flatVelocity) > 0.0001f)
+                    {
+                        glm::vec3 flatHitNormalWorldNormalized = glm::normalize(glm::vec3(averageHitNormals.x, 0, averageHitNormals.z));
+                        float_t NVdotNN = glm::dot(glm::normalize(flatVelocity), flatHitNormalWorldNormalized);
+                        if (NVdotNN < 0.0f)
+                        {
+                            const float_t extraDisplacementStrength = -NVdotNN;
+                            _displacementToTarget += flatHitNormalWorldNormalized * glm::length(flatVelocity) * physicsDeltaTime * extraDisplacementStrength;
+                        }
+                    }
+                }
             }
         }
     }
