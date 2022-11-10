@@ -157,26 +157,86 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     // Check if on ground
     if (_jumpPreventOnGroundCheckFramesTimer < 0)
     {
+        bool successfulHit = false;
+
         const float_t targetLength = _adjustedHalfHeight + _bottomRaycastFeetDist;
         const float_t rayLength = targetLength + _bottomRaycastExtraDist;
         auto bodyPos = _physicsObj->body->getWorldTransform().getOrigin();
+
+        float_t   closestHitRayLength = std::numeric_limits<float_t>::max();
+        glm::vec3 hitNormalWorld      = glm::vec3(0.0f);
+
         auto hitInfo = PhysicsEngine::getInstance().raycast(bodyPos, bodyPos + btVector3(0, -rayLength, 0));
+
         PhysicsEngine::getInstance().debugDrawLineOneFrame(                                 physutil::toVec3(bodyPos),   physutil::toVec3(bodyPos + btVector3(0, -targetLength, 0)),   glm::vec3(1, 1, 0));
         PhysicsEngine::getInstance().debugDrawLineOneFrame(physutil::toVec3(bodyPos + btVector3(0, -targetLength, 0)),      physutil::toVec3(bodyPos + btVector3(0, -rayLength, 0)),   glm::vec3(1, 0, 0));
+
         if (hitInfo.hasHit())
         {
-            bool isOnFlatGround = hitInfo.m_hitNormalWorld.y() > glm::cos(glm::radians(47.0f));
+            // Main downcast success, fill in the data
+            closestHitRayLength = hitInfo.m_closestHitFraction;
+            hitNormalWorld      = physutil::toVec3(hitInfo.m_hitNormalWorld);
+
+            // Check to see if it's a 'perfect hit' (aka flat ground)
+            bool isOnFlatGround = hitNormalWorld.y > glm::cos(glm::radians(47.0f));
+            if (isOnFlatGround)
+            {
+                successfulHit = true;
+            }
+        }
+        if (!successfulHit)  // Try doing the supplementary downcasts even if main one wasn't a 'perfect hit'
+        {
+            // Since main downcast failed, do the supplementary downcasts
+            constexpr uint32_t numSamples = 16;
+            constexpr float_t circularPatternAngleFromOrigin = glm::radians(47.0f);
+            constexpr glm::vec3 rotationEulerIncrement = glm::vec3(0, glm::radians(360.0f) / (float_t)numSamples, 0);
+            const glm::quat rotatorQuaternion(rotationEulerIncrement);
+
+            constexpr float_t radiusSuckin  = 0.95f;
+            glm::vec3 circularPatternOffset = glm::vec3(0, 0, 1) * (_capsuleRadius * radiusSuckin);
+
+            for (uint32_t i = 0; i < numSamples; i++)
+            {
+                glm::vec3 circularPatternR0 = physutil::toVec3(bodyPos) + circularPatternOffset;
+                glm::vec3 circularPatternR1 = physutil::toVec3(bodyPos) + glm::vec3(0, -rayLength, 0) + circularPatternOffset;
+                auto hitInfo = PhysicsEngine::getInstance().raycast(physutil::toVec3(circularPatternR0), physutil::toVec3(circularPatternR1));
+                if (hitInfo.hasHit())
+                {
+                    successfulHit = true;
+
+                    closestHitRayLength  = glm::min(closestHitRayLength, hitInfo.m_closestHitFraction);
+                    hitNormalWorld      += physutil::toVec3(hitInfo.m_hitNormalWorld);
+                }
+
+                // Draw Debug line
+                PhysicsEngine::getInstance().debugDrawLineOneFrame(circularPatternR0, circularPatternR1, glm::vec3(1, 0.5, 0.75));
+
+                // Increment circular pattern
+                circularPatternOffset = rotatorQuaternion * circularPatternOffset;
+            }
+        }
+
+        // Process successful raycast hit
+        if (successfulHit)
+        {
+            // Preprocess
+            assert(glm::length2(hitNormalWorld) > 0.0001f);
+            closestHitRayLength = closestHitRayLength * rayLength;
+            hitNormalWorld      = glm::normalize(hitNormalWorld);  // Just need to get the normalized world data instead of doing some kind of averaging.
+
+            // Process
+            bool isOnFlatGround = hitNormalWorld.y > glm::cos(glm::radians(47.0f));
             if (isOnFlatGround)
             {
                 // See if on ground (raycast hit generally flat ground)
                 if (_stepsSinceLastGrounded <= 1)  // @NOTE: Only snap to the ground if the previous step was a real _onGround situation
                     _onGround = true;
-                else if (hitInfo.m_closestHitFraction * rayLength <= targetLength)
+                else if (closestHitRayLength <= targetLength)
                     _onGround = true;
 
                 if (_onGround)  // Correct the distance from ground and this floating body if "_onGround"
                 {
-                    float_t targetLengthDifference = targetLength - hitInfo.m_closestHitFraction * rayLength;
+                    float_t targetLengthDifference = targetLength - closestHitRayLength;
                     _displacementToTarget.y = targetLengthDifference;  // Move up even though raycast was down bc we want to go the opposite direction the raycast went.
                 }
             }
@@ -184,19 +244,18 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
             {
                 // See if hit ray length is <=targetLength (to enact displacement)
                 bool enactDisplacement = false;
-                if (hitInfo.m_closestHitFraction * rayLength <= targetLength)  // @COPYPASTA
+                if (closestHitRayLength <= targetLength)  // @COPYPASTA
                     enactDisplacement = true;
 
                 if (enactDisplacement)  // Correct if the knee space ray is hitting the ground underneath while on a steep slope
                 {
-                    glm::vec3 hitNormalWorld = physutil::toVec3(hitInfo.m_hitNormalWorld);
-                    float_t targetLengthDifference = targetLength - hitInfo.m_closestHitFraction * rayLength;
+                    float_t targetLengthDifference = targetLength - closestHitRayLength;
                     float_t UdotN = glm::dot(hitNormalWorld, glm::vec3(0, 1, 0));
                     _displacementToTarget = hitNormalWorld * targetLengthDifference * UdotN;
 
                     // Additional displacement to make sure player doesn't push into the slope (using velocity)
                     glm::vec3 flatVelocity = glm::vec3(velocity.x, 0, velocity.z);
-                    if (glm::length2(flatVelocity) > 0.0001f)
+                    if (velocity.y < 0.0f && glm::length2(flatVelocity) > 0.0001f)
                     {
                         glm::vec3 flatHitNormalWorldNormalized = glm::normalize(glm::vec3(hitNormalWorld.x, 0, hitNormalWorld.z));
                         float_t NVdotNN = glm::dot(glm::normalize(flatVelocity), flatHitNormalWorldNormalized);
@@ -224,7 +283,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         //                    16 spots too.
         //                      -Timo 2022/11/09
         //            @PS: I don't really think it'd work extremely well if the radius of the capsule collider were so small that a thin piece of geometry would be able to slide between raycasts however.
-        if (!hitInfo.hasHit() && !_onGround && velocity.y < 0.0f)
+        /*if (!hitInfo.hasHit() && !_onGround && velocity.y < 0.0f)
         {
             constexpr uint32_t numSamples = 16;
             constexpr float_t circularPatternAngleFromOrigin = glm::radians(47.0f);
@@ -294,7 +353,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
                     }
                 }
             }
-        }
+        }*/
     }
     else
         _jumpPreventOnGroundCheckFramesTimer--;
