@@ -57,8 +57,8 @@ private:
     int32_t _jumpPreventOnGroundCheckFramesTimer = -1;
     int32_t _jumpInputBufferFramesTimer          = -1;
 
-    // Air dash mode
-    bool      _airDashMode            = false;
+    // Air dash move
+    bool      _airDashMove            = false;
     bool      _usedAirDash            = false;
     glm::vec3 _airDashDirection;
     float_t   _airDashTime            = 0.25f;

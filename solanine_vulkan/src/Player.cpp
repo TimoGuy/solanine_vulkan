@@ -245,7 +245,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
 
     processGrounded(velocity, physicsDeltaTime);
     
-    if (_airDashMode)
+    if (_airDashMove)
     {
         //
         // Process air dash
@@ -258,7 +258,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         _airDashTimeElapsed += physicsDeltaTime;
         if (_onGround || _airDashTimeElapsed > _airDashTime)
         {
-            _airDashMode = false;
+            _airDashMove = false;
         }
     }
     else
@@ -358,7 +358,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
                 if (glm::length2(_worldSpaceInput) > 0.0001f)
                     _airDashDirection = glm::normalize(_worldSpaceInput);
 
-                _airDashMode = true;
+                _airDashMove = true;
                 _usedAirDash = true;
                 _airDashTimeElapsed = 0.0f;
                 AudioEngine::getInstance().playSoundFromList({
@@ -422,7 +422,7 @@ void Player::renderImGui()
     
     ImGui::Separator();
 
-    ImGui::Text(("_airDashMode: " + std::to_string(_airDashMode)).c_str());
+    ImGui::Text(("_airDashMove: " + std::to_string(_airDashMove)).c_str());
     ImGui::Text(("_usedAirDash: " + std::to_string(_usedAirDash)).c_str());
     ImGui::DragFloat3("_airDashDirection", &_airDashDirection[0]);
     ImGui::DragFloat("_airDashTime", &_airDashTime);
