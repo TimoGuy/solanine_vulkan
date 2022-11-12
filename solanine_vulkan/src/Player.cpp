@@ -262,9 +262,55 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         // Reset everything else
         _flagDrawOrSheathWeapon = false;
         _airDashMove = false;
+
+        // If entering combat mode and is airborne,
+        // do a 45 degree downwards air dash
+        if (_isCombatMode && !_onGround)
+        {
+            _airDashDirection = glm::vec3(0, -glm::sin(glm::radians(45.0f)), glm::cos(glm::radians(45.0f)));
+            _airDashDirection = glm::quat(glm::vec3(0, _facingDirection, 0)) * _airDashDirection;
+
+            // @COPYPASTA
+            _airDashMove = true;
+            _usedAirDash = true;
+            _airDashPrepauseTime = 0.25f;
+            _airDashPrepauseTimeElapsed = 0.0f;
+            _airDashTimeElapsed = 0.0f;
+            _airDashSpeed = _airDashSpeedXZ;
+        }
     }
 
-    if (_isCombatMode)
+    if (_airDashMove)
+    {
+        //
+        // Process air dash
+        //
+        if (_airDashPrepauseTimeElapsed < _airDashPrepauseTime)
+        {
+            velocity = glm::vec3(0.0f);
+            _airDashPrepauseTimeElapsed += physicsDeltaTime;
+        }
+        else
+        {
+            velocity = _airDashDirection * physutil::lerp(_airDashSpeed, _airDashSpeed * _airDashFinishSpeedFrac, _airDashTimeElapsed / _airDashTime);
+
+            // First frame of actual dash, play sound
+            if (_airDashTimeElapsed == 0.0f)
+                AudioEngine::getInstance().playSoundFromList({
+                    "res/sfx/wip_char_mad_dash_red_left.ogg",
+                    "res/sfx/wip_char_mad_dash_red_right.ogg",
+                    });
+
+            _airDashTimeElapsed += physicsDeltaTime;
+        }
+
+        // Exit air dash
+        if (_onGround || _airDashTimeElapsed > _airDashTime)
+        {
+            _airDashMove = false;
+        }
+    }
+    else if (_isCombatMode)
     {
         //
         // Process combat mode
@@ -312,22 +358,6 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         if (_flagJump)
         {
             _flagJump = false;
-        }
-    }
-    else if (_airDashMove)
-    {
-        //
-        // Process air dash
-        //
-        float_t dashSpXZ = physutil::lerp(_airDashSpeedXZ, _airDashSpeedXZ * _airDashFinishSpeedFrac, _airDashTimeElapsed / _airDashTime);
-        float_t dashSpY  = physutil::lerp( _airDashSpeedY,  _airDashSpeedY * _airDashFinishSpeedFrac, _airDashTimeElapsed / _airDashTime);
-        velocity = _airDashDirection * glm::vec3(dashSpXZ, dashSpY, dashSpXZ);
-
-        // Exit air dash
-        _airDashTimeElapsed += physicsDeltaTime;
-        if (_onGround || _airDashTimeElapsed > _airDashTime)
-        {
-            _airDashMove = false;
         }
     }
     else
@@ -424,16 +454,18 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
                 //        a jump they can do in the air. You will need to detect whether they are too close to the ground to store the jump input rather than do it as a
                 //        air dash  -Timo
                 _airDashDirection = glm::vec3(0, 1, 0);
+                _airDashSpeed = _airDashSpeedY;
                 if (glm::length2(_worldSpaceInput) > 0.0001f)
+                {
                     _airDashDirection = glm::normalize(_worldSpaceInput);
+                    _airDashSpeed = _airDashSpeedXZ;
+                }
 
                 _airDashMove = true;
                 _usedAirDash = true;
+                _airDashPrepauseTime = 0.0f;
+                _airDashPrepauseTimeElapsed = 0.0f;
                 _airDashTimeElapsed = 0.0f;
-                AudioEngine::getInstance().playSoundFromList({
-                    "res/sfx/wip_char_mad_dash_red_left.ogg",
-                    "res/sfx/wip_char_mad_dash_red_right.ogg",
-                });
 
                 jumpSuccessful = true;
 
@@ -500,6 +532,7 @@ void Player::renderImGui()
     ImGui::DragFloat3("_airDashDirection", &_airDashDirection[0]);
     ImGui::DragFloat("_airDashTime", &_airDashTime);
     ImGui::DragFloat("_airDashTimeElapsed", &_airDashTimeElapsed);
+    ImGui::DragFloat("_airDashSpeed", &_airDashSpeed);
     ImGui::DragFloat("_airDashSpeedXZ", &_airDashSpeedXZ);
     ImGui::DragFloat("_airDashSpeedY", &_airDashSpeedY);
     ImGui::DragFloat("_airDashFinishSpeedFrac", &_airDashFinishSpeedFrac);

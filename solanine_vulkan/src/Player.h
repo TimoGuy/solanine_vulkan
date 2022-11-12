@@ -62,14 +62,17 @@ private:
     bool      _isCombatMode           = false;
 
     // Air dash move
-    bool      _airDashMove            = false;
-    bool      _usedAirDash            = false;
+    bool      _airDashMove                = false;
+    bool      _usedAirDash                = false;
     glm::vec3 _airDashDirection;
-    float_t   _airDashTime            = 0.25f;
+    float_t   _airDashPrepauseTime        = 0.0f;
+    float_t   _airDashPrepauseTimeElapsed;
+    float_t   _airDashTime                = 0.25f;
     float_t   _airDashTimeElapsed;
-    float_t   _airDashSpeedXZ         = 100.0f;
-    float_t   _airDashSpeedY          = 50.0f;
-    float_t   _airDashFinishSpeedFrac = 0.25f;
+    float_t   _airDashSpeed;  // Cooked value
+    float_t   _airDashSpeedXZ             = 100.0f;
+    float_t   _airDashSpeedY              = 50.0f;
+    float_t   _airDashFinishSpeedFrac     = 0.25f;
 
     // Replay system
     ReplayData _replayData;
