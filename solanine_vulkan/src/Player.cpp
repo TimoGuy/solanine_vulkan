@@ -316,10 +316,18 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
             //
             // Do the normal jump
             //
-            bool jumpSuccessful = false;
-            switch (_numJumpsExecuted)
+            enum JumpType
             {
-            case 0:
+                GROUNDED_JUMP,
+                AIR_DASH,
+                NONE,
+            } jumpType;
+            jumpType = (_onGround || (int32_t)_stepsSinceLastGrounded <= _jumpCoyoteFrames) ? GROUNDED_JUMP : (_usedAirDash ? NONE : AIR_DASH);
+
+            bool jumpSuccessful = false;
+            switch (jumpType)
+            {
+            case GROUNDED_JUMP:
                 if (_onGround || (int32_t)_stepsSinceLastGrounded <= _jumpCoyoteFrames)
                 {
                     // @DEBUG: if you want something to look at coyote time and jump buffering metrics, uncomment
@@ -329,6 +337,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
                     velocity.y = 
                         glm::sqrt(_jumpHeight * 2.0f * PhysicsEngine::getInstance().getGravityStrength());
                     _displacementToTarget = glm::vec3(0.0f);
+                    _stepsSinceLastGrounded = _jumpCoyoteFrames;  // This is to prevent ground sticking right after a jump and multiple jumps performed right after another jump was done!
 
                     // @TODO: add some kind of audio event system, or even better, figure out how to use FMOD!!! Bc it's freakign integrated lol
                     AudioEngine::getInstance().playSoundFromList({
@@ -340,7 +349,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
                 }
                 break;
 
-            case 1:
+            case AIR_DASH:
             {
                 // @TODO: you're gonna have to check for jump buffer time for this bc there is a chance that the player is intending to jump on the ground despite having
                 //        a jump they can do in the air. You will need to detect whether they are too close to the ground to store the jump input rather than do it as a
@@ -350,6 +359,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
                     _airDashDirection = glm::normalize(_worldSpaceInput);
 
                 _airDashMode = true;
+                _usedAirDash = true;
                 _airDashTimeElapsed = 0.0f;
                 AudioEngine::getInstance().playSoundFromList({
                     "res/sfx/wip_char_mad_dash_red_left.ogg",
@@ -360,16 +370,17 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
 
                 break;
             }
+
+            case NONE:
+                break;
             }
 
             // Turn off flag for sure if successfully jumped
             if (jumpSuccessful)
             {
-                _stepsSinceLastGrounded = _jumpCoyoteFrames;  // This is to prevent ground sticking right after a jump and multiple jumps performed right after another jump was done!
                 _jumpPreventOnGroundCheckFramesTimer = _jumpPreventOnGroundCheckFrames;
                 _jumpInputBufferFramesTimer = -1;
                 _flagJump = false;
-                _numJumpsExecuted++;
             }
 
             // Turn off flag if jump buffer frames got exhausted
@@ -412,6 +423,7 @@ void Player::renderImGui()
     ImGui::Separator();
 
     ImGui::Text(("_airDashMode: " + std::to_string(_airDashMode)).c_str());
+    ImGui::Text(("_usedAirDash: " + std::to_string(_usedAirDash)).c_str());
     ImGui::DragFloat3("_airDashDirection", &_airDashDirection[0]);
     ImGui::DragFloat("_airDashTime", &_airDashTime);
     ImGui::DragFloat("_airDashTimeElapsed", &_airDashTimeElapsed);
@@ -578,7 +590,7 @@ void Player::processGrounded(glm::vec3& velocity, const float_t& physicsDeltaTim
                 "res/sfx/wip_OOT_Steps_Dirt4.wav",
                 });
         _stepsSinceLastGrounded = 0;
-        _numJumpsExecuted = 0;
+        _usedAirDash = false;
         _physicsObj->body->setGravity(btVector3(0, 0, 0));
         velocity.y = 0.0f;
     }

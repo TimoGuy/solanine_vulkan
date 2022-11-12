@@ -50,7 +50,6 @@ private:
     bool      _flagJump        = false;
 
     bool      _onGround = false;
-    uint32_t  _numJumpsExecuted = 0;
     glm::vec3 _groundContactNormal;
     uint32_t  _stepsSinceLastGrounded = 0;
     glm::vec3 _displacementToTarget = glm::vec3(0.0f);
@@ -60,6 +59,7 @@ private:
 
     // Air dash mode
     bool      _airDashMode            = false;
+    bool      _usedAirDash            = false;
     glm::vec3 _airDashDirection;
     float_t   _airDashTime            = 0.25f;
     float_t   _airDashTimeElapsed;
