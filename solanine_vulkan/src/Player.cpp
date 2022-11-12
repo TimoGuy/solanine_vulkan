@@ -137,6 +137,11 @@ void Player::update(const float_t& deltaTime)
         }
     }
 
+    if (input::onRMBPress)
+    {
+        _flagDrawOrSheathWeapon = true;
+    }
+
     //
     // Calculate render object transform
     //
@@ -152,6 +157,7 @@ void Player::update(const float_t& deltaTime)
         {
             input = glm::vec2(0.0f);
             _flagJump = false;
+            _flagDrawOrSheathWeapon = false;
         }
 
         glm::vec3 flatCameraFacingDirection = _camera->sceneCamera.facingDirection;
@@ -193,6 +199,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         {
             input = glm::vec2(0.0f);
             _flagJump = false;
+            _flagDrawOrSheathWeapon = false;
         }
 
         glm::vec3 flatCameraFacingDirection = _camera->sceneCamera.facingDirection;
@@ -244,8 +251,70 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     _displacementToTarget = glm::vec3(0.0f);
 
     processGrounded(velocity, physicsDeltaTime);
-    
-    if (_airDashMove)
+
+    if (_flagDrawOrSheathWeapon)
+    {
+        //
+        // Enter/exit combat mode
+        //
+        _isCombatMode = !_isCombatMode;
+
+        // Reset everything else
+        _flagDrawOrSheathWeapon = false;
+        _airDashMove = false;
+    }
+
+    if (_isCombatMode)
+    {
+        //
+        // Process combat mode
+        //
+
+        //
+        // Calculate rigidbody velocity
+        // @COPYPASTA
+        //
+        glm::vec3 desiredVelocity = _worldSpaceInput * _maxSpeed;  // @NOTE: we just ignore the y component in this desired velocity thing
+
+        glm::vec2 a(velocity.x, velocity.z);
+        glm::vec2 b(desiredVelocity.x, desiredVelocity.z);
+
+        if (_onGround)
+            if (glm::length2(b) < 0.0001f)
+                _renderObj->animator->setTrigger("goto_idle");
+            else
+                _renderObj->animator->setTrigger("goto_run");
+
+        bool useAcceleration;
+        if (glm::length2(b) < 0.0001f)
+            useAcceleration = false;
+        else if (glm::length2(a) < 0.0001f)
+            useAcceleration = true;
+        else
+        {
+            float_t AdotB = glm::dot(glm::normalize(a), glm::normalize(b));
+            if (glm::length(a) * AdotB > glm::length(b))    // @TODO: use your head and think of how to use length2 for this
+                useAcceleration = false;
+            else
+                useAcceleration = true;
+        }
+
+        float_t acceleration    = _onGround ? _maxAcceleration : _maxMidairAcceleration;
+        if (!useAcceleration)
+            acceleration        = _onGround ? _maxDeceleration : _maxMidairDeceleration;
+        float_t maxSpeedChange  = acceleration * physicsDeltaTime;
+
+        glm::vec2 c = physutil::moveTowardsVec2(a, b, maxSpeedChange);
+        velocity.x = c.x;
+        velocity.z = c.y;
+
+        // Ignore jump requests
+        if (_flagJump)
+        {
+            _flagJump = false;
+        }
+    }
+    else if (_airDashMove)
     {
         //
         // Process air dash
@@ -419,6 +488,10 @@ void Player::renderImGui()
     ImGui::DragInt("_jumpPreventOnGroundCheckFrames", &_jumpPreventOnGroundCheckFrames, 1.0f, 0, 10);
     ImGui::DragInt("_jumpCoyoteFrames", &_jumpCoyoteFrames, 1.0f, 0, 10);
     ImGui::DragInt("_jumpInputBufferFrames", &_jumpInputBufferFrames, 1.0f, 0, 10);
+
+    ImGui::Separator();
+
+    ImGui::Text(("_isCombatMode: " + std::to_string(_isCombatMode)).c_str());
     
     ImGui::Separator();
 
