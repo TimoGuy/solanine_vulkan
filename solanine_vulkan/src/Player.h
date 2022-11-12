@@ -44,16 +44,28 @@ private:
     float_t _bottomRaycastExtraDist;
     float_t _adjustedHalfHeight;
 
+    void processGrounded(glm::vec3& velocity, const float_t& physicsDeltaTime);
+
     glm::vec3 _worldSpaceInput = glm::vec3(0.0f);
     bool      _flagJump        = false;
 
-    bool _onGround = false;
+    bool      _onGround = false;
+    uint32_t  _numJumpsExecuted = 0;
     glm::vec3 _groundContactNormal;
-    uint32_t _stepsSinceLastGrounded = 0;
+    uint32_t  _stepsSinceLastGrounded = 0;
     glm::vec3 _displacementToTarget = glm::vec3(0.0f);
 
     int32_t _jumpPreventOnGroundCheckFramesTimer = -1;
     int32_t _jumpInputBufferFramesTimer          = -1;
+
+    // Air dash mode
+    bool      _airDashMode            = false;
+    glm::vec3 _airDashDirection;
+    float_t   _airDashTime            = 0.25f;
+    float_t   _airDashTimeElapsed;
+    float_t   _airDashSpeedXZ         = 100.0f;
+    float_t   _airDashSpeedY          = 50.0f;
+    float_t   _airDashFinishSpeedFrac = 0.25f;
 
     // Replay system
     ReplayData _replayData;
