@@ -1000,7 +1000,7 @@ void VulkanEngine::initVulkan()
 
 	auto instance = builder.set_app_name("Hawsoo_Solanine_x64")
 		.request_validation_layers(true)
-		.require_api_version(1, 3, 0)
+		.require_api_version(1, 2, 0)
 		.use_default_debug_messenger()
 		.build();
 
@@ -1015,7 +1015,7 @@ void VulkanEngine::initVulkan()
 
 	vkb::PhysicalDeviceSelector selector{ vkbInstance };
 	vkb::PhysicalDevice physicalDevice = selector
-		.set_minimum_version(1, 3)
+		.set_minimum_version(1, 2)
 		.set_surface(_surface)
 		.set_required_features({
 			// @NOTE: @FEATURES: Enable required features right here
