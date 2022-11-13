@@ -261,12 +261,15 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
 
         if (_isCombatMode)
         {
-            AudioEngine::getInstance().playSound("res/sfx/wip_OOT_Sword_Draw.wav");
+            AudioEngine::getInstance().playSound("res/sfx/wip_draw_weapon.ogg");
             _renderObj->animator->setTrigger("goto_combat_mode");
         }
         else
         {
-            AudioEngine::getInstance().playSound("res/sfx/wip_OOT_Sword_Away.wav");
+            AudioEngine::getInstance().playSoundFromList({
+                "res/sfx/wip_sheath_weapon.ogg",
+                "res/sfx/wip_sheath_weapon_2.ogg"
+            });
             _renderObj->animator->setTrigger("leave_combat_mode");
         }
 
