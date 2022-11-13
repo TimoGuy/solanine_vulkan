@@ -260,13 +260,19 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         _isCombatMode = !_isCombatMode;
 
         if (_isCombatMode)
+        {
             AudioEngine::getInstance().playSound("res/sfx/wip_OOT_Sword_Draw.wav");
+            _renderObj->animator->setTrigger("goto_combat_mode");
+        }
         else
+        {
             AudioEngine::getInstance().playSound("res/sfx/wip_OOT_Sword_Away.wav");
+            _renderObj->animator->setTrigger("leave_combat_mode");
+        }
 
         // Reset everything else
         _flagDrawOrSheathWeapon = false;
-        // _airDashMove = false;
+        _airDashMove = false;  // @NOTE: I added this back in like 5 minutes after removing it bc the 45deg air dash is with the sword drawn, so it makes sense to nullify it if you're gonna sheath your weapon.  -Timo 2022/11/12    @NOTE: I think that removing this is important so that you can do the airborne sword drawing airdash and then put your sword away to jump easier  -Timo 2022/11/12
 
         // If entering combat mode and is airborne,
         // do a 45 degree downwards air dash
@@ -320,6 +326,8 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         //
         // Process combat mode
         //
+
+        // @TODO
 
         //
         // Calculate rigidbody velocity

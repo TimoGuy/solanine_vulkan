@@ -1795,6 +1795,13 @@ namespace vkglTF
 
 	void Animator::setTrigger(const std::string& triggerName)
 	{
+		if (animStateMachine->triggerNameToIndex.find(triggerName) == animStateMachine->triggerNameToIndex.end())
+		{
+			std::cerr << "[ANIMATOR SET TRIGGER]" << std::endl
+				<< "WARNING: Trigger name \"" << triggerName << "\" not found in animator" << std::endl;
+			return;
+		}
+
 		size_t triggerIndex = animStateMachine->triggerNameToIndex[triggerName];
 		animStateMachine->triggers[triggerIndex].activated = true;
 	}
