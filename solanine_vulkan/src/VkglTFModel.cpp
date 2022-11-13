@@ -1853,14 +1853,15 @@ namespace vkglTF
 							q2.z = sampler.outputsVec4[i + 1].z;
 							q2.w = sampler.outputsVec4[i + 1].w;
 
-							// float_t omu = 1.0f - u;  // One Minus U
+							float_t omu = 1.0f - u;  // One Minus U
 
-							// // Super simple neighboring... might be glitchy
-							// if (glm::dot(q1, q2) < 0.0f)
-							// 	omu = -omu;
+							// Super simple neighboring... might be glitchy
+							if (glm::dot(q1, q2) < 0.0f)
+								omu = -omu;
 
-							// channel.node->rotation = glm::normalize(u * q1 + omu * q2);    // @NOTE: by using slerp instead of nlerp, you eat tenth's of a millisecond. So take from it what you will. This is more expensive, HOWEVER, I don't know how to implement nlerp correctly atm so that's something to possibly change in the future bc there's a way to do it that I don't really understand  -Timo
-							channel.node->rotation = glm::normalize(glm::slerp(q1, q2, u));
+							// @TODO: there's a better quaternion neighboring scheme than what's written here... use that one instead (i.e. https://youtu.be/vmAY5kP-tpU?t=1301)
+							channel.node->rotation = glm::normalize(omu * q1 + u * q2);    // @NOTE: by using slerp instead of nlerp, you eat tenth's of a millisecond. So take from it what you will. This is more expensive, HOWEVER, I don't know how to implement nlerp correctly atm so that's something to possibly change in the future bc there's a way to do it that I don't really understand  -Timo
+							// channel.node->rotation = glm::normalize(glm::slerp(q1, q2, u));
 							break;
 						}
 						}
