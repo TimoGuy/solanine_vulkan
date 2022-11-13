@@ -18,6 +18,7 @@
 #include "SceneManagement.h"
 #include "DataSerialization.h"
 #include "Debug.h"
+#include "GlobalState.h"
 #include "imgui/imgui.h"
 #include "imgui/imgui_stdlib.h"
 #include "imgui/imgui_impl_sdl.h"
@@ -99,13 +100,13 @@ void VulkanEngine::init()
 	vkglTF::Animator::initializeEmpty(this);
 	AudioEngine::getInstance().initialize();
 	PhysicsEngine::getInstance().initialize(this);
+	globalState::initGlobalState(_camera->sceneCamera);
 
 	SDL_ShowWindow(_window);
 
 	_isInitialized = true;
 
-	std::string startupSceneFname = "sample_scene_simplified.ssdat";
-	scene::loadScene(startupSceneFname, this);
+	scene::loadScene(globalState::activeScene, this);
 }
 
 void VulkanEngine::run()
@@ -114,8 +115,6 @@ void VulkanEngine::run()
 	// Initialize Scene Camera
 	//
 	_camera->sceneCamera.aspect = (float_t)_windowExtent.width / (float_t)_windowExtent.height;
-	_camera->sceneCamera.gpuCameraData.cameraPosition = {5.43231487, 13.2406960, 1.41502118};
-	_camera->sceneCamera.facingDirection = {-0.570508420, -0.390730739, 0.722388268};
 	
 	// @HARDCODED: Set the initial light direction
 	_pbrRendering.gpuSceneShadingProps.lightDir = glm::normalize(glm::vec4(0.432f, 0.864f, 0.259f, 0.0f));
@@ -128,6 +127,9 @@ void VulkanEngine::run()
 	bool isRunning = true;
 	float_t ticksFrequency = 1.0f / (float_t)SDL_GetPerformanceFrequency();
 	uint64_t lastFrame = SDL_GetPerformanceCounter();
+
+	float_t saveGlobalStateTime        = 45.0f;  // 45 seconds
+	float_t saveGlobalStateTimeElapsed = 0.0f;
 
 	while (isRunning)
 	{
@@ -176,6 +178,14 @@ void VulkanEngine::run()
 		// Update animators
 		_roManager->updateAnimators(deltaTime);
 
+		// Update global state
+		saveGlobalStateTimeElapsed += deltaTime;
+		if (saveGlobalStateTimeElapsed > saveGlobalStateTime)
+		{
+			saveGlobalStateTimeElapsed = 0.0f;
+			globalState::launchAsyncWriteTask();
+		}
+
 		// Update Audio Engine
 		AudioEngine::getInstance().update();
 
@@ -201,6 +211,7 @@ void VulkanEngine::cleanup()
 
 		delete _entityManager;  // @NOTE: all entities must be deleted before the physicsengine can shut down
 
+		globalState::cleanupGlobalState();
 		PhysicsEngine::getInstance().cleanup();
 		AudioEngine::getInstance().cleanup();
 
@@ -218,6 +229,7 @@ void VulkanEngine::cleanup()
 		vkDestroyInstance(_instance, nullptr);
 
 		SDL_DestroyWindow(_window);
+
 	}
 }
 
@@ -4040,9 +4052,9 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 
 	static float_t scenePropertiesWindowWidth = 0.0f;
 	ImGui::SetNextWindowPos(ImVec2(_windowExtent.width - scenePropertiesWindowWidth, 0.0f), ImGuiCond_Always);
-	ImGui::Begin((scene::currentLoadedScene + " Properties").c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
+	ImGui::Begin((globalState::activeScene + " Properties").c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
 	{
-		ImGui::Text(scene::currentLoadedScene.c_str());
+		ImGui::Text(globalState::activeScene.c_str());
 
 		static std::vector<std::string> listOfScenes;
 		if (ImGui::Button("Open Scene.."))
@@ -4066,7 +4078,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 
 		ImGui::SameLine();
 		if (ImGui::Button("Save Scene"))
-			scene::saveScene(scene::currentLoadedScene, _entityManager->_entities, this);
+			scene::saveScene(globalState::activeScene, _entityManager->_entities, this);
 
 		ImGui::SameLine();
 		if (ImGui::Button("Save Scene As.."))
@@ -4078,7 +4090,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 			if (ImGui::Button(("Save As \"" + saveSceneAsFname + ".ssdat\"").c_str()))
 			{
 				scene::saveScene(saveSceneAsFname + ".ssdat", _entityManager->_entities, this);
-				scene::currentLoadedScene = saveSceneAsFname + ".ssdat";
+				globalState::activeScene = saveSceneAsFname + ".ssdat";
 				ImGui::CloseCurrentPopup();
 			}
 			ImGui::EndPopup();

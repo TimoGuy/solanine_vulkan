@@ -12,7 +12,7 @@ struct GPUCameraData
 	glm::mat4 view;
 	glm::mat4 projection;
 	glm::mat4 projectionView;
-	glm::vec3 cameraPosition;
+	glm::vec3 cameraPosition = { 5.43231487, 13.2406960, 1.41502118 };
 };
 
 struct GPUCascadeViewProjsData
@@ -28,7 +28,7 @@ struct GPUCascadeViewProjsData
 //
 struct SceneCamera
 {
-	glm::vec3 facingDirection = { 0.0f, 0.0f, 1.0f };
+	glm::vec3 facingDirection = { -0.570508420, -0.390730739, 0.722388268 };
 	float_t fov               = glm::radians(70.0f);
 	float_t aspect;
 	float_t zNear             = 0.1f;

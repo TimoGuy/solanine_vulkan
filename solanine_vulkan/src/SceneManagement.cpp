@@ -7,6 +7,7 @@
 #include "Camera.h"
 #include "Debug.h"
 #include "StringHelper.h"
+#include "GlobalState.h"
 
 #include "Player.h"
 #include "Yosemite.h"
@@ -37,8 +38,6 @@ namespace scene
 
         return ent;
     }
-
-    extern std::string currentLoadedScene = "";
 
     std::vector<std::string> getListOfScenes()
     {
@@ -127,7 +126,7 @@ namespace scene
             success &= (spinupNewObject(newObjectType, engine, &dsCooked) != nullptr);
         }
 
-        currentLoadedScene = name;
+        globalState::activeScene = name;
 
         if (success)
             debug::pushDebugMessage({

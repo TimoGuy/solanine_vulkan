@@ -200,6 +200,9 @@
     <ClInclude Include="src\ReplaySystem.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\GlobalState.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Main.cpp">
@@ -299,6 +302,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\ReplaySystem.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\GlobalState.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
