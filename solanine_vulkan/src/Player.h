@@ -72,6 +72,7 @@ private:
     float_t   _airDashSpeed;  // Cooked value
     float_t   _airDashSpeedXZ             = 100.0f;
     float_t   _airDashSpeedY              = 50.0f;
+    float_t   _airDashFinishSpeedFracCooked;
     float_t   _airDashFinishSpeedFrac     = 0.25f;
 
     // Replay system

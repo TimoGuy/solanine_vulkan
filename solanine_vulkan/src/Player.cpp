@@ -287,6 +287,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
             _airDashPrepauseTime = 0.25f;
             _airDashPrepauseTimeElapsed = 0.0f;
             _airDashTimeElapsed = 0.0f;
+            _airDashFinishSpeedFracCooked = 1.0f;
             _airDashSpeed = _airDashSpeedXZ;
         }
     }
@@ -303,7 +304,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         }
         else
         {
-            velocity = _airDashDirection * physutil::lerp(_airDashSpeed, _airDashSpeed * _airDashFinishSpeedFrac, _airDashTimeElapsed / _airDashTime);
+            velocity = _airDashDirection * physutil::lerp(_airDashSpeed, _airDashSpeed * _airDashFinishSpeedFracCooked, _airDashTimeElapsed / _airDashTime);
 
             // First frame of actual dash, play sound
             if (_airDashTimeElapsed == 0.0f)
@@ -479,6 +480,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
                 _airDashPrepauseTime = 0.0f;
                 _airDashPrepauseTimeElapsed = 0.0f;
                 _airDashTimeElapsed = 0.0f;
+                _airDashFinishSpeedFracCooked = _airDashFinishSpeedFrac;
 
                 jumpSuccessful = true;
 
@@ -548,6 +550,7 @@ void Player::renderImGui()
     ImGui::DragFloat("_airDashSpeed", &_airDashSpeed);
     ImGui::DragFloat("_airDashSpeedXZ", &_airDashSpeedXZ);
     ImGui::DragFloat("_airDashSpeedY", &_airDashSpeedY);
+    ImGui::DragFloat("_airDashFinishSpeedFracCooked", &_airDashFinishSpeedFracCooked);
     ImGui::DragFloat("_airDashFinishSpeedFrac", &_airDashFinishSpeedFrac);
 }
 
