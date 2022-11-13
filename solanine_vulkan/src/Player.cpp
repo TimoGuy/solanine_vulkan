@@ -259,9 +259,14 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         //
         _isCombatMode = !_isCombatMode;
 
+        if (_isCombatMode)
+            AudioEngine::getInstance().playSound("res/sfx/wip_OOT_Sword_Draw.wav");
+        else
+            AudioEngine::getInstance().playSound("res/sfx/wip_OOT_Sword_Away.wav");
+
         // Reset everything else
         _flagDrawOrSheathWeapon = false;
-        _airDashMove = false;
+        // _airDashMove = false;
 
         // If entering combat mode and is airborne,
         // do a 45 degree downwards air dash
