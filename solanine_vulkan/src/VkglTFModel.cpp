@@ -89,16 +89,21 @@ namespace vkglTF
 	//
 	void Node::generateCalculateJointMatrixTaskflow(Animator* animator, tf::Taskflow& taskflow, tf::Task* taskPrerequisite)
 	{
-		auto smolTask = taskflow.emplace([&, animator]() {
-			update(animator);
-			});
+		if (mesh)
+		{
+			auto smolTask = taskflow.emplace([&, animator]() {
+				update(animator);
+				});
 
-		if (taskPrerequisite != nullptr)
-			smolTask.succeed(*taskPrerequisite);
+			if (taskPrerequisite != nullptr)
+				smolTask.succeed(*taskPrerequisite);
+
+			taskPrerequisite = &smolTask;
+		}
 
 		for (auto& child : children)
 		{
-			child->generateCalculateJointMatrixTaskflow(animator, taskflow, &smolTask);
+			child->generateCalculateJointMatrixTaskflow(animator, taskflow, taskPrerequisite);
 		}
 	}
 
@@ -121,11 +126,8 @@ namespace vkglTF
 
 	void Node::update(Animator* animator)
 	{
-		if (mesh)
-		{
-			glm::mat4 m = getMatrix();
-			animator->updateJointMatrices(mesh->animatorMeshId, skin, m);
-		}
+		glm::mat4 m = getMatrix();
+		animator->updateJointMatrices(mesh->animatorMeshId, skin, m);
 	}
 
 	Node::~Node()
@@ -1070,7 +1072,6 @@ namespace vkglTF
 			return;
 		}
 
-		animStateMachine = new StateMachine();
 		{
 			StateMachine::State newState = {};
 
@@ -1098,7 +1099,7 @@ namespace vkglTF
 
 					// Wrap up the previous state under creation if there was one
 					if (!newState.stateName.empty())
-						animStateMachine->states.push_back(newState);  // @TODO: that'd be good if there were a check on the data to make sure it has an animation assigned at the very least
+						animStateMachine.states.push_back(newState);  // @TODO: that'd be good if there were a check on the data to make sure it has an animation assigned at the very least
 
 					// New state
 					newState = {};
@@ -1160,20 +1161,20 @@ namespace vkglTF
 
 			// @COPYPASTA: @COPYPASTA: Wrap up the previous state under creation if there was one
 			if (!newState.stateName.empty())
-				animStateMachine->states.push_back(newState);
+				animStateMachine.states.push_back(newState);
 		}
 
 		//
 		// Compile transition trigger names to trigger indices
 		//
-		for (auto& state : animStateMachine->states)
+		for (auto& state : animStateMachine.states)
 		{
 			for (auto& transition : state.transitions)
 			{
 				bool foundInTriggerList = false;
-				for (size_t i = 0; i < animStateMachine->triggers.size(); i++)
+				for (size_t i = 0; i < animStateMachine.triggers.size(); i++)
 				{
-					auto& trigger = animStateMachine->triggers[i];
+					auto& trigger = animStateMachine.triggers[i];
 					if (trigger.triggerName == transition.triggerName)
 					{
 						transition.triggerIndex = i;
@@ -1185,10 +1186,10 @@ namespace vkglTF
 				if (!foundInTriggerList)
 				{
 					// Create new trigger in trigger list
-					size_t index = animStateMachine->triggers.size();
+					size_t index = animStateMachine.triggers.size();
 					transition.triggerIndex = index;
-					animStateMachine->triggerNameToIndex[transition.triggerName] = index;
-					animStateMachine->triggers.push_back({ transition.triggerName, false });
+					animStateMachine.triggerNameToIndex[transition.triggerName] = index;
+					animStateMachine.triggers.push_back({ transition.triggerName, false });
 				}
 			}
 		}
@@ -1198,10 +1199,10 @@ namespace vkglTF
 		//
 		std::map<std::string, size_t> stateNameToIndex;
 		size_t stateIndex = 0;
-		for (auto& state : animStateMachine->states)
+		for (auto& state : animStateMachine.states)
 			stateNameToIndex[state.stateName] = stateIndex++;
 
-		for (auto& state : animStateMachine->states)
+		for (auto& state : animStateMachine.states)
 		{
 			if (state.onFinish.useOnFinish)
 			{
@@ -1230,7 +1231,7 @@ namespace vkglTF
 		//
 		// Compile state animation names to animation indices
 		//
-		for (auto& state : animStateMachine->states)
+		for (auto& state : animStateMachine.states)
 		{
 			bool foundIndex = false;
 			for (size_t animInd = 0; animInd < gltfModel.animations.size(); animInd++)
@@ -1251,6 +1252,8 @@ namespace vkglTF
 					<< "Anim: \"" << state.animationName << "\" was not found in model \"" << fnameCooked << "\""<< std::endl;
 			}
 		}
+
+		animStateMachine.loaded = true;
 	}
 
 	void Model::loadFromFile(VulkanEngine* engine, std::string filename, float scale)
@@ -1273,6 +1276,11 @@ namespace vkglTF
 			binary = (filename.substr(extpos + 1, filename.length() - extpos) == "glb");
 
 		bool fileLoaded = binary ? gltfContext.LoadBinaryFromFile(&gltfModel, &error, &warning, filename.c_str()) : gltfContext.LoadASCIIFromFile(&gltfModel, &error, &warning, filename.c_str());
+
+
+		// nodes[skins[iter].joints[iter]].name == boneName
+		// iter -> (for the joints) becomes the index for the jointMatrixList to refer to
+
 
 		LoaderInfo loaderInfo{ };
 		size_t vertexCount = 0;
@@ -1565,7 +1573,7 @@ namespace vkglTF
 			return;  // @NOTE: emptyAnimator does this on purpose
 
 		engine           = model->engine;
-		animStateMachine = model->animStateMachine;
+		animStateMachineCopy = StateMachine(model->animStateMachine);  // Make a copy to play with here
 		asmStateIndex    = 0;
 
 		uint32_t meshId = 0;
@@ -1615,8 +1623,8 @@ namespace vkglTF
 			node->generateCalculateJointMatrixTaskflow(this, calculateJointMatricesTaskflow, nullptr);
 
 		// Calculate Initial Pose
-		uint32_t animIndex = animStateMachine ? animStateMachine->states[asmStateIndex].animationIndex : 0;
-		bool loop          = animStateMachine ? animStateMachine->states[asmStateIndex].loop           : true;
+		uint32_t animIndex = animStateMachineCopy.loaded ? animStateMachineCopy.states[asmStateIndex].animationIndex : 0;
+		bool loop          = animStateMachineCopy.loaded ? animStateMachineCopy.states[asmStateIndex].loop           : true;
 		playAnimation(animIndex, loop);
 		updateAnimation();
 	}
@@ -1728,7 +1736,7 @@ namespace vkglTF
 		}
 
 		// Update the state machine
-		if (animStateMachine)
+		if (animStateMachineCopy.loaded)
 		{
 			//
 			// The implementatino of the animatino state machine:
@@ -1743,7 +1751,7 @@ namespace vkglTF
 			do
 			{
 				resetTriggers = true;
-				auto& currentState = animStateMachine->states[asmStateIndex];
+				auto& currentState = animStateMachineCopy.states[asmStateIndex];
 			
 				// First priority, see if onFinish should get triggered
 				if (animEndedThisFrame && currentState.onFinish.useOnFinish)
@@ -1756,9 +1764,9 @@ namespace vkglTF
 				// Second priority, everything else (triggers)
 				else
 				{
-					for (size_t i = 0; i < animStateMachine->triggers.size() && resetTriggers; i++)  // @NOTE: resetTriggers is also used as a flag for if a trigger got applied and the asmStateIndex updated
+					for (size_t i = 0; i < animStateMachineCopy.triggers.size() && resetTriggers; i++)  // @NOTE: resetTriggers is also used as a flag for if a trigger got applied and the asmStateIndex updated
 					{
-						if (!animStateMachine->triggers[i].activated)
+						if (!animStateMachineCopy.triggers[i].activated)
 							continue;
 
 						for (auto& transition : currentState.transitions)
@@ -1768,7 +1776,7 @@ namespace vkglTF
 
 							// Apply transition via trigger
 							asmStateIndex = transition.toStateIndex;
-							animStateMachine->triggers[i].activated = false;  // Reset that one trigger used
+							animStateMachineCopy.triggers[i].activated = false;  // Reset that one trigger used
 							resetTriggers = false;
 							animEndedThisFrame = false;  // New state entered; anim just started so reset this!
 						}
@@ -1778,13 +1786,13 @@ namespace vkglTF
 			while (!resetTriggers);
 
 			// Reset triggers
-			for (auto& trigger : animStateMachine->triggers)
+			for (auto& trigger : animStateMachineCopy.triggers)
 				trigger.activated = false;
 
 			// Apply new animation if changed
 			if (prevAsmStateIndex != asmStateIndex)
 			{
-				auto& state = animStateMachine->states[asmStateIndex];
+				auto& state = animStateMachineCopy.states[asmStateIndex];
 				playAnimation(state.animationIndex, state.loop);
 			}
 		}
@@ -1795,15 +1803,15 @@ namespace vkglTF
 
 	void Animator::setTrigger(const std::string& triggerName)
 	{
-		if (animStateMachine->triggerNameToIndex.find(triggerName) == animStateMachine->triggerNameToIndex.end())
+		if (animStateMachineCopy.triggerNameToIndex.find(triggerName) == animStateMachineCopy.triggerNameToIndex.end())
 		{
 			std::cerr << "[ANIMATOR SET TRIGGER]" << std::endl
 				<< "WARNING: Trigger name \"" << triggerName << "\" not found in animator" << std::endl;
 			return;
 		}
 
-		size_t triggerIndex = animStateMachine->triggerNameToIndex[triggerName];
-		animStateMachine->triggers[triggerIndex].activated = true;
+		size_t triggerIndex = animStateMachineCopy.triggerNameToIndex[triggerName];
+		animStateMachineCopy.triggers[triggerIndex].activated = true;
 	}
 
 	void Animator::updateAnimation()

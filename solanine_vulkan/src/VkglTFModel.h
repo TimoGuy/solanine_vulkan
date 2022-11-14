@@ -221,6 +221,7 @@ namespace vkglTF
 			std::vector<Transition> transitions;
 		};
 
+		bool                          loaded = false;
 		std::vector<Trigger>          triggers;
 		std::vector<State>            states;
 		std::map<std::string, size_t> triggerNameToIndex;  // @NOTE: at the very most, the entity owning the animator should be using this, not the internal animator code!
@@ -309,7 +310,7 @@ namespace vkglTF
 
 	private:
 		VulkanEngine* engine;
-		StateMachine* animStateMachine;
+		StateMachine  animStateMachine;
 
 		friend struct Animator;
 	};
@@ -321,7 +322,7 @@ namespace vkglTF
 
 		static void initializeEmpty(VulkanEngine* engine);
 		static void destroyEmpty(VulkanEngine* engine);
-		static VkDescriptorSet* getEmptyJointDescriptorSet();
+		static VkDescriptorSet* getEmptyJointDescriptorSet();  // For binding to represent a non-skinned mesh
 
 		void playAnimation(uint32_t animationIndex, bool loop, float_t time = 0.0f);  // This is for direct control of the animation index
 		void update(const float_t& deltaTime);
@@ -331,7 +332,7 @@ namespace vkglTF
 	private:
 		vkglTF::Model* model;
 		VulkanEngine* engine;
-		StateMachine* animStateMachine;
+		StateMachine  animStateMachineCopy;
 		size_t asmStateIndex;
 
 		void updateAnimation();
