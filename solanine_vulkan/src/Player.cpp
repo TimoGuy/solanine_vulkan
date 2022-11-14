@@ -66,8 +66,9 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
         [&](btPersistentManifold* manifold, bool amIB) { onCollisionStay(manifold, amIB); };
     _physicsObj->onCollisionStayCallback = &_onCollisionStayFunc;
 
-    _enableUpdate = true;
     _enablePhysicsUpdate = true;
+    _enableUpdate = true;
+    _enableLateUpdate = true;
 }
 
 Player::~Player()
@@ -180,9 +181,13 @@ void Player::update(const float_t& deltaTime)
     // Update render transform
     if (glm::length2(_worldSpaceInput) > 0.01f)
         _facingDirection = glm::atan(_worldSpaceInput.x, _worldSpaceInput.z);
+}
 
+void Player::lateUpdate(const float_t& deltaTime)
+{
     glm::vec3 interpPos = physutil::getPosition(_physicsObj->interpolatedTransform);
     _characterRenderObj->transformMatrix = glm::translate(glm::mat4(1.0f), interpPos) * glm::toMat4(glm::quat(glm::vec3(0, _facingDirection, 0)));
+    _weaponRenderObj->transformMatrix    = glm::translate(glm::mat4(1.0f), interpPos) * glm::toMat4(glm::quat(glm::vec3(0, _facingDirection, 0)));
 }
 
 void Player::physicsUpdate(const float_t& physicsDeltaTime)

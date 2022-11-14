@@ -57,8 +57,8 @@ Enemy::Enemy(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSe
         [&](btPersistentManifold* manifold, bool amIB) { onCollisionStay(manifold, amIB); };
     _physicsObj->onCollisionStayCallback = &_onCollisionStayFunc;
 
-    _enableUpdate = true;
     _enablePhysicsUpdate = true;
+    _enableUpdate = true;
 }
 
 Enemy::~Enemy()

@@ -21,8 +21,9 @@ public:
     Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSerialized* ds);
     ~Player();
 
-    void update(const float_t& deltaTime);
     void physicsUpdate(const float_t& physicsDeltaTime);
+    void update(const float_t& deltaTime);
+    void lateUpdate(const float_t& deltaTime);
 
     void dump(DataSerializer& ds);
     void load(DataSerialized& ds);

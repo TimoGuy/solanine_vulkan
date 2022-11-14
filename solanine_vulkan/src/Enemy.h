@@ -21,8 +21,8 @@ public:
     Enemy(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSerialized* ds);
     ~Enemy();
 
-    void update(const float_t& deltaTime);
     void physicsUpdate(const float_t& physicsDeltaTime);
+    void update(const float_t& deltaTime);
 
     void dump(DataSerializer& ds);
     void load(DataSerialized& ds);

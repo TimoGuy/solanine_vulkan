@@ -169,14 +169,17 @@ void VulkanEngine::run()
 		// Update entities
 		_entityManager->update(deltaTime);
 
+		// Update animators
+		_roManager->updateAnimators(deltaTime);
+
+		// Late update (i.e. after animators are run)
+		_entityManager->lateUpdate(deltaTime);
+
 		// Update camera
 		_camera->update(deltaTime);
 
 		// Add/Remove requested entities
 		_entityManager->INTERNALaddRemoveRequestedEntities();
-
-		// Update animators
-		_roManager->updateAnimators(deltaTime);
 
 		// Update global state
 		saveGlobalStateTimeElapsed += deltaTime;
