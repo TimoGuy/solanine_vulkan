@@ -16,20 +16,20 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
     if (ds)
         load(*ds);
 
-    _characterModel = _rom->getModel("SlimeGirl");
+    vkglTF::Model* characterModel = _rom->getModel("SlimeGirl");
     _characterRenderObj =
         _rom->registerRenderObject({
-            .model = _characterModel,
-            .animator = new vkglTF::Animator(_characterModel),
+            .model = characterModel,
+            .animator = new vkglTF::Animator(characterModel),
             .transformMatrix = glm::translate(glm::mat4(1.0f), _load_position) * glm::toMat4(glm::quat(glm::vec3(0, _facingDirection, 0))),
             .renderLayer = RenderLayer::VISIBLE,
             .attachedEntityGuid = getGUID(),
             });
 
-    _weaponModel = _rom->getModel("WingWeapon");
+    vkglTF::Model* weaponModel = _rom->getModel("WingWeapon");
     _weaponRenderObj =
         _rom->registerRenderObject({
-            .model = _weaponModel,
+            .model = weaponModel,
             .renderLayer = RenderLayer::INVISIBLE,
             .attachedEntityGuid = getGUID(),
             });

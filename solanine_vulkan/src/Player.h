@@ -31,10 +31,9 @@ public:
     void renderImGui();
 
 private:
-    vkglTF::Model* _characterModel;
-    RenderObject*  _characterRenderObj;
-    vkglTF::Model* _weaponModel;
-    RenderObject*  _weaponRenderObj;
+    ;
+    RenderObject*    _characterRenderObj;
+    RenderObject*    _weaponRenderObj;
     RenderObjectManager* _rom;
     btCapsuleShape* _collisionShape;
     RegisteredPhysicsObject* _physicsObj;
