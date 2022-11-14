@@ -337,6 +337,9 @@ namespace vkglTF
 
 		void updateAnimation();
 		void updateJointMatrices(uint32_t animatorMeshId, vkglTF::Skin* skin, glm::mat4& m);
+	public:
+		glm::mat4 getJointMatrix(const std::string& jointName);
+	private:
 
 		uint32_t animationIndex;
 		float_t  time;

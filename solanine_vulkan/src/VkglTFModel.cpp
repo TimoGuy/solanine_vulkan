@@ -1277,11 +1277,6 @@ namespace vkglTF
 
 		bool fileLoaded = binary ? gltfContext.LoadBinaryFromFile(&gltfModel, &error, &warning, filename.c_str()) : gltfContext.LoadASCIIFromFile(&gltfModel, &error, &warning, filename.c_str());
 
-
-		// nodes[skins[iter].joints[iter]].name == boneName
-		// iter -> (for the joints) becomes the index for the jointMatrixList to refer to
-
-
 		LoaderInfo loaderInfo{ };
 		size_t vertexCount = 0;
 		size_t indexCount = 0;
@@ -1907,6 +1902,37 @@ namespace vkglTF
 		{
 			memcpy(uniformBuffers[animatorMeshId].mapped, &m, sizeof(glm::mat4));
 		}
+	}
+
+	glm::mat4 Animator::getJointMatrix(const std::string& jointName)
+	{
+		// Find the joint with this name
+		int32_t jointIndex = -1;
+		glm::mat4 jointLocalMatrix;
+		for (auto& skins : model->skins)
+		{
+			for (size_t i = 0; i < skins->joints.size(); i++)
+			{
+				auto& joint = skins->joints[i];
+				if (joint->name == jointName)
+				{
+					jointIndex = (int32_t)i;
+					jointLocalMatrix = joint->localMatrix();
+					break;
+				}
+			}
+		}
+
+		if (jointIndex < 0)
+		{
+			std::cerr << "[GET JOINT MATRIX]" << std::endl
+				<< "WARNING: joint matrix \"" << jointName << "\" not found. Returning identity matrix" << std::endl;
+			return glm::mat4(1.0f);
+		}
+
+		// Return the joint information (cooked)
+		auto& ub = uniformBlocks[0];  // Yo... I think that the first one should be updated right????
+		return jointLocalMatrix * ub.jointMatrix[(size_t)jointIndex];  // Hopefully this is <128 eh!
 	}
 
 	Animator::UniformBuffer& Animator::getUniformBuffer(size_t index)
