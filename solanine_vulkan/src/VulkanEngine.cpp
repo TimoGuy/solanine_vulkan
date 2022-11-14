@@ -989,6 +989,8 @@ void VulkanEngine::immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& fu
 {
 	VkCommandBuffer cmd = _uploadContext.commandBuffer;
 	VkCommandBufferBeginInfo cmdBeginInfo = vkinit::commandBufferBeginInfo(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+
+	vkQueueWaitIdle(_graphicsQueue);  // @NOTE: this is for multithreaded situations
 	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 
 	function(cmd);
@@ -3036,7 +3038,7 @@ void VulkanEngine::generatePBRCubemaps()
 
 					VkDeviceSize offsets[1] = { 0 };
 
-					auto skybox = _roManager->getModel("box");
+					auto skybox = _roManager->getModel("Box");
 					skybox->bind(cmd);
 					skybox->draw(cmd);
 
@@ -3624,23 +3626,32 @@ void VulkanEngine::loadMeshes()
 	tf::Executor e;
 	tf::Taskflow taskflow;
 
-	vkglTF::Model
-		*box,
-		*devBoxWood,
-		*slimeGirl,
-		*wipEnemy;
-	taskflow.emplace(
-		[&]() { box = new vkglTF::Model(); box->loadFromFile(this, "res/models/Box.gltf"); },
-		[&]() { devBoxWood = new vkglTF::Model(); devBoxWood->loadFromFile(this, "res/models/DevBoxWood.glb"); },
-		[&]() { slimeGirl = new vkglTF::Model(); slimeGirl->loadFromFile(this, "res/models/SlimeGirl.glb"); },
-		[&]() { wipEnemy = new vkglTF::Model(); wipEnemy->loadFromFile(this, "res/models/EnemyWIP.glb"); }
-	);
+	std::vector<std::pair<std::string, vkglTF::Model*>> modelNameAndModels;
+	for (const auto& entry : std::filesystem::recursive_directory_iterator("res/models/"))
+	{
+		const auto& path = entry.path();
+		if (std::filesystem::is_directory(path))
+			continue;		// Ignore directories
+		if (!path.has_extension() ||
+			(path.extension().compare(".gltf") != 0 &&
+			path.extension().compare(".glb") != 0))
+			continue;		// @NOTE: ignore non-model files
+
+		modelNameAndModels.push_back(
+			std::make_pair<std::string, vkglTF::Model*>(path.stem().string(), nullptr)
+		);
+
+		size_t      targetIndex = modelNameAndModels.size() - 1;
+		std::string pathString  = path.string();
+		taskflow.emplace([&, targetIndex, pathString]() {
+			modelNameAndModels[targetIndex].second = new vkglTF::Model();
+			modelNameAndModels[targetIndex].second->loadFromFile(this, pathString);
+		});
+	}
 	e.run(taskflow).wait();
 
-	_roManager->createModel(box, "box");
-	_roManager->createModel(devBoxWood, "devBoxWood");
-	_roManager->createModel(slimeGirl, "slimeGirl");
-	_roManager->createModel(wipEnemy, "wipEnemy");
+	for (auto& pair : modelNameAndModels)
+		_roManager->createModel(pair.second, pair.first);
 }
 
 void VulkanEngine::uploadCurrentFrameToGPU(const FrameData& currentFrame)
@@ -3689,7 +3700,7 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipelineLayout, 1, 1, &skyboxMaterial.textureSet, 0, nullptr);
 
-		auto skybox = _roManager->getModel("box");
+		auto skybox = _roManager->getModel("Box");
 		skybox->bind(cmd);
 		skybox->draw(cmd);
 	}

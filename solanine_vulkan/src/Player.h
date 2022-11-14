@@ -32,7 +32,9 @@ public:
 
 private:
     vkglTF::Model* _characterModel;
-    RenderObject* _renderObj;
+    RenderObject*  _characterRenderObj;
+    vkglTF::Model* _weaponModel;
+    RenderObject*  _weaponRenderObj;
     RenderObjectManager* _rom;
     btCapsuleShape* _collisionShape;
     RegisteredPhysicsObject* _physicsObj;

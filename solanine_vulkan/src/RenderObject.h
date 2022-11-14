@@ -18,10 +18,10 @@ enum class RenderLayer
 
 struct RenderObject
 {
-	vkglTF::Model* model;
+	vkglTF::Model* model       = nullptr;
 	vkglTF::Animator* animator = nullptr;
-	glm::mat4 transformMatrix;
-	RenderLayer renderLayer;
+	glm::mat4 transformMatrix  = glm::mat4(1.0f);
+	RenderLayer renderLayer    = RenderLayer::VISIBLE;
 	std::string attachedEntityGuid;  // @NOTE: this is just for @DEBUG purposes for the imgui property panel
 };
 

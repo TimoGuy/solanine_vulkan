@@ -16,7 +16,7 @@ Enemy::Enemy(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSe
     if (ds)
         load(*ds);
 
-    _characterModel = _rom->getModel("wipEnemy");
+    _characterModel = _rom->getModel("EnemyWIP");
 
     _renderObj =
         _rom->registerRenderObject({

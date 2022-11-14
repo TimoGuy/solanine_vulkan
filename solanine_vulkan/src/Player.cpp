@@ -16,9 +16,8 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
     if (ds)
         load(*ds);
 
-    _characterModel = _rom->getModel("slimeGirl");
-
-    _renderObj =
+    _characterModel = _rom->getModel("SlimeGirl");
+    _characterRenderObj =
         _rom->registerRenderObject({
             .model = _characterModel,
             .animator = new vkglTF::Animator(_characterModel),
@@ -27,7 +26,15 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
             .attachedEntityGuid = getGUID(),
             });
 
-    _camera->mainCamMode.setMainCamTargetObject(_renderObj);  // @NOTE: I believe that there should be some kind of main camera system that targets the player by default but when entering different volumes etc. the target changes depending.... essentially the system needs to be more built out imo
+    _weaponModel = _rom->getModel("WingWeapon");
+    _weaponRenderObj =
+        _rom->registerRenderObject({
+            .model = _weaponModel,
+            .renderLayer = RenderLayer::INVISIBLE,
+            .attachedEntityGuid = getGUID(),
+            });
+
+    _camera->mainCamMode.setMainCamTargetObject(_characterRenderObj);  // @NOTE: I believe that there should be some kind of main camera system that targets the player by default but when entering different volumes etc. the target changes depending.... essentially the system needs to be more built out imo
 
     _totalHeight = 5.0f;
     _maxClimbAngle = glm::radians(47.0f);
@@ -65,8 +72,9 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
 
 Player::~Player()
 {
-    delete _renderObj->animator;
-    _rom->unregisterRenderObject(_renderObj);
+    delete _characterRenderObj->animator;
+    _rom->unregisterRenderObject(_characterRenderObj);
+    _rom->unregisterRenderObject(_weaponRenderObj);
     PhysicsEngine::getInstance().unregisterPhysicsObject(_physicsObj);
 
     // @TODO: figure out if I need to call `delete _collisionShape;` or not
@@ -174,7 +182,7 @@ void Player::update(const float_t& deltaTime)
         _facingDirection = glm::atan(_worldSpaceInput.x, _worldSpaceInput.z);
 
     glm::vec3 interpPos = physutil::getPosition(_physicsObj->interpolatedTransform);
-    _renderObj->transformMatrix = glm::translate(glm::mat4(1.0f), interpPos) * glm::toMat4(glm::quat(glm::vec3(0, _facingDirection, 0)));
+    _characterRenderObj->transformMatrix = glm::translate(glm::mat4(1.0f), interpPos) * glm::toMat4(glm::quat(glm::vec3(0, _facingDirection, 0)));
 }
 
 void Player::physicsUpdate(const float_t& physicsDeltaTime)
@@ -262,7 +270,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         if (_isCombatMode)
         {
             AudioEngine::getInstance().playSound("res/sfx/wip_draw_weapon.ogg");
-            _renderObj->animator->setTrigger("goto_combat_mode");
+            _characterRenderObj->animator->setTrigger("goto_combat_mode");
         }
         else
         {
@@ -270,7 +278,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
                 "res/sfx/wip_sheath_weapon.ogg",
                 "res/sfx/wip_sheath_weapon_2.ogg"
             });
-            _renderObj->animator->setTrigger("leave_combat_mode");
+            _characterRenderObj->animator->setTrigger("leave_combat_mode");
         }
 
         // Reset everything else
@@ -344,9 +352,9 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
 
         if (_onGround)
             if (glm::length2(b) < 0.0001f)
-                _renderObj->animator->setTrigger("goto_idle");
+                _characterRenderObj->animator->setTrigger("goto_idle");
             else
-                _renderObj->animator->setTrigger("goto_run");
+                _characterRenderObj->animator->setTrigger("goto_run");
 
         bool useAcceleration;
         if (glm::length2(b) < 0.0001f)
@@ -400,9 +408,9 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
 
         if (_onGround)
             if (glm::length2(b) < 0.0001f)
-                _renderObj->animator->setTrigger("goto_idle");
+                _characterRenderObj->animator->setTrigger("goto_idle");
             else
-                _renderObj->animator->setTrigger("goto_run");
+                _characterRenderObj->animator->setTrigger("goto_run");
 
         bool useAcceleration;
         if (glm::length2(b) < 0.0001f)
@@ -514,7 +522,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
 void Player::dump(DataSerializer& ds)
 {
     Entity::dump(ds);
-    ds.dumpVec3(physutil::getPosition(_renderObj->transformMatrix));
+    ds.dumpVec3(physutil::getPosition(_characterRenderObj->transformMatrix));
     ds.dumpFloat(_facingDirection);
 }
 
@@ -723,7 +731,7 @@ void Player::processGrounded(glm::vec3& velocity, const float_t& physicsDeltaTim
     {
         _physicsObj->body->setGravity(PhysicsEngine::getInstance().getGravity());
         if (_stepsSinceLastGrounded)
-            _renderObj->animator->setTrigger("goto_fall");
+            _characterRenderObj->animator->setTrigger("goto_fall");
     }
 }
 

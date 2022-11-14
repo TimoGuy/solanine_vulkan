@@ -15,7 +15,7 @@ Yosemite::Yosemite(EntityManager* em, RenderObjectManager* rom, DataSerialized* 
     if (ds)
         load(*ds);
 
-    _cubeModel = _rom->getModel("devBoxWood");
+    _cubeModel = _rom->getModel("DevBoxWood");
 
     _renderObj =
         _rom->registerRenderObject({

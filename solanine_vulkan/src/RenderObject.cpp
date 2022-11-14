@@ -67,7 +67,11 @@ vkglTF::Model* RenderObjectManager::getModel(const std::string& name)
 {
 	auto it = _renderObjectModels.find(name);
 	if (it == _renderObjectModels.end())
+	{
+		std::cerr << "[GET MODEL]" << std::endl
+			<< "ERROR: requested model \"" << name << "\" was not found. Returning nullptr" << std::endl;
 		return nullptr;
+	}
 	return it->second;
 }
 
