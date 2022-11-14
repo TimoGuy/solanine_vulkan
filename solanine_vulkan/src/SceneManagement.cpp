@@ -11,14 +11,18 @@
 
 #include "Player.h"
 #include "Yosemite.h"
+#include "Enemy.h"
 
 
+// @PALETTE: where to add serialized names for the entities
 const std::vector<std::string> ENTITY_TYPE_NAMES = {
     ":player",
     ":yosemite",
+    ":enemy",
 };
 const std::string Player::TYPE_NAME   = ENTITY_TYPE_NAMES[0];
 const std::string Yosemite::TYPE_NAME = ENTITY_TYPE_NAMES[1];
+const std::string Enemy::TYPE_NAME    = ENTITY_TYPE_NAMES[2];
 
 
 namespace scene
@@ -35,6 +39,14 @@ namespace scene
             ent = new Player(engine->_entityManager, engine->_roManager, engine->_camera, ds);
         if (objectName == Yosemite::TYPE_NAME)
             ent = new Yosemite(engine->_entityManager, engine->_roManager, ds);
+        if (objectName == Enemy::TYPE_NAME)
+            ent = new Enemy(engine->_entityManager, engine->_roManager, engine->_camera, ds);
+
+        if (ent == nullptr)
+        {
+            std::cerr << "[ENTITY CREATION]" << std::endl
+                << "ERROR: creating entity \"" << objectName << "\" did not match any creation routines." << std::endl;
+        }
 
         return ent;
     }

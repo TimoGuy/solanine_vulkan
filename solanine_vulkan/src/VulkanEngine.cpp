@@ -3627,17 +3627,20 @@ void VulkanEngine::loadMeshes()
 	vkglTF::Model
 		*box,
 		*devBoxWood,
-		*slimeGirl;
+		*slimeGirl,
+		*wipEnemy;
 	taskflow.emplace(
 		[&]() { box = new vkglTF::Model(); box->loadFromFile(this, "res/models/Box.gltf"); },
 		[&]() { devBoxWood = new vkglTF::Model(); devBoxWood->loadFromFile(this, "res/models/DevBoxWood.glb"); },
-		[&]() { slimeGirl = new vkglTF::Model(); slimeGirl->loadFromFile(this, "res/models/SlimeGirl.glb"); }
+		[&]() { slimeGirl = new vkglTF::Model(); slimeGirl->loadFromFile(this, "res/models/SlimeGirl.glb"); },
+		[&]() { wipEnemy = new vkglTF::Model(); wipEnemy->loadFromFile(this, "res/models/EnemyWIP.glb"); }
 	);
 	e.run(taskflow).wait();
 
 	_roManager->createModel(box, "box");
 	_roManager->createModel(devBoxWood, "devBoxWood");
 	_roManager->createModel(slimeGirl, "slimeGirl");
+	_roManager->createModel(wipEnemy, "wipEnemy");
 }
 
 void VulkanEngine::uploadCurrentFrameToGPU(const FrameData& currentFrame)
