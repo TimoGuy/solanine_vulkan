@@ -990,10 +990,12 @@ size_t VulkanEngine::padUniformBufferSize(size_t originalSize)
 
 void VulkanEngine::immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function)
 {
+	static std::mutex mutex;
+	std::lock_guard<std::mutex> cmdBufLockGuard(mutex);
+
 	VkCommandBuffer cmd = _uploadContext.commandBuffer;
 	VkCommandBufferBeginInfo cmdBeginInfo = vkinit::commandBufferBeginInfo(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
-	vkQueueWaitIdle(_graphicsQueue);  // @NOTE: this is for multithreaded situations
 	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 
 	function(cmd);

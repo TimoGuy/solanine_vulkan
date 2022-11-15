@@ -188,8 +188,8 @@ void Player::lateUpdate(const float_t& deltaTime)
     glm::vec3 interpPos                  = physutil::getPosition(_physicsObj->interpolatedTransform);
     _characterRenderObj->transformMatrix = glm::translate(glm::mat4(1.0f), interpPos) * glm::toMat4(glm::quat(glm::vec3(0, _facingDirection, 0)));
 
-    glm::mat4 handAttachmentJointMat     = _characterRenderObj->animator->getJointMatrix("Hand Attachment");
-    _weaponRenderObj->transformMatrix    = _characterRenderObj->transformMatrix * handAttachmentJointMat;
+    glm::mat4 attachmentJointMat         = _characterRenderObj->animator->getJointMatrix(_isCombatMode ? "Hand Attachment" : "Back Attachment");
+    _weaponRenderObj->transformMatrix    = _characterRenderObj->transformMatrix * attachmentJointMat;
 }
 
 void Player::physicsUpdate(const float_t& physicsDeltaTime)
