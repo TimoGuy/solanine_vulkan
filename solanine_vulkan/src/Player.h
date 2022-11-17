@@ -32,9 +32,9 @@ public:
     void renderImGui();
 
 private:
-    ;
     RenderObject*    _characterRenderObj;
     RenderObject*    _weaponRenderObj;
+    std::string      _weaponAttachmentJointName;
     RenderObjectManager* _rom;
     btCapsuleShape* _collisionShape;
     RegisteredPhysicsObject* _physicsObj;

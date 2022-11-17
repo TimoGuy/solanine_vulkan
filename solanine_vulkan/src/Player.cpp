@@ -16,11 +16,17 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
     if (ds)
         load(*ds);
 
+    _weaponAttachmentJointName = "Back Attachment";
+    std::vector<vkglTF::Animator::AnimatorCallback> animatorCallbacks = {
+        { "EventSwitchToBackAttachment", [&]() { _weaponAttachmentJointName = "Back Attachment"; } },
+        { "EventSwitchToHandAttachment", [&]() { _weaponAttachmentJointName = "Hand Attachment"; } },
+    };
+
     vkglTF::Model* characterModel = _rom->getModel("SlimeGirl");
     _characterRenderObj =
         _rom->registerRenderObject({
             .model = characterModel,
-            .animator = new vkglTF::Animator(characterModel),
+            .animator = new vkglTF::Animator(characterModel, animatorCallbacks),
             .transformMatrix = glm::translate(glm::mat4(1.0f), _load_position) * glm::toMat4(glm::quat(glm::vec3(0, _facingDirection, 0))),
             .renderLayer = RenderLayer::VISIBLE,
             .attachedEntityGuid = getGUID(),
@@ -188,7 +194,7 @@ void Player::lateUpdate(const float_t& deltaTime)
     glm::vec3 interpPos                  = physutil::getPosition(_physicsObj->interpolatedTransform);
     _characterRenderObj->transformMatrix = glm::translate(glm::mat4(1.0f), interpPos) * glm::toMat4(glm::quat(glm::vec3(0, _facingDirection, 0)));
 
-    glm::mat4 attachmentJointMat         = _characterRenderObj->animator->getJointMatrix(_isCombatMode ? "Hand Attachment" : "Back Attachment");
+    glm::mat4 attachmentJointMat         = _characterRenderObj->animator->getJointMatrix(_weaponAttachmentJointName);
     _weaponRenderObj->transformMatrix    = _characterRenderObj->transformMatrix * attachmentJointMat;
 }
 

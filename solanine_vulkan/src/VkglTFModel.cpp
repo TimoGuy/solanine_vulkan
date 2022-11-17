@@ -1148,6 +1148,18 @@ namespace vkglTF
 						trim(newTransition.toStateName);
 						newState.transitions.push_back(newTransition);
 					}
+					else if (line.rfind("event ", 0) == 0)
+					{
+						line = line.substr(sizeof("event ") - 1);
+						trim(line);
+
+						// Assign event
+						StateMachine::Event newEvent = {};
+						newEvent.eventCallAt = (bool)std::stoi(line);
+						newEvent.eventName = line.substr(line.find(' '));
+						trim(newEvent.eventName);
+						newState.events.push_back(newEvent);
+					}
 				}
 				else
 				{
@@ -1193,6 +1205,13 @@ namespace vkglTF
 				}
 			}
 		}
+
+		//
+		// @NOTE: the event names are not compiled bc that will be done in the Animator-owned
+		//        copy level. There, an input for a list of callbacks paired with the event name
+		//        will get added and thus the event index is filled in with references to that
+		//        copy's callbacks.  -Timo 2022/11/17
+		//
 
 		//
 		// Compile state names to state indices
@@ -1562,14 +1581,14 @@ namespace vkglTF
 	Animator::UniformBuffer Animator::emptyUBuffer;
 	Animator::UniformBlock  Animator::emptyUBlock;
 
-	Animator::Animator(vkglTF::Model* model) : model(model)
+	Animator::Animator(vkglTF::Model* model, std::vector<AnimatorCallback>& eventCallbacks) : model(model), eventCallbacks(eventCallbacks)
 	{
 		if (model == nullptr)
 			return;  // @NOTE: emptyAnimator does this on purpose
 
-		engine           = model->engine;
+		engine               = model->engine;
 		animStateMachineCopy = StateMachine(model->animStateMachine);  // Make a copy to play with here
-		asmStateIndex    = 0;
+		asmStateIndex        = 0;
 
 		uint32_t meshId = 0;
 		for (auto node : model->linearNodes)  // @NOTE: linearnodes is used to access all of the meshes bc just nodes just gives top level unless if you recurse thru it
@@ -1622,6 +1641,23 @@ namespace vkglTF
 		bool loop          = animStateMachineCopy.loaded ? animStateMachineCopy.states[asmStateIndex].loop           : true;
 		playAnimation(animIndex, loop);
 		updateAnimation();
+
+		//
+		// Compile the event callbacks to this copy of the animStateMachine
+		//
+		for (auto& state : animStateMachineCopy.states)
+		{
+			for (auto& event : state.events)
+			{
+				for (size_t i = 0; i < eventCallbacks.size(); i++)
+				{
+					if (eventCallbacks[i].eventName == event.eventName)
+					{
+						event.eventIndex = i;
+					}
+				}
+			}
+		}
 	}
 
 	Animator::~Animator()
@@ -1708,24 +1744,27 @@ namespace vkglTF
 
 	void Animator::update(const float_t& deltaTime)
 	{
+		glm::vec2 timeRange = { time, 0.0f };
 		time += deltaTime;
+		timeRange.y = time;  // @NOTE: this has to be pre-clamped/pre-repeat because the 2nd time is exclusive in the check
 
 		bool animEndedThisFrame = false;
+		float_t animDuration = model->animations[animationIndex].end;
 		if (loop)
 		{
 			// Loop animation
-			if (time > model->animations[animationIndex].end)
+			if (time > animDuration)
 			{
-				time -= model->animations[animationIndex].end;
+				time -= animDuration;
 				animEndedThisFrame = true;
 			}
 		}
 		else
 		{
 			// Clamp animation
-			if (time > model->animations[animationIndex].end)
+			if (time > animDuration)
 			{
-				time = model->animations[animationIndex].end;
+				time = animDuration;
 				animEndedThisFrame = true;
 			}
 		}
@@ -1733,6 +1772,23 @@ namespace vkglTF
 		// Update the state machine
 		if (animStateMachineCopy.loaded)
 		{
+			//
+			// Execute events if the time is crossed [tx-1, tx)
+			//
+			auto& currentState = animStateMachineCopy.states[asmStateIndex];
+			timeRange = timeRange / glm::vec2(animDuration);
+			for (auto& event : currentState.events)
+			{
+				if (timeRange.x <= event.eventCallAt && event.eventCallAt < timeRange.y)
+				{
+					//std::cout << "CALLING " << event.eventName << " @ " << event.eventCallAt << std::endl;
+					if (event.eventIndex >= eventCallbacks.size())
+						std::cerr << "[ANIMATOR UPDATE]" << std::endl
+							<< "ERROR: event \"" << event.eventName << "\" which was just referenced does not exist in the list of callbacks. Expect a crash." << std::endl;
+					eventCallbacks[event.eventIndex].callback();  // This can crash... but we want that
+				}
+			}
+
 			//
 			// The implementatino of the animatino state machine:
 			//        - Have the triggers be there and have a flag bool resettriggers and set to true unless if

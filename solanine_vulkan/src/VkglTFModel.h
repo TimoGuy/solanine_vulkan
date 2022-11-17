@@ -211,6 +211,13 @@ namespace vkglTF
 			bool        activated = false;
 		};
 
+		struct Event
+		{
+			float_t     eventCallAt = 0.0f;  // @NOTE: at least for now this is a percentage value
+			std::string eventName;  // @NOTE: just for setup
+			size_t      eventIndex  = (size_t)-1;  // @NOTE: this will be compiled at the animator-owned copy level
+		};
+
 		struct State
 		{
 			std::string             stateName = "";  // @NOTE: just for referencing for debugging etc. after setup
@@ -219,12 +226,13 @@ namespace vkglTF
 			bool                    loop;
 			OnFinish                onFinish;
 			std::vector<Transition> transitions;
+			std::vector<Event>      events;
 		};
 
-		bool                          loaded = false;
-		std::vector<Trigger>          triggers;
-		std::vector<State>            states;
-		std::map<std::string, size_t> triggerNameToIndex;  // @NOTE: at the very most, the entity owning the animator should be using this, not the internal animator code!
+		bool                               loaded = false;
+		std::vector<Trigger>               triggers;
+		std::vector<State>                 states;
+		std::map<std::string, size_t>      triggerNameToIndex;  // @NOTE: at the very most, the entity owning the animator should be using this, not the internal animator code!
 	};
 
 	struct Model
@@ -317,7 +325,13 @@ namespace vkglTF
 
 	struct Animator
 	{
-		Animator(vkglTF::Model* model);
+		struct AnimatorCallback
+		{
+			std::string           eventName;
+			std::function<void()> callback;
+		};
+
+		Animator(vkglTF::Model* model, std::vector<AnimatorCallback>& eventCallbacks);
 		~Animator();
 
 		static void initializeEmpty(VulkanEngine* engine);
@@ -330,10 +344,11 @@ namespace vkglTF
 		void setTrigger(const std::string& triggerName);
 
 	private:
-		vkglTF::Model* model;
-		VulkanEngine* engine;
-		StateMachine  animStateMachineCopy;
-		size_t asmStateIndex;
+		vkglTF::Model*                model;
+		VulkanEngine*                 engine;
+		StateMachine                  animStateMachineCopy;
+		std::vector<AnimatorCallback> eventCallbacks;
+		size_t                        asmStateIndex;
 
 		void updateAnimation();
 		void updateJointMatrices(uint32_t animatorMeshId, vkglTF::Skin* skin, glm::mat4& m);
