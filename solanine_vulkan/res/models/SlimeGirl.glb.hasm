@@ -1,49 +1,73 @@
 :StateIdle
 animation Idle_Hip
 loop      1
-trigger   goto_run     StateRun
-trigger   goto_jump    StateJumpFromIdle
-trigger   goto_fall    StateFall
+trigger   goto_run            StateRun
+trigger   goto_jump           StateJumpFromIdle
+trigger   goto_fall           StateFall
+trigger   goto_combat_mode    StateDrawWeapon
+trigger   leave_combat_mode   StateSheathWeapon
 
 
 :StateRun
 animation Running.inmotion
 loop      1
-trigger   goto_idle    StateIdle
-trigger   goto_jump    StateJumpFromRun
-trigger   goto_fall    StateFall
+trigger   goto_idle           StateIdle
+trigger   goto_jump           StateJumpFromRun
+trigger   goto_fall           StateFall
+trigger   goto_combat_mode    StateDrawWeapon
+trigger   leave_combat_mode   StateSheathWeapon
 
 
 :StateJumpFromIdle
 animation Jumping_From_Idle
 loop      0
-trigger   goto_idle    StateLandIdle
-trigger   goto_run     StateLandRun
+trigger   goto_idle           StateLandIdle
+trigger   goto_run            StateLandRun
+trigger   goto_combat_mode    StateDrawWeapon
+trigger   leave_combat_mode   StateSheathWeapon
 
 
 :StateJumpFromRun
 animation Jumping_From_Run
 loop      0
-trigger   goto_idle    StateLandIdle
-trigger   goto_run     StateLandRun
+trigger   goto_idle           StateLandIdle
+trigger   goto_run            StateLandRun
+trigger   goto_combat_mode    StateDrawWeapon
+trigger   leave_combat_mode   StateSheathWeapon
 
 
 :StateFall
 animation Falling
 loop      0
-trigger   goto_idle    StateLandIdle
-trigger   goto_run     StateLandRun
+trigger   goto_idle           StateLandIdle
+trigger   goto_run            StateLandRun
+trigger   goto_combat_mode    StateDrawWeapon
+trigger   leave_combat_mode   StateSheathWeapon
 
 
 :StateLandIdle
 animation Land_From_Jumping_From_Idle
 loop      0
 on_finish StateIdle
+trigger   goto_combat_mode    StateDrawWeapon
+trigger   leave_combat_mode   StateSheathWeapon
 
 
 :StateLandRun
 animation Land_From_Jumping_From_Run
 loop      0
 on_finish StateRun
+trigger   goto_combat_mode    StateDrawWeapon
+trigger   leave_combat_mode   StateSheathWeapon
 
 
+:StateDrawWeapon
+animation Draw_Weapon
+loop      0
+on_finish StateIdle
+
+
+:StateSheathWeapon
+animation Sheath_Weapon
+loop      0
+on_finish StateIdle
