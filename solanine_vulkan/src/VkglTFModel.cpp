@@ -1908,8 +1908,6 @@ namespace vkglTF
 	{
 		// Find the joint with this name
 		// @IMPROVE: don't have this, instead have a jointindex param you put into this function instead of having to do a long string search
-		int32_t jointIndex = -1;
-		glm::mat4 jointLocalMatrix;
 		for (auto& skins : model->skins)
 		{
 			for (size_t i = 0; i < skins->joints.size(); i++)
@@ -1917,26 +1915,14 @@ namespace vkglTF
 				auto& joint = skins->joints[i];
 				if (joint->name == jointName)
 				{
-					jointIndex = (int32_t)i;
-					jointLocalMatrix = joint->getMatrix();  // Thankfully this only happens once
-					break;
+					return joint->getMatrix();
 				}
 			}
-
-			if (jointIndex >= 0)
-				break;
 		}
 
-		if (jointIndex < 0)
-		{
-			std::cerr << "[GET JOINT MATRIX]" << std::endl
-				<< "WARNING: joint matrix \"" << jointName << "\" not found. Returning identity matrix" << std::endl;
-			return glm::mat4(1.0f);
-		}
-
-		// Return the joint information (cooked)
-		auto& ub = uniformBlocks[0];  // Yo... I think that the first one should be updated right????
-		return ub.matrix * jointLocalMatrix * ub.jointMatrix[(size_t)jointIndex];  // Hopefully this is <128 eh!
+		std::cerr << "[GET JOINT MATRIX]" << std::endl
+			<< "WARNING: joint matrix \"" << jointName << "\" not found. Returning identity matrix" << std::endl;
+		return glm::mat4(1.0f);
 	}
 
 	Animator::UniformBuffer& Animator::getUniformBuffer(size_t index)
