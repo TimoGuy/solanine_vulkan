@@ -66,6 +66,7 @@ animation Draw_Weapon
 loop      0
 on_finish StateIdle
 event     0.0                 EventSwitchToHandAttachment
+event     0.8                 EventPlaySFXMaterialize
 
 
 :StateSheathWeapon
@@ -73,3 +74,4 @@ animation Sheath_Weapon
 loop      0
 on_finish StateIdle
 event     1.0                 EventSwitchToBackAttachment
+event     0.315789474         EventPlaySFXBreakoff

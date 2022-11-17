@@ -20,6 +20,13 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
     std::vector<vkglTF::Animator::AnimatorCallback> animatorCallbacks = {
         { "EventSwitchToBackAttachment", [&]() { _weaponAttachmentJointName = "Back Attachment"; } },
         { "EventSwitchToHandAttachment", [&]() { _weaponAttachmentJointName = "Hand Attachment"; } },
+        { "EventPlaySFXMaterialize",     [&]() { AudioEngine::getInstance().playSound("res/sfx/wip_draw_weapon.ogg"); } },
+        { "EventPlaySFXBreakoff",        [&]() {
+                AudioEngine::getInstance().playSoundFromList({
+                    "res/sfx/wip_sheath_weapon.ogg",
+                    "res/sfx/wip_sheath_weapon_2.ogg"
+                });
+            } },
     };
 
     vkglTF::Model* characterModel = _rom->getModel("SlimeGirl");
@@ -36,7 +43,7 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
     _weaponRenderObj =
         _rom->registerRenderObject({
             .model = weaponModel,
-            .renderLayer = RenderLayer::INVISIBLE,
+            .renderLayer = RenderLayer::VISIBLE,  // @TODO: make the actual wing that materializes the invisible one!
             .attachedEntityGuid = getGUID(),
             });
 
@@ -282,15 +289,10 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
 
         if (_isCombatMode)
         {
-            AudioEngine::getInstance().playSound("res/sfx/wip_draw_weapon.ogg");
             _characterRenderObj->animator->setTrigger("goto_combat_mode");
         }
         else
         {
-            AudioEngine::getInstance().playSoundFromList({
-                "res/sfx/wip_sheath_weapon.ogg",
-                "res/sfx/wip_sheath_weapon_2.ogg"
-            });
             _characterRenderObj->animator->setTrigger("leave_combat_mode");
         }
 

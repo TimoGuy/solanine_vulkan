@@ -1155,7 +1155,7 @@ namespace vkglTF
 
 						// Assign event
 						StateMachine::Event newEvent = {};
-						newEvent.eventCallAt = (bool)std::stoi(line);
+						newEvent.eventCallAt = std::stof(line);
 						newEvent.eventName = line.substr(line.find(' '));
 						trim(newEvent.eventName);
 						newState.events.push_back(newEvent);
@@ -1781,7 +1781,7 @@ namespace vkglTF
 			{
 				if (timeRange.x <= event.eventCallAt && event.eventCallAt < timeRange.y)
 				{
-					//std::cout << "CALLING " << event.eventName << " @ " << event.eventCallAt << std::endl;
+					std::cout << "CALLING " << event.eventName << " @ " << event.eventCallAt << std::endl;
 					if (event.eventIndex >= eventCallbacks.size())
 						std::cerr << "[ANIMATOR UPDATE]" << std::endl
 							<< "ERROR: event \"" << event.eventName << "\" which was just referenced does not exist in the list of callbacks. Expect a crash." << std::endl;
