@@ -31,7 +31,9 @@ namespace input
 		onKeyJumpPress,
 		onKeyF10Press,
 		onKeyF9Press,
-		onKeyF8Press;
+		onKeyF8Press,
+		onKeyLSBPress,
+		onKeyRSBPress;
 
 	void processInput(bool* isRunning, bool* isWindowMinimized);
 }

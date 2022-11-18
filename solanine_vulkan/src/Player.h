@@ -69,9 +69,9 @@ private:
 
     struct WeaponCollision
     {
-        size_t numRays = 4;
+        size_t numRays = 5;
         float_t startOffset = 1.0f;
-        float_t distance = 1.0f;
+        float_t distance = 5.5f;
     } _weaponCollisionProps;
 
     // Air dash move

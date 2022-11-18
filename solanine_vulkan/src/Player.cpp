@@ -431,8 +431,8 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
                 for (size_t i = 0; i < _weaponCollisionProps.numRays; i++, cur += step)
                 {
                     glm::vec3 raycastPosition[2] = {
-                        _weaponPrevTransform              * glm::vec4(0, 0, cur, 1),
-                        _weaponRenderObj->transformMatrix * glm::vec4(0, 0, cur, 1),
+                        _weaponPrevTransform              * glm::vec4(0, cur, 0, 1),
+                        _weaponRenderObj->transformMatrix * glm::vec4(0, cur, 0, 1),
                     };
 
                     if (glm::length2(raycastPosition[1] - raycastPosition[0]) > 0.0001f)
