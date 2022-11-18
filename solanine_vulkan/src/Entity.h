@@ -17,8 +17,9 @@ public:
     virtual void lateUpdate(const float_t& deltaTime) { }    // Gets called once per frame (after animators)
     virtual void dump(DataSerializer& ds) = 0;  // Dumps all the data from the entity to the dataserializer
     virtual void load(DataSerialized& ds) = 0;  // Loads data from the serialized data
+    virtual bool processMessage(DataSerialized& message) { return false; }  // Called thru entitymanager::sendMessage if not directly
     virtual std::string getTypeName() = 0;
-    std::string getGUID() { return _guid; }
+    std::string& getGUID() { return _guid; }
 
     virtual void renderImGui() { }
 

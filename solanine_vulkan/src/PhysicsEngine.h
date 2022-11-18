@@ -47,7 +47,7 @@ public:
     btVector3 getGravityDirection();
     btVector3 getGravity();
 
-    RegisteredPhysicsObject* registerPhysicsObject(float_t mass, glm::vec3 origin, glm::quat rotation, btCollisionShape* shape);    // @NOTE: setting mass=0.0 will make the rigidbody be static
+    RegisteredPhysicsObject* registerPhysicsObject(float_t mass, glm::vec3 origin, glm::quat rotation, btCollisionShape* shape, void* guid);    // @NOTE: setting mass=0.0 will make the rigidbody be static
     void unregisterPhysicsObject(RegisteredPhysicsObject* objRegistration);
 
     void lazyRecreateDebugDrawBuffer();
@@ -76,7 +76,7 @@ private:
     void calculateInterpolatedTransform(RegisteredPhysicsObject& obj, const float_t& physicsAlpha);
 
     std::map<void*, RegisteredPhysicsObject*> _rigidBodyToPhysicsObjectMap;
-    btRigidBody* createRigidBody(float_t mass, const btTransform& startTransform, btCollisionShape* shape, const btVector4& color = btVector4(1, 0, 0, 1));  // @NOTE: the `shape` param looks like just one shape, but in bullet physics you need to add in a `CompoundShape` type into the shape to be able to add in multiple shapes to a single rigidbody
+    btRigidBody* createRigidBody(float_t mass, const btTransform& startTransform, btCollisionShape* shape, void* guid, const btVector4& color = btVector4(1, 0, 0, 1));  // @NOTE: the `shape` param looks like just one shape, but in bullet physics you need to add in a `CompoundShape` type into the shape to be able to add in multiple shapes to a single rigidbody
 
     struct DebugDrawVertex
     {

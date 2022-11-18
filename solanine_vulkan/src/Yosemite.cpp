@@ -34,7 +34,8 @@ Yosemite::Yosemite(EntityManager* em, RenderObjectManager* rom, DataSerialized* 
             false,
             position,
             rotation,
-            new btBoxShape(physutil::toVec3(scale * 0.5f))
+            new btBoxShape(physutil::toVec3(scale * 0.5f)),
+            &getGUID()
         );
 
     _enablePhysicsUpdate = true;
@@ -92,7 +93,8 @@ void Yosemite::updatePhysicsObjFromRenderTransform()
             false,
             position,
             rotation,
-            new btBoxShape(physutil::toVec3(scale * 0.5f))
+            new btBoxShape(physutil::toVec3(scale * 0.5f)),
+            &getGUID()
         );
 }
 #endif

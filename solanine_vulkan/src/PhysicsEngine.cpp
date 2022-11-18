@@ -205,7 +205,7 @@ btVector3 PhysicsEngine::getGravity()
 	return _dynamicsWorld->getGravity();
 }
 
-RegisteredPhysicsObject* PhysicsEngine::registerPhysicsObject(float_t mass, glm::vec3 origin, glm::quat rotation, btCollisionShape* shape)
+RegisteredPhysicsObject* PhysicsEngine::registerPhysicsObject(float_t mass, glm::vec3 origin, glm::quat rotation, btCollisionShape* shape, void* guid)
 {
 	// @NOTE: I'm putting in a new system where instead of a reserved vector,
 	//        there's now a pool where you can register physics objects from
@@ -227,7 +227,7 @@ RegisteredPhysicsObject* PhysicsEngine::registerPhysicsObject(float_t mass, glm:
 	trans.setFromOpenGLMatrix(glm::value_ptr(glmTrans));
 
 	RegisteredPhysicsObject rpo = {
-		.body = createRigidBody(mass, trans, shape),
+		.body = createRigidBody(mass, trans, shape, guid),
 		.prevTransform = trans,    // Set it to this so there's a basis to do the interpolation from
 		.interpolatedTransform = glmTrans,
 	};
@@ -376,7 +376,7 @@ void PhysicsEngine::calculateInterpolatedTransform(RegisteredPhysicsObject& obj,
 	obj.prevTransform = currentTransform;
 }
 
-btRigidBody* PhysicsEngine::createRigidBody(float_t mass, const btTransform& startTransform, btCollisionShape* shape, const btVector4& color)
+btRigidBody* PhysicsEngine::createRigidBody(float_t mass, const btTransform& startTransform, btCollisionShape* shape, void* guid, const btVector4& color)
 {
 	btAssert((!shape || shape->getShapeType() != INVALID_SHAPE_PROXYTYPE));
 
@@ -400,6 +400,7 @@ btRigidBody* PhysicsEngine::createRigidBody(float_t mass, const btTransform& sta
 	body->setWorldTransform(startTransform);
 #endif
 
+	body->setUserPointer(guid);
 	body->setUserIndex(-1);
 	_dynamicsWorld->addRigidBody(body);
 	return body;

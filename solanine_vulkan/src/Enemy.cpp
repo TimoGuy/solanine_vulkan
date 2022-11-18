@@ -44,7 +44,8 @@ Enemy::Enemy(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSe
             1.0f,
             _load_position,
             glm::quat(glm::vec3(0.0f)),
-            _collisionShape
+            _collisionShape,
+            &getGUID()
         );
     _physicsObj->transformOffset = glm::vec3(0, -4, 0);
     auto body = _physicsObj->body;
@@ -107,6 +108,8 @@ void Enemy::update(const float_t& deltaTime)
     _worldSpaceInput =
         input.y * flatCameraFacingDirection +
         input.x * glm::normalize(glm::cross(flatCameraFacingDirection, glm::vec3(0, 1, 0)));*/
+
+    _attackedDebounceTimer -= deltaTime;
 
     // Update render transform
     if (glm::length2(_worldSpaceInput) > 0.01f)
@@ -406,6 +409,35 @@ void Enemy::load(DataSerialized& ds)
     Entity::load(ds);
     _load_position         = ds.loadVec3();
     _facingDirection       = ds.loadFloat();
+}
+
+bool Enemy::processMessage(DataSerialized& message)
+{
+    auto eventName = message.loadString();
+    if (eventName == "event_attacked")
+    {
+        if (_attackedDebounceTimer > 0.0f)
+            return false;
+
+        btVector3 otherPos = physutil::toVec3(message.loadVec3());
+        _physicsObj->body->setLinearVelocity(
+            (_physicsObj->body->getWorldTransform().getOrigin() - otherPos).normalize() * 100.0f
+        );
+
+        AudioEngine::getInstance().playSoundFromList({
+            "res/sfx/wip_bonk.ogg",
+            "res/sfx/wip_hurt.ogg",
+        });
+
+        _attackedDebounceTimer = _attackedDebounce;
+
+        return true;
+    }
+
+    std::cout << "[ENEMY ENT PROCESS MESSAGE]" << std::endl
+        << "WARNING: message event name " << eventName << " unknown implementation" << std::endl;
+
+    return false;
 }
 
 void Enemy::renderImGui()

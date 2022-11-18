@@ -5,6 +5,7 @@
 #include <queue>
 
 class Entity;
+class DataSerialized;
 
 
 class EntityManager
@@ -22,6 +23,7 @@ private:
 	bool INTERNALcheckGUIDCollision(Entity* entity);
 
 public:
+	bool sendMessage(const std::string& guid, DataSerialized& message);
 	void destroyEntity(Entity* entity);    // Do not use the destructor or INTERNALdestroyEntity(), use this function!
 
 private:

@@ -3,6 +3,7 @@
 #include <iostream>
 #include "Entity.h"
 #include "GenerateGUID.h"
+#include "DataSerialization.h"
 
 
 EntityManager::~EntityManager()
@@ -93,6 +94,22 @@ bool EntityManager::INTERNALcheckGUIDCollision(Entity* entity)
 		if (ent != entity)
 			collision |= (ent->getGUID() == guid);
 	return collision;
+}
+
+bool EntityManager::sendMessage(const std::string& guid, DataSerialized& message)
+{
+	for (auto& ent : _entities)
+	{
+		if (ent->getGUID() == guid)
+		{
+			return ent->processMessage(message);
+		}
+	}
+
+	std::cerr << "[ENTITY MGR SEND MESSAGE]" << std::endl
+		<< "WARNING: message \"" << message.loadString() << "\" was not sent bc there was no entity with guid " << guid << " found." << std::endl;  // @TODO: make message.tostring() so that you can see what message didn't go thru
+
+	return false;
 }
 
 void EntityManager::destroyEntity(Entity* entity)

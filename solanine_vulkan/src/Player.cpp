@@ -3,6 +3,7 @@
 #include "VkglTFModel.h"
 #include "PhysicsEngine.h"
 #include "RenderObject.h"
+#include "EntityManager.h"
 #include "Camera.h"
 #include "InputManager.h"
 #include "AudioEngine.h"
@@ -107,7 +108,8 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
             1.0f,
             _load_position,
             glm::quat(glm::vec3(0.0f)),
-            _collisionShape
+            _collisionShape,
+            &getGUID()
         );
     _physicsObj->transformOffset = glm::vec3(0, -4, 0);
     auto body = _physicsObj->body;
@@ -441,7 +443,19 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
                         PhysicsEngine::getInstance().debugDrawLineOneFrame(raycastPosition[0], raycastPosition[1], glm::vec3(0, 0, 1));
                         if (hitInfo.hasHit())
                         {
-                            std::cout << "ASDFAJSDFKASDFJ" << std::endl;
+                            auto& collisionObj = hitInfo.m_collisionObject;
+
+                            std::cout << "[PLAYER ATTACK HIT]" << std::endl
+                                << "Detected object guid: " << *(std::string*)collisionObj->getUserPointer() << std::endl;
+
+                            DataSerializer ds;
+                            ds.dumpString("event_attacked");
+                            ds.dumpVec3(physutil::toVec3(_physicsObj->body->getWorldTransform().getOrigin()));
+                            // ds.dumpVec3(glm::quat(glm::vec3(0, _facingDirection, 0)) * glm::vec3(0, 0, 1));
+
+                            DataSerialized dsd = ds.getSerializedData();
+                            if (_em->sendMessage(*(std::string*)collisionObj->getUserPointer(), dsd))
+                                std::cout << "YAY!" << std::endl;
                         }
                     }
                 }
