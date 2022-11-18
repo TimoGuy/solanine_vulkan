@@ -21,26 +21,43 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
         {
             "EventSwitchToBackAttachment", [&]() {
                 _weaponAttachmentJointName = "Back Attachment";
+                _isCombatMode = false;
             }
         },
         {
             "EventSwitchToHandAttachment", [&]() {
                 _weaponAttachmentJointName = "Hand Attachment";
+                _isCombatMode = true;
             }
         },
         {
-            "EventPlaySFXMaterialize",     [&]() {
+            "EventPlaySFXMaterialize", [&]() {
                 AudioEngine::getInstance().playSound("res/sfx/wip_draw_weapon.ogg");
                 _weaponRenderObj->renderLayer = RenderLayer::VISIBLE;
             }
         },
         {
-            "EventPlaySFXBreakoff",        [&]() {
+            "EventPlaySFXBreakoff", [&]() {
                 AudioEngine::getInstance().playSoundFromList({
                     "res/sfx/wip_sheath_weapon.ogg",
                     "res/sfx/wip_sheath_weapon_2.ogg"
                 });
                 _weaponRenderObj->renderLayer = RenderLayer::INVISIBLE;
+            }
+        },
+        {
+            "EventPlaySFXAttack", [&]() {
+                AudioEngine::getInstance().playSoundFromList({
+                    "res/sfx/wip_MM_Link_Attack1.wav",
+                    "res/sfx/wip_MM_Link_Attack2.wav",
+                    "res/sfx/wip_MM_Link_Attack3.wav",
+                    "res/sfx/wip_MM_Link_Attack4.wav",
+                });
+            }
+        },
+        {
+            "EventEndAttack", [&]() {
+                _isWeaponCollision = false;
             }
         },
     };
@@ -189,6 +206,11 @@ void Player::update(const float_t& deltaTime)
         _flagDrawOrSheathWeapon = true;
     }
 
+    if (input::onLMBPress && _isCombatMode)
+    {
+        _flagAttack = true;
+    }
+
     //
     // Calculate render object transform
     //
@@ -205,6 +227,7 @@ void Player::update(const float_t& deltaTime)
             input = glm::vec2(0.0f);
             _flagJump = false;
             _flagDrawOrSheathWeapon = false;
+            _flagAttack = false;
         }
 
         glm::vec3 flatCameraFacingDirection = _camera->sceneCamera.facingDirection;
@@ -254,6 +277,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
             input = glm::vec2(0.0f);
             _flagJump = false;
             _flagDrawOrSheathWeapon = false;
+            _flagAttack = false;
         }
 
         glm::vec3 flatCameraFacingDirection = _camera->sceneCamera.facingDirection;
@@ -311,15 +335,13 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         //
         // Enter/exit combat mode
         //
-        _isCombatMode = !_isCombatMode;
-
         if (_isCombatMode)
         {
-            _characterRenderObj->animator->setTrigger("goto_combat_mode");
+            _characterRenderObj->animator->setTrigger("leave_combat_mode");
         }
         else
         {
-            _characterRenderObj->animator->setTrigger("leave_combat_mode");
+            _characterRenderObj->animator->setTrigger("goto_combat_mode");
         }
 
         // Reset everything else
@@ -328,7 +350,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
 
         // If entering combat mode and is airborne,
         // do a 45 degree downwards air dash
-        if (_isCombatMode && !_onGround)
+        if (!_isCombatMode && !_onGround)
         {
             _airDashDirection = glm::vec3(0, -glm::sin(glm::radians(45.0f)), glm::cos(glm::radians(45.0f)));
             _airDashDirection = glm::quat(glm::vec3(0, _facingDirection, 0)) * _airDashDirection;
@@ -379,8 +401,54 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         //
         // Process combat mode
         //
+        if (_flagAttack)
+        {
+            //
+            // Start attack
+            //
+            _characterRenderObj->animator->setTrigger("goto_attack");
 
-        // @TODO
+            _flagAttack = false;
+
+            _isWeaponCollision = true;
+            _weaponPrevTransform = glm::mat4(0.0f);
+        }
+
+        if (_isWeaponCollision)
+        {
+            //
+            // Calculate approx of weapon collision
+            //
+            if (_weaponPrevTransform == glm::mat4(0.0f))
+            {
+                // First frame is wasted, but don't want to leak the last frame into the collision
+                _weaponPrevTransform = _weaponRenderObj->transformMatrix;
+            }
+            else
+            {
+                float_t cur = _weaponCollisionProps.startOffset;
+                float_t step = _weaponCollisionProps.distance / (float_t)_weaponCollisionProps.numRays;
+                for (size_t i = 0; i < _weaponCollisionProps.numRays; i++, cur += step)
+                {
+                    glm::vec3 raycastPosition[2] = {
+                        _weaponPrevTransform              * glm::vec4(0, 0, cur, 1),
+                        _weaponRenderObj->transformMatrix * glm::vec4(0, 0, cur, 1),
+                    };
+
+                    if (glm::length2(raycastPosition[1] - raycastPosition[0]) > 0.0001f)
+                    {
+                        auto hitInfo = PhysicsEngine::getInstance().raycast(physutil::toVec3(raycastPosition[0]), physutil::toVec3(raycastPosition[1]));
+                        PhysicsEngine::getInstance().debugDrawLineOneFrame(raycastPosition[0], raycastPosition[1], glm::vec3(0, 0, 1));
+                        if (hitInfo.hasHit())
+                        {
+                            std::cout << "ASDFAJSDFKASDFJ" << std::endl;
+                        }
+                    }
+                }
+
+                _weaponPrevTransform = _weaponRenderObj->transformMatrix;
+            }
+        }
 
         //
         // Calculate rigidbody velocity
@@ -591,6 +659,9 @@ void Player::renderImGui()
     ImGui::Separator();
 
     ImGui::Text(("_isCombatMode: " + std::to_string(_isCombatMode)).c_str());
+    ImGui::DragInt("_weaponCollisionProps.numRays", (int*)&_weaponCollisionProps.numRays, 1.0f, 0, 10);
+    ImGui::DragFloat("_weaponCollisionProps.startOffset", &_weaponCollisionProps.startOffset);
+    ImGui::DragFloat("_weaponCollisionProps.distance", &_weaponCollisionProps.distance);
     
     ImGui::Separator();
 

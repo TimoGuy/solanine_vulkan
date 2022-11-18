@@ -62,7 +62,17 @@ private:
 
     // Combat mode
     bool      _flagDrawOrSheathWeapon = false;
+    bool      _flagAttack             = false;
     bool      _isCombatMode           = false;
+    bool      _isWeaponCollision      = false;
+    glm::mat4 _weaponPrevTransform    = glm::mat4(0.0f);  // NOTE: this is the flag to show to ignore the prev transform
+
+    struct WeaponCollision
+    {
+        size_t numRays = 4;
+        float_t startOffset = 1.0f;
+        float_t distance = 1.0f;
+    } _weaponCollisionProps;
 
     // Air dash move
     bool      _airDashMove                = false;
