@@ -450,8 +450,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
 
                             DataSerializer ds;
                             ds.dumpString("event_attacked");
-                            ds.dumpVec3(physutil::toVec3(_physicsObj->body->getWorldTransform().getOrigin()));
-                            // ds.dumpVec3(glm::quat(glm::vec3(0, _facingDirection, 0)) * glm::vec3(0, 0, 1));
+                            ds.dumpVec3(glm::quat(glm::vec3(0, _facingDirection, 0)) * glm::vec3(0, 0, 1));
 
                             DataSerialized dsd = ds.getSerializedData();
                             if (_em->sendMessage(*(std::string*)collisionObj->getUserPointer(), dsd))

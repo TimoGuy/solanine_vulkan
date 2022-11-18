@@ -419,10 +419,8 @@ bool Enemy::processMessage(DataSerialized& message)
         if (_attackedDebounceTimer > 0.0f)
             return false;
 
-        btVector3 otherPos = physutil::toVec3(message.loadVec3());
-        _physicsObj->body->setLinearVelocity(
-            (_physicsObj->body->getWorldTransform().getOrigin() - otherPos).normalize() * 100.0f
-        );
+        btVector3 pushDirection = physutil::toVec3(message.loadVec3());
+        _physicsObj->body->setLinearVelocity(pushDirection * 100.0f);
 
         AudioEngine::getInstance().playSoundFromList({
             "res/sfx/wip_bonk.ogg",
