@@ -18,15 +18,31 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
 
     _weaponAttachmentJointName = "Back Attachment";
     std::vector<vkglTF::Animator::AnimatorCallback> animatorCallbacks = {
-        { "EventSwitchToBackAttachment", [&]() { _weaponAttachmentJointName = "Back Attachment"; } },
-        { "EventSwitchToHandAttachment", [&]() { _weaponAttachmentJointName = "Hand Attachment"; } },
-        { "EventPlaySFXMaterialize",     [&]() { AudioEngine::getInstance().playSound("res/sfx/wip_draw_weapon.ogg"); } },
-        { "EventPlaySFXBreakoff",        [&]() {
+        {
+            "EventSwitchToBackAttachment", [&]() {
+                _weaponAttachmentJointName = "Back Attachment";
+            }
+        },
+        {
+            "EventSwitchToHandAttachment", [&]() {
+                _weaponAttachmentJointName = "Hand Attachment";
+            }
+        },
+        {
+            "EventPlaySFXMaterialize",     [&]() {
+                AudioEngine::getInstance().playSound("res/sfx/wip_draw_weapon.ogg");
+                _weaponRenderObj->renderLayer = RenderLayer::VISIBLE;
+            }
+        },
+        {
+            "EventPlaySFXBreakoff",        [&]() {
                 AudioEngine::getInstance().playSoundFromList({
                     "res/sfx/wip_sheath_weapon.ogg",
                     "res/sfx/wip_sheath_weapon_2.ogg"
                 });
-            } },
+                _weaponRenderObj->renderLayer = RenderLayer::INVISIBLE;
+            }
+        },
     };
 
     vkglTF::Model* characterModel = _rom->getModel("SlimeGirl");
@@ -39,11 +55,19 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
             .attachedEntityGuid = getGUID(),
             });
 
+    vkglTF::Model* handleModel = _rom->getModel("Handle");
+    _handleRenderObj =
+        _rom->registerRenderObject({
+            .model = handleModel,
+            .renderLayer = RenderLayer::VISIBLE,
+            .attachedEntityGuid = getGUID(),
+            });
+
     vkglTF::Model* weaponModel = _rom->getModel("WingWeapon");
     _weaponRenderObj =
         _rom->registerRenderObject({
             .model = weaponModel,
-            .renderLayer = RenderLayer::VISIBLE,  // @TODO: make the actual wing that materializes the invisible one!
+            .renderLayer = RenderLayer::INVISIBLE,
             .attachedEntityGuid = getGUID(),
             });
 
@@ -88,6 +112,7 @@ Player::~Player()
 {
     delete _characterRenderObj->animator;
     _rom->unregisterRenderObject(_characterRenderObj);
+    _rom->unregisterRenderObject(_handleRenderObj);
     _rom->unregisterRenderObject(_weaponRenderObj);
     PhysicsEngine::getInstance().unregisterPhysicsObject(_physicsObj);
 
@@ -203,6 +228,7 @@ void Player::lateUpdate(const float_t& deltaTime)
 
     glm::mat4 attachmentJointMat         = _characterRenderObj->animator->getJointMatrix(_weaponAttachmentJointName);
     _weaponRenderObj->transformMatrix    = _characterRenderObj->transformMatrix * attachmentJointMat;
+    _handleRenderObj->transformMatrix    = _weaponRenderObj->transformMatrix;
 }
 
 void Player::physicsUpdate(const float_t& physicsDeltaTime)

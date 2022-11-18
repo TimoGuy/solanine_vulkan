@@ -33,6 +33,7 @@ public:
 
 private:
     RenderObject*    _characterRenderObj;
+    RenderObject*    _handleRenderObj;
     RenderObject*    _weaponRenderObj;
     std::string      _weaponAttachmentJointName;
     RenderObjectManager* _rom;
