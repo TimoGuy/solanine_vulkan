@@ -448,13 +448,18 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
                             std::cout << "[PLAYER ATTACK HIT]" << std::endl
                                 << "Detected object guid: " << *(std::string*)collisionObj->getUserPointer() << std::endl;
 
+                            glm::vec3 pushDirection = glm::quat(glm::vec3(0, _facingDirection, 0)) * glm::vec3(0, 0, 1);
+
                             DataSerializer ds;
                             ds.dumpString("event_attacked");
-                            ds.dumpVec3(glm::quat(glm::vec3(0, _facingDirection, 0)) * glm::vec3(0, 0, 1));
+                            ds.dumpVec3(pushDirection);
 
                             DataSerialized dsd = ds.getSerializedData();
                             if (_em->sendMessage(*(std::string*)collisionObj->getUserPointer(), dsd))
+                            {
                                 std::cout << "YAY!" << std::endl;
+                                velocity = -pushDirection * 10.0f;
+                            }
                         }
                     }
                 }

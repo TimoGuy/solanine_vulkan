@@ -420,7 +420,7 @@ bool Enemy::processMessage(DataSerialized& message)
             return false;
 
         btVector3 pushDirection = physutil::toVec3(message.loadVec3());
-        _physicsObj->body->setLinearVelocity(pushDirection * 100.0f);
+        _physicsObj->body->setLinearVelocity(pushDirection * 10.0f);
 
         AudioEngine::getInstance().playSoundFromList({
             "res/sfx/wip_bonk.ogg",
