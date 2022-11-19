@@ -4138,7 +4138,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 	float_t maxWindowWidth = 0.0f;
 	constexpr float_t windowPadding = 8.0f;
 
-	ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight + windowOffsetY), ImGuiCond_Always);		// @NOTE: the ImGuiCond_Always means that this line will execute always, when set to once, this line will be ignored after the first time it's called
+	ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight/* + windowOffsetY*/), ImGuiCond_Always);		// @NOTE: the ImGuiCond_Always means that this line will execute always, when set to once, this line will be ignored after the first time it's called
 	ImGui::Begin("##Debug Statistics", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs);
 	{
 		ImGui::Text((std::to_string(_debugStats.currentFPS) + " FPS").c_str());

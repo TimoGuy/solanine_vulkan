@@ -356,7 +356,7 @@ namespace vkglTF
 		glm::mat4 getJointMatrix(const std::string& jointName);
 	private:
 
-		uint32_t animationIndex;
+		uint32_t animationIndex;  // @TODO: instead of having this be the end all be all, have each bone capture this number as a pointer, so that this will be the index for the global layer, and have the AnimStateMachine carry the mask animation indices and have the relevant bones point to that animationIndex using a pointer  -Timo 2022/11/19
 		float_t  time;
 		bool     loop;
 

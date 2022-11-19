@@ -1,10 +1,9 @@
-:StateIdle
+:StateIdle  # Default anim bc it's the first defined
 animation Idle_Hip
 loop      1
 trigger   goto_run            StateRun
 trigger   goto_jump           StateJumpFromIdle
 trigger   goto_fall           StateFall
-trigger   goto_combat_mode    StateDrawWeapon
 
 
 :StateRun
@@ -13,7 +12,6 @@ loop      1
 trigger   goto_idle           StateIdle
 trigger   goto_jump           StateJumpFromRun
 trigger   goto_fall           StateFall
-trigger   goto_combat_mode    StateDrawWeapon
 
 
 :StateJumpFromIdle
@@ -21,7 +19,6 @@ animation Jumping_From_Idle
 loop      0
 trigger   goto_idle           StateLandIdle
 trigger   goto_run            StateLandRun
-trigger   goto_combat_mode    StateDrawWeapon
 
 
 :StateJumpFromRun
@@ -29,7 +26,6 @@ animation Jumping_From_Run
 loop      0
 trigger   goto_idle           StateLandIdle
 trigger   goto_run            StateLandRun
-trigger   goto_combat_mode    StateDrawWeapon
 
 
 :StateFall
@@ -37,58 +33,96 @@ animation Falling
 loop      0
 trigger   goto_idle           StateLandIdle
 trigger   goto_run            StateLandRun
-trigger   goto_combat_mode    StateDrawWeapon
 
 
 :StateLandIdle
 animation Land_From_Jumping_From_Idle
 loop      0
 on_finish StateIdle
-trigger   goto_combat_mode    StateDrawWeapon
 
 
 :StateLandRun
 animation Land_From_Jumping_From_Run
 loop      0
 on_finish StateRun
-trigger   goto_combat_mode    StateDrawWeapon
 
 
-:StateDrawWeapon
-animation Draw_Weapon
-loop      0
-on_finish StateDWIdle
-event     0.0                 EventSwitchToHandAttachment
-event     0.8                 EventPlaySFXMaterialize
-trigger   leave_combat_mode   StateSheathWeapon
+# This masks the upper body starting with the Mid Back bone. Everything else should still get controlled normally by whatever layers aren't taking the bones
+~MaskCombatMode
+enabled   0
+bone      Shoulder.L  # @NOTE: you need to have some way of doing errors in case if these bones are named incorrectly
+bone      Upper Arm.L
+bone      Forearm.L
+bone      Hand.L
+bone      IndexF1.L
+bone      IndexF2.L
+bone      MiddleF1.L
+bone      MiddleF2.L
+bone      RingF1.L
+bone      RingF2.L
+bone      Pinky1.L
+bone      Pinky2.L
+bone      Thumb1.L
+bone      Thumb2.L
+bone      Shoulder.R
+bone      Upper Arm.R
+bone      Forearm.R
+bone      Hand.R
+bone      IndexF1.R
+bone      IndexF2.R
+bone      MiddleF1.R
+bone      MiddleF2.R
+bone      RingF1.R
+bone      RingF2.R
+bone      Pinky1.R
+bone      Pinky2.R
+bone      Thumb1.R
+bone      Thumb2.R
+bone      Mid Back
+bone      Upper Back
+bone      Neck
+bone      Head
 
 
-:StateSheathWeapon
-animation Sheath_Weapon
-loop      0
-on_finish StateIdle
-event     1.0                 EventSwitchToBackAttachment
-event     0.315789474         EventPlaySFXBreakoff
-trigger   goto_combat_mode    StateDrawWeapon
-
-
-:StateDWIdle
+:StateMCMIdle  # Default anim for this layer bc it's the first defined
+layer     MaskCombatMode
 animation DW_Idle
 loop      1
-trigger   goto_run            StateDWRun
-trigger   goto_attack         StateDWAttack
-trigger   leave_combat_mode   StateSheathWeapon
+trigger   current_state       StateRun       StateMCMRun
 
+# @NOTE: current_state and not_current_state are special triggers where they look up what the current state is in a different layer (i.e. the one StateRun is in) and if it is/isn't the state specified (i.e. StateRun), then it will move to a different state on this layer. It's essentially a simple syncing usability.  -Timo
 
-:StateDWRun
+:StateMCMRun
+layer     MaskCombatMode
 animation DW_Run
 loop      1
-trigger   goto_idle           StateDWIdle
-trigger   goto_attack         StateDWAttack
-trigger   leave_combat_mode   StateSheathWeapon
+trigger   not_current_state   StateRun       StateMCMIdle
 
 
-:StateDWAttack   # NOTE: For this state, we don't want any triggers to leave before the ending event triggers
+:StateMCMDrawWeapon
+layer     MaskCombatMode  # @NOTE: not specifying a layer puts this at the top layer. A layer is a whole other state machine running
+animation Draw_Weapon
+loop      0
+on_finish StateMCMIdle
+event     0.0                 EventEnableMCMLayer
+event     0.0                 EventSwitchToHandAttachment
+event     0.8                 EventPlaySFXMaterialize
+trigger   leave_combat_mode   StateMCMSheathWeapon
+
+
+:StateMCMSheathWeapon
+layer     MaskCombatMode
+animation Sheath_Weapon
+loop      0
+on_finish StateMCMIdle
+event     1.0                 EventDisableMCMLayer
+event     1.0                 EventSwitchToBackAttachment
+event     0.315789474         EventPlaySFXBreakoff
+trigger   goto_combat_mode    StateMCMDrawWeapon
+
+
+:StateMCMAttack   # NOTE: For this state, we don't want any triggers to leave before the ending event triggers
+layer     MaskCombatMode
 animation DW_Attack
 loop      0
 event     0.0                 EventPlaySFXAttack
