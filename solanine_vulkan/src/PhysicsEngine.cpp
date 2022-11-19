@@ -123,6 +123,15 @@ void PhysicsEngine::update(float_t deltaTime, std::vector<Entity*>* entities)   
 
 		// @IMPROVEMENT: look into how bullet's step simulation does with interpolation and how we can rely on that instead of the system here... it could be good especially if it's deterministic seeming. The only problem really seems to be what we'd put in for the deltaTime of physicsUpdate() for all the objects
 		_dynamicsWorld->stepSimulation(physicsDeltaTime, 0);    // @NOTE: only want the step simulation to happen once at a time
+
+		// @IMPROVEMENT: @TODO: oh man, this should definitely be multithreaded. However, taskflow doesn't seem like the best choice.  @TOOD: look into the c++11 multithreaded for loop
+		// Update transforms
+		for (size_t poolIndex : _physicsObjectsIndices)
+		{
+			auto& rpo = _physicsObjectPool[poolIndex];
+			rpo.prevTransform = rpo.currentTransform;
+			rpo.currentTransform = rpo.body->getWorldTransform();
+		}
 	}
 
 	//
@@ -366,14 +375,12 @@ btCollisionWorld::ClosestRayResultCallback PhysicsEngine::raycast(const btVector
 
 void PhysicsEngine::calculateInterpolatedTransform(RegisteredPhysicsObject& obj, const float_t& physicsAlpha)
 {
-	btTransform currentTransform = obj.body->getWorldTransform();
 	btTransform interpolatedTransform(
-		obj.prevTransform.getRotation().slerp(currentTransform.getRotation(), physicsAlpha),    // NLerp nor lerp are available for btQuaternions smh
-		obj.prevTransform.getOrigin().lerp(currentTransform.getOrigin(), physicsAlpha)
+		obj.prevTransform.getRotation().slerp(obj.currentTransform.getRotation(), physicsAlpha),    // NLerp nor lerp are available for btQuaternions smh
+		obj.prevTransform.getOrigin().lerp(obj.currentTransform.getOrigin(), physicsAlpha)
 		    + btVector3(obj.transformOffset.x, obj.transformOffset.y, obj.transformOffset.z)
 	);
 	interpolatedTransform.getOpenGLMatrix(glm::value_ptr(obj.interpolatedTransform));  // Apply to the interpolatedTransform matrix!
-	obj.prevTransform = currentTransform;
 }
 
 btRigidBody* PhysicsEngine::createRigidBody(float_t mass, const btTransform& startTransform, btCollisionShape* shape, void* guid, const btVector4& color)

@@ -26,6 +26,7 @@ struct RegisteredPhysicsObject
 {
     // Returned values
     btRigidBody* body;
+    btTransform currentTransform;
     btTransform prevTransform;
     glm::mat4 interpolatedTransform;    // @NOTE: these are calculated at the end of simulation
 
