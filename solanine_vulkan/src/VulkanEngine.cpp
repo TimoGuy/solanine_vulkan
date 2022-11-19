@@ -4132,10 +4132,13 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 	//
 	// Debug Stats window
 	//
+	static float_t scrollSpeed = 40.0f;
+	static float_t windowOffsetY = 0.0f;
 	float_t accumulatedWindowHeight = 0.0f;
+	float_t maxWindowWidth = 0.0f;
 	constexpr float_t windowPadding = 8.0f;
 
-	ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight), ImGuiCond_Always);		// @NOTE: the ImGuiCond_Always means that this line will execute always, when set to once, this line will be ignored after the first time it's called
+	ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight + windowOffsetY), ImGuiCond_Always);		// @NOTE: the ImGuiCond_Always means that this line will execute always, when set to once, this line will be ignored after the first time it's called
 	ImGui::Begin("##Debug Statistics", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs);
 	{
 		ImGui::Text((std::to_string(_debugStats.currentFPS) + " FPS").c_str());
@@ -4146,13 +4149,14 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 		ImGui::PlotHistogram("##Render Times Histogram", _debugStats.renderTimesMS, (int32_t)_debugStats.renderTimesMSCount, (int32_t)_debugStats.renderTimesMSHeadIndex, "", 0.0f, _debugStats.highestRenderTime, ImVec2(256, 24.0f));
 
 		accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
+		maxWindowWidth = glm::max(maxWindowWidth, ImGui::GetWindowWidth());
 	}
 	ImGui::End();
 
 	//
 	// PBR Shading Properties
 	//
-	ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight), ImGuiCond_Always);
+	ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight + windowOffsetY), ImGuiCond_Always);
 	ImGui::Begin("PBR Shading Properties", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
 	{
 		if (ImGui::DragFloat3("Light Direction", glm::value_ptr(_pbrRendering.gpuSceneShadingProps.lightDir)))
@@ -4257,15 +4261,21 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 		}
 
 		accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
+		maxWindowWidth = glm::max(maxWindowWidth, ImGui::GetWindowWidth());
 	}
 	ImGui::End();
 
 	//
 	// Global Properties
 	//
-	ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight), ImGuiCond_Always);
+	ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight + windowOffsetY), ImGuiCond_Always);
 	ImGui::Begin("Global Properties", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
 	{
+		if (ImGui::CollapsingHeader("Debug Properties", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			ImGui::DragFloat("scrollSpeed", &scrollSpeed);
+		}
+
 		if (ImGui::CollapsingHeader("Camera Properties", ImGuiTreeNodeFlags_DefaultOpen))
 		{
 			ImGui::Text("NOTE: press F10 to change camera types");
@@ -4278,13 +4288,14 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 		}
 
 		accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
+		maxWindowWidth = glm::max(maxWindowWidth, ImGui::GetWindowWidth());
 	}
 	ImGui::End();
 
 	//
 	// Create Entity
 	//
-	ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight), ImGuiCond_Always);
+	ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight + windowOffsetY), ImGuiCond_Always);
 	ImGui::Begin("Create Entity", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
 	{
 		static int32_t entityToCreateIndex = 1;  // @NOTE: don't want default setting to be `:player` or else you could accidentally create another player entity... and that is not needed for the levels
@@ -4373,6 +4384,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 
 
 		accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
+		maxWindowWidth = glm::max(maxWindowWidth, ImGui::GetWindowWidth());
 	}
 	ImGui::End();
 
@@ -4410,7 +4422,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 		//
 		// Move the matrix via the cached matrix components
 		//
-		ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight), ImGuiCond_Always);
+		ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight + windowOffsetY), ImGuiCond_Always);
 		ImGui::Begin("Edit Selected", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
 		{
 			if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen))
@@ -4567,11 +4579,18 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 			}
 
 			accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
+			maxWindowWidth = glm::max(maxWindowWidth, ImGui::GetWindowWidth());
 		}
 		ImGui::End();
 	}
 
 	ImGui::Render();
+
+	//
+	// Scroll the left pane
+	//
+	if (ImGui::GetIO().MousePos.x <= maxWindowWidth)
+		windowOffsetY += input::mouseScrollDelta.y * scrollSpeed;
 }
 
 VkPipeline PipelineBuilder::buildPipeline(VkDevice device, VkRenderPass pass)

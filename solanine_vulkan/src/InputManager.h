@@ -12,6 +12,7 @@ namespace input
 		RMBPressed;
 
 	extern glm::ivec2 mouseDelta;
+	extern glm::ivec2  mouseScrollDelta;
 
 	extern bool
 		keyUpPressed,
