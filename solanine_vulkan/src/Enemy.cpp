@@ -420,7 +420,7 @@ bool Enemy::processMessage(DataSerialized& message)
             return false;
 
         btVector3 pushDirection = physutil::toVec3(message.loadVec3());
-        _physicsObj->body->setLinearVelocity(pushDirection * 10.0f);
+        _physicsObj->body->setLinearVelocity(pushDirection * _attackedPushBackStrength);
 
         AudioEngine::getInstance().playSoundFromList({
             "res/sfx/wip_bonk.ogg",
@@ -468,6 +468,11 @@ void Enemy::renderImGui()
     ImGui::DragFloat("_airDashSpeedY", &_airDashSpeedY);
     ImGui::DragFloat("_airDashFinishSpeedFracCooked", &_airDashFinishSpeedFracCooked);
     ImGui::DragFloat("_airDashFinishSpeedFrac", &_airDashFinishSpeedFrac);
+
+    ImGui::Separator();
+
+    ImGui::DragFloat("_attackedDebounce", &_attackedDebounce);
+    ImGui::DragFloat("_attackedPushBackStrength", &_attackedPushBackStrength);
 }
 
 void Enemy::processGrounded(glm::vec3& velocity, const float_t& physicsDeltaTime)

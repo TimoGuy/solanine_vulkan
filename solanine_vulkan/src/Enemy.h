@@ -45,8 +45,9 @@ private:
     float_t _bottomRaycastExtraDist;
     float_t _adjustedHalfHeight;
 
-    float_t _attackedDebounce = 0.5f;
+    float_t _attackedDebounce = 0.25f;
     float_t _attackedDebounceTimer = 0.0f;
+    float_t _attackedPushBackStrength = 10.0f;
 
     void processGrounded(glm::vec3& velocity, const float_t& physicsDeltaTime);
 

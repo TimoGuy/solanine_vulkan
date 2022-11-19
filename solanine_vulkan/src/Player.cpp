@@ -457,8 +457,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
                             DataSerialized dsd = ds.getSerializedData();
                             if (_em->sendMessage(*(std::string*)collisionObj->getUserPointer(), dsd))
                             {
-                                std::cout << "YAY!" << std::endl;
-                                velocity = -pushDirection * 10.0f;
+                                // velocity = -pushDirection * 10.0f;
                             }
                         }
                     }
