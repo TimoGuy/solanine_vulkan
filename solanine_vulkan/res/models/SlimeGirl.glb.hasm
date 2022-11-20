@@ -84,23 +84,23 @@ bone      Neck
 bone      Head
 
 
-:StateMCMIdle  # Default anim for this layer bc it's the first defined
-layer     MaskCombatMode
+:StateMCMIdle  # Default anim for this mask bc it's the first defined
+mask      MaskCombatMode
 animation DW_Idle
 loop      1
 trigger   current_state       StateRun       StateMCMRun
 
-# @NOTE: current_state and not_current_state are special triggers where they look up what the current state is in a different layer (i.e. the one StateRun is in) and if it is/isn't the state specified (i.e. StateRun), then it will move to a different state on this layer. It's essentially a simple syncing usability.  -Timo
+# @NOTE: current_state and not_current_state are special triggers where they look up what the current state is in a different mask (i.e. the one StateRun is in) and if it is/isn't the state specified (i.e. StateRun), then it will move to a different state on this mask. It's essentially a simple syncing usability.  -Timo
 
 :StateMCMRun
-layer     MaskCombatMode
+mask      MaskCombatMode
 animation DW_Run
 loop      1
 trigger   not_current_state   StateRun       StateMCMIdle
 
 
 :StateMCMDrawWeapon
-layer     MaskCombatMode  # @NOTE: not specifying a layer puts this at the top layer. A layer is a whole other state machine running
+mask      MaskCombatMode  # @NOTE: not specifying a mask puts this at the global mask. A mask is a whole other state machine running
 animation Draw_Weapon
 loop      0
 on_finish StateMCMIdle
@@ -111,7 +111,7 @@ trigger   leave_combat_mode   StateMCMSheathWeapon
 
 
 :StateMCMSheathWeapon
-layer     MaskCombatMode
+mask      MaskCombatMode
 animation Sheath_Weapon
 loop      0
 on_finish StateMCMIdle
@@ -122,9 +122,9 @@ trigger   goto_combat_mode    StateMCMDrawWeapon
 
 
 :StateMCMAttack   # NOTE: For this state, we don't want any triggers to leave before the ending event triggers
-layer     MaskCombatMode
+mask      MaskCombatMode
 animation DW_Attack
 loop      0
 event     0.0                 EventPlaySFXAttack
 event     1.0                 EventEndAttack
-on_finish StateDWIdle
+on_finish StateMCMRun

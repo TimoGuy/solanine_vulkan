@@ -1073,7 +1073,11 @@ namespace vkglTF
 		}
 
 		{
+			animStateMachine.masks.push_back(StateMachine::Mask());  // Global mask
+
+			std::vector<StateMachine::State> tempNewStates;
 			StateMachine::State newState = {};
+			StateMachine::Mask  newMask  = {};
 
 			std::string line;
 			for (size_t lineNum = 1; std::getline(inFile, line); lineNum++)  // @COPYPASTA with SceneManagement.cpp
@@ -1091,24 +1095,51 @@ namespace vkglTF
 				if (line.empty())
 					continue;
 
+				// Package finished state||mask
+				if (line[0] == ':' || line[0] == '~')
+				{
+					if (!newState.stateName.empty())
+					{
+						tempNewStates.push_back(newState);  // @TODO: that'd be good if there were a check on the data to make sure it has an animation assigned at the very least
+						newState = {};
+					}
+
+					if (!newMask.maskName.empty())
+					{
+						animStateMachine.masks.push_back(newMask);
+						newMask = {};
+					}
+				}
+
 				// Process line
 				if (line[0] == ':')
 				{
 					line = line.substr(1);  // Cut out the colon
 					trim(line);
 
-					// Wrap up the previous state under creation if there was one
-					if (!newState.stateName.empty())
-						animStateMachine.states.push_back(newState);  // @TODO: that'd be good if there were a check on the data to make sure it has an animation assigned at the very least
-
 					// New state
-					newState = {};
 					newState.stateName = line;
+				}
+				else if (line[0] == '~')
+				{
+					line = line.substr(1);  // Cut out tilde
+					trim(line);
+
+					// New mask
+					newMask.maskName = line;
 				}
 				else if (!newState.stateName.empty())
 				{
 					// Find type of information to attach
-					if (line.rfind("animation ", 0) == 0)
+					if (line.rfind("mask ", 0) == 0)
+					{
+						line = line.substr(sizeof("mask ") - 1);
+						trim(line);
+
+						// Assign mask
+						newState.maskName = line;
+					}
+					else if (line.rfind("animation ", 0) == 0)
 					{
 						line = line.substr(sizeof("animation ") - 1);
 						trim(line);
@@ -1140,12 +1171,49 @@ namespace vkglTF
 						line = line.substr(sizeof("trigger ") - 1);
 						trim(line);
 
+						std::string param0 = line.substr(0, line.find(' '));
+						trim(param0);
+
 						// Assign transition
 						StateMachine::Transition newTransition = {};
-						newTransition.triggerName = line.substr(0, line.find(' '));
-						newTransition.toStateName = line.substr(line.find(' '));
-						trim(newTransition.triggerName);
-						trim(newTransition.toStateName);
+						if (param0 == "current_state")
+						{
+							// CurrentState transition
+							std::string param1 = line.substr(line.find(' '));
+							trim(param1);
+							std::string param2 = param1.substr(param1.find(' '));
+							param1 = param1.substr(0, param1.find(' '));
+							trim(param1);
+							trim(param2);
+
+							newTransition.type = StateMachine::TransitionType::CURRENT_STATE;
+							newTransition.checkingStateName = param1;
+							newTransition.toStateName       = param2;
+						}
+						else if (param0 == "not_current_state")
+						{
+							// NotCurrentState transition
+							std::string param1 = line.substr(line.find(' '));
+							trim(param1);
+							std::string param2 = param1.substr(param1.find(' '));
+							param1 = param1.substr(0, param1.find(' '));
+							trim(param1);
+							trim(param2);
+
+							newTransition.type = StateMachine::TransitionType::NOT_CURRENT_STATE;
+							newTransition.checkingStateName = param1;
+							newTransition.toStateName       = param2;
+						}
+						else
+						{
+							// Trigger activated transition
+							newTransition.type = StateMachine::TransitionType::TRIGGER_ACTIVATED;
+							newTransition.triggerName = param0;
+							newTransition.toStateName = line.substr(line.find(' '));
+							trim(newTransition.triggerName);
+							trim(newTransition.toStateName);
+						}
+
 						newState.transitions.push_back(newTransition);
 					}
 					else if (line.rfind("event ", 0) == 0)
@@ -1160,6 +1228,42 @@ namespace vkglTF
 						trim(newEvent.eventName);
 						newState.events.push_back(newEvent);
 					}
+					else
+					{
+						// ERROR
+						std::cerr << "[ASM LOADING]" << std::endl
+							<< "ERROR (line " << lineNum << ") (file: " << fnameCooked << "): Unknown type of data" << std::endl
+							<< "   Trimmed line: " << line << std::endl
+							<< "  Original line: " << line << std::endl;
+					}
+				}
+				else if (!newMask.maskName.empty())
+				{
+					// Find type of information to attach
+					if (line.rfind("enabled ", 0) == 0)
+					{
+						line = line.substr(sizeof("enabled ") - 1);
+						trim(line);
+
+						// Assign enabled
+						newMask.enabled = (bool)std::stoi(line);
+					}
+					else if (line.rfind("bone ", 0) == 0)
+					{
+						line = line.substr(sizeof("bone ") - 1);
+						trim(line);
+
+						// Assign bone name
+						newMask.boneNameList.push_back(line);
+					}
+					else
+					{
+						// ERROR
+						std::cerr << "[ASM LOADING]" << std::endl
+							<< "ERROR (line " << lineNum << ") (file: " << fnameCooked << "): Unknown type of data" << std::endl
+							<< "   Trimmed line: " << line << std::endl
+							<< "  Original line: " << line << std::endl;
+					}
 				}
 				else
 				{
@@ -1173,35 +1277,57 @@ namespace vkglTF
 
 			// @COPYPASTA: @COPYPASTA: Wrap up the previous state under creation if there was one
 			if (!newState.stateName.empty())
-				animStateMachine.states.push_back(newState);
+				tempNewStates.push_back(newState);
+			if (!newMask.maskName.empty())
+				animStateMachine.masks.push_back(newMask);
+
+			// Add the same number of mask players as masks
+			for (auto& mask : animStateMachine.masks)
+				animStateMachine.maskPlayers.push_back(StateMachine::MaskPlayer());
+
+			//
+			// Assign tempNewStates to masks
+			//
+			for (auto& s : tempNewStates)
+			{
+				for (auto& m : animStateMachine.masks)
+					if (s.maskName == m.maskName)
+						m.states.push_back(s);
+			}
 		}
 
 		//
 		// Compile transition trigger names to trigger indices
 		//
-		for (auto& state : animStateMachine.states)
+		for (auto& mask : animStateMachine.masks)
 		{
-			for (auto& transition : state.transitions)
+			for (auto& state : mask.states)
 			{
-				bool foundInTriggerList = false;
-				for (size_t i = 0; i < animStateMachine.triggers.size(); i++)
+				for (auto& transition : state.transitions)
 				{
-					auto& trigger = animStateMachine.triggers[i];
-					if (trigger.triggerName == transition.triggerName)
-					{
-						transition.triggerIndex = i;
-						foundInTriggerList = true;
-						break;
-					}
-				}
+					if (transition.type != StateMachine::TransitionType::TRIGGER_ACTIVATED)
+						continue;
 
-				if (!foundInTriggerList)
-				{
-					// Create new trigger in trigger list
-					size_t index = animStateMachine.triggers.size();
-					transition.triggerIndex = index;
-					animStateMachine.triggerNameToIndex[transition.triggerName] = index;
-					animStateMachine.triggers.push_back({ transition.triggerName, false });
+					bool foundInTriggerList = false;
+					for (size_t i = 0; i < animStateMachine.triggers.size(); i++)
+					{
+						auto& trigger = animStateMachine.triggers[i];
+						if (trigger.triggerName == transition.triggerName)
+						{
+							transition.triggerIndex = i;
+							foundInTriggerList = true;
+							break;
+						}
+					}
+
+					if (!foundInTriggerList)
+					{
+						// Create new trigger in trigger list
+						size_t index = animStateMachine.triggers.size();
+						transition.triggerIndex = index;
+						animStateMachine.triggerNameToIndex[transition.triggerName] = index;
+						animStateMachine.triggers.push_back({ transition.triggerName, false });
+					}
 				}
 			}
 		}
@@ -1216,59 +1342,94 @@ namespace vkglTF
 		//
 		// Compile state names to state indices
 		//
-		std::map<std::string, size_t> stateNameToIndex;
-		size_t stateIndex = 0;
-		for (auto& state : animStateMachine.states)
-			stateNameToIndex[state.stateName] = stateIndex++;
-
-		for (auto& state : animStateMachine.states)
+		std::vector<std::map<std::string, size_t>> stateNameToIndexList;
+		for (size_t i = 0; i < animStateMachine.masks.size(); i++)
 		{
-			if (state.onFinish.useOnFinish)
-			{
-				if (stateNameToIndex.find(state.onFinish.toStateName) == stateNameToIndex.end())  // @COPYPASTA
-				{
-					std::cerr << "[ASM LOADING]" << std::endl
-						<< "ERROR: Reference to non existent state" << std::endl
-						<< "State: \"" << state.onFinish.toStateName << "\" was not found in animation state machine list of states"<< std::endl;
-					return;
-				}
-				state.onFinish.toStateIndex = stateNameToIndex[state.onFinish.toStateName];
-			}
-			for (auto& transition : state.transitions)
-			{
-				if (stateNameToIndex.find(transition.toStateName) == stateNameToIndex.end())  // @COPYPASTA
-				{
-					std::cerr << "[ASM LOADING]" << std::endl
-						<< "ERROR: Reference to non existent state" << std::endl
-						<< "State: \"" << transition.toStateName << "\" was not found in animation state machine list of states"<< std::endl;
-					return;
-				}
-				transition.toStateIndex = stateNameToIndex[transition.toStateName];
-			}
+			// Prefill all statename to index maps
+			size_t stateIndex = 0;
+			std::map<std::string, size_t> stateNameToIndex;
+			for (auto& state : animStateMachine.masks[i].states)
+				stateNameToIndex[state.stateName] = stateIndex++;
+			stateNameToIndexList.push_back(stateNameToIndex);
 		}
 
-		//
-		// Compile state animation names to animation indices
-		//
-		for (auto& state : animStateMachine.states)
+		for (size_t i = 0; i < animStateMachine.masks.size(); i++)
 		{
-			bool foundIndex = false;
-			for (size_t animInd = 0; animInd < gltfModel.animations.size(); animInd++)
+			auto& mask = animStateMachine.masks[i];
+
+			for (auto& state : mask.states)
 			{
-				auto& anim = gltfModel.animations[animInd];
-				if (anim.name == state.animationName)
+				if (state.onFinish.useOnFinish)
 				{
-					state.animationIndex = (uint32_t)animInd;
-					foundIndex = true;
-					break;
+					if (stateNameToIndexList[i].find(state.onFinish.toStateName) == stateNameToIndexList[i].end())  // @COPYPASTA
+					{
+						std::cerr << "[ASM LOADING]" << std::endl
+							<< "ERROR: Reference to non existent state" << std::endl
+							<< "State: \"" << state.onFinish.toStateName << "\" was not found in animation state machine list of states"<< std::endl;
+						return;
+					}
+					state.onFinish.toStateIndex = stateNameToIndexList[i][state.onFinish.toStateName];
+				}
+				for (auto& transition : state.transitions)
+				{
+					if (transition.type != StateMachine::TransitionType::TRIGGER_ACTIVATED)
+					{
+						bool found = false;
+
+						for (size_t j = 0; j < animStateMachine.masks.size(); j++)  // Search thru all masks
+						{
+							if (stateNameToIndexList[j].find(transition.checkingStateName) != stateNameToIndexList[j].end())
+							{
+								transition.checkingMaskIndex  = j;
+								transition.checkingStateIndex = stateNameToIndexList[j][transition.checkingStateName];
+								found = true;
+								break;
+							}
+						}
+
+						if (!found)
+						{
+							std::cerr << "[ASM LOADING]" << std::endl
+								<< "ERROR: Reference to non existent state (searched all masks)" << std::endl
+								<< "State: \"" << transition.checkingStateName << "\" was not found in animation state machine list of states"<< std::endl;
+							return;
+						}
+					}
+
+					if (stateNameToIndexList[i].find(transition.toStateName) == stateNameToIndexList[i].end())  // @COPYPASTA
+					{
+						std::cerr << "[ASM LOADING]" << std::endl
+							<< "ERROR: Reference to non existent state" << std::endl
+							<< "State: \"" << transition.toStateName << "\" was not found in animation state machine list of states"<< std::endl;
+						return;
+					}
+					transition.toStateIndex = stateNameToIndexList[i][transition.toStateName];
 				}
 			}
 
-			if (!foundIndex)
+			//
+			// Compile state animation names to animation indices
+			//
+			for (auto& state : mask.states)
 			{
-				std::cerr << "[ASM LOADING]" << std::endl
-					<< "ERROR: Unknown animation" << std::endl
-					<< "Anim: \"" << state.animationName << "\" was not found in model \"" << fnameCooked << "\""<< std::endl;
+				bool foundIndex = false;
+				for (size_t animInd = 0; animInd < gltfModel.animations.size(); animInd++)
+				{
+					auto& anim = gltfModel.animations[animInd];
+					if (anim.name == state.animationName)
+					{
+						state.animationIndex = (uint32_t)animInd;
+						foundIndex = true;
+						break;
+					}
+				}
+
+				if (!foundIndex)
+				{
+					std::cerr << "[ASM LOADING]" << std::endl
+						<< "ERROR: Unknown animation" << std::endl
+						<< "Anim: \"" << state.animationName << "\" was not found in model \"" << fnameCooked << "\""<< std::endl;
+				}
 			}
 		}
 
@@ -1585,10 +1746,10 @@ namespace vkglTF
 	{
 		if (model == nullptr)
 			return;  // @NOTE: emptyAnimator does this on purpose
+			// @REPLY: Hey... wtf is `emptyAnimator`???!!??!?  -Timo 2022/11/19
 
 		engine               = model->engine;
 		animStateMachineCopy = StateMachine(model->animStateMachine);  // Make a copy to play with here
-		asmStateIndex        = 0;
 
 		uint32_t meshId = 0;
 		for (auto node : model->linearNodes)  // @NOTE: linearnodes is used to access all of the meshes bc just nodes just gives top level unless if you recurse thru it
@@ -1637,23 +1798,33 @@ namespace vkglTF
 			node->generateCalculateJointMatrixTaskflow(this, calculateJointMatricesTaskflow, nullptr);
 
 		// Calculate Initial Pose
-		uint32_t animIndex = animStateMachineCopy.loaded ? animStateMachineCopy.states[asmStateIndex].animationIndex : 0;
-		bool loop          = animStateMachineCopy.loaded ? animStateMachineCopy.states[asmStateIndex].loop           : true;
-		playAnimation(animIndex, loop);
+		if (animStateMachineCopy.loaded)
+		{
+			size_t i = 0;
+			for (auto& mask : animStateMachineCopy.masks)
+			{
+				playAnimation(i++, mask.states[0].animationIndex, mask.states[0].loop);
+			}
+		}
+		else
+			playAnimation(0, 0, true);
 		updateAnimation();
 
 		//
 		// Compile the event callbacks to this copy of the animStateMachine
 		//
-		for (auto& state : animStateMachineCopy.states)
+		for (auto& mask : animStateMachineCopy.masks)
 		{
-			for (auto& event : state.events)
+			for (auto& state : mask.states)
 			{
-				for (size_t i = 0; i < eventCallbacks.size(); i++)
+				for (auto& event : state.events)
 				{
-					if (eventCallbacks[i].eventName == event.eventName)
+					for (size_t i = 0; i < eventCallbacks.size(); i++)
 					{
-						event.eventIndex = i;
+						if (eventCallbacks[i].eventName == event.eventName)
+						{
+							event.eventIndex = i;
+						}
 					}
 				}
 			}
@@ -1722,11 +1893,16 @@ namespace vkglTF
 		return &emptyUBuffer.descriptorSet;
 	}
 
-	void Animator::playAnimation(uint32_t animationIndex, bool loop, float_t time)
+	void Animator::playAnimation(size_t maskIndex, uint32_t animationIndex, bool loop, float_t time)
 	{
 		if (model->animations.empty())
 		{
 			std::cout << ".glTF does not contain animation." << std::endl;
+			return;
+		}
+		if (maskIndex > animStateMachineCopy.masks.size() - 1)
+		{
+			std::cout << "No mask with index " << maskIndex << std::endl;
 			return;
 		}
 		if (animationIndex > static_cast<uint32_t>(model->animations.size()) - 1)
@@ -1735,37 +1911,40 @@ namespace vkglTF
 			return;
 		}
 
-		this->animationIndex = animationIndex;
-		this->loop = loop;
-		this->time = time;
+		animStateMachineCopy.maskPlayers[maskIndex].animationIndex = animationIndex;
+		animStateMachineCopy.maskPlayers[maskIndex].loop           = loop;
+		animStateMachineCopy.maskPlayers[maskIndex].time           = time;
 
 		// @TODO: Do we need to hit updateAnimation()? This playAnimation() function will be run likely in the entity updates, so it's not like the update will be a frame late. I'm just gonna not worry about it  -Timo 2022/11/5
 	}
 
 	void Animator::update(const float_t& deltaTime)
 	{
-		glm::vec2 timeRange = { time, 0.0f };
-		time += deltaTime;
-		timeRange.y = time;  // @NOTE: this has to be pre-clamped/pre-repeat because the 2nd time is exclusive in the check
+		for (auto& mp : animStateMachineCopy.maskPlayers)
+		{
+			mp.timeRange = { mp.time, 0.0f };
+			mp.time += deltaTime;
+			mp.timeRange.y = mp.time;  // @NOTE: this has to be pre-clamped/pre-repeat because the 2nd time is exclusive in the check
 
-		bool animEndedThisFrame = false;
-		float_t animDuration = model->animations[animationIndex].end;
-		if (loop)
-		{
-			// Loop animation
-			if (time > animDuration)
+			mp.animEndedThisFrame = false;
+			mp.animDuration = model->animations[mp.animationIndex].end;
+			if (mp.loop)
 			{
-				time -= animDuration;
-				animEndedThisFrame = true;
+				// Loop animation
+				if (mp.time > mp.animDuration)
+				{
+					mp.time -= mp.animDuration;
+					mp.animEndedThisFrame = true;
+				}
 			}
-		}
-		else
-		{
-			// Clamp animation
-			if (time > animDuration)
+			else
 			{
-				time = animDuration;
-				animEndedThisFrame = true;
+				// Clamp animation
+				if (mp.time > mp.animDuration)
+				{
+					mp.time = mp.animDuration;
+					mp.animEndedThisFrame = true;
+				}
 			}
 		}
 
@@ -1775,17 +1954,23 @@ namespace vkglTF
 			//
 			// Execute events if the time is crossed [tx-1, tx)
 			//
-			auto& currentState = animStateMachineCopy.states[asmStateIndex];
-			timeRange = timeRange / glm::vec2(animDuration);
-			for (auto& event : currentState.events)
+			for (size_t i = 0; i < animStateMachineCopy.masks.size(); i++)
 			{
-				if (timeRange.x <= event.eventCallAt && event.eventCallAt < timeRange.y)
+				auto& mask = animStateMachineCopy.masks[i];
+				auto& mp   = animStateMachineCopy.maskPlayers[i];
+
+				auto& currentState = mask.states[mask.asmStateIndex];
+				mp.timeRange = mp.timeRange / glm::vec2(mp.animDuration);
+				for (auto& event : currentState.events)
 				{
-					std::cout << "CALLING " << event.eventName << " @ " << event.eventCallAt << std::endl;
-					if (event.eventIndex >= eventCallbacks.size())
-						std::cerr << "[ANIMATOR UPDATE]" << std::endl
-							<< "ERROR: event \"" << event.eventName << "\" which was just referenced does not exist in the list of callbacks. Expect a crash." << std::endl;
-					eventCallbacks[event.eventIndex].callback();  // This can crash... but we want that
+					if (mp.timeRange.x <= event.eventCallAt && event.eventCallAt < mp.timeRange.y)
+					{
+						std::cout << "CALLING " << event.eventName << " @ " << event.eventCallAt << std::endl;
+						if (event.eventIndex >= eventCallbacks.size())
+							std::cerr << "[ANIMATOR UPDATE]" << std::endl
+								<< "ERROR: event \"" << event.eventName << "\" which was just referenced does not exist in the list of callbacks. Expect a crash." << std::endl;
+						eventCallbacks[event.eventIndex].callback();  // This can crash... but we want that
+					}
 				}
 			}
 
@@ -1797,55 +1982,121 @@ namespace vkglTF
 			//          use any of the active triggers, then turn off all the triggers in that case and move on!
 			//        - HOWEVER, make sure to give priority to the onFinish event!!!!! over the Transitions
 			//
-			size_t prevAsmStateIndex = asmStateIndex;
-			bool resetTriggers;
-			do
+			bool keepLooking;
+			for (size_t i = 0; i < animStateMachineCopy.masks.size(); i++)
 			{
-				resetTriggers = true;
-				auto& currentState = animStateMachineCopy.states[asmStateIndex];
-			
-				// First priority, see if onFinish should get triggered
-				if (animEndedThisFrame && currentState.onFinish.useOnFinish)
-				{
-					asmStateIndex = currentState.onFinish.toStateIndex;
-					resetTriggers = false;
-					animEndedThisFrame = false;  // New state entered; anim just started so reset this!
-				}
-			
-				// Second priority, everything else (triggers)
-				else
-				{
-					for (size_t i = 0; i < animStateMachineCopy.triggers.size() && resetTriggers; i++)  // @NOTE: resetTriggers is also used as a flag for if a trigger got applied and the asmStateIndex updated
-					{
-						if (!animStateMachineCopy.triggers[i].activated)
-							continue;
+				auto& mask = animStateMachineCopy.masks[i];
+				auto& mp   = animStateMachineCopy.maskPlayers[i];
 
+				bool stateChanged = false;
+
+				do
+				{
+					keepLooking = false;
+
+					auto& currentState = mask.states[mask.asmStateIndex];
+				
+					// First priority, see if onFinish should get triggered
+					if (mp.animEndedThisFrame && currentState.onFinish.useOnFinish)
+					{
+						mask.asmStateIndex = currentState.onFinish.toStateIndex;
+						stateChanged = true;
+						keepLooking = true;
+						mp.animEndedThisFrame = false;  // New state entered; anim just started so reset this!
+						continue;
+					}
+
+					// Second priority, everything else (special transitions, triggers)
+					else
+					{
+						bool end = false;
+
+						// Special transitions
 						for (auto& transition : currentState.transitions)
 						{
-							if (transition.triggerIndex != i)
+							switch (transition.type)
+							{
+							case StateMachine::TransitionType::CURRENT_STATE:
+							{
+								if (animStateMachineCopy.masks[transition.checkingMaskIndex].asmStateIndex == transition.checkingStateIndex)
+								{
+									// Apply transition
+									mask.asmStateIndex = transition.toStateIndex;
+									stateChanged = true;
+									keepLooking = true;
+									mp.animEndedThisFrame = false;
+
+									end = true;
+								}
+								break;
+							}
+
+							case StateMachine::TransitionType::NOT_CURRENT_STATE:
+							{
+								if (animStateMachineCopy.masks[transition.checkingMaskIndex].asmStateIndex != transition.checkingStateIndex)
+								{
+									// Apply transition @COPYPASTA
+									mask.asmStateIndex = transition.toStateIndex;
+									stateChanged = true;
+									keepLooking = true;
+									mp.animEndedThisFrame = false;
+
+									end = true;
+								}
+								break;
+							}
+
+							case StateMachine::TransitionType::TRIGGER_ACTIVATED:
+								break;  // Skip this (triggers are handled separately)
+							}
+
+							if (end)
+								break;
+						}
+
+						if (end)
+							continue;
+
+						// Triggers
+						for (size_t i = 0; i < animStateMachineCopy.triggers.size(); i++)
+						{
+							if (!animStateMachineCopy.triggers[i].activated)
 								continue;
 
-							// Apply transition via trigger
-							asmStateIndex = transition.toStateIndex;
-							animStateMachineCopy.triggers[i].activated = false;  // Reset that one trigger used
-							resetTriggers = false;
-							animEndedThisFrame = false;  // New state entered; anim just started so reset this!
+							for (auto& transition : currentState.transitions)
+							{
+								if (transition.triggerIndex != i)
+									continue;
+
+								// Apply transition via trigger
+								mask.asmStateIndex = transition.toStateIndex;
+								animStateMachineCopy.triggers[i].activated = false;  // Reset that one trigger used
+								stateChanged = true;
+								keepLooking = true;
+								mp.animEndedThisFrame = false;  // New state entered; anim just started so reset this!
+
+								end = true;
+								break;
+							}
+
+							if (end)
+								break;
 						}
 					}
 				}
+				while (keepLooking);
+
+				// Apply new animation if changed
+				if (stateChanged)
+				{
+					auto& state = mask.states[mask.asmStateIndex];
+					playAnimation(i, state.animationIndex, state.loop);
+				}
 			}
-			while (!resetTriggers);
 
 			// Reset triggers
 			for (auto& trigger : animStateMachineCopy.triggers)
 				trigger.activated = false;
-
-			// Apply new animation if changed
-			if (prevAsmStateIndex != asmStateIndex)
-			{
-				auto& state = animStateMachineCopy.states[asmStateIndex];
-				playAnimation(state.animationIndex, state.loop);
-			}
 		}
 
 		// Process animation
@@ -1867,64 +2118,68 @@ namespace vkglTF
 
 	void Animator::updateAnimation()
 	{
-		Animation& animation = model->animations[animationIndex];
-
 		bool updated = false;
-		for (auto& channel : animation.channels)
+		for (auto& mp : animStateMachineCopy.maskPlayers)
 		{
-			vkglTF::AnimationSampler& sampler = animation.samplers[channel.samplerIndex];
-			if (sampler.inputs.size() > sampler.outputsVec4.size())
-			{
-				continue;
-			}
+			Animation& animation = model->animations[mp.animationIndex];
 
-			for (size_t i = 0; i < sampler.inputs.size() - 1; i++)
+			for (auto& channel : animation.channels)
 			{
-				if (time >= sampler.inputs[i] && time <= sampler.inputs[i + 1])
+				vkglTF::AnimationSampler& sampler = animation.samplers[channel.samplerIndex];
+				if (sampler.inputs.size() > sampler.outputsVec4.size())
 				{
-					float u = std::max(0.0f, time - sampler.inputs[i]) / (sampler.inputs[i + 1] - sampler.inputs[i]);
-					if (u <= 1.0f)
+					// @CHECK: What is this ignoring/continuing?
+					continue;
+				}
+
+				for (size_t i = 0; i < sampler.inputs.size() - 1; i++)
+				{
+					if (mp.time >= sampler.inputs[i] && mp.time <= sampler.inputs[i + 1])
 					{
-						switch (channel.path)
+						float u = std::max(0.0f, mp.time - sampler.inputs[i]) / (sampler.inputs[i + 1] - sampler.inputs[i]);
+						if (u <= 1.0f)
 						{
-						case vkglTF::AnimationChannel::PathType::TRANSLATION:
-						{
-							glm::vec4 translation = glm::mix(sampler.outputsVec4[i], sampler.outputsVec4[i + 1], u);
-							channel.node->translation = glm::vec3(translation);
-							break;
-						}
-						case vkglTF::AnimationChannel::PathType::SCALE:
-						{
-							glm::vec4 scale = glm::mix(sampler.outputsVec4[i], sampler.outputsVec4[i + 1], u);
-							channel.node->scale = glm::vec3(scale);
-							break;
-						}
-						case vkglTF::AnimationChannel::PathType::ROTATION:
-						{
-							glm::quat q1;
-							q1.x = sampler.outputsVec4[i].x;
-							q1.y = sampler.outputsVec4[i].y;
-							q1.z = sampler.outputsVec4[i].z;
-							q1.w = sampler.outputsVec4[i].w;
-							glm::quat q2;
-							q2.x = sampler.outputsVec4[i + 1].x;
-							q2.y = sampler.outputsVec4[i + 1].y;
-							q2.z = sampler.outputsVec4[i + 1].z;
-							q2.w = sampler.outputsVec4[i + 1].w;
+							switch (channel.path)
+							{
+							case vkglTF::AnimationChannel::PathType::TRANSLATION:
+							{
+								glm::vec4 translation = glm::mix(sampler.outputsVec4[i], sampler.outputsVec4[i + 1], u);
+								channel.node->translation = glm::vec3(translation);
+								break;
+							}
+							case vkglTF::AnimationChannel::PathType::SCALE:
+							{
+								glm::vec4 scale = glm::mix(sampler.outputsVec4[i], sampler.outputsVec4[i + 1], u);
+								channel.node->scale = glm::vec3(scale);
+								break;
+							}
+							case vkglTF::AnimationChannel::PathType::ROTATION:
+							{
+								glm::quat q1;
+								q1.x = sampler.outputsVec4[i].x;
+								q1.y = sampler.outputsVec4[i].y;
+								q1.z = sampler.outputsVec4[i].z;
+								q1.w = sampler.outputsVec4[i].w;
+								glm::quat q2;
+								q2.x = sampler.outputsVec4[i + 1].x;
+								q2.y = sampler.outputsVec4[i + 1].y;
+								q2.z = sampler.outputsVec4[i + 1].z;
+								q2.w = sampler.outputsVec4[i + 1].w;
 
-							float_t omu = 1.0f - u;  // One Minus U
+								float_t omu = 1.0f - u;  // One Minus U
 
-							// Super simple neighboring... might be glitchy
-							if (glm::dot(q1, q2) < 0.0f)
-								omu = -omu;
+								// Super simple neighboring... might be glitchy
+								if (glm::dot(q1, q2) < 0.0f)
+									omu = -omu;
 
-							// @TODO: there's a better quaternion neighboring scheme than what's written here... use that one instead (i.e. https://youtu.be/vmAY5kP-tpU?t=1301)
-							channel.node->rotation = glm::normalize(omu * q1 + u * q2);    // @NOTE: by using slerp instead of nlerp, you eat tenth's of a millisecond. So take from it what you will. This is more expensive, HOWEVER, I don't know how to implement nlerp correctly atm so that's something to possibly change in the future bc there's a way to do it that I don't really understand  -Timo
-							// channel.node->rotation = glm::normalize(glm::slerp(q1, q2, u));
-							break;
+								// @TODO: there's a better quaternion neighboring scheme than what's written here... use that one instead (i.e. https://youtu.be/vmAY5kP-tpU?t=1301)
+								channel.node->rotation = glm::normalize(omu * q1 + u * q2);    // @NOTE: by using slerp instead of nlerp, you eat tenth's of a millisecond. So take from it what you will. This is more expensive, HOWEVER, I don't know how to implement nlerp correctly atm so that's something to possibly change in the future bc there's a way to do it that I don't really understand  -Timo
+								// channel.node->rotation = glm::normalize(glm::slerp(q1, q2, u));
+								break;
+							}
+							}
+							updated = true;
 						}
-						}
-						updated = true;
 					}
 				}
 			}
@@ -1944,7 +2199,7 @@ namespace vkglTF
 			// Update join matrices
 			glm::mat4 inverseTransform = glm::inverse(m);
 			size_t numJoints = std::min((uint32_t)skin->joints.size(), MAX_NUM_JOINTS);
-			for (size_t i = 0; i < numJoints; i++)
+			for (size_t i = 0; i < numJoints; i++)  // @TODO: make this multithreaded with a multithreaded for loop
 			{
 				vkglTF::Node* jointNode = skin->joints[i];
 				glm::mat4 jointMat = jointNode->getMatrix() * skin->inverseBindMatrices[i];

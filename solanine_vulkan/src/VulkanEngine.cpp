@@ -3638,8 +3638,11 @@ bool VulkanEngine::loadShaderModule(const char* filePath, VkShaderModule* outSha
 
 void VulkanEngine::loadMeshes()
 {
+#define MULTITHREAD_MESH_LOADING 1
+#if MULTITHREAD_MESH_LOADING
 	tf::Executor e;
 	tf::Taskflow taskflow;
+#endif
 
 	std::vector<std::pair<std::string, vkglTF::Model*>> modelNameAndModels;
 	for (const auto& entry : std::filesystem::recursive_directory_iterator("res/models/"))
@@ -3658,12 +3661,19 @@ void VulkanEngine::loadMeshes()
 
 		size_t      targetIndex = modelNameAndModels.size() - 1;
 		std::string pathString  = path.string();
+
+#if MULTITHREAD_MESH_LOADING
 		taskflow.emplace([&, targetIndex, pathString]() {
+#endif
 			modelNameAndModels[targetIndex].second = new vkglTF::Model();
 			modelNameAndModels[targetIndex].second->loadFromFile(this, pathString);
+#if MULTITHREAD_MESH_LOADING
 		});
+#endif
 	}
+#if MULTITHREAD_MESH_LOADING
 	e.run(taskflow).wait();
+#endif
 
 	for (auto& pair : modelNameAndModels)
 		_roManager->createModel(pair.second, pair.first);

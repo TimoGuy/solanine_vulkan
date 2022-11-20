@@ -197,12 +197,23 @@ namespace vkglTF
 			size_t      toStateIndex;
 		};
 
+		enum class TransitionType
+		{
+			TRIGGER_ACTIVATED,
+			CURRENT_STATE,
+			NOT_CURRENT_STATE,
+		};
+
 		struct Transition
 		{
-			std::string triggerName;  // @NOTE: just for setup
-			size_t      triggerIndex;
-			std::string toStateName;  // @NOTE: just for setup
-			size_t      toStateIndex;
+			TransitionType type;
+			std::string    triggerName;  // @NOTE: just for setup
+			size_t         triggerIndex;
+			std::string    checkingStateName;  // This name compiles down to the mask index and state index
+			size_t         checkingMaskIndex;
+			size_t         checkingStateIndex;
+			std::string    toStateName;  // @NOTE: just for setup
+			size_t         toStateIndex;
 		};
 
 		struct Trigger
@@ -221,6 +232,7 @@ namespace vkglTF
 		struct State
 		{
 			std::string             stateName = "";  // @NOTE: just for referencing for debugging etc. after setup
+			std::string             maskName  = "";  // @NOTE: just for setup
 			std::string             animationName;
 			uint32_t                animationIndex;
 			bool                    loop;
@@ -229,10 +241,33 @@ namespace vkglTF
 			std::vector<Event>      events;
 		};
 
-		bool                               loaded = false;
-		std::vector<Trigger>               triggers;
-		std::vector<State>                 states;
-		std::map<std::string, size_t>      triggerNameToIndex;  // @NOTE: at the very most, the entity owning the animator should be using this, not the internal animator code!
+		struct Mask
+		{
+			std::string              maskName = "";
+			size_t                   asmStateIndex = 0;  // This will represent this mask's current state
+			std::vector<State>       states;
+			bool                     enabled;
+			std::vector<std::string> boneNameList;  // @NOTE: just for setup
+			std::vector<Node*>       boneRefList;
+		};
+
+		struct MaskPlayer
+		{
+			uint32_t animationIndex;  // @TODO: instead of having this be the end all be all, have each bone capture this number as a pointer, so that this will be the index for the global layer, and have the AnimStateMachine carry the mask animation indices and have the relevant bones point to that animationIndex using a pointer  -Timo 2022/11/19
+			float_t  time;
+			bool     loop;
+
+			// Temp data holders:
+			bool      animEndedThisFrame;
+			float_t   animDuration;
+			glm::vec2 timeRange;
+		};
+
+		bool                          loaded = false;
+		std::vector<Trigger>          triggers;
+		std::vector<Mask>             masks;  // @NOTE: masks[0] is the global mask
+		std::vector<MaskPlayer>       maskPlayers;  // @NOTE: maskPlayers[0] is the global mask player
+		std::map<std::string, size_t> triggerNameToIndex;  // @NOTE: at the very most, the entity owning the animator should be using this, not the internal animator code!
 	};
 
 	struct Model
@@ -338,7 +373,7 @@ namespace vkglTF
 		static void destroyEmpty(VulkanEngine* engine);
 		static VkDescriptorSet* getEmptyJointDescriptorSet();  // For binding to represent a non-skinned mesh
 
-		void playAnimation(uint32_t animationIndex, bool loop, float_t time = 0.0f);  // This is for direct control of the animation index
+		void playAnimation(size_t maskIndex, uint32_t animationIndex, bool loop, float_t time = 0.0f);  // This is for direct control of the animation index
 		void update(const float_t& deltaTime);
 
 		void setTrigger(const std::string& triggerName);
@@ -348,17 +383,12 @@ namespace vkglTF
 		VulkanEngine*                 engine;
 		StateMachine                  animStateMachineCopy;
 		std::vector<AnimatorCallback> eventCallbacks;
-		size_t                        asmStateIndex;
 
 		void updateAnimation();
 		void updateJointMatrices(uint32_t animatorMeshId, vkglTF::Skin* skin, glm::mat4& m);
 	public:
 		glm::mat4 getJointMatrix(const std::string& jointName);
 	private:
-
-		uint32_t animationIndex;  // @TODO: instead of having this be the end all be all, have each bone capture this number as a pointer, so that this will be the index for the global layer, and have the AnimStateMachine carry the mask animation indices and have the relevant bones point to that animationIndex using a pointer  -Timo 2022/11/19
-		float_t  time;
-		bool     loop;
 
 		struct UniformBuffer
 		{
