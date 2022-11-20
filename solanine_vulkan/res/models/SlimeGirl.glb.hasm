@@ -82,6 +82,8 @@ bone      Mid Back
 bone      Upper Back
 bone      Neck
 bone      Head
+bone      Back Attachment
+bone      Hand Attachment
 
 
 :StateMCMIdle  # Default anim for this mask bc it's the first defined
@@ -89,6 +91,9 @@ mask      MaskCombatMode
 animation DW_Idle
 loop      1
 trigger   current_state       StateRun       StateMCMRun
+trigger   leave_combat_mode   StateMCMSheathWeapon
+trigger   goto_combat_mode    StateMCMDrawWeapon
+trigger   goto_attack         StateMCMAttack
 
 # @NOTE: current_state and not_current_state are special triggers where they look up what the current state is in a different mask (i.e. the one StateRun is in) and if it is/isn't the state specified (i.e. StateRun), then it will move to a different state on this mask. It's essentially a simple syncing usability.  -Timo
 
@@ -97,6 +102,9 @@ mask      MaskCombatMode
 animation DW_Run
 loop      1
 trigger   not_current_state   StateRun       StateMCMIdle
+trigger   leave_combat_mode   StateMCMSheathWeapon
+trigger   goto_combat_mode    StateMCMDrawWeapon
+trigger   goto_attack         StateMCMAttack
 
 
 :StateMCMDrawWeapon
