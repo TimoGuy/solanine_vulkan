@@ -61,6 +61,16 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
                 _isWeaponCollision = false;
             }
         },
+        {
+            "EventEnableMCMLayer", [&]() {
+                _characterRenderObj->animator->setMask("MaskCombatMode", true);
+            }
+        },
+        {
+            "EventDisableMCMLayer", [&]() {
+                _characterRenderObj->animator->setMask("MaskCombatMode", false);
+            }
+        },
     };
 
     vkglTF::Model* characterModel = _rom->getModel("SlimeGirl");

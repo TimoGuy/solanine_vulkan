@@ -1074,6 +1074,7 @@ namespace vkglTF
 
 		{
 			animStateMachine.masks.push_back(StateMachine::Mask());  // Global mask
+			animStateMachine.masks[0].enabled = true;  // Global mask should always be enabled... unless if you're weird.
 
 			std::vector<StateMachine::State> tempNewStates;
 			StateMachine::State newState = {};
@@ -1328,6 +1329,33 @@ namespace vkglTF
 						animStateMachine.triggerNameToIndex[transition.triggerName] = index;
 						animStateMachine.triggers.push_back({ transition.triggerName, false });
 					}
+				}
+			}
+		}
+
+		//
+		// Compile mask bones to node pointers
+		//
+		for (auto& mask : animStateMachine.masks)
+		{
+			for (auto& boneName : mask.boneNameList)
+			{
+				bool assignedBone = false;
+
+				for (auto& node : linearNodes)
+				{
+					if (node->name == boneName)
+					{
+						mask.boneRefList.push_back(node);
+						assignedBone = true;
+						break;
+					}
+				}
+
+				if (!assignedBone)
+				{
+					std::cerr << "[ASM LOADING]" << std::endl
+						<< "WARNING: node name \"" << boneName << "\" for mask \"" << mask.maskName << "\" was not found. No node was assigned to mask." << std::endl;
 				}
 			}
 		}
@@ -1821,6 +1849,7 @@ namespace vkglTF
 				{
 					for (size_t i = 0; i < eventCallbacks.size(); i++)
 					{
+						// @TODO: add warnings for callbacks that aren't defined
 						if (eventCallbacks[i].eventName == event.eventName)
 						{
 							event.eventIndex = i;
@@ -2014,6 +2043,12 @@ namespace vkglTF
 						// Special transitions
 						for (auto& transition : currentState.transitions)
 						{
+							// @NOTE: @TODO: @CHECK: I just noticed that the special CURRENT_STATE and NOT_CURRENT_STATE transitions happen
+							//                       one frame after the trigger transformations, as in they're not reliable to happen on the
+							//                       same frame that the transition happened on a different mask. Maybe this code should only
+							//                       run when the state actually changes for a layer? Or... it's not actually a problem and it
+							//                       can be left the way it is right now. Idk but for now I'm leaving it like this.
+							//                         -Timo 2022/11/20
 							switch (transition.type)
 							{
 							case StateMachine::TransitionType::CURRENT_STATE:
@@ -2116,15 +2151,52 @@ namespace vkglTF
 		animStateMachineCopy.triggers[triggerIndex].activated = true;
 	}
 
+	void Animator::setMask(const std::string& maskName, bool enabled)
+	{
+		// @NOTE: there will be only 2-3 masks, so I don't see the point of making a hash map,
+		//        that's why it's just a simple linear search.  -Timo 2022/11/20
+		for (auto& mask : animStateMachineCopy.masks)
+		{
+			if (mask.maskName == maskName)
+			{
+				mask.enabled = enabled;
+				return;
+			}
+		}
+
+		std::cerr << "[ANIMATOR SET MASK]" << std::endl
+			<< "WARNING: mask name \"" << maskName << "\" not found. Nothing was changed." << std::endl;
+	}
+
 	void Animator::updateAnimation()
 	{
 		bool updated = false;
-		for (auto& mp : animStateMachineCopy.maskPlayers)
+		for (size_t i = 0; i < animStateMachineCopy.masks.size(); i++)
 		{
+			auto& mask = animStateMachineCopy.masks[i];
+			auto& mp   = animStateMachineCopy.maskPlayers[i];
 			Animation& animation = model->animations[mp.animationIndex];
+
+			if (!mask.enabled)
+				continue;
 
 			for (auto& channel : animation.channels)
 			{
+				if (!mask.boneRefList.empty())
+				{
+					// Check to make sure the channel node is applicable to the mask
+					// @TODO: @IMPROVE: preconstruct a list that has each bone and an index of which mask it should be targeting so this can be checked quicker (rebuild the list when enabling/disabling masks)
+					bool found = false;
+					for (auto& boneRef : mask.boneRefList)
+						if (boneRef == channel.node)
+						{
+							found = true;
+							break;
+						}
+					if (!found)
+						continue;
+				}
+
 				vkglTF::AnimationSampler& sampler = animation.samplers[channel.samplerIndex];
 				if (sampler.inputs.size() > sampler.outputsVec4.size())
 				{

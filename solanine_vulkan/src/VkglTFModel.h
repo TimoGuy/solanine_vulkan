@@ -245,8 +245,8 @@ namespace vkglTF
 		{
 			std::string              maskName = "";
 			size_t                   asmStateIndex = 0;  // This will represent this mask's current state
+			bool                     enabled = false;  // @NOTE: the asm still runs for masks that are disabled, however, `enabled` just sets whether it gets applied to the final joints
 			std::vector<State>       states;
-			bool                     enabled;
 			std::vector<std::string> boneNameList;  // @NOTE: just for setup
 			std::vector<Node*>       boneRefList;
 		};
@@ -377,6 +377,7 @@ namespace vkglTF
 		void update(const float_t& deltaTime);
 
 		void setTrigger(const std::string& triggerName);
+		void setMask(const std::string& maskName, bool enabled);
 
 	private:
 		vkglTF::Model*                model;
