@@ -94,7 +94,7 @@ void Enemy::update(const float_t& deltaTime)
     input.y += input::keyUpPressed    ?  1.0f : 0.0f;
     input.y += input::keyDownPressed  ? -1.0f : 0.0f;
 
-    if (_camera->freeCamMode.enabled)
+    if (_camera->freeCamMode.enabled || ImGui::GetIO().WantTextInput)
     {
         input = glm::vec2(0.0f);
         _flagJump = false;

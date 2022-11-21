@@ -3528,6 +3528,8 @@ void VulkanEngine::initImgui()
 	ImGuiIO& io = ImGui::GetIO(); (void)io;
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
+	auto& style = ImGui::GetStyle();
+	style.Alpha = 0.9f;
 	ImGui_ImplSDL2_InitForVulkan(_window);
 
 	ImGui_ImplVulkan_InitInfo initInfo = {
@@ -4149,7 +4151,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 	constexpr float_t windowPadding = 8.0f;
 
 	ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight/* + windowOffsetY*/), ImGuiCond_Always);		// @NOTE: the ImGuiCond_Always means that this line will execute always, when set to once, this line will be ignored after the first time it's called
-	ImGui::Begin("##Debug Statistics", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs);
+	ImGui::Begin("##Debug Statistics", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs);
 	{
 		ImGui::Text((std::to_string(_debugStats.currentFPS) + " FPS").c_str());
 		ImGui::Text((std::format("{:.2f}", _debugStats.renderTimesMS[_debugStats.renderTimesMSHeadIndex]) + "ms").c_str());

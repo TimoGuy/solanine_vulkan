@@ -56,5 +56,6 @@ void NoteTaker::load(DataSerialized& ds)
 
 void NoteTaker::renderImGui()
 {
-    ImGui::InputTextMultiline("Notes", &_notes, ImVec2(0, 0), ImGuiInputTextFlags_AllowTabInput);
+    ImGui::Text("Notes:");
+    ImGui::InputTextMultiline("##NoteTaker notes textarea", &_notes, ImVec2(512, ImGui::GetTextLineHeight() * 16), ImGuiInputTextFlags_AllowTabInput);
 }
