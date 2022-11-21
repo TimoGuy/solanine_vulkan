@@ -12,6 +12,7 @@
 #include "Player.h"
 #include "Yosemite.h"
 #include "Enemy.h"
+#include "NoteTaker.h"
 
 
 // @PALETTE: where to add serialized names for the entities
@@ -19,10 +20,12 @@ const std::vector<std::string> ENTITY_TYPE_NAMES = {
     ":player",
     ":yosemite",
     ":enemy",
+    ":notetaker",
 };
-const std::string Player::TYPE_NAME   = ENTITY_TYPE_NAMES[0];
-const std::string Yosemite::TYPE_NAME = ENTITY_TYPE_NAMES[1];
-const std::string Enemy::TYPE_NAME    = ENTITY_TYPE_NAMES[2];
+const std::string Player::TYPE_NAME    = ENTITY_TYPE_NAMES[0];
+const std::string Yosemite::TYPE_NAME  = ENTITY_TYPE_NAMES[1];
+const std::string Enemy::TYPE_NAME     = ENTITY_TYPE_NAMES[2];
+const std::string NoteTaker::TYPE_NAME = ENTITY_TYPE_NAMES[3];
 
 
 namespace scene
@@ -41,6 +44,8 @@ namespace scene
             ent = new Yosemite(engine->_entityManager, engine->_roManager, ds);
         if (objectName == Enemy::TYPE_NAME)
             ent = new Enemy(engine->_entityManager, engine->_roManager, engine->_camera, ds);
+        if (objectName == NoteTaker::TYPE_NAME)
+            ent = new NoteTaker(engine->_entityManager, engine->_roManager, ds);
 
         if (ent == nullptr)
         {
