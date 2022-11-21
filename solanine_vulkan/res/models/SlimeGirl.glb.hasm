@@ -1,7 +1,28 @@
 :StateIdle  # Default anim bc it's the first defined
-animation Idle_Hip
+#animation Idle_Hip
+animation Idle
 loop      1
 trigger   goto_run            StateRun
+trigger   goto_jump           StateJumpFromIdle
+trigger   goto_fall           StateFall
+trigger   current_state       StateMCMDrawWeapon       StateFullbodyDrawWeapon
+trigger   current_state       StateMCMSheathWeapon     StateFullbodySheathWeapon
+
+
+:StateFullbodyDrawWeapon
+animation Draw_Weapon
+loop      0
+on_finish StateIdle
+trigger   goto_run            StateRun          # @NOTE: this is just a copy of StateIdle's triggers
+trigger   goto_jump           StateJumpFromIdle
+trigger   goto_fall           StateFall
+
+
+:StateFullbodySheathWeapon
+animation Sheath_Weapon
+loop      0
+on_finish StateIdle
+trigger   goto_run            StateRun          # @NOTE: this is just a copy of StateIdle's triggers
 trigger   goto_jump           StateJumpFromIdle
 trigger   goto_fall           StateFall
 
@@ -78,7 +99,7 @@ bone      Pinky1.R
 bone      Pinky2.R
 bone      Thumb1.R
 bone      Thumb2.R
-bone      Lower Back
+# bone      Lower Back
 bone      Mid Back
 bone      Upper Back
 bone      Neck

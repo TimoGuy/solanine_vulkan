@@ -375,9 +375,6 @@ void main()
 	vec3 diffuseContrib = (1.0 - F) * diffuse(pbrInputs);
 	vec3 specContrib = F * G * D / (4.0 * NdotL * NdotV);
 
-	// Obtain final intensity as reflectance (BRDF) scaled by the energy of the light (cosine law)
-	vec3 color = NdotL * u_LightColor * (diffuseContrib + specContrib);
-
 	// Get shadow cascade index for the current fragment's view position
 	uint cascadeIndex = 0;
 	for (uint i = 0; i < SHADOW_MAP_CASCADE_COUNT - 1; i++)
@@ -393,7 +390,10 @@ void main()
 	//} else {
 	shadow = textureProj(shadowCoord / shadowCoord.w, vec2(0.0), cascadeIndex);
 	//}
-	color *= shadow;  // @HACK: ya did all that calculating of the specular and diffuse just so it can get deflected from the shadow?!?!?!
+	shadow = shadow * NdotL;
+
+	// Obtain final intensity as reflectance (BRDF) scaled by the energy of the light (cosine law)
+	vec3 color = NdotL * u_LightColor * shadow * (diffuseContrib + specContrib);
 
 	// Calculate lighting contribution from image based lighting source (IBL)
 	color += getIBLContribution(pbrInputs, n, reflection);
