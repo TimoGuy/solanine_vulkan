@@ -1167,9 +1167,9 @@ namespace vkglTF
 						newOnFinish.toStateName = line;
 						newState.onFinish = newOnFinish;
 					}
-					else if (line.rfind("trigger ", 0) == 0)
+					else if (line.rfind("trans ", 0) == 0)
 					{
-						line = line.substr(sizeof("trigger ") - 1);
+						line = line.substr(sizeof("trans ") - 1);
 						trim(line);
 
 						std::string param0 = line.substr(0, line.find(' '));

@@ -424,7 +424,7 @@ bool Enemy::processMessage(DataSerialized& message)
 
         AudioEngine::getInstance().playSoundFromList({
             "res/sfx/wip_bonk.ogg",
-            "res/sfx/wip_hurt.ogg",
+            // "res/sfx/wip_hurt.ogg",
         });
 
         _attackedDebounceTimer = _attackedDebounce;

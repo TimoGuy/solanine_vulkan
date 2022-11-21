@@ -234,7 +234,7 @@ void Player::update(const float_t& deltaTime)
         input.y += input::keyUpPressed    ?  1.0f : 0.0f;
         input.y += input::keyDownPressed  ? -1.0f : 0.0f;
 
-        if (_camera->freeCamMode.enabled)
+        if (_camera->freeCamMode.enabled || _isWeaponCollision)  // Do not allow input while doing attacks
         {
             input = glm::vec2(0.0f);
             _flagJump = false;
@@ -284,7 +284,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         input.y += input::keyUpPressed    ?  1.0f : 0.0f;
         input.y += input::keyDownPressed  ? -1.0f : 0.0f;
 
-        if (_camera->freeCamMode.enabled)
+        if (_camera->freeCamMode.enabled || _isWeaponCollision)  // Do not allow input while doing attacks
         {
             input = glm::vec2(0.0f);
             _flagJump = false;
