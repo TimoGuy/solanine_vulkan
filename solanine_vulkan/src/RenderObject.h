@@ -43,7 +43,7 @@ private:
 	std::vector<size_t>                                   _renderObjectsIndices;
     std::array<bool,         RENDER_OBJECTS_MAX_CAPACITY> _renderObjectsIsRegistered;  // @NOTE: this will be filled with `false` on init  (https://stackoverflow.com/questions/67648693/safely-initializing-a-stdarray-of-bools)
     std::array<RenderObject, RENDER_OBJECTS_MAX_CAPACITY> _renderObjectPool;
-	std::vector<bool> _renderObjectLayersEnabled = { true, false, false };
+	std::vector<bool>                                     _renderObjectLayersEnabled = { true, false, true };
 
 	std::unordered_map<std::string, vkglTF::Model*> _renderObjectModels;
 	vkglTF::Model* createModel(vkglTF::Model* model, const std::string& name);

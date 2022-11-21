@@ -17,7 +17,7 @@ NoteTaker::NoteTaker(EntityManager* em, RenderObjectManager* rom, DataSerialized
         _rom->registerRenderObject({
             .model = model,
             .transformMatrix = _load_transform,
-            .renderLayer = RenderLayer::VISIBLE,
+            .renderLayer = RenderLayer::BUILDER,
             .attachedEntityGuid = getGUID(),
         });
 }
