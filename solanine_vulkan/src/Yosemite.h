@@ -25,6 +25,7 @@ public:
     void load(DataSerialized& ds);
     std::string getTypeName() { return TYPE_NAME; };
 
+    void reportMoved(void* matrixMoved);
     void renderImGui();
 
 private:
@@ -33,9 +34,12 @@ private:
     RenderObjectManager* _rom;
     RegisteredPhysicsObject* _physicsObj;
 
-#ifdef _DEVELOP
-    void updatePhysicsObjFromRenderTransform();
-#endif
-
     glm::mat4 _load_renderTransform = glm::mat4(1.0f);
+    
+    // Tweak Props
+    bool      _isShallowPlanet     = false;
+    float_t   _shallowPlanetMass   = 65.0f;
+    float_t   _shallowPlanetAccel  = 30.0f;
+    float_t   _shallowPlanetTorque = 10.0f;
+    glm::vec3 _shallowPlanetTargetPosition;
 };

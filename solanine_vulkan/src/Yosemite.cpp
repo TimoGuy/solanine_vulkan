@@ -31,12 +31,14 @@ Yosemite::Yosemite(EntityManager* em, RenderObjectManager* rom, DataSerialized* 
 
     _physicsObj =
         PhysicsEngine::getInstance().registerPhysicsObject(
-            false,
+            _isShallowPlanet ? _shallowPlanetMass : false,
             position,
             rotation,
             new btBoxShape(physutil::toVec3(scale * 0.5f)),
             &getGUID()
         );
+
+    _shallowPlanetTargetPosition = position;
 
     _enablePhysicsUpdate = true;
 }
@@ -51,8 +53,20 @@ Yosemite::~Yosemite()
 
 void Yosemite::physicsUpdate(const float_t& physicsDeltaTime)
 {
-    // @TODO: only update this if the renderobj transform changed (use the _enablePhysicsUpdate flag)
-    updatePhysicsObjFromRenderTransform();
+    if (!_isShallowPlanet)
+        return;
+
+    //
+    // Calculate uprightness of this planet if already very straight
+    //
+    btTransform& myTrans = _physicsObj->body->getWorldTransform();
+    _physicsObj->body->applyForce(
+        (physutil::toVec3(_shallowPlanetTargetPosition) - myTrans.getOrigin() - _physicsObj->body->getLinearVelocity() * 0.1f) * _shallowPlanetAccel,
+        btVector3(0, 0, 0)
+    );
+    btVector3 forwardAxis = myTrans.getBasis() * btVector3(0, 0, 1);
+    glm::quat forward = glm::quat(physutil::toVec3(forwardAxis), glm::vec3(0, 1, 0));
+    _physicsObj->body->applyTorque(btVector3(forward.x, forward.y, forward.z) * _shallowPlanetTorque);
 }
 
 void Yosemite::dump(DataSerializer& ds)
@@ -67,26 +81,17 @@ void Yosemite::load(DataSerialized& ds)
     _load_renderTransform = ds.loadMat4();
 }
 
-void Yosemite::renderImGui()
+void Yosemite::reportMoved(void* matrixMoved)
 {
-    ImGui::Text("Change the render object's transform to change the yosemite's physicsobj transform");
-}
-
-#ifdef _DEVELOP
-void Yosemite::updatePhysicsObjFromRenderTransform()
-{
-    if (physutil::matrixEquals(_renderObj->transformMatrix, _load_renderTransform))
-        return;
-    _load_renderTransform = _renderObj->transformMatrix;  // @HACK: this isn't production code... that's why it's a _load_* variable despite being used for more than that in actuality
-
     //
     // Just completely recreate it (bc it's a static body)
     //
     PhysicsEngine::getInstance().unregisterPhysicsObject(_physicsObj);
 
-    glm::vec3 position = physutil::getPosition(_renderObj->transformMatrix);  // @COPYPASTA
-    glm::quat rotation = physutil::getRotation(_renderObj->transformMatrix);
-    glm::vec3 scale    = physutil::getScale(_renderObj->transformMatrix);
+    glm::mat4 glmTrans = *(glm::mat4*)matrixMoved;
+    glm::vec3 position = physutil::getPosition(glmTrans);  // @COPYPASTA
+    glm::quat rotation = physutil::getRotation(glmTrans);
+    glm::vec3 scale    = physutil::getScale(glmTrans);
 
     _physicsObj =
         PhysicsEngine::getInstance().registerPhysicsObject(
@@ -96,5 +101,19 @@ void Yosemite::updatePhysicsObjFromRenderTransform()
             new btBoxShape(physutil::toVec3(scale * 0.5f)),
             &getGUID()
         );
+
+    _shallowPlanetTargetPosition = position;
 }
-#endif
+
+void Yosemite::renderImGui()
+{
+    ImGui::Text("Change the render object's transform to change the yosemite's physicsobj transform");
+
+    ImGui::Separator();
+
+    ImGui::Checkbox("_isShallowPlanet", &_isShallowPlanet);
+    ImGui::DragFloat("_shallowPlanetMass", &_shallowPlanetMass);
+    ImGui::DragFloat("_shallowPlanetAccel", &_shallowPlanetAccel);
+    ImGui::DragFloat("_shallowPlanetTorque", &_shallowPlanetTorque);
+    ImGui::DragFloat3("_shallowPlanetTargetPosition", &_shallowPlanetTargetPosition[0]);
+}
