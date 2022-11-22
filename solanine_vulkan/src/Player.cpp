@@ -65,6 +65,11 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
             }
         },
         {
+            "EventStartAttack", [&]() {
+                _isWeaponCollision = true;
+            }
+        },
+        {
             "EventEndAttack", [&]() {
                 _isWeaponCollision = false;
             }
@@ -352,19 +357,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
 
     if (_flagDrawOrSheathWeapon)
     {
-        //
-        // Enter/exit combat mode
-        //
-        if (_isCombatMode)
-        {
-            _characterRenderObj->animator->setTrigger("leave_combat_mode");
-        }
-        else
-        {
-            _characterRenderObj->animator->setTrigger("goto_combat_mode");
-        }
-
-        // Reset everything else
+        // Reset flags
         _flagDrawOrSheathWeapon = false;
         _airDashMove = false;  // @NOTE: I added this back in like 5 minutes after removing it bc the 45deg air dash is with the sword drawn, so it makes sense to nullify it if you're gonna sheath your weapon.  -Timo 2022/11/12    @NOTE: I think that removing this is important so that you can do the airborne sword drawing airdash and then put your sword away to jump easier  -Timo 2022/11/12
 
@@ -372,6 +365,9 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         // do a 45 degree downwards air dash
         if (!_isCombatMode && !_onGround)
         {
+            _characterRenderObj->animator->setTrigger("goto_midair_brandish_attack");
+            _weaponPrevTransform = glm::mat4(0.0f);
+
             _airDashDirection = glm::vec3(0, -glm::sin(glm::radians(45.0f)), glm::cos(glm::radians(45.0f)));
             _airDashDirection = glm::quat(glm::vec3(0, _facingDirection, 0)) * _airDashDirection;
 
@@ -383,6 +379,20 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
             _airDashTimeElapsed = 0.0f;
             _airDashFinishSpeedFracCooked = 1.0f;
             _airDashSpeed = _airDashSpeedXZ;
+        }
+        else
+        {
+            //
+            // Enter/exit combat mode
+            //
+            if (_isCombatMode)
+            {
+                _characterRenderObj->animator->setTrigger("leave_combat_mode");
+            }
+            else
+            {
+                _characterRenderObj->animator->setTrigger("goto_combat_mode");
+            }
         }
     }
 
@@ -416,7 +426,8 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
             _airDashMove = false;
         }
     }
-    else if (_isCombatMode)
+    
+    if (_isCombatMode)
     {
         //
         // Process combat mode
@@ -427,10 +438,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
             // Start attack
             //
             _characterRenderObj->animator->setTrigger("goto_attack");
-
             _flagAttack = false;
-
-            _isWeaponCollision = true;
             _weaponPrevTransform = glm::mat4(0.0f);
         }
 
