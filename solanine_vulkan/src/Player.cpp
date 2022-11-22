@@ -33,15 +33,23 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
         },
         {
             "EventPlaySFXMaterialize", [&]() {
-                AudioEngine::getInstance().playSound("res/sfx/wip_draw_weapon.ogg");
+                AudioEngine::getInstance().playSoundFromList({
+                    // "res/sfx/wip_draw_weapon.ogg",
+                    "res/sfx/wip_poweron1.wav",
+                    "res/sfx/wip_poweron2.wav",
+                    "res/sfx/wip_poweron3.wav",
+                });
                 _weaponRenderObj->renderLayer = RenderLayer::VISIBLE;
             }
         },
         {
             "EventPlaySFXBreakoff", [&]() {
                 AudioEngine::getInstance().playSoundFromList({
-                    "res/sfx/wip_sheath_weapon.ogg",
-                    "res/sfx/wip_sheath_weapon_2.ogg"
+                    // "res/sfx/wip_sheath_weapon.ogg",
+                    // "res/sfx/wip_sheath_weapon_2.ogg",
+                    "res/sfx/wip_poweroff1.wav",
+                    "res/sfx/wip_poweroff2.wav",
+                    "res/sfx/wip_poweroff3.wav",
                 });
                 _weaponRenderObj->renderLayer = RenderLayer::INVISIBLE;
             }

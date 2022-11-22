@@ -13,21 +13,21 @@ trans     current_state       StateMCMSheathWeapon     StateFullbodySheathWeapon
 :StateFullbodyDrawWeapon
 animation Draw_Weapon
 loop      0
-on_finish StateIdle
 trans     goto_run            StateRun          # @NOTE: this is just a copy of StateIdle's triggers
 trans     goto_jump           StateJumpFromIdle
 trans     goto_fall           StateFall
 trans     goto_attack         StateAttack
+trans     not_current_state   StateMCMDrawWeapon       StateIdle
 
 
 :StateFullbodySheathWeapon
 animation Sheath_Weapon
 loop      0
-on_finish StateIdle
 trans     goto_run            StateRun          # @NOTE: this is just a copy of StateIdle's triggers
 trans     goto_jump           StateJumpFromIdle
 trans     goto_fall           StateFall
 trans     goto_attack         StateAttack
+trans     not_current_state   StateMCMSheathWeapon     StateIdle
 
 
 :StateRun
@@ -154,7 +154,7 @@ loop      0
 on_finish StateMCMIdle
 event     0.0                 EventEnableMCMLayer
 event     0.0                 EventSwitchToHandAttachment
-event     0.8                 EventPlaySFXMaterialize
+event     0.588235            EventPlaySFXMaterialize
 trans     leave_combat_mode   StateMCMSheathWeapon
 
 
@@ -165,5 +165,5 @@ loop      0
 on_finish StateMCMIdle
 event     1.0                 EventDisableMCMLayer
 event     1.0                 EventSwitchToBackAttachment
-event     0.315789474         EventPlaySFXBreakoff
+event     0.461538            EventPlaySFXBreakoff
 trans     goto_combat_mode    StateMCMDrawWeapon
