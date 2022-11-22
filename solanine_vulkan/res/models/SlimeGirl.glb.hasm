@@ -106,6 +106,7 @@ trans     goto_run            StateMidairBrandishAttackLanding
 animation DW_Midair_Attack_Landing
 loop      0
 on_finish StateIdle
+event     0.0                 EventPlaySFXLandHard
 event     1.0                 EventEnableMCMLayer
 event     1.0                 EventEndAttack
 

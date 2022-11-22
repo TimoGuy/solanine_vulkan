@@ -65,6 +65,13 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
             }
         },
         {
+            "EventPlaySFXLandHard", [&]() {
+                AudioEngine::getInstance().playSoundFromList({
+                    "res/sfx/wip_OOT_Link_FallDown_Wood.wav",
+                });
+            }
+        },
+        {
             "EventStartAttack", [&]() {
                 _isWeaponCollision = true;
             }
