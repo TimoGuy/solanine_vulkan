@@ -33,6 +33,8 @@ struct RegisteredPhysicsObject
     // Tweakable properties
     glm::vec3 transformOffset;
     std::function<void(btPersistentManifold*, bool amIB)>* onCollisionStayCallback = nullptr;
+
+    void reportMoved(const glm::mat4& newTrans, bool resetVelocity);
 };
 
 class PhysicsEngine
@@ -117,6 +119,7 @@ namespace physutil
 	glm::vec3 clampVector(glm::vec3 vector, float_t min, float_t max);
     btVector3 toVec3(const glm::vec3& vector);
     glm::vec3 toVec3(const btVector3& vector);
+    btTransform toTransform(const glm::mat4& transform);
     glm::vec3 getPosition(const glm::mat4& transform);
 	glm::quat getRotation(const glm::mat4& transform);
 	glm::vec3 getScale(const glm::mat4& transform);

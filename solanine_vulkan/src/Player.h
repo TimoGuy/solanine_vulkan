@@ -29,6 +29,7 @@ public:
     void load(DataSerialized& ds);
     std::string getTypeName() { return TYPE_NAME; };
 
+    void reportMoved(void* matrixMoved);
     void renderImGui();
 
 private:

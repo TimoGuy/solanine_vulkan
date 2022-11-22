@@ -4421,18 +4421,19 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 			else
 				snapValues = glm::vec3(0.5f);
 
-		ImGuizmo::Manipulate(
-			glm::value_ptr(_camera->sceneCamera.gpuCameraData.view),
-			glm::value_ptr(projection),
-			manipulateOperation,
-			manipulateMode,
-			glm::value_ptr(*_movingMatrix.matrixToMove),
-			nullptr,
-			glm::value_ptr(snapValues)
-		);
+		bool matrixToMoveMoved =
+			ImGuizmo::Manipulate(
+				glm::value_ptr(_camera->sceneCamera.gpuCameraData.view),
+				glm::value_ptr(projection),
+				manipulateOperation,
+				manipulateMode,
+				glm::value_ptr(*_movingMatrix.matrixToMove),
+				nullptr,
+				glm::value_ptr(snapValues)
+			);
 
 		//
-		// Move the matrix via the cached matrix components
+		// Move the matrix via the decomposed values
 		//
 		ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight + windowOffsetY), ImGuiCond_Always);
 		ImGui::Begin("Edit Selected", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
@@ -4463,6 +4464,8 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 						glm::value_ptr(scale),
 						glm::value_ptr(*_movingMatrix.matrixToMove)
 					);
+
+					matrixToMoveMoved = true;
 				}
 			}
 
@@ -4565,6 +4568,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 
 				//
 				// @TODO: see if you can't implement one for physics objects
+				// @REPLY: I can't. I don't want to. I don't see a point.
 				//
 
 				//
@@ -4585,6 +4589,9 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 
 					if (foundEnt && ImGui::CollapsingHeader(("Entity " + foundEnt->getGUID()).c_str(), ImGuiTreeNodeFlags_DefaultOpen))
 					{
+						if (matrixToMoveMoved)
+							foundEnt->reportMoved(_movingMatrix.matrixToMove);
+
 						foundEnt->renderImGui();
 					}
 				}

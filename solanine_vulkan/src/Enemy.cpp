@@ -438,6 +438,14 @@ bool Enemy::processMessage(DataSerialized& message)
     return false;
 }
 
+void Enemy::reportMoved(void* matrixMoved)
+{
+    _physicsObj->reportMoved(
+        glm::translate(*(glm::mat4*)matrixMoved, -_physicsObj->transformOffset),
+        true
+    );
+}
+
 void Enemy::renderImGui()
 {
     ImGui::Text(("_onGround: " + std::to_string(_onGround)).c_str());

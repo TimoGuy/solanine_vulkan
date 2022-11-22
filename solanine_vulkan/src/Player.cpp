@@ -669,6 +669,14 @@ void Player::load(DataSerialized& ds)
     _facingDirection       = ds.loadFloat();
 }
 
+void Player::reportMoved(void* matrixMoved)
+{
+    _physicsObj->reportMoved(
+        glm::translate(*(glm::mat4*)matrixMoved, -_physicsObj->transformOffset),
+        true
+    );
+}
+
 void Player::renderImGui()
 {
     ImGui::Text(("_onGround: " + std::to_string(_onGround)).c_str());

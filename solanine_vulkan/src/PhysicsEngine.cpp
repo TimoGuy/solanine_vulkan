@@ -6,6 +6,19 @@
 #include "VkInitializers.h"
 
 
+void RegisteredPhysicsObject::reportMoved(const glm::mat4& newTrans, bool resetVelocity)
+{
+	body->setWorldTransform(
+        physutil::toTransform(newTrans)
+    );
+	currentTransform      = body->getWorldTransform();
+	prevTransform         = body->getWorldTransform();
+	interpolatedTransform = newTrans;
+
+	if (resetVelocity)
+    	body->setLinearVelocity(btVector3(0, 0, 0));
+}
+
 PhysicsEngine& PhysicsEngine::getInstance()
 {
 	static PhysicsEngine instance;
@@ -232,9 +245,7 @@ RegisteredPhysicsObject* PhysicsEngine::registerPhysicsObject(float_t mass, glm:
 
 	glm::mat4 glmTrans = glm::translate(glm::mat4(1.0f), origin) * glm::toMat4(rotation);
 
-	btTransform trans;
-	trans.setFromOpenGLMatrix(glm::value_ptr(glmTrans));
-
+	btTransform trans = physutil::toTransform(glmTrans);
 	RegisteredPhysicsObject rpo = {
 		.body = createRigidBody(mass, trans, shape, guid),
 		.prevTransform = trans,    // Set it to this so there's a basis to do the interpolation from
@@ -852,6 +863,13 @@ namespace physutil
     glm::vec3 toVec3(const btVector3& vector)
 	{
 		return glm::vec3(vector.x(), vector.y(), vector.z());
+	}
+
+	btTransform toTransform(const glm::mat4& transform)
+	{
+		btTransform trans;
+		trans.setFromOpenGLMatrix(glm::value_ptr(transform));
+		return trans;
 	}
 
 	glm::vec3 getPosition(const glm::mat4& transform)
