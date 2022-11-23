@@ -156,7 +156,7 @@ void VulkanEngine::run()
 
 		// Update DeltaTime
 		uint64_t currentFrame = SDL_GetPerformanceCounter();
-		const float_t deltaTime = (float_t)(currentFrame - lastFrame) * ticksFrequency * timeScale;
+		const float_t deltaTime = (float_t)(currentFrame - lastFrame) * ticksFrequency;
 		lastFrame = currentFrame;
 
 		// Stop anything from updating when window is minimized
@@ -170,20 +170,21 @@ void VulkanEngine::run()
 			continue;
 
 		// Update physics
+		const float_t scaledDeltaTime = deltaTime * timeScale;
 		auto& entities = _entityManager->_entities;
-		PhysicsEngine::getInstance().update(deltaTime, &entities);
+		PhysicsEngine::getInstance().update(scaledDeltaTime, &entities);
 
 		// Collect debug stats
 		updateDebugStats(deltaTime);
 
 		// Update entities
-		_entityManager->update(deltaTime);
+		_entityManager->update(scaledDeltaTime);
 
 		// Update animators
-		_roManager->updateAnimators(deltaTime);
+		_roManager->updateAnimators(scaledDeltaTime);
 
 		// Late update (i.e. after animators are run)
-		_entityManager->lateUpdate(deltaTime);
+		_entityManager->lateUpdate(scaledDeltaTime);
 
 		// Update camera
 		_camera->update(deltaTime);

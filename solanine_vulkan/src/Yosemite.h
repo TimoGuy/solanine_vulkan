@@ -20,6 +20,7 @@ public:
     ~Yosemite();
 
     void physicsUpdate(const float_t& physicsDeltaTime);
+    void lateUpdate(const float_t& deltaTime);
 
     void dump(DataSerializer& ds);
     void load(DataSerialized& ds);
@@ -37,9 +38,11 @@ private:
     glm::mat4 _load_renderTransform = glm::mat4(1.0f);
     
     // Tweak Props
-    bool      _isShallowPlanet     = false;
-    float_t   _shallowPlanetMass   = 65.0f;
-    float_t   _shallowPlanetAccel  = 30.0f;
-    float_t   _shallowPlanetTorque = 10.0f;
+    bool      _isShallowPlanet       = false;
+    float_t   _shallowPlanetMass     = 10.0f;
+    float_t   _shallowPlanetLinDamp  = 0.0f;
+    float_t   _shallowPlanetAngDamp  = 0.05f;
+    float_t   _shallowPlanetAccel    = 30.0f;
+    float_t   _shallowPlanetTorque   = 250.0f;
     glm::vec3 _shallowPlanetTargetPosition;
 };

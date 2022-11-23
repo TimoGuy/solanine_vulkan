@@ -37,10 +37,12 @@ Yosemite::Yosemite(EntityManager* em, RenderObjectManager* rom, DataSerialized* 
             new btBoxShape(physutil::toVec3(scale * 0.5f)),
             &getGUID()
         );
+    _physicsObj->body->setGravity(btVector3(0, 0, 0));
 
     _shallowPlanetTargetPosition = position;
 
     _enablePhysicsUpdate = true;
+    _enableLateUpdate = _isShallowPlanet;
 }
 
 Yosemite::~Yosemite()
@@ -56,29 +58,53 @@ void Yosemite::physicsUpdate(const float_t& physicsDeltaTime)
     if (!_isShallowPlanet)
         return;
 
+    _physicsObj->body->setDamping(_shallowPlanetLinDamp, _shallowPlanetAngDamp);
+
     //
     // Calculate uprightness of this planet if already very straight
     //
+    float_t mass = _physicsObj->body->getMass();
     btTransform& myTrans = _physicsObj->body->getWorldTransform();
     _physicsObj->body->applyForce(
-        (physutil::toVec3(_shallowPlanetTargetPosition) - myTrans.getOrigin() - _physicsObj->body->getLinearVelocity() * 0.1f) * _shallowPlanetAccel,
+        (physutil::toVec3(_shallowPlanetTargetPosition) - myTrans.getOrigin() - _physicsObj->body->getLinearVelocity() * 0.1f) * _shallowPlanetAccel * mass,
         btVector3(0, 0, 0)
     );
-    btVector3 forwardAxis = myTrans.getBasis() * btVector3(0, 0, 1);
-    glm::quat forward = glm::quat(physutil::toVec3(forwardAxis), glm::vec3(0, 1, 0));
-    _physicsObj->body->applyTorque(btVector3(forward.x, forward.y, forward.z) * _shallowPlanetTorque);
+    btVector3 transformUp = myTrans.getBasis() * btVector3(0, 1, 0);
+    glm::quat toTheTop = glm::quat(physutil::toVec3(transformUp), glm::vec3(0, 1, 0));
+    glm::vec3 torque   = glm::eulerAngles(toTheTop);
+    _physicsObj->body->applyTorque(
+        btVector3(torque.x, torque.y, torque.z) * _shallowPlanetTorque * mass
+    );
+}
+
+void Yosemite::lateUpdate(const float_t& deltaTime)
+{
+    _renderObj->transformMatrix =
+        glm::translate(glm::mat4(1.0f), physutil::getPosition(_physicsObj->interpolatedTransform)) *
+        glm::toMat4(physutil::getRotation(_physicsObj->interpolatedTransform)) *
+        glm::scale(glm::mat4(1.0f), physutil::getScale(_renderObj->transformMatrix));
 }
 
 void Yosemite::dump(DataSerializer& ds)
 {
     Entity::dump(ds);
     ds.dumpMat4(_renderObj->transformMatrix);
+    ds.dumpFloat(_isShallowPlanet);
+    ds.dumpFloat(_shallowPlanetLinDamp);
+    ds.dumpFloat(_shallowPlanetAngDamp);
+    ds.dumpFloat(_shallowPlanetAccel);
+    ds.dumpFloat(_shallowPlanetTorque);
 }
 
 void Yosemite::load(DataSerialized& ds)
 {
     Entity::load(ds);
     _load_renderTransform = ds.loadMat4();
+    _isShallowPlanet      = ds.loadFloat();
+    _shallowPlanetLinDamp = ds.loadFloat();
+    _shallowPlanetAngDamp = ds.loadFloat();
+    _shallowPlanetAccel   = ds.loadFloat();
+    _shallowPlanetTorque  = ds.loadFloat();
 }
 
 void Yosemite::reportMoved(void* matrixMoved)
@@ -95,14 +121,17 @@ void Yosemite::reportMoved(void* matrixMoved)
 
     _physicsObj =
         PhysicsEngine::getInstance().registerPhysicsObject(
-            false,
+            _isShallowPlanet ? _shallowPlanetMass : false,
             position,
             rotation,
             new btBoxShape(physutil::toVec3(scale * 0.5f)),
             &getGUID()
         );
+    _physicsObj->body->setGravity(btVector3(0, 0, 0));
 
     _shallowPlanetTargetPosition = position;
+    
+    _enableLateUpdate = _isShallowPlanet;
 }
 
 void Yosemite::renderImGui()
@@ -111,8 +140,11 @@ void Yosemite::renderImGui()
 
     ImGui::Separator();
 
-    ImGui::Checkbox("_isShallowPlanet", &_isShallowPlanet);
+    if (ImGui::Checkbox("_isShallowPlanet", &_isShallowPlanet))  // @TODO: figure out how to get displacement to work on this buddy!
+        reportMoved(&_renderObj->transformMatrix);
     ImGui::DragFloat("_shallowPlanetMass", &_shallowPlanetMass);
+    ImGui::DragFloat("_shallowPlanetLinDamp", &_shallowPlanetLinDamp);
+    ImGui::DragFloat("_shallowPlanetAngDamp", &_shallowPlanetAngDamp);
     ImGui::DragFloat("_shallowPlanetAccel", &_shallowPlanetAccel);
     ImGui::DragFloat("_shallowPlanetTorque", &_shallowPlanetTorque);
     ImGui::DragFloat3("_shallowPlanetTargetPosition", &_shallowPlanetTargetPosition[0]);
