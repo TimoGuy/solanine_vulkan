@@ -11,6 +11,7 @@ struct RegisteredPhysicsObject;
 struct Camera;
 class btPersistentManifold;
 class btCapsuleShape;
+class btRigidBody;
 
 
 class Player : public Entity
@@ -60,6 +61,13 @@ private:
 
     int32_t   _jumpPreventOnGroundCheckFramesTimer = -1;
     int32_t   _jumpInputBufferFramesTimer          = -1;
+
+    // Moving platforms
+    btRigidBody* _attachedBody            = nullptr;
+    int32_t      _framesSinceAttachedBody = 0;
+    glm::vec3    _attachmentWorldPosition;
+    glm::vec3    _attachmentLocalPosition;
+    glm::vec3    _attachmentVelocity      = { 0, 0, 0 };
 
     // Combat mode
     bool      _flagDrawOrSheathWeapon = false;

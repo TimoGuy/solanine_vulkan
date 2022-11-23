@@ -354,11 +354,13 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     // Update state
     //
     _stepsSinceLastGrounded++;
+    _framesSinceAttachedBody++;
 
     glm::vec3 velocity = physutil::toVec3(_physicsObj->body->getLinearVelocity());
 
-    velocity -= _displacementToTarget / physicsDeltaTime;  // Undo the displacement (hopefully no movement bugs)
+    velocity -= (_displacementToTarget - _attachmentVelocity) / physicsDeltaTime;  // Undo the displacement (hopefully no movement bugs)
     _displacementToTarget = glm::vec3(0.0f);
+    _attachmentVelocity   = glm::vec3(0.0f);
 
     processGrounded(velocity, physicsDeltaTime);
 
@@ -675,7 +677,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         }
     }
 
-    _physicsObj->body->setLinearVelocity(physutil::toVec3(velocity + _displacementToTarget / physicsDeltaTime));
+    _physicsObj->body->setLinearVelocity(physutil::toVec3(velocity + (_displacementToTarget - _attachmentVelocity) / physicsDeltaTime));
 }
 
 void Player::dump(DataSerializer& ds)
@@ -763,10 +765,12 @@ void Player::processGrounded(glm::vec3& velocity, const float_t& physicsDeltaTim
                     float_t targetLengthDifference = targetLength - hitInfo.m_closestHitFraction * rayLength;
                     _displacementToTarget.y = targetLengthDifference;  // Move up even though raycast was down bc we want to go the opposite direction the raycast went.
 
-                    // Send message to ground below the mass of this raycast
-                    // (i.e. pretend that the raycast is the body and it has mass)
                     if (hitInfo.m_collisionObject->getInternalType() & btCollisionObject::CO_RIGID_BODY)
                     {
+                        //
+                        // Send message to ground below the mass of this raycast
+                        // (i.e. pretend that the raycast is the body and it has mass)
+                        //
                         auto otherBody = (btRigidBody*)hitInfo.m_collisionObject;
                         otherBody->activate();
 
@@ -777,6 +781,31 @@ void Player::processGrounded(glm::vec3& velocity, const float_t& physicsDeltaTim
                         );
                         btVector3 relPos = hitInfo.m_hitPointWorld - otherBody->getWorldTransform().getOrigin();
                         otherBody->applyForce(force, relPos);
+
+                        //
+                        // Process moving platform information
+                        //
+                        if (otherBody->getMass() >= _physicsObj->body->getMass())
+                        {
+                            if (_framesSinceAttachedBody > 1 ||
+                                _attachedBody != otherBody)
+                            {
+                                // New attachment
+                                _attachedBody = otherBody;
+                                _framesSinceAttachedBody = 0;
+
+                                auto awp = _physicsObj->body->getWorldTransform().getOrigin();
+                                auto alp = otherBody->getWorldTransform().inverse() * awp;
+                                _attachmentWorldPosition = physutil::toVec3(awp);
+                                _attachmentLocalPosition = physutil::toVec3(alp);
+                            }
+                            else
+                            {
+                                // Find delta of moving platform
+                                _attachmentVelocity   = physutil::toVec3(otherBody->getWorldTransform() * physutil::toVec3(_attachmentLocalPosition) - physutil::toVec3(_attachmentWorldPosition));
+                                _attachmentVelocity.y = 0.0f;
+                            }
+                        }
                     }
                 }
             }
