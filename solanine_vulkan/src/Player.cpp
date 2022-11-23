@@ -713,6 +713,7 @@ void Player::renderImGui()
     ImGui::DragInt("_jumpPreventOnGroundCheckFrames", &_jumpPreventOnGroundCheckFrames, 1.0f, 0, 10);
     ImGui::DragInt("_jumpCoyoteFrames", &_jumpCoyoteFrames, 1.0f, 0, 10);
     ImGui::DragInt("_jumpInputBufferFrames", &_jumpInputBufferFrames, 1.0f, 0, 10);
+    ImGui::DragFloat("_landingApplyMassMult", &_landingApplyMassMult);
 
     ImGui::Separator();
 
@@ -761,6 +762,22 @@ void Player::processGrounded(glm::vec3& velocity, const float_t& physicsDeltaTim
                 {
                     float_t targetLengthDifference = targetLength - hitInfo.m_closestHitFraction * rayLength;
                     _displacementToTarget.y = targetLengthDifference;  // Move up even though raycast was down bc we want to go the opposite direction the raycast went.
+
+                    // Send message to ground below the mass of this raycast
+                    // (i.e. pretend that the raycast is the body and it has mass)
+                    if (hitInfo.m_collisionObject->getInternalType() & btCollisionObject::CO_RIGID_BODY)
+                    {
+                        auto otherBody = (btRigidBody*)hitInfo.m_collisionObject;
+                        otherBody->activate();
+
+                        btVector3 force(
+                            0,
+                            (velocity.y + PhysicsEngine::getInstance().getGravity().y()) * _physicsObj->body->getMass() * _landingApplyMassMult,
+                            0
+                        );
+                        btVector3 relPos = hitInfo.m_hitPointWorld - otherBody->getWorldTransform().getOrigin();
+                        otherBody->applyForce(force, relPos);
+                    }
                 }
             }
             else
@@ -907,7 +924,7 @@ void Player::processGrounded(glm::vec3& velocity, const float_t& physicsDeltaTim
 
 void Player::onCollisionStay(btPersistentManifold* manifold, bool amIB)
 {
-    _groundContactNormal = glm::vec3(0.0f);
+    /*_groundContactNormal = glm::vec3(0.0f);
     size_t numContacts = (size_t)manifold->getNumContacts();
     for (int32_t i = 0; i < numContacts; i++)
     {
@@ -922,5 +939,5 @@ void Player::onCollisionStay(btPersistentManifold* manifold, bool amIB)
     }
     
     if (_onGround)
-        _groundContactNormal = glm::normalize(_groundContactNormal);
+        _groundContactNormal = glm::normalize(_groundContactNormal);*/
 }

@@ -112,4 +112,5 @@ private:
     int32_t _jumpPreventOnGroundCheckFrames = 4;
     int32_t _jumpCoyoteFrames = 6;       // @NOTE: frames are measured with the constant 0.02f seconds per frame in the physics delta time
     int32_t _jumpInputBufferFrames = 4;  //        Thus, 4 frames in that measurement is 4.8 frames in 60 fps
+    float_t _landingApplyMassMult = 1.0f;
 };

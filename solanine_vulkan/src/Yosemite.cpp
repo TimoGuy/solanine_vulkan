@@ -71,9 +71,8 @@ void Yosemite::physicsUpdate(const float_t& physicsDeltaTime)
     );
     btVector3 transformUp = myTrans.getBasis() * btVector3(0, 1, 0);
     glm::quat toTheTop = glm::quat(physutil::toVec3(transformUp), glm::vec3(0, 1, 0));
-    glm::vec3 torque   = glm::eulerAngles(toTheTop);
     _physicsObj->body->applyTorque(
-        btVector3(torque.x, torque.y, torque.z) * _shallowPlanetTorque * mass
+        btVector3(toTheTop.x, toTheTop.y, toTheTop.z) * _shallowPlanetTorque * mass
     );
 }
 
@@ -100,11 +99,15 @@ void Yosemite::load(DataSerialized& ds)
 {
     Entity::load(ds);
     _load_renderTransform = ds.loadMat4();
-    _isShallowPlanet      = ds.loadFloat();
-    _shallowPlanetLinDamp = ds.loadFloat();
-    _shallowPlanetAngDamp = ds.loadFloat();
-    _shallowPlanetAccel   = ds.loadFloat();
-    _shallowPlanetTorque  = ds.loadFloat();
+
+    if (ds.getSerializedValuesCount() >= 5)  // To be backwards compatible with v1 of Yosemite
+    {
+        _isShallowPlanet      = ds.loadFloat();
+        _shallowPlanetLinDamp = ds.loadFloat();
+        _shallowPlanetAngDamp = ds.loadFloat();
+        _shallowPlanetAccel   = ds.loadFloat();
+        _shallowPlanetTorque  = ds.loadFloat();
+    }
 }
 
 void Yosemite::reportMoved(void* matrixMoved)
