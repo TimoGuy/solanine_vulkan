@@ -787,24 +787,22 @@ void Player::processGrounded(glm::vec3& velocity, const float_t& physicsDeltaTim
                         //
                         if (otherBody->getMass() >= _physicsObj->body->getMass())
                         {
-                            if (_framesSinceAttachedBody > 1 ||
+                            if (_framesSinceAttachedBody <= 1 &&
                                 _attachedBody != otherBody)
-                            {
-                                // New attachment
-                                _attachedBody = otherBody;
-                                _framesSinceAttachedBody = 0;
-
-                                auto awp = _physicsObj->body->getWorldTransform().getOrigin();
-                                auto alp = otherBody->getWorldTransform().inverse() * awp;
-                                _attachmentWorldPosition = physutil::toVec3(awp);
-                                _attachmentLocalPosition = physutil::toVec3(alp);
-                            }
-                            else
                             {
                                 // Find delta of moving platform
                                 _attachmentVelocity   = physutil::toVec3(otherBody->getWorldTransform() * physutil::toVec3(_attachmentLocalPosition) - physutil::toVec3(_attachmentWorldPosition));
                                 _attachmentVelocity.y = 0.0f;
                             }
+
+                            // Setup/keep moving the attachment
+                            _attachedBody = otherBody;
+                            _framesSinceAttachedBody = 0;
+
+                            auto awp = _physicsObj->body->getWorldTransform().getOrigin();
+                            auto alp = otherBody->getWorldTransform().inverse() * awp;
+                            _attachmentWorldPosition = physutil::toVec3(awp);
+                            _attachmentLocalPosition = physutil::toVec3(alp);
                         }
                     }
                 }
