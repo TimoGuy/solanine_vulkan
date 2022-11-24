@@ -616,7 +616,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
             case GROUNDED_JUMP:
                 if (_onGround || (int32_t)_stepsSinceLastGrounded <= _jumpCoyoteFrames)
                 {
-                    // @DEBUG: if you want something to look at coyote time and jump buffering metrics, uncomment
+                    // @DEBUG: if you want something to look at coyote time and jump buffering metrics, uncomment:
                     //std::cout << "[JUMP INFO]" << std::endl
                     //    << "Buffer Frames left:         " << _jumpInputBufferFramesTimer << std::endl
                     //    << "Frames since last grounded: " << _stepsSinceLastGrounded << std::endl;
