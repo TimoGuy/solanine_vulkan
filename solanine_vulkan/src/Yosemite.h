@@ -41,8 +41,8 @@ private:
     bool      _isShallowPlanet       = false;
     float_t   _shallowPlanetMass     = 10.0f;
     float_t   _shallowPlanetLinDamp  = 0.0f;
-    float_t   _shallowPlanetAngDamp  = 0.05f;
-    float_t   _shallowPlanetAccel    = 30.0f;
+    float_t   _shallowPlanetAngDamp  = 0.5f;
+    float_t   _shallowPlanetAccel    = 0.5f;
     float_t   _shallowPlanetTorque   = 250.0f;
     glm::vec3 _shallowPlanetTargetPosition;
 };

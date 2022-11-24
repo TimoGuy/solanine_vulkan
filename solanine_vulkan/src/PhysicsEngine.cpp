@@ -247,8 +247,9 @@ RegisteredPhysicsObject* PhysicsEngine::registerPhysicsObject(float_t mass, glm:
 
 	btTransform trans = physutil::toTransform(glmTrans);
 	RegisteredPhysicsObject rpo = {
-		.body = createRigidBody(mass, trans, shape, guid),
-		.prevTransform = trans,    // Set it to this so there's a basis to do the interpolation from
+		.body                  = createRigidBody(mass, trans, shape, guid),
+		.currentTransform      = trans,    // Set it to this so there's a basis to do the interpolation from
+		.prevTransform         = trans,    // Set it to this so there's a basis to do the interpolation from
 		.interpolatedTransform = glmTrans,
 	};
 
