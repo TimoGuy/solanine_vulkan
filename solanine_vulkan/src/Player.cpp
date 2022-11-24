@@ -10,6 +10,7 @@
 #include "DataSerialization.h"
 #include "Debug.h"
 #include "imgui/imgui.h"
+#include "Yosemite.h"
 
 
 Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSerialized* ds) : Entity(em, ds), _rom(rom), _camera(camera)
@@ -358,9 +359,9 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
 
     glm::vec3 velocity = physutil::toVec3(_physicsObj->body->getLinearVelocity());
 
-    velocity -= (_displacementToTarget - _attachmentVelocity) / physicsDeltaTime;  // Undo the displacement (hopefully no movement bugs)
+    velocity -= (_displacementToTarget + _attachmentVelocity) / physicsDeltaTime;  // Undo the displacement (hopefully no movement bugs)
     _displacementToTarget = glm::vec3(0.0f);
-    _attachmentVelocity   = glm::vec3(0.0f);
+    // _attachmentVelocity   = glm::vec3(0.0f);
 
     processGrounded(velocity, physicsDeltaTime);
 
@@ -623,6 +624,16 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
                         glm::sqrt(_jumpHeight * 2.0f * PhysicsEngine::getInstance().getGravityStrength());
                     _displacementToTarget = glm::vec3(0.0f);
                     _stepsSinceLastGrounded = _jumpCoyoteFrames;  // This is to prevent ground sticking right after a jump and multiple jumps performed right after another jump was done!
+                    
+                    if (!_isAttachedBodyStale)
+                    {
+                        // Apply jump pushaway to attached body
+                        btVector3 relPos = physutil::toVec3(_attachmentWorldPosition) - _attachedBody->getWorldTransform().getOrigin();
+                        _attachedBody->applyForce(
+                            physutil::toVec3(-velocity) * _physicsObj->body->getMass() * _landingApplyMassMult,
+                            relPos
+                        );
+                    }
 
                     // @TODO: add some kind of audio event system, or even better, figure out how to use FMOD!!! Bc it's freakign integrated lol
                     AudioEngine::getInstance().playSoundFromList({
@@ -677,7 +688,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         }
     }
 
-    _physicsObj->body->setLinearVelocity(physutil::toVec3(velocity + (_displacementToTarget - _attachmentVelocity) / physicsDeltaTime));
+    _physicsObj->body->setLinearVelocity(physutil::toVec3(velocity + (_displacementToTarget + _attachmentVelocity) / physicsDeltaTime));
 }
 
 void Player::dump(DataSerializer& ds)
@@ -740,6 +751,10 @@ void Player::renderImGui()
 
 void Player::processGrounded(glm::vec3& velocity, const float_t& physicsDeltaTime)
 {
+    // Clear state
+    glm::vec3 attachmentVelocityReset(0);
+    _isAttachedBodyStale = true;
+
     // Check if on ground
     if (_jumpPreventOnGroundCheckFramesTimer < 0)
     {
@@ -774,37 +789,44 @@ void Player::processGrounded(glm::vec3& velocity, const float_t& physicsDeltaTim
                         auto otherBody = (btRigidBody*)hitInfo.m_collisionObject;
                         otherBody->activate();
 
+                        bool firstInteraction = (_framesSinceAttachedBody > 1 || _attachedBody != otherBody);
+
                         btVector3 force(
                             0,
-                            (velocity.y + PhysicsEngine::getInstance().getGravity().y()) * _physicsObj->body->getMass() * _landingApplyMassMult,
+                            (velocity.y + PhysicsEngine::getInstance().getGravity().y()) * _physicsObj->body->getMass(),
                             0
                         );
+                        if (firstInteraction)
+                            force.setY(velocity.y * _physicsObj->body->getMass() * _landingApplyMassMult);
+
                         btVector3 relPos = hitInfo.m_hitPointWorld - otherBody->getWorldTransform().getOrigin();
                         otherBody->applyForce(force, relPos);
 
                         //
                         // Process moving platform information
                         //
-                        if (otherBody->getMass() >= _physicsObj->body->getMass())
+                        if (otherBody->getMass() >= _physicsObj->body->getMass() && !firstInteraction)
                         {
-                            if (_framesSinceAttachedBody <= 1 &&
-                                _attachedBody != otherBody)
-                            {
-                                // Find delta of moving platform
-                                _attachmentVelocity   = physutil::toVec3(otherBody->getWorldTransform() * physutil::toVec3(_attachmentLocalPosition) - physutil::toVec3(_attachmentWorldPosition));
-                                _attachmentVelocity.y = 0.0f;
-                            }
-
-                            // Setup/keep moving the attachment
-                            _attachedBody = otherBody;
-                            _framesSinceAttachedBody = 0;
-
-                            auto awp = _physicsObj->body->getWorldTransform().getOrigin();
-                            auto alp = otherBody->getWorldTransform().inverse() * awp;
-                            _attachmentWorldPosition = physutil::toVec3(awp);
-                            _attachmentLocalPosition = physutil::toVec3(alp);
+                            // Find delta of moving platform
+                            attachmentVelocityReset += physutil::toVec3(otherBody->getWorldTransform() * physutil::toVec3(_attachmentLocalPosition) - physutil::toVec3(_attachmentWorldPosition));
                         }
+
+                        // Setup/keep moving the attachment
+                        // @NOTE: this data is used for jump pushaway too
+                        _attachedBody = otherBody;
+                        _isAttachedBodyStale = false;
+                        _framesSinceAttachedBody = 0;
+
+                        auto awp = hitInfo.m_hitPointWorld;
+                        auto alp = otherBody->getWorldTransform().inverse() * awp;
+                        _attachmentWorldPosition = physutil::toVec3(awp);
+                        _attachmentLocalPosition = physutil::toVec3(alp);
                     }
+
+                    // Try to get treadmill velocity from physics object
+                    if (Entity* ent = _em->getEntityViaGUID(*(std::string*)hitInfo.m_collisionObject->getUserPointer()); ent != nullptr)
+                        if (Yosemite* yos = dynamic_cast<Yosemite*>(ent); yos != nullptr)
+                            attachmentVelocityReset += yos->getTreadmillVelocity() * physicsDeltaTime;
                 }
             }
             else
@@ -944,13 +966,32 @@ void Player::processGrounded(glm::vec3& velocity, const float_t& physicsDeltaTim
     else
     {
         _physicsObj->body->setGravity(PhysicsEngine::getInstance().getGravity());
+
         if (_stepsSinceLastGrounded)
             _characterRenderObj->animator->setTrigger("goto_fall");
+
+        // Retain velocity from _prevAttachmentVelocity if just leaving the ground
+        if (glm::length2(attachmentVelocityReset) < 0.0001f)
+        {
+            // std::cout << "\tCLEARREQ: " << _prevAttachmentVelocity.x<<","<<_prevAttachmentVelocity.y<<","<<_prevAttachmentVelocity.z<<std::endl;
+            glm::vec3 applyVelocity =
+                glm::vec3(
+                    _prevAttachmentVelocity.x,
+                    glm::max(0.0f, _prevAttachmentVelocity.y),
+                    _prevAttachmentVelocity.z
+                ) / physicsDeltaTime;
+            velocity += applyVelocity;
+        }
     }
+
+    // Clear attachment velocity
+    _prevAttachmentVelocity = _attachmentVelocity;
+    _attachmentVelocity     = attachmentVelocityReset;
 }
 
 void Player::onCollisionStay(btPersistentManifold* manifold, bool amIB)
 {
+    // @NOTE: this was causing lots of movement popping
     /*_groundContactNormal = glm::vec3(0.0f);
     size_t numContacts = (size_t)manifold->getNumContacts();
     for (int32_t i = 0; i < numContacts; i++)

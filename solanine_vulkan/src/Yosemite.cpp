@@ -93,14 +93,18 @@ void Yosemite::dump(DataSerializer& ds)
     ds.dumpFloat(_shallowPlanetAngDamp);
     ds.dumpFloat(_shallowPlanetAccel);
     ds.dumpFloat(_shallowPlanetTorque);
+    ds.dumpVec3(_treadmillVelocity);
 }
 
 void Yosemite::load(DataSerialized& ds)
 {
     Entity::load(ds);
+
+    // V1
     _load_renderTransform = ds.loadMat4();
 
-    if (ds.getSerializedValuesCount() >= 5)  // To be backwards compatible with v1 of Yosemite
+    // V2
+    if (ds.getSerializedValuesCount() >= 5)
     {
         _isShallowPlanet      = ds.loadFloat();
         _shallowPlanetLinDamp = ds.loadFloat();
@@ -108,6 +112,15 @@ void Yosemite::load(DataSerialized& ds)
         _shallowPlanetAccel   = ds.loadFloat();
         _shallowPlanetTorque  = ds.loadFloat();
     }
+
+    // V3
+    if (ds.getSerializedValuesCount() >= 1)
+        _treadmillVelocity = ds.loadVec3();
+}
+
+glm::vec3 Yosemite::getTreadmillVelocity()
+{
+    return physutil::toVec3(_physicsObj->currentTransform.getBasis() * physutil::toVec3(_treadmillVelocity));
 }
 
 void Yosemite::reportMoved(void* matrixMoved)
@@ -151,4 +164,8 @@ void Yosemite::renderImGui()
     ImGui::DragFloat("_shallowPlanetAccel", &_shallowPlanetAccel);
     ImGui::DragFloat("_shallowPlanetTorque", &_shallowPlanetTorque);
     ImGui::DragFloat3("_shallowPlanetTargetPosition", &_shallowPlanetTargetPosition[0]);
+
+    ImGui::Separator();
+
+    ImGui::DragFloat3("_treadmillVelocity", &_treadmillVelocity[0]);
 }

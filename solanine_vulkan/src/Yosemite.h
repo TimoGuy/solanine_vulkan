@@ -26,6 +26,8 @@ public:
     void load(DataSerialized& ds);
     std::string getTypeName() { return TYPE_NAME; };
 
+    glm::vec3 getTreadmillVelocity();
+
     void reportMoved(void* matrixMoved);
     void renderImGui();
 
@@ -45,4 +47,5 @@ private:
     float_t   _shallowPlanetAccel    = 0.5f;
     float_t   _shallowPlanetTorque   = 250.0f;
     glm::vec3 _shallowPlanetTargetPosition;
+    glm::vec3 _treadmillVelocity     = glm::vec3(0);
 };

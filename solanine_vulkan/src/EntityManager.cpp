@@ -96,14 +96,23 @@ bool EntityManager::INTERNALcheckGUIDCollision(Entity* entity)
 	return collision;
 }
 
-bool EntityManager::sendMessage(const std::string& guid, DataSerialized& message)
+Entity* EntityManager::getEntityViaGUID(const std::string& guid)
 {
 	for (auto& ent : _entities)
 	{
 		if (ent->getGUID() == guid)
 		{
-			return ent->processMessage(message);
+			return ent;
 		}
+	}
+	return nullptr;
+}
+
+bool EntityManager::sendMessage(const std::string& guid, DataSerialized& message)
+{
+	if (Entity* ent = getEntityViaGUID(guid))
+	{
+		return ent->processMessage(message);
 	}
 
 	std::cerr << "[ENTITY MGR SEND MESSAGE]" << std::endl
