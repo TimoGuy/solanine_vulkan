@@ -72,11 +72,22 @@ private:
     glm::vec3    _prevAttachmentVelocity  = { 0, 0, 0 };
 
     // Combat mode
-    bool      _flagDrawOrSheathWeapon = false;
-    bool      _flagAttack             = false;
-    bool      _isCombatMode           = false;
-    bool      _isWeaponCollision      = false;
-    glm::mat4 _weaponPrevTransform    = glm::mat4(0.0f);  // NOTE: this is the flag to show to ignore the prev transform
+    bool      _flagDrawOrSheathWeapon    = false;
+    bool      _isWeaponDrawn             = false;
+    glm::mat4 _weaponPrevTransform       = glm::mat4(0.0f);  // NOTE: this is the flag to show to ignore the prev transform
+
+    enum class AttackStage { NONE, PREPAUSE, SWING, CHAIN_COMBO, END };
+    enum class AttackType { HORIZONTAL, DIVE_ATTACK, SPIN_ATTACK };
+    bool        _flagAttack                = false;
+    bool        _usedSpinAttack            = false;  // You shan't use this multiple times in the air!
+    AttackStage _attackStage               = AttackStage::NONE;
+    AttackType  _attackType;
+    float_t     _attackPrepauseTime        = 0.4f;
+    float_t     _attackPrepauseTimeElapsed = 0.0f;
+    float_t     _attackSwingTimeElapsed    = 0.0f;
+    float_t     _spinAttackUpwardsSpeed    = 30.0f;
+    void startAttack(AttackType type);
+    void processAttackStageSwing(glm::vec3& velocity, const float_t& physicsDeltaTime);
 
     struct WeaponCollision
     {
@@ -84,18 +95,15 @@ private:
         float_t startOffset = 0.5f;
         float_t distance    = 5.5f;
     } _weaponCollisionProps;
+    void processWeaponCollision();
 
     // Air dash move
     bool      _airDashMove                = false;
     bool      _usedAirDash                = false;
     glm::vec3 _airDashDirection;
-    float_t   _airDashPrepauseTime        = 0.0f;
-    float_t   _airDashPrepauseTimeElapsed;
     float_t   _airDashTime                = 0.25f;
     float_t   _airDashTimeElapsed;
-    float_t   _airDashSpeed;  // Cooked value
-    float_t   _airDashSpeedXZ             = 100.0f;
-    float_t   _airDashSpeedY              = 50.0f;
+    float_t   _airDashSpeed               = 100.0f;
     float_t   _airDashFinishSpeedFracCooked;
     float_t   _airDashFinishSpeedFrac     = 0.25f;
 

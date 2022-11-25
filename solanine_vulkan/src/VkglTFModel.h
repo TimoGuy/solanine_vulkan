@@ -376,6 +376,7 @@ namespace vkglTF
 		void playAnimation(size_t maskIndex, uint32_t animationIndex, bool loop, float_t time = 0.0f);  // This is for direct control of the animation index
 		void update(const float_t& deltaTime);
 
+		void runEvent(const std::string& eventName);  // @NOTE: this is really naive btw
 		void setTrigger(const std::string& triggerName);
 		void setMask(const std::string& maskName, bool enabled);
 

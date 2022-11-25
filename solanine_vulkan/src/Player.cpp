@@ -23,13 +23,13 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
         {
             "EventSwitchToBackAttachment", [&]() {
                 _weaponAttachmentJointName = "Back Attachment";
-                _isCombatMode = false;
+                _isWeaponDrawn = false;
             }
         },
         {
             "EventSwitchToHandAttachment", [&]() {
                 _weaponAttachmentJointName = "Hand Attachment";
-                _isCombatMode = true;
+                _isWeaponDrawn = true;
             }
         },
         {
@@ -73,13 +73,13 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
             }
         },
         {
-            "EventStartAttack", [&]() {
-                _isWeaponCollision = true;
+            "EventGotoEndAttackStage", [&]() {
+                _attackStage = AttackStage::END;
             }
         },
         {
             "EventEndAttack", [&]() {
-                _isWeaponCollision = false;
+                _attackStage = AttackStage::NONE;
             }
         },
         {
@@ -239,7 +239,7 @@ void Player::update(const float_t& deltaTime)
         _flagDrawOrSheathWeapon = true;
     }
 
-    if (input::onLMBPress && _isCombatMode)
+    if (input::onLMBPress && _isWeaponDrawn)
     {
         _flagAttack = true;
     }
@@ -255,12 +255,12 @@ void Player::update(const float_t& deltaTime)
         input.y += input::keyUpPressed    ?  1.0f : 0.0f;
         input.y += input::keyDownPressed  ? -1.0f : 0.0f;
 
-        if (_camera->freeCamMode.enabled || ImGui::GetIO().WantTextInput || _isWeaponCollision)  // Do not allow input while doing attacks
-        {
+        if (_camera->freeCamMode.enabled || ImGui::GetIO().WantTextInput)  // @DEBUG: for the level editor
             input = glm::vec2(0.0f);
-            _flagJump = false;
-            _flagDrawOrSheathWeapon = false;
-            _flagAttack = false;
+
+        if (_isWeaponDrawn && _attackStage != AttackStage::NONE)
+        {
+            input = glm::vec2(0);
         }
 
         glm::vec3 flatCameraFacingDirection = _camera->sceneCamera.facingDirection;
@@ -305,12 +305,17 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         input.y += input::keyUpPressed    ?  1.0f : 0.0f;
         input.y += input::keyDownPressed  ? -1.0f : 0.0f;
 
-        if (_camera->freeCamMode.enabled || ImGui::GetIO().WantTextInput || _isWeaponCollision)  // Do not allow input while doing attacks
+        if (_camera->freeCamMode.enabled || ImGui::GetIO().WantTextInput)  // @DEBUG: for the level editor
         {
             input = glm::vec2(0.0f);
             _flagJump = false;
-            _flagDrawOrSheathWeapon = false;
             _flagAttack = false;
+            _flagDrawOrSheathWeapon = false;
+        }
+
+        if (_isWeaponDrawn && _attackStage != AttackStage::NONE)
+        {
+            input = glm::vec2(0);
         }
 
         glm::vec3 flatCameraFacingDirection = _camera->sceneCamera.facingDirection;
@@ -369,40 +374,27 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     {
         // Reset flags
         _flagDrawOrSheathWeapon = false;
-        _airDashMove = false;  // @NOTE: I added this back in like 5 minutes after removing it bc the 45deg air dash is with the sword drawn, so it makes sense to nullify it if you're gonna sheath your weapon.  -Timo 2022/11/12    @NOTE: I think that removing this is important so that you can do the airborne sword drawing airdash and then put your sword away to jump easier  -Timo 2022/11/12
 
-        // If entering combat mode and is airborne,
-        // do a 45 degree downwards air dash
-        if (!_isCombatMode && !_onGround)
+        /*if (!_isWeaponDrawn && _isSprinting)  @TODO: feature request, to have sprinting
         {
-            _characterRenderObj->animator->setTrigger("goto_midair_brandish_attack");
-            _weaponPrevTransform = glm::mat4(0.0f);
-
-            _airDashDirection = glm::vec3(0, -glm::sin(glm::radians(45.0f)), glm::cos(glm::radians(45.0f)));
-            _airDashDirection = glm::quat(glm::vec3(0, _facingDirection, 0)) * _airDashDirection;
-
-            // @COPYPASTA
-            _airDashMove = true;
-            _usedAirDash = true;
-            _airDashPrepauseTime = 0.25f;
-            _airDashPrepauseTimeElapsed = 0.0f;
-            _airDashTimeElapsed = 0.0f;
-            _airDashFinishSpeedFracCooked = 1.0f;
-            _airDashSpeed = _airDashSpeedXZ;
+            // Start grounded attack immediately
+        }
+        else*/ if (!_isWeaponDrawn && !_onGround)
+        {
+            _airDashMove = false;  // @NOTE: I added this back in like 5 minutes after removing it bc the 45deg air dash is with the sword drawn, so it makes sense to nullify it if you're gonna sheath your weapon.  -Timo 2022/11/12    @NOTE: I think that removing this is important so that you can do the airborne sword drawing airdash and then put your sword away to jump easier  -Timo 2022/11/12
+            _characterRenderObj->animator->runEvent("EventPlaySFXMaterialize");
+            startAttack(AttackType::DIVE_ATTACK);
         }
         else
         {
             //
             // Enter/exit combat mode
             //
-            if (_isCombatMode)
-            {
+            _attackStage = AttackStage::NONE;
+            if (_isWeaponDrawn)
                 _characterRenderObj->animator->setTrigger("leave_combat_mode");
-            }
             else
-            {
                 _characterRenderObj->animator->setTrigger("goto_combat_mode");
-            }
         }
     }
 
@@ -411,24 +403,16 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         //
         // Process air dash
         //
-        if (_airDashPrepauseTimeElapsed < _airDashPrepauseTime)
-        {
-            velocity = glm::vec3(0.0f);
-            _airDashPrepauseTimeElapsed += physicsDeltaTime;
-        }
-        else
-        {
-            velocity = _airDashDirection * physutil::lerp(_airDashSpeed, _airDashSpeed * _airDashFinishSpeedFracCooked, _airDashTimeElapsed / _airDashTime);
+        velocity = _airDashDirection * physutil::lerp(_airDashSpeed, _airDashSpeed * _airDashFinishSpeedFracCooked, _airDashTimeElapsed / _airDashTime);
 
-            // First frame of actual dash, play sound
-            if (_airDashTimeElapsed == 0.0f)
-                AudioEngine::getInstance().playSoundFromList({
-                    "res/sfx/wip_char_mad_dash_red_left.ogg",
-                    "res/sfx/wip_char_mad_dash_red_right.ogg",
-                    });
+        // First frame of actual dash, play sound
+        if (_airDashTimeElapsed == 0.0f)
+            AudioEngine::getInstance().playSoundFromList({
+                "res/sfx/wip_char_mad_dash_red_left.ogg",
+                "res/sfx/wip_char_mad_dash_red_right.ogg",
+                });
 
-            _airDashTimeElapsed += physicsDeltaTime;
-        }
+        _airDashTimeElapsed += physicsDeltaTime;
 
         // Exit air dash
         if (_onGround || _airDashTimeElapsed > _airDashTime)
@@ -437,255 +421,224 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         }
     }
     
-    if (_isCombatMode)
+    if (_isWeaponDrawn)
     {
         //
         // Process combat mode
         //
-        if (_flagAttack)
+        switch (_attackStage)
         {
-            //
-            // Start attack
-            //
-            _characterRenderObj->animator->setTrigger("goto_attack");
+        case AttackStage::NONE:
+        {
+            if (_flagAttack)
+            {
+                startAttack(
+                    _onGround ? AttackType::HORIZONTAL : AttackType::DIVE_ATTACK  // @NOTE: weapon is already drawn at this point
+                );
+            }
+            break;
+        }
+
+        case AttackStage::PREPAUSE:
+        {
+            /*if (_attackPrepauseTimeElapsed == 0.0f)
+                AudioEngine::getInstance().playSoundFromList({
+                    "res/sfx/wip_OOT_YoungLink_Grunt.wav",
+                    });*/
+
+            if (_attackPrepauseTimeElapsed < _attackPrepauseTime)
+            {
+                if (_attackType == AttackType::DIVE_ATTACK)
+                    velocity = glm::vec3(0);
+                _attackPrepauseTimeElapsed += physicsDeltaTime;
+            }
+            else
+            {
+                _attackStage = AttackStage::SWING;
+                _attackSwingTimeElapsed = 0.0f;
+            }
+
+            // Reset flags in preparation for next step
             _flagAttack = false;
-            _weaponPrevTransform = glm::mat4(0.0f);
-        }
+            _weaponPrevTransform = glm::mat4(0);
 
-        if (_isWeaponCollision)
-        {
-            //
-            // Calculate approx of weapon collision
-            //
-            if (_weaponPrevTransform == glm::mat4(0.0f))
+            if (!_usedSpinAttack && _flagJump)  // Check jump flag before flag gets nuked
             {
-                // First frame is wasted, but don't want to leak the last frame into the collision
-                _weaponPrevTransform = _weaponRenderObj->transformMatrix;
+                // Switch attack type to spin attack
+                _attackStage = AttackStage::SWING;
+                _attackType = AttackType::SPIN_ATTACK;
+                _attackSwingTimeElapsed = 0.0f;
             }
-            else
+
+            // Apply next animation
+            if (_attackStage == AttackStage::SWING)
             {
-                float_t cur = _weaponCollisionProps.startOffset;
-                float_t step = _weaponCollisionProps.distance / (float_t)_weaponCollisionProps.numRays;
-                for (size_t i = 0; i < _weaponCollisionProps.numRays; i++, cur += step)
-                {
-                    glm::vec3 raycastPosition[2] = {
-                        _weaponPrevTransform              * glm::vec4(0, cur, 0, 1),
-                        _weaponRenderObj->transformMatrix * glm::vec4(0, cur, 0, 1),
-                    };
-
-                    if (glm::length2(raycastPosition[1] - raycastPosition[0]) > 0.0001f)
-                    {
-                        auto hitInfo = PhysicsEngine::getInstance().raycast(physutil::toVec3(raycastPosition[0]), physutil::toVec3(raycastPosition[1]));
-                        PhysicsEngine::getInstance().debugDrawLineOneFrame(raycastPosition[0], raycastPosition[1], glm::vec3(0, 0, 1));
-                        if (hitInfo.hasHit())
-                        {
-                            auto& collisionObj = hitInfo.m_collisionObject;
-
-                            std::cout << "[PLAYER ATTACK HIT]" << std::endl
-                                << "Detected object guid: " << *(std::string*)collisionObj->getUserPointer() << std::endl;
-
-                            glm::vec3 pushDirection = glm::quat(glm::vec3(0, _facingDirection, 0)) * glm::vec3(0, 0, 1);
-
-                            DataSerializer ds;
-                            ds.dumpString("event_attacked");
-                            ds.dumpVec3(pushDirection);
-
-                            DataSerialized dsd = ds.getSerializedData();
-                            if (_em->sendMessage(*(std::string*)collisionObj->getUserPointer(), dsd))
-                            {
-                                // velocity = -pushDirection * 10.0f;
-                            }
-                        }
-                    }
-                }
-
-                _weaponPrevTransform = _weaponRenderObj->transformMatrix;
+                if (_attackType == AttackType::HORIZONTAL)
+                    _characterRenderObj->animator->setTrigger("goto_horizontal_attack_swing");
+                else if (_attackType == AttackType::DIVE_ATTACK)
+                    _characterRenderObj->animator->setTrigger("goto_dive_attack_swing");
+                else if (_attackType == AttackType::SPIN_ATTACK)
+                    _characterRenderObj->animator->setTrigger("goto_spin_attack_swing");
             }
+
+            break;
         }
 
-        //
-        // Calculate rigidbody velocity
-        // @COPYPASTA
-        //
-        glm::vec3 desiredVelocity = _worldSpaceInput * _maxSpeed;  // @NOTE: we just ignore the y component in this desired velocity thing
+        case AttackStage::SWING:
+            processAttackStageSwing(velocity, physicsDeltaTime);
+            processWeaponCollision();
+            break;
 
-        glm::vec2 a(velocity.x, velocity.z);
-        glm::vec2 b(desiredVelocity.x, desiredVelocity.z);
+        case AttackStage::CHAIN_COMBO:
+            // @TODO: stub
+            break;
 
-        if (_onGround)
-            if (glm::length2(b) < 0.0001f)
-                _characterRenderObj->animator->setTrigger("goto_idle");
-            else
-                _characterRenderObj->animator->setTrigger("goto_run");
-
-        bool useAcceleration;
-        if (glm::length2(b) < 0.0001f)
-            useAcceleration = false;
-        else if (glm::length2(a) < 0.0001f)
-            useAcceleration = true;
-        else
-        {
-            float_t AdotB = glm::dot(glm::normalize(a), glm::normalize(b));
-            if (glm::length(a) * AdotB > glm::length(b))    // @TODO: use your head and think of how to use length2 for this
-                useAcceleration = false;
-            else
-                useAcceleration = true;
-        }
-
-        float_t acceleration    = _onGround ? _maxAcceleration : _maxMidairAcceleration;
-        if (!useAcceleration)
-            acceleration        = _onGround ? _maxDeceleration : _maxMidairDeceleration;
-        float_t maxSpeedChange  = acceleration * physicsDeltaTime;
-
-        glm::vec2 c = physutil::moveTowardsVec2(a, b, maxSpeedChange);
-        velocity.x = c.x;
-        velocity.z = c.y;
-
-        // Ignore jump requests
-        if (_flagJump)
-        {
-            _flagJump = false;
+        case AttackStage::END:
+            // @TODO: stub
+            break;
         }
     }
+
+    //
+    // Calculate rigidbody velocity
+    // 
+    // @NOTE: it seems like the current methodology is to make a physically accurate
+    //        character collider. That would work, but it's kinda a little weird how
+    //        the character slowly slides down ramps or can't go up a ramp too. Maybe
+    //        some things could be done to change that, but landing on a ramp and sliding
+    //        down until you regain your X and Z is pretty cool. Hitting a nick in the
+    //        ground and flying up is pretty okay too, though I wish it didn't happen
+    //        so dramatically with higher speeds, but maybe keeping the speed at 20 or
+    //        so is the best bc the bump up really isn't that noticable, however, it's like
+    //        the character tripped because of the sudden velocity speed drop when running
+    //        into a nick.
+    //
+    glm::vec3 desiredVelocity = _worldSpaceInput * _maxSpeed;  // @NOTE: we just ignore the y component in this desired velocity thing
+
+    glm::vec2 a(velocity.x, velocity.z);
+    glm::vec2 b(desiredVelocity.x, desiredVelocity.z);
+
+    if (_onGround)
+        if (glm::length2(b) < 0.0001f)
+            _characterRenderObj->animator->setTrigger("goto_idle");
+        else
+            _characterRenderObj->animator->setTrigger("goto_run");
+
+    bool useAcceleration;
+    if (glm::length2(b) < 0.0001f)
+        useAcceleration = false;
+    else if (glm::length2(a) < 0.0001f)
+        useAcceleration = true;
     else
     {
-        //
-        // Calculate rigidbody velocity
-        // 
-        // @NOTE: it seems like the current methodology is to make a physically accurate
-        //        character collider. That would work, but it's kinda a little weird how
-        //        the character slowly slides down ramps or can't go up a ramp too. Maybe
-        //        some things could be done to change that, but landing on a ramp and sliding
-        //        down until you regain your X and Z is pretty cool. Hitting a nick in the
-        //        ground and flying up is pretty okay too, though I wish it didn't happen
-        //        so dramatically with higher speeds, but maybe keeping the speed at 20 or
-        //        so is the best bc the bump up really isn't that noticable, however, it's like
-        //        the character tripped because of the sudden velocity speed drop when running
-        //        into a nick.
-        //
-        glm::vec3 desiredVelocity = _worldSpaceInput * _maxSpeed;  // @NOTE: we just ignore the y component in this desired velocity thing
-
-        glm::vec2 a(velocity.x, velocity.z);
-        glm::vec2 b(desiredVelocity.x, desiredVelocity.z);
-
-        if (_onGround)
-            if (glm::length2(b) < 0.0001f)
-                _characterRenderObj->animator->setTrigger("goto_idle");
-            else
-                _characterRenderObj->animator->setTrigger("goto_run");
-
-        bool useAcceleration;
-        if (glm::length2(b) < 0.0001f)
+        float_t AdotB = glm::dot(glm::normalize(a), glm::normalize(b));
+        if (glm::length(a) * AdotB > glm::length(b))    // @TODO: use your head and think of how to use length2 for this
             useAcceleration = false;
-        else if (glm::length2(a) < 0.0001f)
-            useAcceleration = true;
         else
+            useAcceleration = true;
+    }
+
+    float_t acceleration    = _onGround ? _maxAcceleration : _maxMidairAcceleration;
+    if (!useAcceleration)
+        acceleration        = _onGround ? _maxDeceleration : _maxMidairDeceleration;
+    float_t maxSpeedChange  = acceleration * physicsDeltaTime;
+
+    glm::vec2 c = physutil::moveTowardsVec2(a, b, maxSpeedChange);
+    velocity.x = c.x;
+    velocity.z = c.y;
+
+    if (_isWeaponDrawn)
+        _flagJump = false;
+
+    if (_flagJump)
+    {
+        //
+        // Do the normal jump
+        //
+        enum JumpType
         {
-            float_t AdotB = glm::dot(glm::normalize(a), glm::normalize(b));
-            if (glm::length(a) * AdotB > glm::length(b))    // @TODO: use your head and think of how to use length2 for this
-                useAcceleration = false;
+            GROUNDED_JUMP,
+            AIR_DASH,
+            NONE,
+        } jumpType;
+
+        jumpType = (_onGround || (int32_t)_stepsSinceLastGrounded <= _jumpCoyoteFrames) ? GROUNDED_JUMP : (_usedAirDash ? NONE : AIR_DASH);
+
+        bool jumpFlagProcessed = false;
+        switch (jumpType)
+        {
+        case GROUNDED_JUMP:
+            if (_onGround || (int32_t)_stepsSinceLastGrounded <= _jumpCoyoteFrames)
+            {
+                // @DEBUG: if you want something to look at coyote time and jump buffering metrics, uncomment:
+                //std::cout << "[JUMP INFO]" << std::endl
+                //    << "Buffer Frames left:         " << _jumpInputBufferFramesTimer << std::endl
+                //    << "Frames since last grounded: " << _stepsSinceLastGrounded << std::endl;
+                velocity.y = 
+                    glm::sqrt(_jumpHeight * 2.0f * PhysicsEngine::getInstance().getGravityStrength());
+                _displacementToTarget = glm::vec3(0.0f);
+                _stepsSinceLastGrounded = _jumpCoyoteFrames;  // This is to prevent ground sticking right after a jump and multiple jumps performed right after another jump was done!
+                
+                if (!_isAttachedBodyStale)
+                {
+                    // Apply jump pushaway to attached body
+                    btVector3 relPos = physutil::toVec3(_attachmentWorldPosition) - _attachedBody->getWorldTransform().getOrigin();
+                    _attachedBody->applyForce(
+                        physutil::toVec3(-velocity) * _physicsObj->body->getMass() * _landingApplyMassMult,
+                        relPos
+                    );
+                }
+
+                // @TODO: add some kind of audio event system, or even better, figure out how to use FMOD!!! Bc it's freakign integrated lol
+                AudioEngine::getInstance().playSoundFromList({
+                    "res/sfx/wip_jump1.ogg",
+                    "res/sfx/wip_jump2.ogg"
+                    });
+
+                jumpFlagProcessed = true;                    
+            }
+            break;
+
+        case AIR_DASH:
+        {
+            // @TODO: you're gonna have to check for jump buffer time for this bc there is a chance that the player is intending to jump on the ground despite having
+            //        a jump they can do in the air. You will need to detect whether they are too close to the ground to store the jump input rather than do it as a
+            //        air dash  -Timo
+            if (glm::length2(_worldSpaceInput) > 0.0001f)
+            {
+                _airDashDirection = glm::normalize(_worldSpaceInput);
+            }
             else
-                useAcceleration = true;
+            {
+                _airDashDirection = glm::quat(glm::vec3(0, _facingDirection, 0)) * glm::vec3(0, 0, 1);
+            }
+
+            _airDashMove = true;
+            _usedAirDash = true;
+            _airDashTimeElapsed = 0.0f;
+            _airDashFinishSpeedFracCooked = _airDashFinishSpeedFrac;
+
+            jumpFlagProcessed = true;
+
+            break;
         }
 
-        float_t acceleration    = _onGround ? _maxAcceleration : _maxMidairAcceleration;
-        if (!useAcceleration)
-            acceleration        = _onGround ? _maxDeceleration : _maxMidairDeceleration;
-        float_t maxSpeedChange  = acceleration * physicsDeltaTime;
+        case NONE:
+            _flagJump = false;
+            break;
+        }
 
-        glm::vec2 c = physutil::moveTowardsVec2(a, b, maxSpeedChange);
-        velocity.x = c.x;
-        velocity.z = c.y;
-
-        if (_flagJump)
+        // Turn off flag for sure if successfully jumped
+        if (jumpFlagProcessed)
         {
-            //
-            // Do the normal jump
-            //
-            enum JumpType
-            {
-                GROUNDED_JUMP,
-                AIR_DASH,
-                NONE,
-            } jumpType;
-            jumpType = (_onGround || (int32_t)_stepsSinceLastGrounded <= _jumpCoyoteFrames) ? GROUNDED_JUMP : (_usedAirDash ? NONE : AIR_DASH);
-
-            bool jumpSuccessful = false;
-            switch (jumpType)
-            {
-            case GROUNDED_JUMP:
-                if (_onGround || (int32_t)_stepsSinceLastGrounded <= _jumpCoyoteFrames)
-                {
-                    // @DEBUG: if you want something to look at coyote time and jump buffering metrics, uncomment:
-                    //std::cout << "[JUMP INFO]" << std::endl
-                    //    << "Buffer Frames left:         " << _jumpInputBufferFramesTimer << std::endl
-                    //    << "Frames since last grounded: " << _stepsSinceLastGrounded << std::endl;
-                    velocity.y = 
-                        glm::sqrt(_jumpHeight * 2.0f * PhysicsEngine::getInstance().getGravityStrength());
-                    _displacementToTarget = glm::vec3(0.0f);
-                    _stepsSinceLastGrounded = _jumpCoyoteFrames;  // This is to prevent ground sticking right after a jump and multiple jumps performed right after another jump was done!
-                    
-                    if (!_isAttachedBodyStale)
-                    {
-                        // Apply jump pushaway to attached body
-                        btVector3 relPos = physutil::toVec3(_attachmentWorldPosition) - _attachedBody->getWorldTransform().getOrigin();
-                        _attachedBody->applyForce(
-                            physutil::toVec3(-velocity) * _physicsObj->body->getMass() * _landingApplyMassMult,
-                            relPos
-                        );
-                    }
-
-                    // @TODO: add some kind of audio event system, or even better, figure out how to use FMOD!!! Bc it's freakign integrated lol
-                    AudioEngine::getInstance().playSoundFromList({
-                        "res/sfx/wip_jump1.ogg",
-                        "res/sfx/wip_jump2.ogg"
-                        });
-
-                    jumpSuccessful = true;                    
-                }
-                break;
-
-            case AIR_DASH:
-            {
-                // @TODO: you're gonna have to check for jump buffer time for this bc there is a chance that the player is intending to jump on the ground despite having
-                //        a jump they can do in the air. You will need to detect whether they are too close to the ground to store the jump input rather than do it as a
-                //        air dash  -Timo
-                _airDashDirection = glm::vec3(0, 1, 0);
-                _airDashSpeed = _airDashSpeedY;
-                if (glm::length2(_worldSpaceInput) > 0.0001f)
-                {
-                    _airDashDirection = glm::normalize(_worldSpaceInput);
-                    _airDashSpeed = _airDashSpeedXZ;
-                }
-
-                _airDashMove = true;
-                _usedAirDash = true;
-                _airDashPrepauseTime = 0.0f;
-                _airDashPrepauseTimeElapsed = 0.0f;
-                _airDashTimeElapsed = 0.0f;
-                _airDashFinishSpeedFracCooked = _airDashFinishSpeedFrac;
-
-                jumpSuccessful = true;
-
-                break;
-            }
-
-            case NONE:
-                break;
-            }
-
-            // Turn off flag for sure if successfully jumped
-            if (jumpSuccessful)
-            {
-                _jumpPreventOnGroundCheckFramesTimer = _jumpPreventOnGroundCheckFrames;
-                _jumpInputBufferFramesTimer = -1;
-                _flagJump = false;
-            }
-
-            // Turn off flag if jump buffer frames got exhausted
-            if (_jumpInputBufferFramesTimer-- < 0)
-                _flagJump = false;
+            _jumpPreventOnGroundCheckFramesTimer = _jumpPreventOnGroundCheckFrames;
+            _jumpInputBufferFramesTimer = -1;
+            _flagJump = false;
         }
+
+        // Turn off flag if jump buffer frames got exhausted
+        if (_jumpInputBufferFramesTimer-- < 0)
+            _flagJump = false;
     }
 
     _physicsObj->body->setLinearVelocity(physutil::toVec3(velocity + (_displacementToTarget + _attachmentVelocity) / physicsDeltaTime));
@@ -730,7 +683,9 @@ void Player::renderImGui()
 
     ImGui::Separator();
 
-    ImGui::Text(("_isCombatMode: " + std::to_string(_isCombatMode)).c_str());
+    ImGui::Text(("_isWeaponDrawn: " + std::to_string(_isWeaponDrawn)).c_str());
+    ImGui::Text(("_attackStage: " + std::to_string((int32_t)_attackStage)).c_str());
+    ImGui::DragFloat("_spinAttackUpwardsSpeed", &_spinAttackUpwardsSpeed);
     ImGui::DragInt("_weaponCollisionProps.numRays", (int*)&_weaponCollisionProps.numRays, 1.0f, 0, 10);
     ImGui::DragFloat("_weaponCollisionProps.startOffset", &_weaponCollisionProps.startOffset);
     ImGui::DragFloat("_weaponCollisionProps.distance", &_weaponCollisionProps.distance);
@@ -743,8 +698,6 @@ void Player::renderImGui()
     ImGui::DragFloat("_airDashTime", &_airDashTime);
     ImGui::DragFloat("_airDashTimeElapsed", &_airDashTimeElapsed);
     ImGui::DragFloat("_airDashSpeed", &_airDashSpeed);
-    ImGui::DragFloat("_airDashSpeedXZ", &_airDashSpeedXZ);
-    ImGui::DragFloat("_airDashSpeedY", &_airDashSpeedY);
     ImGui::DragFloat("_airDashFinishSpeedFracCooked", &_airDashFinishSpeedFracCooked);
     ImGui::DragFloat("_airDashFinishSpeedFrac", &_airDashFinishSpeedFrac);
 }
@@ -960,6 +913,7 @@ void Player::processGrounded(glm::vec3& velocity, const float_t& physicsDeltaTim
                 });
         _stepsSinceLastGrounded = 0;
         _usedAirDash = false;
+        _usedSpinAttack = false;
         _physicsObj->body->setGravity(btVector3(0, 0, 0));
         velocity.y = 0.0f;
     }
@@ -987,6 +941,113 @@ void Player::processGrounded(glm::vec3& velocity, const float_t& physicsDeltaTim
     // Clear attachment velocity
     _prevAttachmentVelocity = _attachmentVelocity;
     _attachmentVelocity     = attachmentVelocityReset;
+}
+
+void Player::startAttack(AttackType type)
+{
+    switch (type)
+    {
+    case AttackType::HORIZONTAL:
+        _characterRenderObj->animator->setTrigger("goto_horizontal_attack_prepause");
+        break;
+
+    case AttackType::DIVE_ATTACK:
+        _characterRenderObj->animator->setTrigger("goto_dive_attack_prepause");
+        break;
+    }
+
+    _attackStage = AttackStage::PREPAUSE;
+    _attackType = type;
+    _attackPrepauseTimeElapsed = 0.0f;
+}
+
+void Player::processAttackStageSwing(glm::vec3& velocity, const float_t& physicsDeltaTime)
+{
+    switch (_attackType)
+    {
+    case AttackType::HORIZONTAL:
+        // All taken care of by the state machine
+        break;
+
+    case AttackType::DIVE_ATTACK:
+    {
+        glm::vec3 diveDirection = glm::vec3(0, -glm::sin(glm::radians(45.0f)), glm::cos(glm::radians(45.0f)));
+        velocity = glm::quat(glm::vec3(0, _facingDirection, 0)) * diveDirection * _airDashSpeed;
+
+        // Signal to dive when to end
+        if (_onGround)
+            _characterRenderObj->animator->setTrigger("goto_dive_attack_end");
+    } break;
+
+    case AttackType::SPIN_ATTACK:
+    {
+        // Ending is taken care of by state machine
+        if (_attackSwingTimeElapsed == 0.0f)
+        {
+            AudioEngine::getInstance().playSoundFromList({
+                "res/sfx/wip_OOT_YoungLink_DinsFire.wav",
+                });
+
+            _jumpPreventOnGroundCheckFramesTimer = _jumpPreventOnGroundCheckFrames;
+        }
+
+        _usedSpinAttack = true;  // Constant flag setting until we're done (for esp. starting spin attack on ground... it always resets the _usedSpinAttack flag so this is to make sure it doesn't get unset during the duration of the spin attack)
+        velocity = glm::vec3(0, _spinAttackUpwardsSpeed, 0);
+    } break;
+    }
+
+    _attackSwingTimeElapsed += physicsDeltaTime;
+}
+
+void Player::processWeaponCollision()
+{
+    //
+    // Calculate approx of weapon collision
+    //
+    if (_weaponPrevTransform == glm::mat4(0))
+    {
+        // First frame is wasted, but don't want to leak the last frame into the collision
+        _weaponPrevTransform = _weaponRenderObj->transformMatrix;
+    }
+    else
+    {
+        float_t cur = _weaponCollisionProps.startOffset;
+        float_t step = _weaponCollisionProps.distance / (float_t)_weaponCollisionProps.numRays;
+        for (size_t i = 0; i < _weaponCollisionProps.numRays; i++, cur += step)
+        {
+            glm::vec3 raycastPosition[2] = {
+                _weaponPrevTransform              * glm::vec4(0, cur, 0, 1),
+                _weaponRenderObj->transformMatrix * glm::vec4(0, cur, 0, 1),
+            };
+
+            if (glm::length2(raycastPosition[1] - raycastPosition[0]) > 0.0001f)
+            {
+                auto hitInfo = PhysicsEngine::getInstance().raycast(physutil::toVec3(raycastPosition[0]), physutil::toVec3(raycastPosition[1]));
+                PhysicsEngine::getInstance().debugDrawLineOneFrame(raycastPosition[0], raycastPosition[1], glm::vec3(0, 0, 1));
+                if (hitInfo.hasHit())
+                {
+                    auto& collisionObj = hitInfo.m_collisionObject;
+
+                    std::cout << "[PLAYER ATTACK HIT]" << std::endl
+                        << "Detected object guid: " << *(std::string*)collisionObj->getUserPointer() << std::endl;
+
+                    glm::vec3 pushDirection = glm::quat(glm::vec3(0, _facingDirection, 0)) * glm::vec3(0, 0, 1);
+
+                    DataSerializer ds;
+                    ds.dumpString("event_attacked");
+                    ds.dumpVec3(pushDirection);
+
+                    DataSerialized dsd = ds.getSerializedData();
+                    if (_em->sendMessage(*(std::string*)collisionObj->getUserPointer(), dsd))
+                    {
+                        // velocity = -pushDirection * 10.0f;
+                    }
+                }
+            }
+        }
+
+        _weaponPrevTransform = _weaponRenderObj->transformMatrix;
+    }
 }
 
 void Player::onCollisionStay(btPersistentManifold* manifold, bool amIB)

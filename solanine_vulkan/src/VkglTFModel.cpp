@@ -2138,6 +2138,21 @@ namespace vkglTF
 		updateAnimation();
 	}
 
+	void Animator::runEvent(const std::string& eventName)
+	{
+		for (auto& eventCallback : eventCallbacks)
+		{
+			if (eventCallback.eventName == eventName)
+			{
+				eventCallback.callback();
+				return;
+			}
+		}
+
+		std::cerr << "[ANIMATOR RUN EVENT]" << std::endl
+			<< "WARNING: Event name \"" << eventName << "\" not found in list of event callbacks" << std::endl;
+	}
+
 	void Animator::setTrigger(const std::string& triggerName)
 	{
 		if (animStateMachineCopy.triggerNameToIndex.find(triggerName) == animStateMachineCopy.triggerNameToIndex.end())

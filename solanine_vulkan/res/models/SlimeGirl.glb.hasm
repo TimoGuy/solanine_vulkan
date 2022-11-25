@@ -5,7 +5,7 @@ loop      1
 trans     goto_run            StateRun
 trans     goto_jump           StateJumpFromIdle
 trans     goto_fall           StateFall
-trans     goto_attack         StateAttack
+trans     goto_horizontal_attack_prepause         StateHorizontalAttackStart
 trans     current_state       StateMCMDrawWeapon       StateFullbodyDrawWeapon
 trans     current_state       StateMCMSheathWeapon     StateFullbodySheathWeapon
 
@@ -16,7 +16,7 @@ loop      0
 trans     goto_run            StateRun          # @NOTE: this is just a copy of StateIdle's triggers
 trans     goto_jump           StateJumpFromIdle
 trans     goto_fall           StateFall
-trans     goto_attack         StateAttack
+trans     goto_horizontal_attack_prepause         StateHorizontalAttackStart
 trans     not_current_state   StateMCMDrawWeapon       StateIdle
 
 
@@ -26,7 +26,7 @@ loop      0
 trans     goto_run            StateRun          # @NOTE: this is just a copy of StateIdle's triggers
 trans     goto_jump           StateJumpFromIdle
 trans     goto_fall           StateFall
-trans     goto_attack         StateAttack
+trans     goto_horizontal_attack_prepause         StateHorizontalAttackStart
 trans     not_current_state   StateMCMSheathWeapon     StateIdle
 
 
@@ -37,7 +37,7 @@ loop      1
 trans     goto_idle           StateIdle
 trans     goto_jump           StateJumpFromRun
 trans     goto_fall           StateFall
-trans     goto_attack         StateAttack
+trans     goto_horizontal_attack_prepause         StateHorizontalAttackStart
 
 
 :StateJumpFromIdle
@@ -45,7 +45,7 @@ animation Jumping_From_Idle
 loop      0
 trans     goto_idle           StateLandIdle
 trans     goto_run            StateLandRun
-trans     goto_attack         StateAttack
+trans     goto_horizontal_attack_prepause         StateHorizontalAttackStart
 
 
 :StateJumpFromRun
@@ -53,7 +53,7 @@ animation Jumping_From_Run
 loop      0
 trans     goto_idle           StateLandIdle
 trans     goto_run            StateLandRun
-trans     goto_attack         StateAttack
+trans     goto_horizontal_attack_prepause         StateHorizontalAttackStart
 
 
 :StateFall
@@ -61,52 +61,78 @@ animation Falling
 loop      0
 trans     goto_idle           StateLandIdle
 trans     goto_run            StateLandRun
-trans     goto_attack         StateAttack
-trans     goto_midair_brandish_attack         StateMidairBrandishAttack
+trans     goto_horizontal_attack_prepause         StateHorizontalAttackStart
+trans     goto_dive_attack_prepause         StateDiveAttackStart
 
 
 :StateLandIdle
 animation Land_From_Jumping_From_Idle
 loop      0
 on_finish StateIdle
-trans     goto_attack         StateAttack
+trans     goto_horizontal_attack_prepause         StateHorizontalAttackStart
 
 
 :StateLandRun
 animation Land_From_Jumping_From_Run
 loop      0
 on_finish StateRun
-trans     goto_attack         StateAttack
+trans     goto_horizontal_attack_prepause         StateHorizontalAttackStart
 
 
-:StateAttack   # NOTE: For this state, we don't want any triggers to leave before the ending event triggers
-animation DW_Attack
+:StateHorizontalAttackStart   # NOTE: For this state, we don't want any triggers to leave before the ending event triggersStart
+animation DW_Horizontal_Attack_Start
+loop      0
+event     0.0                 EventDisableMCMLayer
+trans     goto_horizontal_attack_swing    StateHorizontalAttack
+trans     goto_spin_attack_swing    StateSpinAttack
+
+
+:StateHorizontalAttack
+animation DW_Horizontal_Attack
+loop      0
+on_finish StateHorizontalAttackEnd
+event     0.0                 EventPlaySFXAttack
+
+
+:StateHorizontalAttackEnd
+animation DW_Horizontal_Attack_End
 loop      0
 on_finish StateIdle
-event     0.0                 EventStartAttack
-event     0.0                 EventDisableMCMLayer
-event     0.231               EventPlaySFXAttack
+event     0.0                 EventGotoEndAttackStage
 event     1.0                 EventEnableMCMLayer
 event     1.0                 EventEndAttack
 
 
-:StateMidairBrandishAttack
-animation DW_Midair_Attack_Start
+:StateDiveAttackStart
+animation DW_Dive_Attack_Start
 loop      0
-event     0.0                 EventStartAttack
 event     0.0                 EventDisableMCMLayer
 event     0.0                 EventSwitchToHandAttachment
-event     0.1                 EventPlaySFXMaterialize
-event     0.6                 EventPlaySFXAttack
-trans     goto_idle           StateMidairBrandishAttackLanding
-trans     goto_run            StateMidairBrandishAttackLanding
+trans     goto_dive_attack_swing    StateDiveAttack
+trans     goto_spin_attack_swing    StateSpinAttack
 
 
-:StateMidairBrandishAttackLanding
-animation DW_Midair_Attack_Landing
+:StateDiveAttack
+animation DW_Dive_Attack
+loop      0
+event     0.0                 EventPlaySFXAttack
+trans     goto_dive_attack_end     StateDiveAttackEnd
+
+
+:StateDiveAttackEnd
+animation DW_Dive_Attack_End
 loop      0
 on_finish StateIdle
+event     0.0                 EventGotoEndAttackStage
 event     0.0                 EventPlaySFXLandHard
+event     1.0                 EventEnableMCMLayer
+event     1.0                 EventEndAttack
+
+
+:StateSpinAttack
+animation DW_Spin_Attack
+loop      0
+on_finish StateFall
 event     1.0                 EventEnableMCMLayer
 event     1.0                 EventEndAttack
 
