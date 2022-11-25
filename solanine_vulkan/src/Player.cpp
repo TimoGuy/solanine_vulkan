@@ -80,6 +80,7 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
         {
             "EventEndAttack", [&]() {
                 _attackStage = AttackStage::NONE;
+                _flagAttack = false;  // To prevent unusual behavior (i.e. had a random attack just start from the beginning despite no inputs. So this is just to make sure)
             }
         },
         {
@@ -316,6 +317,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         if (_isWeaponDrawn && _attackStage != AttackStage::NONE)
         {
             input = glm::vec2(0);
+            _flagDrawOrSheathWeapon = false;
         }
 
         glm::vec3 flatCameraFacingDirection = _camera->sceneCamera.facingDirection;
