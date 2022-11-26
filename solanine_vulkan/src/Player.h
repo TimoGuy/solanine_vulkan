@@ -93,9 +93,9 @@ private:
 
     struct WeaponCollision
     {
-        size_t  numRays     = 10;
-        float_t startOffset = 0.25f;
-        float_t distance    = 7.0f;
+        size_t  numRays     = 12;
+        float_t startOffset = -1.0f;
+        float_t distance    = 8.0f;
     } _weaponCollisionProps;
     void processWeaponCollision();
 
