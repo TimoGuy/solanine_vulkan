@@ -4068,9 +4068,14 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 	ImGuiIO& io = ImGui::GetIO();
 	ImGuizmo::SetRect(0, 0, io.DisplaySize.x, io.DisplaySize.y);
 
-	ImGui::ShowDemoWindow();
-
-	ImPlot::ShowDemoWindow();
+	static bool showDemoWindows = false;
+	if (input::onKeyF1Press)
+		showDemoWindows = !showDemoWindows;
+	if (showDemoWindows)
+	{
+		ImGui::ShowDemoWindow();
+		ImPlot::ShowDemoWindow();
+	}
 
 	bool allowKeyboardShortcuts =
 		_camera->getCameraMode() == Camera::_cameraMode_freeCamMode &&
