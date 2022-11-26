@@ -978,7 +978,6 @@ void Player::processAttackStageSwing(glm::vec3& velocity, const float_t& physics
     //
     // Process attack combo behavior
     //
-    std::cout << "FLAG: " << _flagAttack << std::endl;
     if (_attackSwingTimeElapsed == 0.0f)
     {
         // Reset the attack stage state
