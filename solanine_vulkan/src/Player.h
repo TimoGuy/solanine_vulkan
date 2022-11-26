@@ -79,6 +79,8 @@ private:
     enum class AttackStage { NONE, PREPAUSE, SWING, CHAIN_COMBO, END };
     enum class AttackType { HORIZONTAL, DIVE_ATTACK, SPIN_ATTACK };
     bool        _flagAttack                = false;
+    bool        _allowComboInput           = false;
+    bool        _allowComboTransition      = false;
     bool        _usedSpinAttack            = false;  // You shan't use this multiple times in the air!
     AttackStage _attackStage               = AttackStage::NONE;
     AttackType  _attackType;
@@ -91,9 +93,9 @@ private:
 
     struct WeaponCollision
     {
-        size_t  numRays     = 7;
-        float_t startOffset = 0.5f;
-        float_t distance    = 5.5f;
+        size_t  numRays     = 10;
+        float_t startOffset = 0.25f;
+        float_t distance    = 7.0f;
     } _weaponCollisionProps;
     void processWeaponCollision();
 

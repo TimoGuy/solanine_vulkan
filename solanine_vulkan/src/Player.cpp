@@ -73,6 +73,16 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
             }
         },
         {
+            "EventAllowComboInput", [&]() {
+                _allowComboInput = true;
+            }
+        },
+        {
+            "EventAllowComboTransition", [&]() {
+                _allowComboTransition = true;
+            }
+        },
+        {
             "EventGotoEndAttackStage", [&]() {
                 _attackStage = AttackStage::END;
             }
@@ -965,6 +975,33 @@ void Player::startAttack(AttackType type)
 
 void Player::processAttackStageSwing(glm::vec3& velocity, const float_t& physicsDeltaTime)
 {
+    //
+    // Process attack combo behavior
+    //
+    std::cout << "FLAG: " << _flagAttack << std::endl;
+    if (_attackSwingTimeElapsed == 0.0f)
+    {
+        // Reset the attack stage state
+        _allowComboInput      = false;
+        _allowComboTransition = false;
+        _flagAttack = false;
+    }
+    else if (!_allowComboInput)
+        _flagAttack = false;   // Prevent attack input from happening except when combo input window is open
+    else if (_allowComboTransition && _flagAttack)
+    {
+        // Transition to next combo!
+        // @COPYPASTA        
+        _flagAttack = false;
+        _weaponPrevTransform = glm::mat4(0);
+        _attackSwingTimeElapsed = 0.0f;
+        _characterRenderObj->animator->setTrigger("goto_next_combo_attack");
+        return;
+    }
+
+    //
+    // Actually process the attack swing stage
+    //
     switch (_attackType)
     {
     case AttackType::HORIZONTAL:
