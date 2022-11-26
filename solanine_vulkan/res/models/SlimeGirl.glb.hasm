@@ -125,7 +125,7 @@ event     1.0                 EventEnableMCMLayer
 event     1.0                 EventEndAttack
 
 
-:StateHorizontalCombo3Attack
+:StateHorizontalCombo3Attack  # PLACEHOLDER: however, idea is to do a slice upwards to lay it down for combo 4  -Timo 2022/11/25
 animation DW_Horizontal_Combo3_Attack
 loop      0
 on_finish StateHorizontalCombo3AttackEnd
@@ -144,7 +144,7 @@ event     1.0                 EventEnableMCMLayer
 event     1.0                 EventEndAttack
 
 
-:StateHorizontalCombo4Attack
+:StateHorizontalCombo4Attack   # PLACEHOLDER: however, in the future I want an anim where it's a slice straight down like an ax swing or the spin attack where an aoe is produced and the characters legs are off the ground!  -Timo 2022/11/25
 animation DW_Horizontal_Combo4_Attack
 loop      0
 on_finish StateHorizontalCombo4AttackEnd
