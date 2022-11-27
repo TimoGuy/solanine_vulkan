@@ -3,12 +3,14 @@
 #include "VkglTFModel.h"
 #include "PhysicsEngine.h"
 #include "RenderObject.h"
+#include "EntityManager.h"
 #include "Camera.h"
 #include "InputManager.h"
 #include "AudioEngine.h"
 #include "DataSerialization.h"
 #include "Debug.h"
 #include "imgui/imgui.h"
+#include "Yosemite.h"
 
 
 Enemy::Enemy(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSerialized* ds) : Entity(em, ds), _rom(rom), _camera(camera)
@@ -133,7 +135,7 @@ void Enemy::physicsUpdate(const float_t& physicsDeltaTime)
 
     glm::vec3 velocity = physutil::toVec3(_physicsObj->body->getLinearVelocity());
 
-    velocity -= _displacementToTarget / physicsDeltaTime;  // Undo the displacement (hopefully no movement bugs)
+    velocity -= (_displacementToTarget + _attachmentVelocity) / physicsDeltaTime;  // Undo the displacement (hopefully no movement bugs)
     _displacementToTarget = glm::vec3(0.0f);
 
     processGrounded(velocity, physicsDeltaTime);
@@ -394,7 +396,7 @@ void Enemy::physicsUpdate(const float_t& physicsDeltaTime)
         }
     }
 
-    _physicsObj->body->setLinearVelocity(physutil::toVec3(velocity + _displacementToTarget / physicsDeltaTime));
+    _physicsObj->body->setLinearVelocity(physutil::toVec3(velocity + (_displacementToTarget + _attachmentVelocity) / physicsDeltaTime));
 }
 
 void Enemy::dump(DataSerializer& ds)
@@ -485,6 +487,10 @@ void Enemy::renderImGui()
 
 void Enemy::processGrounded(glm::vec3& velocity, const float_t& physicsDeltaTime)
 {
+    // Clear state
+    glm::vec3 attachmentVelocityReset(0);
+    _isAttachedBodyStale = true;
+
     // Check if on ground
     if (_jumpPreventOnGroundCheckFramesTimer < 0)
     {
@@ -509,6 +515,54 @@ void Enemy::processGrounded(glm::vec3& velocity, const float_t& physicsDeltaTime
                 {
                     float_t targetLengthDifference = targetLength - hitInfo.m_closestHitFraction * rayLength;
                     _displacementToTarget.y = targetLengthDifference;  // Move up even though raycast was down bc we want to go the opposite direction the raycast went.
+
+                    if (hitInfo.m_collisionObject->getInternalType() & btCollisionObject::CO_RIGID_BODY)
+                    {
+                        //
+                        // Send message to ground below the mass of this raycast
+                        // (i.e. pretend that the raycast is the body and it has mass)
+                        //
+                        auto otherBody = (btRigidBody*)hitInfo.m_collisionObject;
+                        otherBody->activate();
+
+                        bool firstInteraction = (_framesSinceAttachedBody > 1 || _attachedBody != otherBody);
+
+                        btVector3 force(
+                            0,
+                            (velocity.y + PhysicsEngine::getInstance().getGravity().y()) * _physicsObj->body->getMass(),
+                            0
+                        );
+                        if (firstInteraction)
+                            force.setY(velocity.y * _physicsObj->body->getMass() * _landingApplyMassMult);
+
+                        btVector3 relPos = hitInfo.m_hitPointWorld - otherBody->getWorldTransform().getOrigin();
+                        otherBody->applyForce(force, relPos);
+
+                        //
+                        // Process moving platform information
+                        //
+                        if (otherBody->getMass() >= _physicsObj->body->getMass() && !firstInteraction)
+                        {
+                            // Find delta of moving platform
+                            attachmentVelocityReset += physutil::toVec3(otherBody->getWorldTransform() * physutil::toVec3(_attachmentLocalPosition) - physutil::toVec3(_attachmentWorldPosition));
+                        }
+
+                        // Setup/keep moving the attachment
+                        // @NOTE: this data is used for jump pushaway too
+                        _attachedBody = otherBody;
+                        _isAttachedBodyStale = false;
+                        _framesSinceAttachedBody = 0;
+
+                        auto awp = hitInfo.m_hitPointWorld;
+                        auto alp = otherBody->getWorldTransform().inverse() * awp;
+                        _attachmentWorldPosition = physutil::toVec3(awp);
+                        _attachmentLocalPosition = physutil::toVec3(alp);
+                    }
+
+                    // Try to get treadmill velocity from physics object
+                    if (Entity* ent = _em->getEntityViaGUID(*(std::string*)hitInfo.m_collisionObject->getUserPointer()); ent != nullptr)
+                        if (Yosemite* yos = dynamic_cast<Yosemite*>(ent); yos != nullptr)
+                            attachmentVelocityReset += yos->getTreadmillVelocity() * physicsDeltaTime;
                 }
             }
             else
@@ -642,15 +696,34 @@ void Enemy::processGrounded(glm::vec3& velocity, const float_t& physicsDeltaTime
                 });
         _stepsSinceLastGrounded = 0;
         _usedAirDash = false;
+        // _usedSpinAttack = false;
         _physicsObj->body->setGravity(btVector3(0, 0, 0));
         velocity.y = 0.0f;
     }
     else
     {
         _physicsObj->body->setGravity(PhysicsEngine::getInstance().getGravity());
+
         /*if (_stepsSinceLastGrounded)
-            _renderObj->animator->setTrigger("goto_fall");*/
+            _characterRenderObj->animator->setTrigger("goto_fall");*/
+
+        // Retain velocity from _prevAttachmentVelocity if just leaving the ground
+        if (glm::length2(attachmentVelocityReset) < 0.0001f)
+        {
+            // std::cout << "\tCLEARREQ: " << _prevAttachmentVelocity.x<<","<<_prevAttachmentVelocity.y<<","<<_prevAttachmentVelocity.z<<std::endl;
+            glm::vec3 applyVelocity =
+                glm::vec3(
+                    _prevAttachmentVelocity.x,
+                    glm::max(0.0f, _prevAttachmentVelocity.y),
+                    _prevAttachmentVelocity.z
+                ) / physicsDeltaTime;
+            velocity += applyVelocity;
+        }
     }
+
+    // Clear attachment velocity
+    _prevAttachmentVelocity = _attachmentVelocity;
+    _attachmentVelocity     = attachmentVelocityReset;
 }
 
 void Enemy::onCollisionStay(btPersistentManifold* manifold, bool amIB)

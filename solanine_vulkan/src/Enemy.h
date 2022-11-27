@@ -11,6 +11,7 @@ struct RegisteredPhysicsObject;
 struct Camera;
 class btPersistentManifold;
 class btCapsuleShape;
+class btRigidBody;
 
 
 class Enemy : public Entity
@@ -63,6 +64,15 @@ private:
     int32_t   _jumpPreventOnGroundCheckFramesTimer = -1;
     int32_t   _jumpInputBufferFramesTimer          = -1;
 
+    // Moving platforms
+    btRigidBody* _attachedBody            = nullptr;
+    bool         _isAttachedBodyStale     = true;
+    int32_t      _framesSinceAttachedBody = 0;
+    glm::vec3    _attachmentWorldPosition;
+    glm::vec3    _attachmentLocalPosition;
+    glm::vec3    _attachmentVelocity      = { 0, 0, 0 };
+    glm::vec3    _prevAttachmentVelocity  = { 0, 0, 0 };
+
     // Combat mode
     bool      _flagDrawOrSheathWeapon = false;
     bool      _isCombatMode           = false;
@@ -99,4 +109,5 @@ private:
     int32_t _jumpPreventOnGroundCheckFrames = 4;
     int32_t _jumpCoyoteFrames = 6;       // @NOTE: frames are measured with the constant 0.02f seconds per frame in the physics delta time
     int32_t _jumpInputBufferFrames = 4;  //        Thus, 4 frames in that measurement is 4.8 frames in 60 fps
+    float_t _landingApplyMassMult = 50.0f;
 };
