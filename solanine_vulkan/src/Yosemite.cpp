@@ -94,6 +94,7 @@ void Yosemite::dump(DataSerializer& ds)
     ds.dumpFloat(_shallowPlanetAccel);
     ds.dumpFloat(_shallowPlanetTorque);
     ds.dumpVec3(_treadmillVelocity);
+    ds.dumpFloat(_groundedAccelMult);
 }
 
 void Yosemite::load(DataSerialized& ds)
@@ -116,6 +117,10 @@ void Yosemite::load(DataSerialized& ds)
     // V3
     if (ds.getSerializedValuesCount() >= 1)
         _treadmillVelocity = ds.loadVec3();
+
+    // V4
+    if (ds.getSerializedValuesCount() >= 1)
+        _groundedAccelMult = ds.loadFloat();
 }
 
 glm::vec3 Yosemite::getTreadmillVelocity()
