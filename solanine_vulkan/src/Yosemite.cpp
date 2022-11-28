@@ -123,6 +123,11 @@ glm::vec3 Yosemite::getTreadmillVelocity()
     return physutil::toVec3(_physicsObj->currentTransform.getBasis() * physutil::toVec3(_treadmillVelocity));
 }
 
+float_t Yosemite::getGroundedAccelMult()
+{
+    return _groundedAccelMult;
+}
+
 void Yosemite::reportMoved(void* matrixMoved)
 {
     //
@@ -168,4 +173,5 @@ void Yosemite::renderImGui()
     ImGui::Separator();
 
     ImGui::DragFloat3("_treadmillVelocity", &_treadmillVelocity[0]);
+    ImGui::DragFloat("_groundedAccelMult", &_groundedAccelMult);
 }

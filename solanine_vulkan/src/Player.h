@@ -49,7 +49,7 @@ private:
     float_t _bottomRaycastExtraDist;
     float_t _adjustedHalfHeight;
 
-    void processGrounded(glm::vec3& velocity, const float_t& physicsDeltaTime);
+    void processGrounded(glm::vec3& velocity, float_t& groundAccelMult, const float_t& physicsDeltaTime);
 
     glm::vec3 _worldSpaceInput = glm::vec3(0.0f);
     bool      _flagJump        = false;

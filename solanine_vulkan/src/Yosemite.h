@@ -27,6 +27,7 @@ public:
     std::string getTypeName() { return TYPE_NAME; };
 
     glm::vec3 getTreadmillVelocity();
+    float_t getGroundedAccelMult();
 
     void reportMoved(void* matrixMoved);
     void renderImGui();
@@ -48,4 +49,5 @@ private:
     float_t   _shallowPlanetTorque   = 250.0f;
     glm::vec3 _shallowPlanetTargetPosition;
     glm::vec3 _treadmillVelocity     = glm::vec3(0);
+    float_t   _groundedAccelMult     = 1.0f;  // Used to fake friction
 };

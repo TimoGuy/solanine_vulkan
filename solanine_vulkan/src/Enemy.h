@@ -51,7 +51,7 @@ private:
     float_t _attackedDebounceTimer = 0.0f;
     float_t _attackedPushBackStrength = 10.0f;
 
-    void processGrounded(glm::vec3& velocity, const float_t& physicsDeltaTime);
+    void processGrounded(glm::vec3& velocity, float_t& groundAccelMult, const float_t& physicsDeltaTime);
 
     glm::vec3 _worldSpaceInput = glm::vec3(0.0f);
     bool      _flagJump        = false;

@@ -138,7 +138,8 @@ void Enemy::physicsUpdate(const float_t& physicsDeltaTime)
     velocity -= (_displacementToTarget + _attachmentVelocity) / physicsDeltaTime;  // Undo the displacement (hopefully no movement bugs)
     _displacementToTarget = glm::vec3(0.0f);
 
-    processGrounded(velocity, physicsDeltaTime);
+    float groundAccelMult;
+    processGrounded(velocity, groundAccelMult, physicsDeltaTime);
 
     if (_flagDrawOrSheathWeapon)
     {
@@ -250,9 +251,9 @@ void Enemy::physicsUpdate(const float_t& physicsDeltaTime)
                 useAcceleration = true;
         }
 
-        float_t acceleration    = _onGround ? _maxAcceleration : _maxMidairAcceleration;
+        float_t acceleration    = _onGround ? _maxAcceleration * groundAccelMult : _maxMidairAcceleration;
         if (!useAcceleration)
-            acceleration        = _onGround ? _maxDeceleration : _maxMidairDeceleration;
+            acceleration        = _onGround ? _maxDeceleration * groundAccelMult : _maxMidairDeceleration;
         float_t maxSpeedChange  = acceleration * physicsDeltaTime;
 
         glm::vec2 c = physutil::moveTowardsVec2(a, b, maxSpeedChange);
@@ -485,7 +486,7 @@ void Enemy::renderImGui()
     ImGui::DragFloat("_attackedPushBackStrength", &_attackedPushBackStrength);
 }
 
-void Enemy::processGrounded(glm::vec3& velocity, const float_t& physicsDeltaTime)
+void Enemy::processGrounded(glm::vec3& velocity, float_t& groundAccelMult, const float_t& physicsDeltaTime)
 {
     // Clear state
     glm::vec3 attachmentVelocityReset(0);
@@ -559,10 +560,13 @@ void Enemy::processGrounded(glm::vec3& velocity, const float_t& physicsDeltaTime
                         _attachmentLocalPosition = physutil::toVec3(alp);
                     }
 
-                    // Try to get treadmill velocity from physics object
+                    // Try to get physics stats from physics object
                     if (Entity* ent = _em->getEntityViaGUID(*(std::string*)hitInfo.m_collisionObject->getUserPointer()); ent != nullptr)
                         if (Yosemite* yos = dynamic_cast<Yosemite*>(ent); yos != nullptr)
+                        {
                             attachmentVelocityReset += yos->getTreadmillVelocity() * physicsDeltaTime;
+                            groundAccelMult = yos->getGroundedAccelMult();
+                        }
                 }
             }
             else
