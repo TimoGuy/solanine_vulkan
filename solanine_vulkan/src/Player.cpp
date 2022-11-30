@@ -105,7 +105,7 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
         },
     };
 
-    vkglTF::Model* characterModel = _rom->getModel("SlimeGirl");
+    vkglTF::Model* characterModel = _rom->getModel("SlimeGirl", this, [](){});
     _characterRenderObj =
         _rom->registerRenderObject({
             .model = characterModel,
@@ -115,7 +115,7 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
             .attachedEntityGuid = getGUID(),
             });
 
-    vkglTF::Model* handleModel = _rom->getModel("Handle");
+    vkglTF::Model* handleModel = _rom->getModel("Handle", this, [](){});
     _handleRenderObj =
         _rom->registerRenderObject({
             .model = handleModel,
@@ -123,7 +123,7 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
             .attachedEntityGuid = getGUID(),
             });
 
-    vkglTF::Model* weaponModel = _rom->getModel("WingWeapon");
+    vkglTF::Model* weaponModel = _rom->getModel("WingWeapon", this, [](){});
     _weaponRenderObj =
         _rom->registerRenderObject({
             .model = weaponModel,
@@ -175,6 +175,7 @@ Player::~Player()
     _rom->unregisterRenderObject(_characterRenderObj);
     _rom->unregisterRenderObject(_handleRenderObj);
     _rom->unregisterRenderObject(_weaponRenderObj);
+    _rom->removeModelCallbacks(this);
     PhysicsEngine::getInstance().unregisterPhysicsObject(_physicsObj);
 
     // @TODO: figure out if I need to call `delete _collisionShape;` or not

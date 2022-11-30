@@ -3054,7 +3054,7 @@ void VulkanEngine::generatePBRCubemaps()
 
 					VkDeviceSize offsets[1] = { 0 };
 
-					auto skybox = _roManager->getModel("Box");
+					auto skybox = _roManager->getModel("Box", nullptr, [](){});
 					skybox->bind(cmd);
 					skybox->draw(cmd);
 
@@ -3728,7 +3728,7 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipelineLayout, 1, 1, &skyboxMaterial.textureSet, 0, nullptr);
 
-		auto skybox = _roManager->getModel("Box");
+		auto skybox = _roManager->getModel("Box", nullptr, [](){});
 		skybox->bind(cmd);
 		skybox->draw(cmd);
 	}
@@ -4020,6 +4020,13 @@ void VulkanEngine::checkIfResourceUpdatedThenHotswapRoutine()
 				// Trip reloading the shaders (recreate swapchain flag)
 				_recreateSwapchain = true;
 				std::cout << "Recompile shader to SPIRV and trigger swapchain recreation SUCCESS" << std::endl;
+				continue;
+			}
+			else if (ext.compare(".gltf") == 0 ||
+					 ext.compare(".glb")  == 0)
+			{
+				_roManager->triggerModelCallbacks(resource.path.stem().string());
+				std::cout << "Sent message to model \"\" to reload." << std::endl;
 				continue;
 			}
 

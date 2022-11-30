@@ -13,6 +13,7 @@
 #include "Yosemite.h"
 #include "Enemy.h"
 #include "NoteTaker.h"
+#include "Scollision.h"
 
 
 // @PALETTE: where to add serialized names for the entities
@@ -21,11 +22,13 @@ const std::vector<std::string> ENTITY_TYPE_NAMES = {
     ":yosemite",
     ":enemy",
     ":notetaker",
+    ":scollision",
 };
-const std::string Player::TYPE_NAME    = ENTITY_TYPE_NAMES[0];
-const std::string Yosemite::TYPE_NAME  = ENTITY_TYPE_NAMES[1];
-const std::string Enemy::TYPE_NAME     = ENTITY_TYPE_NAMES[2];
-const std::string NoteTaker::TYPE_NAME = ENTITY_TYPE_NAMES[3];
+const std::string Player::TYPE_NAME     = ENTITY_TYPE_NAMES[0];
+const std::string Yosemite::TYPE_NAME   = ENTITY_TYPE_NAMES[1];
+const std::string Enemy::TYPE_NAME      = ENTITY_TYPE_NAMES[2];
+const std::string NoteTaker::TYPE_NAME  = ENTITY_TYPE_NAMES[3];
+const std::string Scollision::TYPE_NAME = ENTITY_TYPE_NAMES[4];
 
 
 namespace scene
@@ -46,6 +49,8 @@ namespace scene
             ent = new Enemy(engine->_entityManager, engine->_roManager, engine->_camera, ds);
         if (objectName == NoteTaker::TYPE_NAME)
             ent = new NoteTaker(engine->_entityManager, engine->_roManager, ds);
+        if (objectName == Scollision::TYPE_NAME)
+            ent = new Scollision(engine->_entityManager, engine->_roManager, ds);
 
         if (ent == nullptr)
         {

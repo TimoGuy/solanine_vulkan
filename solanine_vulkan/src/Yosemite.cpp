@@ -15,7 +15,7 @@ Yosemite::Yosemite(EntityManager* em, RenderObjectManager* rom, DataSerialized* 
     if (ds)
         load(*ds);
 
-    _cubeModel = _rom->getModel("DevBoxWood");
+    _cubeModel = _rom->getModel("DevBoxWood", this, [](){});
 
     _renderObj =
         _rom->registerRenderObject({
@@ -48,6 +48,7 @@ Yosemite::Yosemite(EntityManager* em, RenderObjectManager* rom, DataSerialized* 
 Yosemite::~Yosemite()
 {
     _rom->unregisterRenderObject(_renderObj);
+    _rom->removeModelCallbacks(this);
     PhysicsEngine::getInstance().unregisterPhysicsObject(_physicsObj);
 
     // @TODO: figure out if I need to call `delete _collisionShape;` or not

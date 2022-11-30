@@ -320,9 +320,11 @@ namespace vkglTF
 		{
 			uint32_t* indexBuffer;
 			Vertex* vertexBuffer;
+			size_t indexCount;
+			size_t vertexCount;
 			size_t indexPos = 0;
 			size_t vertexPos = 0;
-		};
+		} loaderInfo;
 
 		void destroy(VmaAllocator allocator);
 	private:
@@ -350,6 +352,8 @@ namespace vkglTF
 	private:
 		Node* findNode(Node* parent, uint32_t index);
 		Node* nodeFromIndex(uint32_t index);
+	public:
+		std::vector<Node*> fetchAllNodesWithAMesh();  // @NOTE: this is probs a computationally expensive thing, hence using "fetch" instead of "get"
 
 	private:
 		VulkanEngine* engine;

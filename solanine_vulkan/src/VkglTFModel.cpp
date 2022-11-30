@@ -1485,7 +1485,9 @@ namespace vkglTF
 
 		bool fileLoaded = binary ? gltfContext.LoadBinaryFromFile(&gltfModel, &error, &warning, filename.c_str()) : gltfContext.LoadASCIIFromFile(&gltfModel, &error, &warning, filename.c_str());
 
-		LoaderInfo loaderInfo{ };
+		// LoaderInfo loaderInfo{ };  @TODO: @IMPROVE: @MEMORY: See below
+		loaderInfo = {};
+
 		size_t vertexCount = 0;
 		size_t indexCount = 0;
 
@@ -1508,8 +1510,10 @@ namespace vkglTF
 		for (size_t i = 0; i < scene.nodes.size(); i++)
 			getNodeProps(gltfModel.nodes[scene.nodes[i]], gltfModel, vertexCount, indexCount);
 
-		loaderInfo.vertexBuffer = new Vertex[vertexCount];
 		loaderInfo.indexBuffer = new uint32_t[indexCount];
+		loaderInfo.vertexBuffer = new Vertex[vertexCount];
+		loaderInfo.indexCount = indexCount;
+		loaderInfo.vertexCount = vertexCount;
 
 		// Load in vertices and indices
 		for (size_t i = 0; i < scene.nodes.size(); i++)
@@ -1622,8 +1626,9 @@ namespace vkglTF
 		if (indexBufferSize > 0)
 			vmaDestroyBuffer(engine->_allocator, indexStaging._buffer, indexStaging._allocation);
 
-		delete[] loaderInfo.vertexBuffer;
-		delete[] loaderInfo.indexBuffer;
+		// @TODO: @IMPROVE: @MEMORY: figure out how to fetch the loader information bc it really should get deleted right here... or later once stuff is loaded up
+		/*delete[] loaderInfo.vertexBuffer;
+		delete[] loaderInfo.indexBuffer;*/
 
 		getSceneDimensions();
 
@@ -1762,6 +1767,19 @@ namespace vkglTF
 			}
 		}
 		return nodeFound;
+	}
+
+	std::vector<Node*> Model::fetchAllNodesWithAMesh()
+	{
+		std::vector<Node*> nodesWithAMesh;
+		for (auto& node : linearNodes)
+		{
+			if (node->mesh)
+			{
+				nodesWithAMesh.push_back(node);
+			}
+		}
+		return nodesWithAMesh;
 	}
 
 	//

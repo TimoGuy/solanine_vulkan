@@ -3,6 +3,7 @@
 #include <vector>
 #include <array>
 #include <string>
+#include <functional>
 #include <unordered_map>
 #include <vma/vk_mem_alloc.h>
 #include "ImportGLM.h"
@@ -30,7 +31,14 @@ class RenderObjectManager
 public:
 	RenderObject* registerRenderObject(RenderObject renderObjectData);
 	void unregisterRenderObject(RenderObject* objRegistration);
+
+#ifdef _DEVELOP
+	vkglTF::Model* getModel(const std::string& name, void* owner, std::function<void()>&& reloadCallback);  // This is to support model hot-reloading via a callback lambda
+	void           removeModelCallbacks(void* owner);
+	void           triggerModelCallbacks(const std::string& name);
+#else
 	vkglTF::Model* getModel(const std::string& name);
+#endif
 
 private:
 	RenderObjectManager(VmaAllocator& allocator);
@@ -45,7 +53,15 @@ private:
     std::array<RenderObject, RENDER_OBJECTS_MAX_CAPACITY> _renderObjectPool;
 	std::vector<bool>                                     _renderObjectLayersEnabled = { true, false, true };
 
-	std::unordered_map<std::string, vkglTF::Model*> _renderObjectModels;
+	std::unordered_map<std::string, vkglTF::Model*>       _renderObjectModels;
+#ifdef _DEVELOP
+	struct ReloadCallback
+	{
+		void* owner;  // @NOTE: the `owner` void ptr is used to reference which callbacks need to be deleted
+		std::function<void()> callback;
+	};
+	std::unordered_map<std::string, std::vector<ReloadCallback>> _renderObjectModelCallbacks;
+#endif
 	vkglTF::Model* createModel(vkglTF::Model* model, const std::string& name);
 
 	VmaAllocator& _allocator;

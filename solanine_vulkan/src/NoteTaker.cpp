@@ -12,7 +12,7 @@ NoteTaker::NoteTaker(EntityManager* em, RenderObjectManager* rom, DataSerialized
     if (ds)
         load(*ds);
 
-    vkglTF::Model* model = _rom->getModel("NotesIcon");
+    vkglTF::Model* model = _rom->getModel("NotesIcon", this, [](){});
     _renderObj =
         _rom->registerRenderObject({
             .model = model,
@@ -25,6 +25,7 @@ NoteTaker::NoteTaker(EntityManager* em, RenderObjectManager* rom, DataSerialized
 NoteTaker::~NoteTaker()
 {
     _rom->unregisterRenderObject(_renderObj);
+    _rom->removeModelCallbacks(this);
 }
 
 void NoteTaker::dump(DataSerializer& ds)

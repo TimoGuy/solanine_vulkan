@@ -63,7 +63,11 @@ void RenderObjectManager::unregisterRenderObject(RenderObject* objRegistration)
 		<< "ERROR: render object " << objRegistration << " was not found. Nothing unregistered." << std::endl;
 }
 
+#ifdef _DEVELOP
+vkglTF::Model* RenderObjectManager::getModel(const std::string& name, void* owner, std::function<void()>&& reloadCallback)
+#else
 vkglTF::Model* RenderObjectManager::getModel(const std::string& name)
+#endif
 {
 	auto it = _renderObjectModels.find(name);
 	if (it == _renderObjectModels.end())
@@ -72,8 +76,39 @@ vkglTF::Model* RenderObjectManager::getModel(const std::string& name)
 			<< "ERROR: requested model \"" << name << "\" was not found. Returning nullptr" << std::endl;
 		return nullptr;
 	}
+
+#ifdef _DEVELOP
+	ReloadCallback rc = {
+		.owner = owner,
+		.callback = reloadCallback,
+	};
+	_renderObjectModelCallbacks[name].push_back(rc);  // Only load in the callback if it's a successful get, and also the lambda could go stale sometime too, so @TODO: there'll have to be a way to remove that lambda
+#endif
+
 	return it->second;
 }
+
+#ifdef _DEVELOP
+void RenderObjectManager::removeModelCallbacks(void* owner)
+{
+	for (auto it = _renderObjectModelCallbacks.begin(); it != _renderObjectModelCallbacks.end(); it++)
+	{
+		auto& rcs = it->second;
+		std::erase_if(
+			rcs,
+			[owner](ReloadCallback x) {
+				return x.owner == owner;
+			}
+		);
+	}
+}
+
+void RenderObjectManager::triggerModelCallbacks(const std::string& name)
+{
+	for (auto& rc : _renderObjectModelCallbacks[name])
+		rc.callback();
+}
+#endif
 
 RenderObjectManager::RenderObjectManager(VmaAllocator& allocator) : _allocator(allocator)
 {

@@ -18,7 +18,7 @@ Enemy::Enemy(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSe
     if (ds)
         load(*ds);
 
-    _characterModel = _rom->getModel("EnemyWIP");
+    _characterModel = _rom->getModel("EnemyWIP", this, [](){});
 
     _renderObj =
         _rom->registerRenderObject({
@@ -68,6 +68,7 @@ Enemy::~Enemy()
 {
     //delete _renderObj->animator;
     _rom->unregisterRenderObject(_renderObj);
+    _rom->removeModelCallbacks(this);
     PhysicsEngine::getInstance().unregisterPhysicsObject(_physicsObj);
 
     // @TODO: figure out if I need to call `delete _collisionShape;` or not
