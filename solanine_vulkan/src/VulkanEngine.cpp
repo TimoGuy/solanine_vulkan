@@ -4025,8 +4025,8 @@ void VulkanEngine::checkIfResourceUpdatedThenHotswapRoutine()
 			else if (ext.compare(".gltf") == 0 ||
 					 ext.compare(".glb")  == 0)
 			{
-				_roManager->triggerModelCallbacks(resource.path.stem().string());
-				std::cout << "Sent message to model \"\" to reload." << std::endl;
+				_roManager->reloadModelAndTriggerCallbacks(this, resource.path.stem().string(), resource.path.string());
+				std::cout << "Sent message to model \"" << resource.path.stem().string() << "\" to reload." << std::endl;
 				continue;
 			}
 

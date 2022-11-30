@@ -655,7 +655,8 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
             _flagJump = false;
     }
 
-    _physicsObj->body->setLinearVelocity(physutil::toVec3(velocity + (_displacementToTarget + _attachmentVelocity) / physicsDeltaTime));
+    btVector3 linVelo = physutil::toVec3(velocity + (_displacementToTarget + _attachmentVelocity) / physicsDeltaTime);
+    _physicsObj->body->setLinearVelocity(linVelo);
 }
 
 void Player::dump(DataSerializer& ds)
@@ -754,25 +755,28 @@ void Player::processGrounded(glm::vec3& velocity, float_t& groundAccelMult, cons
                         // (i.e. pretend that the raycast is the body and it has mass)
                         //
                         auto otherBody = (btRigidBody*)hitInfo.m_collisionObject;
-                        otherBody->activate();
-
                         bool firstInteraction = (_framesSinceAttachedBody > 1 || _attachedBody != otherBody);
 
-                        btVector3 force(
-                            0,
-                            (velocity.y + PhysicsEngine::getInstance().getGravity().y()) * _physicsObj->body->getMass(),
-                            0
-                        );
-                        if (firstInteraction)
-                            force.setY(velocity.y * _physicsObj->body->getMass() * _landingApplyMassMult);
+                        if (otherBody->getMass() != 0.0f)  // Check to make sure that this is a dynamic rigidbody first
+                        {
+                            otherBody->activate();
 
-                        btVector3 relPos = hitInfo.m_hitPointWorld - otherBody->getWorldTransform().getOrigin();
-                        otherBody->applyForce(force, relPos);
+                            btVector3 force(
+                                0,
+                                (velocity.y + PhysicsEngine::getInstance().getGravity().y()) * _physicsObj->body->getMass(),
+                                0
+                            );
+                            if (firstInteraction)
+                                force.setY(velocity.y * _physicsObj->body->getMass() * _landingApplyMassMult);
+
+                            btVector3 relPos = hitInfo.m_hitPointWorld - otherBody->getWorldTransform().getOrigin();
+                            otherBody->applyForce(force, relPos);
+                        }
 
                         //
                         // Process moving platform information
                         //
-                        if (otherBody->getMass() >= _physicsObj->body->getMass() && !firstInteraction)
+                        if ((otherBody->getMass() == 0.0f || otherBody->getMass() >= _physicsObj->body->getMass()) && !firstInteraction)
                         {
                             // Find delta of moving platform
                             attachmentVelocityReset += physutil::toVec3(otherBody->getWorldTransform() * physutil::toVec3(_attachmentLocalPosition) - physutil::toVec3(_attachmentWorldPosition));
@@ -797,6 +801,8 @@ void Player::processGrounded(glm::vec3& velocity, float_t& groundAccelMult, cons
                             attachmentVelocityReset += yos->getTreadmillVelocity() * physicsDeltaTime;
                             groundAccelMult = yos->getGroundedAccelMult();
                         }
+                        else
+                            groundAccelMult = 1.0f;  // Default Value
                 }
             }
             else

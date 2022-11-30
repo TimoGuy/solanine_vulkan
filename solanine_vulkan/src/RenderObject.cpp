@@ -103,8 +103,22 @@ void RenderObjectManager::removeModelCallbacks(void* owner)
 	}
 }
 
-void RenderObjectManager::triggerModelCallbacks(const std::string& name)
+void RenderObjectManager::reloadModelAndTriggerCallbacks(VulkanEngine* engine, const std::string& name, const std::string& modelPath)
 {
+	auto it = _renderObjectModels.find(name);
+	if (it == _renderObjectModels.end())
+	{
+		std::cerr << "[HOT RELOAD MODEL]" << std::endl
+			<< "ERROR: model with name \"" << name << "\" not found." << std::endl;
+		return;
+	}
+
+	// Reload model
+	vkglTF::Model* model = _renderObjectModels[name];
+	model->destroy(_allocator);
+	model->loadFromFile(engine, modelPath);
+
+	// Trigger Model Callbacks
 	for (auto& rc : _renderObjectModelCallbacks[name])
 		rc.callback();
 }

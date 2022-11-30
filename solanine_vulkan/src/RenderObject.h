@@ -11,6 +11,10 @@
 
 namespace vkglTF { struct Model; struct Animator; }
 
+#ifdef _DEVELOP
+class VulkanEngine;
+#endif
+
 
 enum class RenderLayer
 {
@@ -35,7 +39,7 @@ public:
 #ifdef _DEVELOP
 	vkglTF::Model* getModel(const std::string& name, void* owner, std::function<void()>&& reloadCallback);  // This is to support model hot-reloading via a callback lambda
 	void           removeModelCallbacks(void* owner);
-	void           triggerModelCallbacks(const std::string& name);
+	void           reloadModelAndTriggerCallbacks(VulkanEngine* engine, const std::string& name, const std::string& modelPath);
 #else
 	vkglTF::Model* getModel(const std::string& name);
 #endif

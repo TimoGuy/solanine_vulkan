@@ -32,9 +32,9 @@ public:
 
 private:
     vkglTF::Model* _model;
-    RenderObject* _renderObj;
-    RenderObjectManager* _rom;
-    RegisteredPhysicsObject* _physicsObj;
+    RenderObject* _renderObj = nullptr;
+    RenderObjectManager* _rom = nullptr;
+    RegisteredPhysicsObject* _physicsObj = nullptr;
 
     glm::mat4 _load_transform = glm::mat4(1.0f);
 
