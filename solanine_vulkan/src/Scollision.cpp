@@ -46,6 +46,7 @@ void Scollision::dump(DataSerializer& ds)
     Entity::dump(ds);
     ds.dumpMat4(_renderObj->transformMatrix);
     ds.dumpString(_modelName);
+    ds.dumpFloat(_groundedAccelMult);
 }
 
 void Scollision::load(DataSerialized& ds)
@@ -53,6 +54,15 @@ void Scollision::load(DataSerialized& ds)
     Entity::load(ds);
     _load_transform = ds.loadMat4();
     _modelName = ds.loadString();
+
+    // V2
+    if (ds.getSerializedValuesCount() >= 1)
+        _groundedAccelMult = ds.loadFloat();
+}
+
+float_t Scollision::getGroundedAccelMult()
+{
+    return _groundedAccelMult;
 }
 
 void Scollision::loadModelWithName(const std::string& modelName)
@@ -173,4 +183,6 @@ void Scollision::renderImGui()
         if (ImGui::Button("Reload Model with new Name"))
             loadModelWithName(_modelNameTemp);
     }
+
+    ImGui::DragFloat("_groundedAccelMult", &_groundedAccelMult);
 }

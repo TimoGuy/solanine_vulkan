@@ -11,6 +11,7 @@
 #include "Debug.h"
 #include "imgui/imgui.h"
 #include "Yosemite.h"
+#include "Scollision.h"
 
 
 Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSerialized* ds) : Entity(em, ds), _rom(rom), _camera(camera)
@@ -800,6 +801,10 @@ void Player::processGrounded(glm::vec3& velocity, float_t& groundAccelMult, cons
                         {
                             attachmentVelocityReset += yos->getTreadmillVelocity() * physicsDeltaTime;
                             groundAccelMult = yos->getGroundedAccelMult();
+                        }
+                        else if (Scollision* sco = dynamic_cast<Scollision*>(ent); sco != nullptr)
+                        {
+                            groundAccelMult = sco->getGroundedAccelMult();
                         }
                         else
                             groundAccelMult = 1.0f;  // Default Value

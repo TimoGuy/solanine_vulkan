@@ -24,6 +24,8 @@ public:
     void load(DataSerialized& ds);
     std::string getTypeName() { return TYPE_NAME; };
 
+    float_t getGroundedAccelMult();
+
     void loadModelWithName(const std::string& modelName);
     void createCollisionMeshFromModel();
 
@@ -39,6 +41,7 @@ private:
     glm::mat4 _load_transform = glm::mat4(1.0f);
 
     // Tweak Props
-    std::string _modelName     = "DevBoxWood";
-    std::string _modelNameTemp = _modelName;
+    std::string _modelName         = "DevBoxWood";
+    std::string _modelNameTemp     = _modelName;
+    float_t     _groundedAccelMult = 1.0f;  // Used to fake friction
 };
