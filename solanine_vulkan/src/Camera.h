@@ -31,7 +31,7 @@ struct SceneCamera
 	glm::vec3 facingDirection = { -0.570508420, -0.390730739, 0.722388268 };
 	float_t fov               = glm::radians(70.0f);
 	float_t aspect;
-	float_t zNear             = 0.1f;
+	float_t zNear             = 0.1f;  // @TODO: I want to change this to 1.0f in the future but the skybox gets cut out unfortunately. You'll need to change to a quad rendered in front of the screen as the skybox. Until then, good luck  -Timo 2022/12/01
 	float_t zFar              = 1500.0f;
 	float_t zFarShadow        = 200.0f;
 	GPUCameraData gpuCameraData;
