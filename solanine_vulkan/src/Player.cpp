@@ -63,6 +63,7 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
                     "res/sfx/wip_MM_Link_Attack2.wav",
                     "res/sfx/wip_MM_Link_Attack3.wav",
                     "res/sfx/wip_MM_Link_Attack4.wav",
+                    //"res/sfx/wip_hollow_knight_sfx/hero_nail_art_great_slash.wav",
                 });
             }
         },
@@ -607,7 +608,8 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
                 // @TODO: add some kind of audio event system, or even better, figure out how to use FMOD!!! Bc it's freakign integrated lol
                 AudioEngine::getInstance().playSoundFromList({
                     "res/sfx/wip_jump1.ogg",
-                    "res/sfx/wip_jump2.ogg"
+                    "res/sfx/wip_jump2.ogg",
+                    //"res/sfx/wip_hollow_knight_sfx/hero_jump.wav",
                     });
 
                 jumpFlagProcessed = true;                    
@@ -1040,6 +1042,7 @@ void Player::processAttackStageSwing(glm::vec3& velocity, const float_t& physics
         {
             AudioEngine::getInstance().playSoundFromList({
                 "res/sfx/wip_OOT_YoungLink_DinsFire.wav",
+                //"res/sfx/wip_hollow_knight_sfx/hero_nail_art_cyclone_slash_short.wav",
                 });
 
             _jumpPreventOnGroundCheckFramesTimer = _jumpPreventOnGroundCheckFrames;
