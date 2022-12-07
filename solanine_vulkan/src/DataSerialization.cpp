@@ -38,6 +38,19 @@ glm::vec3   DataSerialized::loadVec3()
     return data;
 }
 
+glm::quat   DataSerialized::loadQuat()
+{
+    std::string::size_type sz;
+    glm::quat data;
+    float_t* dataPtr = glm::value_ptr(data);
+    dataPtr[0]  = std::stof(_serializedValues[0], &sz);    _serializedValues[0] = _serializedValues[0].substr(sz);
+    dataPtr[1]  = std::stof(_serializedValues[0], &sz);    _serializedValues[0] = _serializedValues[0].substr(sz);
+    dataPtr[2]  = std::stof(_serializedValues[0], &sz);    _serializedValues[0] = _serializedValues[0].substr(sz);
+    dataPtr[3]  = std::stof(_serializedValues[0]);
+    _serializedValues.erase(_serializedValues.begin());
+    return data;
+}
+
 glm::mat4   DataSerialized::loadMat4()
 {
     std::string::size_type sz;
@@ -96,6 +109,16 @@ void DataSerializer::dumpVec3(const glm::vec3& val)
     ss << std::to_string(val.x) << " "
         << std::to_string(val.y) << " "
         << std::to_string(val.z);
+    _dataSerialized._serializedValues.push_back(ss.str());
+}
+
+void DataSerializer::dumpQuat(const glm::quat& val)
+{
+    std::stringstream ss;
+    ss << std::to_string(val.x) << " "
+        << std::to_string(val.y) << " "
+        << std::to_string(val.z) << " "
+        << std::to_string(val.w);
     _dataSerialized._serializedValues.push_back(ss.str());
 }
 

@@ -14,6 +14,7 @@
 #include "RenderObject.h"
 #include "Entity.h"
 #include "EntityManager.h"
+#include "WindManager.h"
 #include "Camera.h"
 #include "SceneManagement.h"
 #include "DataSerialization.h"
@@ -4320,6 +4321,51 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 			ImGui::DragFloat("focusRadiusY", &_camera->mainCamMode.focusRadiusY, 1.0f, 0.0f);
 			ImGui::SliderFloat("focusCentering", &_camera->mainCamMode.focusCentering, 0.0f, 1.0f);
 			ImGui::DragFloat3("focusPositionOffset", &_camera->mainCamMode.focusPositionOffset.x);
+		}
+
+		accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
+		maxWindowWidth = glm::max(maxWindowWidth, ImGui::GetWindowWidth());
+	}
+	ImGui::End();
+
+	//
+	// Wind Manager
+	//
+	ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight + windowOffsetY), ImGuiCond_Always);
+	ImGui::Begin("Wind Manager", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
+	{
+		ImGui::DragFloat3("Wind Velocity", &windmgr::windVelocity.x);
+		ImGui::Checkbox("DEBUG Render wind zones", &windmgr::debugRenderCollisionDataFlag);
+
+		if (ImGui::CollapsingHeader("Wind Zones", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			size_t wzIndex = 0;
+			for (auto& windZone : windmgr::windZones)
+			{
+				ImGui::Text(("Wind Zone #" + std::to_string(wzIndex)).c_str());
+				ImGui::DragFloat3(("Pos###POS Wind Zone #" + std::to_string(wzIndex)).c_str(), &windZone.position.x);
+
+				glm::vec3 eulerDegreesOfRotation = glm::degrees(glm::eulerAngles(windZone.rotation));
+				if (ImGui::DragFloat3(("Rot###ROT Wind Zone #" + std::to_string(wzIndex)).c_str(), &eulerDegreesOfRotation.x))
+					windZone.rotation = glm::quat(glm::radians(eulerDegreesOfRotation));
+				
+				ImGui::DragFloat3(("Sca###SCA Wind Zone #" + std::to_string(wzIndex)).c_str(), &windZone.halfExtents.x);
+
+				if (ImGui::Button(("Delete!###DEL Wind Zone #" + std::to_string(wzIndex)).c_str()))
+				{
+					windmgr::windZones.erase(windmgr::windZones.begin() + wzIndex);
+					break;
+				}
+
+				ImGui::Separator();
+
+				wzIndex++;
+			}
+
+			if (ImGui::Button("Add new Wind Zone"))
+			{
+				windmgr::windZones.push_back({});
+			}
 		}
 
 		accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;

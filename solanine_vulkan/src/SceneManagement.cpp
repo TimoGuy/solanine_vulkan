@@ -4,6 +4,7 @@
 #include <sstream>
 #include "DataSerialization.h"
 #include "VulkanEngine.h"
+#include "WindManager.h"
 #include "Camera.h"
 #include "Debug.h"
 #include "StringHelper.h"
@@ -174,6 +175,13 @@ namespace scene
 			    });
             return false;
         }
+
+        DataSerializer ds;
+        windmgr::dumpWindZones(ds);
+        outfile << ":windmanager" << '\n';
+        DataSerialized dsd = ds.getSerializedData();
+        while (dsd.getSerializedValuesCount() > 0)
+            outfile << dsd.loadString() << '\n';
 
         for (auto ent : entities)
         {

@@ -3,6 +3,7 @@
 #include <iostream>
 #include "VulkanEngine.h"
 #include "Entity.h"
+#include "WindManager.h"
 #include "VkInitializers.h"
 
 
@@ -199,6 +200,9 @@ void PhysicsEngine::update(float_t deltaTime, std::vector<Entity*>* entities)   
 	}
 	vmaUnmapMemory(_engine->_allocator, _transformsBuffer._allocation);
 #endif
+
+	// Let windmgr possibly write debug collision
+	windmgr::debugRenderCollisionData(this);
 
 	// Load the debug draw lines emplaced from inside the physicsUpdate()'s
 	loadOneFrameDebugDrawLines();
