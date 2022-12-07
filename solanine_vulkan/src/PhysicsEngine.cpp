@@ -390,9 +390,8 @@ btCollisionWorld::ClosestConvexResultCallback PhysicsEngine::boxcast(const btTra
 	btCollisionWorld::ClosestConvexResultCallback resultCallback(from.getOrigin(), to.getOrigin());
 	resultCallback.m_collisionFilterGroup = filterGroups;
 	resultCallback.m_collisionFilterMask = mask;
-	btBoxShape* shape = new btBoxShape(physutil::toVec3(halfExtents));
-	_dynamicsWorld->convexSweepTest(shape, from, to, resultCallback);
-	delete shape;
+	btBoxShape shape(physutil::toVec3(halfExtents));
+	_dynamicsWorld->convexSweepTest(&shape, from, to, resultCallback);
 	return resultCallback;
 }
 
