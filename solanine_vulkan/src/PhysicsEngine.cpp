@@ -385,6 +385,17 @@ btCollisionWorld::ClosestRayResultCallback PhysicsEngine::raycast(const btVector
 	return closestResults;
 }
 
+btCollisionWorld::ClosestConvexResultCallback PhysicsEngine::boxcast(const btTransform& from, const btTransform& to, const glm::vec3& halfExtents, int32_t filterGroups, int32_t mask)
+{
+	btCollisionWorld::ClosestConvexResultCallback resultCallback(from.getOrigin(), to.getOrigin());
+	resultCallback.m_collisionFilterGroup = filterGroups;
+	resultCallback.m_collisionFilterMask = mask;
+	btBoxShape* shape = new btBoxShape(physutil::toVec3(halfExtents));
+	_dynamicsWorld->convexSweepTest(shape, from, to, resultCallback);
+	delete shape;
+	return resultCallback;
+}
+
 void PhysicsEngine::calculateInterpolatedTransform(RegisteredPhysicsObject& obj, const float_t& physicsAlpha)
 {
 	btTransform interpolatedTransform(

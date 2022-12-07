@@ -270,7 +270,12 @@ void Player::update(const float_t& deltaTime)
         input.y += input::keyDownPressed  ? -1.0f : 0.0f;
 
         if (_camera->freeCamMode.enabled || ImGui::GetIO().WantTextInput)  // @DEBUG: for the level editor
+        {
             input = glm::vec2(0.0f);
+            _flagJump = false;
+            _flagAttack = false;
+            _flagDrawOrSheathWeapon = false;
+        }
 
         if (_isWeaponDrawn && _attackStage != AttackStage::NONE)
         {

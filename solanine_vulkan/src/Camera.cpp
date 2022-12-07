@@ -235,7 +235,16 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 
 	const glm::vec3 focusPositionCooked = mainCamMode.focusPosition + mainCamMode.focusPositionOffset;
 	float_t lookDistance = mainCamMode.lookDistance;
-	auto hitInfo = PhysicsEngine::getInstance().raycast(physutil::toVec3(focusPositionCooked), physutil::toVec3(focusPositionCooked - mainCamMode.calculatedLookDirection * lookDistance), btBroadphaseProxy::DefaultFilter, btBroadphaseProxy::StaticFilter | btBroadphaseProxy::KinematicFilter);
+	btQuaternion lookRotationBt(lookRotation.x, lookRotation.y, lookRotation.z, lookRotation.w);
+	auto hitInfo =
+		PhysicsEngine::getInstance().boxcast(
+			btTransform(lookRotationBt, physutil::toVec3(focusPositionCooked)),
+			btTransform(lookRotationBt, physutil::toVec3(focusPositionCooked - mainCamMode.calculatedLookDirection * lookDistance)),
+			sceneCamera.boxCastExtents,
+			btBroadphaseProxy::DefaultFilter,
+			btBroadphaseProxy::StaticFilter | btBroadphaseProxy::KinematicFilter
+		);
+	// auto hitInfo = PhysicsEngine::getInstance().raycast(physutil::toVec3(focusPositionCooked), physutil::toVec3(focusPositionCooked - mainCamMode.calculatedLookDirection * lookDistance), btBroadphaseProxy::DefaultFilter, btBroadphaseProxy::StaticFilter | btBroadphaseProxy::KinematicFilter);
 	if (hitInfo.hasHit())
 		lookDistance *= hitInfo.m_closestHitFraction;
 

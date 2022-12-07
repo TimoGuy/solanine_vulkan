@@ -115,6 +115,11 @@ void VulkanEngine::run()
 	// Initialize Scene Camera
 	//
 	_camera->sceneCamera.aspect = (float_t)_windowExtent.width / (float_t)_windowExtent.height;
+	_camera->sceneCamera.boxCastExtents = {
+		_camera->sceneCamera.zNear * glm::tan(_camera->sceneCamera.fov * 0.5f) * _camera->sceneCamera.aspect,
+		_camera->sceneCamera.zNear * glm::tan(_camera->sceneCamera.fov * 0.5f),
+		_camera->sceneCamera.zNear * 0.5f,
+	};
 	
 	// @HARDCODED: Set the initial light direction
 	_pbrRendering.gpuSceneShadingProps.lightDir = glm::normalize(glm::vec4(0.432f, 0.864f, 0.259f, 0.0f));
@@ -3573,6 +3578,11 @@ void VulkanEngine::recreateSwapchain()
 	_windowExtent.width = w;
 	_windowExtent.height = h;
 	_camera->sceneCamera.aspect = (float_t)w / (float_t)h;
+	_camera->sceneCamera.boxCastExtents = {
+		_camera->sceneCamera.zNear * glm::tan(_camera->sceneCamera.fov * 0.5f) * _camera->sceneCamera.aspect,
+		_camera->sceneCamera.zNear * glm::tan(_camera->sceneCamera.fov * 0.5f),
+		_camera->sceneCamera.zNear * 0.5f,
+	};
 
 	_swapchainDependentDeletionQueue.flush();
 
