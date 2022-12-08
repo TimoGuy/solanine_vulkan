@@ -976,10 +976,19 @@ void Player::processGrounded(glm::vec3& velocity, float_t& groundAccelMult, cons
     }
 
     // Check for wind velocity
-    _windZoneVelocity =
-        windmgr::getWindZoneVelocity(
-            physutil::toVec3(_physicsObj->body->getWorldTransform().getOrigin())
-        );
+    if (windmgr::getWindZoneVelocity(
+            physutil::toVec3(_physicsObj->body->getWorldTransform().getOrigin())))
+    {
+        _windZoneVelocity = windmgr::windVelocity;
+        if (_windZoneSFXChannelId < 0)
+            _windZoneSFXChannelId = AudioEngine::getInstance().playSound("res/sfx/wip_ultimate_wind_noise_generator_90_loop.ogg");
+    }
+    else
+    {
+        if (_windZoneSFXChannelId >= 0)
+            AudioEngine::getInstance().stopChannel(_windZoneSFXChannelId);
+        _windZoneSFXChannelId = -1;
+    }
 
     // Clear attachment velocity
     _prevAttachmentVelocity = _attachmentVelocity;

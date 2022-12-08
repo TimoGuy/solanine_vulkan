@@ -22,5 +22,5 @@ namespace windmgr
     void dumpWindZones(DataSerializer& ds);
     void loadWindZones(DataSerialized& ds);
 
-    glm::vec3 getWindZoneVelocity(const glm::vec3& position);
+    bool getWindZoneVelocity(const glm::vec3& position);
 }

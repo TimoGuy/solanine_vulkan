@@ -63,10 +63,10 @@ struct AudioAdapter_FMOD
 
     void update();
 
-    FMOD::Studio::System* fmodStudioSystem;
-    FMOD::System* fmodSystem;
+    FMOD::Studio::System* fmodStudioSystem = nullptr;
+    FMOD::System* fmodSystem = nullptr;
 
-    int nextChannelId;
+    int nextChannelId = 0;
 
     std::map<std::string, FMOD::Studio::Bank*> banks;
     std::map<std::string, FMOD::Studio::EventInstance*> events;

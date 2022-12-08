@@ -113,7 +113,7 @@ namespace windmgr
         }
     }
 
-    glm::vec3 getWindZoneVelocity(const glm::vec3& position)
+    bool getWindZoneVelocity(const glm::vec3& position)
     {
         for (auto& wz : windZones)
         {
@@ -124,10 +124,10 @@ namespace windmgr
             transformedPosition = glm::abs(transformedPosition);
             if (transformedPosition.x < 1.0f && transformedPosition.y < 1.0f && transformedPosition.z < 1.0f)
             {
-                return windVelocity;
+                return true;
             }
         }
 
-        return glm::vec3(0.0f);
+        return false;
     }
 }
