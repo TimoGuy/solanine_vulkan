@@ -113,7 +113,10 @@ namespace scene
                 if (!newObjectType.empty())
                 {
                     auto dsCooked = ds.getSerializedData();
-                    success &= (spinupNewObject(newObjectType, engine, &dsCooked) != nullptr);
+                    if (newObjectType == ":windmanager")
+                        windmgr::loadWindZones(dsCooked);
+                    else
+                        success &= (spinupNewObject(newObjectType, engine, &dsCooked) != nullptr);
                 }
 
                 // New object
@@ -182,6 +185,7 @@ namespace scene
         DataSerialized dsd = ds.getSerializedData();
         while (dsd.getSerializedValuesCount() > 0)
             outfile << dsd.loadString() << '\n';
+        outfile << '\n';  // Extra newline for readability
 
         for (auto ent : entities)
         {
