@@ -86,7 +86,7 @@ namespace windmgr
             pe->debugDrawLineOneFrame(vertexList[i], vertexList[i + 1], color);
     }
 
-    void dumpWindZones(const DataSerializer& ds)
+    void dumpWindZones(DataSerializer& ds)
     {
         ds.dumpVec3(windVelocity);
 
@@ -98,7 +98,7 @@ namespace windmgr
         }
     }
 
-    void loadWindZones(const DataSerialized& ds)
+    void loadWindZones(DataSerialized& ds)
     {
         windVelocity = ds.loadVec3();
 
@@ -111,5 +111,23 @@ namespace windmgr
             wz.halfExtents = ds.loadVec3();
             windZones.push_back(wz);
         }
+    }
+
+    glm::vec3 getWindZoneVelocity(const glm::vec3& position)
+    {
+        for (auto& wz : windZones)
+        {
+            glm::vec3 transformedPosition = position - wz.position;
+            transformedPosition = glm::inverse(wz.rotation) * transformedPosition;
+            transformedPosition = transformedPosition / wz.halfExtents;
+
+            transformedPosition = glm::abs(transformedPosition);
+            if (transformedPosition.x < 1.0f && transformedPosition.y < 1.0f && transformedPosition.z < 1.0f)
+            {
+                return windVelocity;
+            }
+        }
+
+        return glm::vec3(0.0f);
     }
 }

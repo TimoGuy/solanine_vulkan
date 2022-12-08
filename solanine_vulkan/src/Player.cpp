@@ -4,6 +4,7 @@
 #include "PhysicsEngine.h"
 #include "RenderObject.h"
 #include "EntityManager.h"
+#include "WindManager.h"
 #include "Camera.h"
 #include "InputManager.h"
 #include "AudioEngine.h"
@@ -384,8 +385,9 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
 
     glm::vec3 velocity = physutil::toVec3(_physicsObj->body->getLinearVelocity());
 
-    velocity -= (_displacementToTarget + _attachmentVelocity) / physicsDeltaTime;  // Undo the displacement (hopefully no movement bugs)
+    velocity -= (_displacementToTarget + _attachmentVelocity) / physicsDeltaTime + _windZoneVelocity;  // Undo the displacement (hopefully no movement bugs)
     _displacementToTarget = glm::vec3(0.0f);
+    _windZoneVelocity = glm::vec3(0.0f);
     // _attachmentVelocity   = glm::vec3(0.0f);
 
     float groundAccelMult;
@@ -663,7 +665,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
             _flagJump = false;
     }
 
-    btVector3 linVelo = physutil::toVec3(velocity + (_displacementToTarget + _attachmentVelocity) / physicsDeltaTime);
+    btVector3 linVelo = physutil::toVec3(velocity + (_displacementToTarget + _attachmentVelocity) / physicsDeltaTime + _windZoneVelocity);
     _physicsObj->body->setLinearVelocity(linVelo);
 }
 
@@ -972,6 +974,12 @@ void Player::processGrounded(glm::vec3& velocity, float_t& groundAccelMult, cons
             velocity += applyVelocity;
         }
     }
+
+    // Check for wind velocity
+    _windZoneVelocity =
+        windmgr::getWindZoneVelocity(
+            physutil::toVec3(_physicsObj->body->getWorldTransform().getOrigin())
+        );
 
     // Clear attachment velocity
     _prevAttachmentVelocity = _attachmentVelocity;
