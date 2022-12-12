@@ -136,10 +136,10 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
 
     _camera->mainCamMode.setMainCamTargetObject(_characterRenderObj);  // @NOTE: I believe that there should be some kind of main camera system that targets the player by default but when entering different volumes etc. the target changes depending.... essentially the system needs to be more built out imo
 
-    _totalHeight = 5.0f;
+    _totalHeight = 4.5f;
     _maxClimbAngle = glm::radians(47.0f);
 
-    _capsuleRadius = 0.5f;
+    _capsuleRadius = 1.0f;
     //float_t d = (r - r * glm::sin(_maxClimbAngle)) / glm::sin(_maxClimbAngle);  // This is the "perfect algorithm", but we want stair stepping abilities too...
     constexpr float_t raycastMargin = 0.05f;
     _bottomRaycastFeetDist = 2.0f + raycastMargin;
@@ -156,13 +156,13 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
             _collisionShape,
             &getGUID()
         );
-    _physicsObj->transformOffset = glm::vec3(0, -4, 0);
+    _physicsObj->transformOffset = glm::vec3(0, -4.25f, 0);
     auto body = _physicsObj->body;
     body->setAngularFactor(0.0f);
     body->setDamping(0.0f, 0.0f);
     body->setFriction(0.0f);
     body->setActivationState(DISABLE_DEACTIVATION);
-    body->setCcdMotionThreshold(1e-7);  // https://docs.panda3d.org/1.10/python/programming/physics/bullet/ccd 
+    body->setCcdMotionThreshold(1e-7f);  // https://docs.panda3d.org/1.10/python/programming/physics/bullet/ccd 
     body->setCcdSweptSphereRadius(0.5f);
 
     _onCollisionStayFunc =
@@ -983,7 +983,7 @@ void Player::processGrounded(glm::vec3& velocity, float_t& groundAccelMult, cons
     {
         _windZoneVelocity = windmgr::windVelocity;
         if (_windZoneSFXChannelId < 0)
-            _windZoneSFXChannelId = AudioEngine::getInstance().playSound("res/sfx/wip_ultimate_wind_noise_generator_90_loop.ogg");
+            _windZoneSFXChannelId = AudioEngine::getInstance().playSound("res/sfx/wip_ultimate_wind_noise_generator_90_loop.ogg", true);
     }
     else
     {
@@ -1046,7 +1046,21 @@ void Player::processAttackStageSwing(glm::vec3& velocity, const float_t& physics
     switch (_attackType)
     {
     case AttackType::HORIZONTAL:
-        // All taken care of by the state machine
+        if (_attackSwingTimeElapsed == 0.0f)
+        {
+            /*AudioEngine::getInstance().playSoundFromList({
+                "res/sfx/wip_OOT_YoungLink_DinsFire.wav",
+                //"res/sfx/wip_hollow_knight_sfx/hero_nail_art_cyclone_slash_short.wav",
+                });*/
+
+            _jumpPreventOnGroundCheckFramesTimer = _jumpPreventOnGroundCheckFrames;
+        }
+
+        // If in a wind zone, go upwards with the wing
+        if (_windZoneSFXChannelId >= 0)
+            velocity = glm::vec3(0, _spinAttackUpwardsSpeed, 0);
+        else
+            velocity = glm::vec3(0.0f);
         break;
 
     case AttackType::DIVE_ATTACK:
@@ -1073,7 +1087,12 @@ void Player::processAttackStageSwing(glm::vec3& velocity, const float_t& physics
         }
 
         _usedSpinAttack = true;  // Constant flag setting until we're done (for esp. starting spin attack on ground... it always resets the _usedSpinAttack flag so this is to make sure it doesn't get unset during the duration of the spin attack)
-        velocity = glm::vec3(0, _spinAttackUpwardsSpeed, 0);
+
+        // If in a wind zone, go upwards with the wing
+        if (_windZoneSFXChannelId >= 0)
+            velocity = glm::vec3(0, _spinAttackUpwardsSpeed, 0);
+        else
+            velocity = glm::vec3(0.0f);
     } break;
     }
 

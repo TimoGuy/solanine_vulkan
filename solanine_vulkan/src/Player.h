@@ -34,12 +34,12 @@ public:
     void renderImGui();
 
 private:
-    RenderObject*    _characterRenderObj;
-    RenderObject*    _handleRenderObj;
-    RenderObject*    _weaponRenderObj;
-    std::string      _weaponAttachmentJointName;
-    RenderObjectManager* _rom;
-    btCapsuleShape* _collisionShape;
+    RenderObject*            _characterRenderObj;
+    RenderObject*            _handleRenderObj;
+    RenderObject*            _weaponRenderObj;
+    std::string              _weaponAttachmentJointName;
+    RenderObjectManager*     _rom;
+    btCapsuleShape*          _collisionShape;
     RegisteredPhysicsObject* _physicsObj;
     Camera* _camera;
     float_t _totalHeight;

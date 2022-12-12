@@ -62,9 +62,9 @@ void AudioEngine::unloadSound(const std::string& fname)
     audioAdapter->sounds.erase(sound);
 }
 
-int AudioEngine::playSound(const std::string& fname)
+int AudioEngine::playSound(const std::string& fname, bool looping)
 {
-    return playSound(fname, glm::vec3(0.0f));
+    return playSound(fname, looping, glm::vec3(0.0f));
 }
 
 int AudioEngine::playSoundFromList(const std::vector<std::string>& fnames)
@@ -73,7 +73,7 @@ int AudioEngine::playSoundFromList(const std::vector<std::string>& fnames)
     return playSound(fnames[index]);
 }
 
-int AudioEngine::playSound(const std::string& fname, const glm::vec3& position, float db)
+int AudioEngine::playSound(const std::string& fname, bool looping, const glm::vec3& position, float db)
 {
     int channelId = audioAdapter->nextChannelId++;
     auto sound = audioAdapter->sounds.find(fname);
@@ -88,12 +88,21 @@ int AudioEngine::playSound(const std::string& fname, const glm::vec3& position, 
         }
     }
 
+    // Setup looping if that's changed
+    FMOD_MODE mode;
+    sound->second->getMode(&mode);
+    if (looping != (bool)(mode & FMOD_LOOP_NORMAL))
+    {
+        mode &= looping ? ~FMOD_LOOP_OFF : ~FMOD_LOOP_NORMAL;
+        mode |= looping ? FMOD_LOOP_NORMAL : FMOD_LOOP_OFF;
+        sound->second->setMode(mode);
+    }
+
+    // Play sound paused in case if 3D sound setup is required
     FMOD::Channel* channel = nullptr;
     ERRCHECK(audioAdapter->fmodSystem->playSound(sound->second, nullptr, true, &channel));
     if (channel)
     {
-        FMOD_MODE mode;
-        sound->second->getMode(&mode);
         if (mode & FMOD_3D)
         {
             FMOD_VECTOR fPosition = { position.x, position.y, position.z };

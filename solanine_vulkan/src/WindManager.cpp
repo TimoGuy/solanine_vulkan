@@ -7,7 +7,7 @@
 namespace windmgr
 {
     std::vector<WindZone> windZones;
-    glm::vec3             windVelocity = { 0, 0, 100 };
+    glm::vec3             windVelocity = { 0, 0, 15 };
 
     bool                  debugRenderCollisionDataFlag = false;
 
