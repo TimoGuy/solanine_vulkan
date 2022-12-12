@@ -4343,15 +4343,32 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 			for (auto& windZone : windmgr::windZones)
 			{
 				ImGui::Text(("Wind Zone #" + std::to_string(wzIndex)).c_str());
-				ImGui::DragFloat3(("Pos###POS Wind Zone #" + std::to_string(wzIndex)).c_str(), &windZone.position.x);
+				ImGui::DragFloat3(("Pos### POS Wind Zone #" + std::to_string(wzIndex)).c_str(), &windZone.position.x);
 
 				glm::vec3 eulerDegreesOfRotation = glm::degrees(glm::eulerAngles(windZone.rotation));
-				if (ImGui::DragFloat3(("Rot###ROT Wind Zone #" + std::to_string(wzIndex)).c_str(), &eulerDegreesOfRotation.x))
+				if (ImGui::DragFloat3(("Rot### ROT Wind Zone #" + std::to_string(wzIndex)).c_str(), &eulerDegreesOfRotation.x))
 					windZone.rotation = glm::quat(glm::radians(eulerDegreesOfRotation));
 				
-				ImGui::DragFloat3(("Sca###SCA Wind Zone #" + std::to_string(wzIndex)).c_str(), &windZone.halfExtents.x);
+				ImGui::DragFloat3(("Sca### SCA Wind Zone #" + std::to_string(wzIndex)).c_str(), &windZone.halfExtents.x);
 
-				if (ImGui::Button(("Delete!###DEL Wind Zone #" + std::to_string(wzIndex)).c_str()))
+				if (ImGui::TreeNode(("Finer Transform Controls### FTC Wind Zone #" + std::to_string(wzIndex)).c_str()))
+				{
+					glm::vec3 adjMinAABB(0.0f);
+					glm::vec3 adjMaxAABB(0.0f);
+
+					bool changed = false;
+					changed |= ImGui::DragFloat3(("Adjust Min AABB### FTC MINAABB Wind Zone #" + std::to_string(wzIndex)).c_str(), &adjMinAABB.x);
+					changed |= ImGui::DragFloat3(("Adjust Max AABB### FTC MAXAABB Wind Zone #" + std::to_string(wzIndex)).c_str(), &adjMaxAABB.x);
+					if (changed)
+					{
+						windZone.position    += (-adjMinAABB + adjMaxAABB) * 0.5f;
+						windZone.halfExtents += (adjMinAABB + adjMaxAABB) * 0.5f;
+					}
+
+					ImGui::TreePop();
+				}
+
+				if (ImGui::Button(("Delete!### DEL Wind Zone #" + std::to_string(wzIndex)).c_str()))
 				{
 					windmgr::windZones.erase(windmgr::windZones.begin() + wzIndex);
 					break;

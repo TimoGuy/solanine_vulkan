@@ -9,7 +9,7 @@ namespace windmgr
     std::vector<WindZone> windZones;
     glm::vec3             windVelocity = { 0, 0, 15 };
 
-    bool                  debugRenderCollisionDataFlag = false;
+    bool                  debugRenderCollisionDataFlag = true;
 
     void debugRenderCollisionData(PhysicsEngine* pe)
     {
@@ -124,7 +124,12 @@ namespace windmgr
             transformedPosition = glm::abs(transformedPosition);
             if (transformedPosition.x < 1.0f && transformedPosition.y < 1.0f && transformedPosition.z < 1.0f)
             {
-                return true;
+                // In a wind zone. Check whether there is an obstruction
+                auto checkPos = physutil::toVec3(position);
+                auto hitInfo = PhysicsEngine::getInstance().raycast(checkPos, checkPos + physutil::toVec3(-windVelocity) * 1500.0f);
+                PhysicsEngine::getInstance().debugDrawLineOneFrame(physutil::toVec3(checkPos), physutil::toVec3(checkPos + physutil::toVec3(-windVelocity) * 1500.0f),   glm::vec3(1, 0.5f, 1));
+
+                return !hitInfo.hasHit();
             }
         }
 
