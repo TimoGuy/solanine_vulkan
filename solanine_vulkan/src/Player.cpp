@@ -1083,7 +1083,7 @@ void Player::processAttackStageSwing(glm::vec3& velocity, const float_t& physics
         if (_windZoneOccupancyPrevEnum == (int32_t)windmgr::WZOState::INSIDE)
             velocity = glm::vec3(0, _spinAttackUpwardsSpeed, 0);
         else
-            velocity = glm::vec3(0, velocity.y, 0);
+            velocity = glm::vec3(0, glm::max(0.0f, velocity.y), 0);
     }
     break;
 
@@ -1117,7 +1117,7 @@ void Player::processAttackStageSwing(glm::vec3& velocity, const float_t& physics
         if (_windZoneOccupancyPrevEnum == (int32_t)windmgr::WZOState::INSIDE)
             velocity = glm::vec3(0, _spinAttackUpwardsSpeed, 0);
         else
-            velocity = glm::vec3(0, velocity.y, 0);
+            velocity = glm::vec3(0, glm::max(0.0f, velocity.y), 0);
     }
     break;
     }

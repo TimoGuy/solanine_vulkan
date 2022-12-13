@@ -17,6 +17,7 @@ namespace windmgr
 
     extern std::vector<WindZone> windZones;
     extern glm::vec3             windVelocity;  // Just has a global velocity... might change this in the future... depends I guess on what level designs I wanna make
+    extern float_t               windCheckRayLength;
     extern bool                  debugRenderCollisionDataFlag;
     void debugRenderCollisionData(PhysicsEngine* pe);
     void dumpWindZones(DataSerializer& ds);

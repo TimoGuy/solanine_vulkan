@@ -4335,6 +4335,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 	ImGui::Begin("Wind Manager", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
 	{
 		ImGui::DragFloat3("Wind Velocity", &windmgr::windVelocity.x);
+		ImGui::DragFloat("Wind check ray length", &windmgr::windCheckRayLength);
 		ImGui::Checkbox("DEBUG Render wind zones", &windmgr::debugRenderCollisionDataFlag);
 
 		if (ImGui::CollapsingHeader("Wind Zones", ImGuiTreeNodeFlags_DefaultOpen))
