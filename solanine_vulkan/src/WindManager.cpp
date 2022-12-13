@@ -11,6 +11,7 @@ namespace windmgr
 
     bool                  debugRenderCollisionDataFlag = true;
 
+
     void debugRenderCollisionData(PhysicsEngine* pe)
     {
         if (!debugRenderCollisionDataFlag)
@@ -113,7 +114,7 @@ namespace windmgr
         }
     }
 
-    bool getWindZoneVelocity(const glm::vec3& position)
+    WZOState getWindZoneOccupancyState(const glm::vec3& position)
     {
         for (auto& wz : windZones)
         {
@@ -129,10 +130,10 @@ namespace windmgr
                 auto hitInfo = PhysicsEngine::getInstance().raycast(checkPos, checkPos + physutil::toVec3(-windVelocity) * 1500.0f);
                 PhysicsEngine::getInstance().debugDrawLineOneFrame(physutil::toVec3(checkPos), physutil::toVec3(checkPos + physutil::toVec3(-windVelocity) * 1500.0f),   glm::vec3(1, 0.5f, 1));
 
-                return !hitInfo.hasHit();
+                return hitInfo.hasHit() ? WZOState::INSIDE_OCCLUDED : WZOState::INSIDE;
             }
         }
 
-        return false;
+        return WZOState::NONE;
     }
 }

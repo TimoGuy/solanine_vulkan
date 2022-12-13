@@ -60,6 +60,7 @@ private:
     glm::vec3 _displacementToTarget = glm::vec3(0.0f);
     glm::vec3 _windZoneVelocity = glm::vec3(0.0f);
     int32_t   _windZoneSFXChannelId = -1;
+    int32_t   _windZoneOccupancyPrevEnum = 0;
 
     int32_t   _jumpPreventOnGroundCheckFramesTimer = -1;
     int32_t   _jumpInputBufferFramesTimer          = -1;

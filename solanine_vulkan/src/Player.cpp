@@ -978,19 +978,41 @@ void Player::processGrounded(glm::vec3& velocity, float_t& groundAccelMult, cons
     }
 
     // Check for wind velocity
-    if (windmgr::getWindZoneVelocity(
-            physutil::toVec3(_physicsObj->body->getWorldTransform().getOrigin())))
+    windmgr::WZOState wzo =
+        windmgr::getWindZoneOccupancyState(
+            physutil::toVec3(_physicsObj->body->getWorldTransform().getOrigin()));
+    if (wzo != (windmgr::WZOState)_windZoneOccupancyPrevEnum)
     {
-        _windZoneVelocity = windmgr::windVelocity;
-        if (_windZoneSFXChannelId < 0)
-            _windZoneSFXChannelId = AudioEngine::getInstance().playSound("res/sfx/wip_ultimate_wind_noise_generator_90_loop.ogg", true);
-    }
-    else
-    {
+        // Stop any sfx being payed
         if (_windZoneSFXChannelId >= 0)
             AudioEngine::getInstance().stopChannel(_windZoneSFXChannelId);
         _windZoneSFXChannelId = -1;
+
+        switch (wzo)
+        {
+        case windmgr::WZOState::NONE:
+        {
+        }
+        break;
+            
+        case windmgr::WZOState::INSIDE:
+        {
+            _windZoneSFXChannelId = AudioEngine::getInstance().playSound("res/sfx/wip_ultimate_wind_noise_generator_90_loop.ogg", true);
+        }
+        break;
+            
+        case windmgr::WZOState::INSIDE_OCCLUDED:
+        {
+            _windZoneSFXChannelId = AudioEngine::getInstance().playSound("res/sfx/wip_ultimate_wind_noise_generator_90_loop_lowpassed.ogg", true);
+        }
+        break;
+        }
+
+        _windZoneOccupancyPrevEnum = (int32_t)wzo;
     }
+
+    if (wzo == windmgr::WZOState::INSIDE)
+        _windZoneVelocity = windmgr::windVelocity;  // @NOTE: this needs to be set every frame
 
     // Clear attachment velocity
     _prevAttachmentVelocity = _attachmentVelocity;
@@ -1046,6 +1068,7 @@ void Player::processAttackStageSwing(glm::vec3& velocity, const float_t& physics
     switch (_attackType)
     {
     case AttackType::HORIZONTAL:
+    {
         if (_attackSwingTimeElapsed == 0.0f)
         {
             /*AudioEngine::getInstance().playSoundFromList({
@@ -1057,11 +1080,12 @@ void Player::processAttackStageSwing(glm::vec3& velocity, const float_t& physics
         }
 
         // If in a wind zone, go upwards with the wing
-        if (_windZoneSFXChannelId >= 0)
+        if (_windZoneOccupancyPrevEnum == (int32_t)windmgr::WZOState::INSIDE)
             velocity = glm::vec3(0, _spinAttackUpwardsSpeed, 0);
         else
-            velocity = glm::vec3(0.0f);
-        break;
+            velocity = glm::vec3(0, velocity.y, 0);
+    }
+    break;
 
     case AttackType::DIVE_ATTACK:
     {
@@ -1071,7 +1095,8 @@ void Player::processAttackStageSwing(glm::vec3& velocity, const float_t& physics
         // Signal to dive when to end
         if (_onGround)
             _characterRenderObj->animator->setTrigger("goto_dive_attack_end");
-    } break;
+    }
+    break;
 
     case AttackType::SPIN_ATTACK:
     {
@@ -1089,11 +1114,12 @@ void Player::processAttackStageSwing(glm::vec3& velocity, const float_t& physics
         _usedSpinAttack = true;  // Constant flag setting until we're done (for esp. starting spin attack on ground... it always resets the _usedSpinAttack flag so this is to make sure it doesn't get unset during the duration of the spin attack)
 
         // If in a wind zone, go upwards with the wing
-        if (_windZoneSFXChannelId >= 0)
+        if (_windZoneOccupancyPrevEnum == (int32_t)windmgr::WZOState::INSIDE)
             velocity = glm::vec3(0, _spinAttackUpwardsSpeed, 0);
         else
-            velocity = glm::vec3(0.0f);
-    } break;
+            velocity = glm::vec3(0, velocity.y, 0);
+    }
+    break;
     }
 
     _attackSwingTimeElapsed += physicsDeltaTime;

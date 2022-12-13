@@ -22,5 +22,12 @@ namespace windmgr
     void dumpWindZones(DataSerializer& ds);
     void loadWindZones(DataSerialized& ds);
 
-    bool getWindZoneVelocity(const glm::vec3& position);
+    enum class WZOState
+    {
+        NONE,
+        INSIDE,
+        INSIDE_OCCLUDED,
+    };
+
+    WZOState getWindZoneOccupancyState(const glm::vec3& position);
 }

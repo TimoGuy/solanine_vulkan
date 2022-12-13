@@ -136,6 +136,15 @@ void AudioEngine::setChannelVolume(int channelId, float db)
     ERRCHECK(channel->second->setVolume(dbToVolume(db)));
 }
 
+void AudioEngine::setChannelLowpassGain(int channelId, float gain)
+{
+    auto channel = audioAdapter->channels.find(channelId);
+    if (channel == audioAdapter->channels.end())
+        return;
+
+    ERRCHECK(channel->second->setLowPassGain(gain));
+}
+
 void AudioEngine::loadBank(const std::string& bankName, FMOD_STUDIO_LOAD_BANK_FLAGS flags)
 {
     if (audioAdapter->banks.find(bankName) != audioAdapter->banks.end())

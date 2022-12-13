@@ -29,6 +29,7 @@ public:
 
     void setChannel3dPosition(int channelId, const glm::vec3& position);
     void setChannelVolume(int channelId, float db);
+    void setChannelLowpassGain(int channelId, float gain);
 
     void loadBank(const std::string& bankName, FMOD_STUDIO_LOAD_BANK_FLAGS flags);
     void loadEvent(const std::string& eventName);
