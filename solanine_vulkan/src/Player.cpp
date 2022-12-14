@@ -1012,7 +1012,15 @@ void Player::processGrounded(glm::vec3& velocity, float_t& groundAccelMult, cons
     }
 
     if (wzo == windmgr::WZOState::INSIDE)
-        _windZoneVelocity = windmgr::windVelocity;  // @NOTE: this needs to be set every frame
+    {
+        // @NOTE: this needs to be set every frame
+        float_t windVelocityStrength =
+            _onGround ?
+                glm::max(0.25f, glm::length(_worldSpaceInput)) :
+                1.0f;
+        _windZoneVelocity =
+            windmgr::windVelocity * windVelocityStrength;
+    }
 
     // Clear attachment velocity
     _prevAttachmentVelocity = _attachmentVelocity;
@@ -1077,8 +1085,9 @@ void Player::processAttackStageSwing(glm::vec3& velocity, const float_t& physics
                 });*/
 
         }
+
         // Prevent ground sticking every frame you're doing an attack
-        _jumpPreventOnGroundCheckFramesTimer = _jumpPreventOnGroundCheckFrames;
+        _jumpPreventOnGroundCheckFramesTimer = _jumpPreventOnGroundCheckFrames;  // @REGRESSION @BUG: player will fall thru the ground while doing the swing
 
         // If in a wind zone, go upwards with the wing
         if (_windZoneOccupancyPrevEnum == (int32_t)windmgr::WZOState::INSIDE)
@@ -1112,7 +1121,7 @@ void Player::processAttackStageSwing(glm::vec3& velocity, const float_t& physics
         }
 
         // Prevent ground sticking every frame you're doing an attack
-        _jumpPreventOnGroundCheckFramesTimer = _jumpPreventOnGroundCheckFrames;
+        _jumpPreventOnGroundCheckFramesTimer = _jumpPreventOnGroundCheckFrames;  // @REGRESSION @BUG: player will fall thru the ground while doing the swing
 
         _usedSpinAttack = true;  // Constant flag setting until we're done (for esp. starting spin attack on ground... it always resets the _usedSpinAttack flag so this is to make sure it doesn't get unset during the duration of the spin attack)
 
