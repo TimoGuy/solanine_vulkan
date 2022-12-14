@@ -1076,8 +1076,9 @@ void Player::processAttackStageSwing(glm::vec3& velocity, const float_t& physics
                 //"res/sfx/wip_hollow_knight_sfx/hero_nail_art_cyclone_slash_short.wav",
                 });*/
 
-            _jumpPreventOnGroundCheckFramesTimer = _jumpPreventOnGroundCheckFrames;
         }
+        // Prevent ground sticking every frame you're doing an attack
+        _jumpPreventOnGroundCheckFramesTimer = _jumpPreventOnGroundCheckFrames;
 
         // If in a wind zone, go upwards with the wing
         if (_windZoneOccupancyPrevEnum == (int32_t)windmgr::WZOState::INSIDE)
@@ -1108,8 +1109,10 @@ void Player::processAttackStageSwing(glm::vec3& velocity, const float_t& physics
                 //"res/sfx/wip_hollow_knight_sfx/hero_nail_art_cyclone_slash_short.wav",
                 });
 
-            _jumpPreventOnGroundCheckFramesTimer = _jumpPreventOnGroundCheckFrames;
         }
+
+        // Prevent ground sticking every frame you're doing an attack
+        _jumpPreventOnGroundCheckFramesTimer = _jumpPreventOnGroundCheckFrames;
 
         _usedSpinAttack = true;  // Constant flag setting until we're done (for esp. starting spin attack on ground... it always resets the _usedSpinAttack flag so this is to make sure it doesn't get unset during the duration of the spin attack)
 
