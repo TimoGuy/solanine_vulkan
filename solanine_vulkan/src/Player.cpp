@@ -1086,12 +1086,14 @@ void Player::processAttackStageSwing(glm::vec3& velocity, const float_t& physics
 
         }
 
-        // Prevent ground sticking every frame you're doing an attack
-        _jumpPreventOnGroundCheckFramesTimer = _jumpPreventOnGroundCheckFrames;  // @REGRESSION @BUG: player will fall thru the ground while doing the swing
-
         // If in a wind zone, go upwards with the wing
         if (_windZoneOccupancyPrevEnum == (int32_t)windmgr::WZOState::INSIDE)
+        {
             velocity = glm::vec3(0, _spinAttackUpwardsSpeed, 0);
+
+            // Prevent ground sticking every frame you're doing an attack
+            _jumpPreventOnGroundCheckFramesTimer = _jumpPreventOnGroundCheckFrames;  // @REGRESSION @BUG: player will fall thru the ground while doing the swing
+        }
         else
             velocity = glm::vec3(0, glm::max(0.0f, velocity.y), 0);
     }
@@ -1120,14 +1122,16 @@ void Player::processAttackStageSwing(glm::vec3& velocity, const float_t& physics
 
         }
 
-        // Prevent ground sticking every frame you're doing an attack
-        _jumpPreventOnGroundCheckFramesTimer = _jumpPreventOnGroundCheckFrames;  // @REGRESSION @BUG: player will fall thru the ground while doing the swing
-
         _usedSpinAttack = true;  // Constant flag setting until we're done (for esp. starting spin attack on ground... it always resets the _usedSpinAttack flag so this is to make sure it doesn't get unset during the duration of the spin attack)
 
         // If in a wind zone, go upwards with the wing
         if (_windZoneOccupancyPrevEnum == (int32_t)windmgr::WZOState::INSIDE)
+        {
             velocity = glm::vec3(0, _spinAttackUpwardsSpeed, 0);
+
+            // Prevent ground sticking every frame you're doing an attack
+            _jumpPreventOnGroundCheckFramesTimer = _jumpPreventOnGroundCheckFrames;  // @REGRESSION @BUG: player will fall thru the ground while doing the swing
+        }
         else
             velocity = glm::vec3(0, glm::max(0.0f, velocity.y), 0);
     }
