@@ -8,7 +8,7 @@ namespace windmgr
 {
     std::vector<WindZone> windZones;
     glm::vec3             windVelocity = { 0, 0, 15 };
-    float_t               windCheckRayLength = 2.0f;
+    float_t               windCheckRayLength = 30.0f;
 
     bool                  debugRenderCollisionDataFlag = true;
 
@@ -127,11 +127,19 @@ namespace windmgr
             if (transformedPosition.x < 1.0f && transformedPosition.y < 1.0f && transformedPosition.z < 1.0f)
             {
                 // In a wind zone. Check whether there is an obstruction
+                bool windZoneOccluded = false;
                 auto checkPos = physutil::toVec3(position);
-                auto hitInfo = PhysicsEngine::getInstance().raycast(checkPos, checkPos + physutil::toVec3(-windVelocity) * windCheckRayLength);
-                PhysicsEngine::getInstance().debugDrawLineOneFrame(physutil::toVec3(checkPos), physutil::toVec3(checkPos + physutil::toVec3(-windVelocity) * windCheckRayLength),   glm::vec3(1, 0.5f, 1));
+                if (glm::length2(windVelocity) > 0.000001f)
+                {
+                    glm::vec3 wvGlmNormalized = glm::normalize(-windVelocity);
+                    auto hitInfo = PhysicsEngine::getInstance().raycast(checkPos, checkPos + physutil::toVec3(wvGlmNormalized) * windCheckRayLength);
+                    PhysicsEngine::getInstance().debugDrawLineOneFrame(physutil::toVec3(checkPos), physutil::toVec3(checkPos + physutil::toVec3(wvGlmNormalized) * windCheckRayLength),   glm::vec3(1, 0.5f, 1));
 
-                return hitInfo.hasHit() ? WZOState::INSIDE_OCCLUDED : WZOState::INSIDE;
+                    if (hitInfo.hasHit())
+                        windZoneOccluded = true;
+                }
+
+                return windZoneOccluded ? WZOState::INSIDE_OCCLUDED : WZOState::INSIDE;
             }
         }
 
