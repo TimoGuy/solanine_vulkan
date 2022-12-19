@@ -42,7 +42,11 @@ private:
     //
     // Minecart system simulation
     //
-    struct Path  // @NOTE: atm this system can only be traversed one way. In the future two-way traversal may be necessary but let's just keep it at this limitation for initial buildup purposes. Note there may not even be a need to improve this system other than bugfixes.  -Timo 2022/12/18
+    // @NOTE: atm this system can only be traversed one way. In the future two-way traversal may be necessary
+    //        but let's just keep it at this limitation for initial buildup purposes. Note there may not even
+    //        be a need to improve this system other than bugfixes.  -Timo 2022/12/18
+    //
+    struct Path
     {
         std::vector<glm::vec3> controlPoints;     // @NOTE: this is handled using bezier curves, hence the usage of control points
         float_t                pathScale;         // Baked: This is multiplied by `(distanceTraveled - startPathDistance)`
@@ -57,7 +61,7 @@ private:
         size_t toPathIndex1;  // Path index to go to if the switch is on.
     };
 
-    struct MinecartSimulation
+    struct MinecartSimulation  // @NOTE: multiple of these are created along with a single minecart renderobject and physicsobject... bc this is the equivalent to a single minecart traveling down the set path
     {
         bool    isOnAPath;         // Once the minecart simulation finishes out all paths it simulates thru, it will fall off and just do a freefall simulation (where `isOnAPath == false`).
         size_t  pathIndex;         // The currect Path that is being traveled down. This index is used to do a calculation on the exact position of the minecart.
@@ -71,12 +75,10 @@ private:
         float_t speedChangeSpeed;  // The speed at which `speedMultiplier` can change. This is effectively the "acceleration" of `speedMultiplier`.
     };
 
-    std::vector<Path>               _paths;
-    std::vector<PathSwitch>         _switches;
-    std::vector<MinecartSimulation> _minecartSims;
-    MinecartSimulationSettings      _minecartSimSettings;  // This is essentially the main tweak props other than configuring the actual simulation
-
-    //
     // Tweak Props
-    //
+    size_t                          _editingPath = 0;      // The path being currently edited.
+    std::vector<Path>               _paths;                // This will be tweaked using the rendered control handles (which show up depending on `editingPath`).
+    std::vector<PathSwitch>         _switches;             // This will be tweaked in the property panel
+    std::vector<MinecartSimulation> _minecartSims;         // Ehhh, this isn't really a tweak prop. It's more to view how the simulation is going.
+    MinecartSimulationSettings      _minecartSimSettings;
 };
