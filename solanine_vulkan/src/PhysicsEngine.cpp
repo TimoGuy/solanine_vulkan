@@ -118,7 +118,7 @@ void PhysicsEngine::initialize(VulkanEngine* engine)
 
 void PhysicsEngine::update(float_t deltaTime, std::vector<Entity*>* entities)    // https://gafferongames.com/post/fix_your_timestep/
 {
-	constexpr float_t physicsDeltaTime = 0.02f;    // 50fps
+	constexpr float_t physicsDeltaTime = 0.04f;    // 25fps
 	_accumulatedTimeForPhysics += deltaTime;
 
 	//
