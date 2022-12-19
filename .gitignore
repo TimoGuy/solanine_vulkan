@@ -33,6 +33,10 @@ bld/
 [Ll]ogs/
 [Tt]emp/
 
+# Include the Bullet3 lib files
+!bullet3/lib/[Dd]ebug/
+!bullet3/lib/[Rr]elease/
+
 # ImGui ini file
 [Tt]est[Gg][Uu][Ii]/imgui.ini
 
@@ -102,6 +106,9 @@ StyleCopReport.xml
 *.pidb
 *.svclog
 *.scc
+
+# Include the Bullet3 lib pdb files
+!bullet3/lib/**/*.pdb
 
 # Chutzpah Test files
 _Chutzpah*
