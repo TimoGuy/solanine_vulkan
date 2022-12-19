@@ -9,13 +9,13 @@ class     RenderObjectManager;
 struct    RegisteredPhysicsObject;
 
 
-class Minecart : public Entity
+class MinecartSystem : public Entity
 {
 public:
     static const std::string TYPE_NAME;
 
-    Minecart(EntityManager* em, RenderObjectManager* rom, DataSerialized* ds);
-    ~Minecart();
+    MinecartSystem(EntityManager* em, RenderObjectManager* rom, DataSerialized* ds);
+    ~MinecartSystem();
 
     void physicsUpdate(const float_t& physicsDeltaTime);
     void lateUpdate(const float_t& deltaTime);
@@ -31,13 +31,15 @@ public:
     void renderImGui();
 
 private:
-    vkglTF::Model* _model;
-    RenderObject* _renderObj = nullptr;
-    RenderObjectManager* _rom = nullptr;
-    RegisteredPhysicsObject* _physicsObj = nullptr;
+    vkglTF::Model*                        _minecartModel;
+    vkglTF::Model*                        _debug_bezierControlPointHandleModel;
+    std::vector<RenderObject*>            _renderObjs;
+    RenderObjectManager*                  _rom = nullptr;
+    std::vector<RegisteredPhysicsObject*> _physicsObjs;  // Holds the minecarts and the rail physics objects
 
     glm::mat4 _load_transform = glm::mat4(1.0f);
 
     // Tweak Props
-    std::vector<glm::vec3> _bezierCurvePoints;
+    
+    std::vector<glm::vec3> _bezierControlPoints;
 };
