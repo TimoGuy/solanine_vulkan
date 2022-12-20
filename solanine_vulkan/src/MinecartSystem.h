@@ -81,4 +81,5 @@ private:
     std::vector<PathSwitch>         _switches;             // This will be tweaked in the property panel
     std::vector<MinecartSimulation> _minecartSims;         // Ehhh, this isn't really a tweak prop. It's more to view how the simulation is going.
     MinecartSimulationSettings      _minecartSimSettings;
+    bool                            _isDirty = false;      // Whether edited settings or bezier path nodes are edited, then this is set to true and a button shows up that says you need to click it to rebake the path.
 };
