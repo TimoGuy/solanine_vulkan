@@ -3,6 +3,7 @@
 #include "Entity.h"
 #include "Imports.h"
 namespace vkglTF { struct Model; }
+class     VulkanEngine;
 class     EntityManager;
 struct    RenderObject;
 class     RenderObjectManager;
@@ -14,7 +15,7 @@ class MinecartSystem : public Entity
 public:
     static const std::string TYPE_NAME;
 
-    MinecartSystem(EntityManager* em, RenderObjectManager* rom, DataSerialized* ds);
+    MinecartSystem(VulkanEngine* engine, EntityManager* em, RenderObjectManager* rom, DataSerialized* ds);
     ~MinecartSystem();
 
     void physicsUpdate(const float_t& physicsDeltaTime);
@@ -31,10 +32,12 @@ public:
     void renderImGui();
 
 private:
+    VulkanEngine*                         _engine;
     vkglTF::Model*                        _minecartModel;
     vkglTF::Model*                        _builder_bezierControlPointHandleModel;  // @NOTE: put the renderobjects created from this in the builder section
+    std::vector<RenderObject*>            _builder_bezierControlPointRenderObjs;
     std::vector<RenderObject*>            _renderObjs;
-    RenderObjectManager*                  _rom = nullptr;
+    RenderObjectManager*                  _rom;
     std::vector<RegisteredPhysicsObject*> _physicsObjs;  // Holds the minecarts and the rail physics objects
 
     glm::mat4 _load_transform = glm::mat4(1.0f);  // @NOTE: try to ignore scale
@@ -74,6 +77,8 @@ private:
         float_t speed;             // Constant value of base speed of the minecarts.
         float_t speedChangeSpeed;  // The speed at which `speedMultiplier` can change. This is effectively the "acceleration" of `speedMultiplier`.
     };
+
+    void reconstructBezierCurves();
 
     // Tweak Props
     size_t                          _editingPath = 0;      // The path being currently edited.

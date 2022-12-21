@@ -162,7 +162,9 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
     body->setDamping(0.0f, 0.0f);
     body->setFriction(0.0f);
     body->setActivationState(DISABLE_DEACTIVATION);
-    body->setCcdMotionThreshold(1e-7f);  // https://docs.panda3d.org/1.10/python/programming/physics/bullet/ccd 
+
+    // https://docs.panda3d.org/1.10/python/programming/physics/bullet/ccd 
+    body->setCcdMotionThreshold(1e-7f);
     body->setCcdSweptSphereRadius(0.5f);
 
     _onCollisionStayFunc =

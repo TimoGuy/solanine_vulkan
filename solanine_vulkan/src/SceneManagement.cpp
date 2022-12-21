@@ -56,7 +56,7 @@ namespace scene
         if (objectName == Scollision::TYPE_NAME)
             ent = new Scollision(engine->_entityManager, engine->_roManager, ds);
         if (objectName == MinecartSystem::TYPE_NAME)
-            ent = new MinecartSystem(engine->_entityManager, engine->_roManager, ds);
+            ent = new MinecartSystem(engine, engine->_entityManager, engine->_roManager, ds);
 
         if (ent == nullptr)
         {
