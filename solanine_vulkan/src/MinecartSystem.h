@@ -78,6 +78,7 @@ private:
         float_t speedChangeSpeed;  // The speed at which `speedMultiplier` can change. This is effectively the "acceleration" of `speedMultiplier`.
     };
 
+    bool getControlPointPathAndSubIndices(size_t& outPathIndex, size_t& outSubIndex);
     void reconstructBezierCurves();
 
     // Tweak Props
