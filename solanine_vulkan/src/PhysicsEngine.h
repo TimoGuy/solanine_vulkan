@@ -124,6 +124,7 @@ namespace physutil
     glm::vec3 getPosition(const glm::mat4& transform);
 	glm::quat getRotation(const glm::mat4& transform);
 	glm::vec3 getScale(const glm::mat4& transform);
-    float_t lerp(float_t a, float_t b, float_t t);
+    float_t lerp(const float_t& a, const float_t& b, const float_t& t);
+    glm::vec3 lerp(const glm::vec3& a, const glm::vec3& b, const glm::vec3& t);
     bool matrixEquals(const glm::mat4& m1, const glm::mat4& m2, float epsilon = 0.0001f);
 }

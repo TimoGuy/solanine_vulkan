@@ -51,9 +51,11 @@ private:
     //
     struct Path
     {
-        std::vector<glm::vec3> controlPoints;      // @NOTE: this is handled using bezier curves, hence the usage of control points
-        float_t                pathScale;          // Baked: This is multiplied by `(distanceTraveled - startPathDistance)`
-        float_t                startPathDistance;  // Baked: note that this is the "real" distance, as in, it's not multiplied by `pathScale` and it's supposed to be used with `distanceTraveled`
+        int32_t                parentPathId = -1;    // -1 is no parent
+        int32_t                parentPathCPId = -1;  // -1 is no parent
+        float_t                pathScale;            // Baked: This is multiplied by `(distanceTraveled - startPathDistance)`
+        float_t                startPathDistance;    // Baked: note that this is the "real" distance, as in, it's not multiplied by `pathScale` and it's supposed to be used with `distanceTraveled`
+        std::vector<glm::vec3> controlPoints;        // @NOTE: this is handled using quadratic bezier curves, hence the usage of control points
     };
 
     struct PathSwitch

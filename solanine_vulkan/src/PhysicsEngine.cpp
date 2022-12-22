@@ -914,9 +914,14 @@ namespace physutil
 		return scale;
 	}
 
-	float_t lerp(float_t a, float_t b, float_t t)
+	float_t lerp(const float_t& a, const float_t& b, const float_t& t)
 	{
 		return ((1.0f - t) * a) + (t * b);
+	}
+
+	glm::vec3 lerp(const glm::vec3& a, const glm::vec3& b, const glm::vec3& t)
+	{
+		return glm::vec3(lerp(a.x, b.x, t.x), lerp(a.y, b.y, t.y), lerp(a.z, b.z, t.z));
 	}
 
 	bool matrixEquals(const glm::mat4& m1, const glm::mat4& m2, float epsilon)
