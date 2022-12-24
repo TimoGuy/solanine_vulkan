@@ -51,19 +51,29 @@ void MinecartSystem::physicsUpdate(const float_t& physicsDeltaTime)
 {
     //
     // Slide all minecart simulations along the path
-    // @TODO: @INCOMPLETE!!!!! FINISH THIS!
     //
-    /*for (auto& ms : _minecartSims)
+    for (auto& ms : _minecartSims)
     {
         if (!ms.isOnAPath) continue;
 
         // Move forward in the path
-        ms.distanceTraveled += _minecartSimSettings.speed * ms.speedMultiplier * _paths[ms.pathIndex].pathScale * physicsDeltaTime;
+        float_t t = ms.distanceTraveled - (float_t)(int32_t)ms.distanceTraveled;
+        float_t d = _minecartSimSettings.speed * ms.speedMultiplier * _paths[ms.pathIndex].curves[(size_t)ms.distanceTraveled].curveScale * physicsDeltaTime;
+        if (t + d >= 1.0f)
+        {
+            // Use extra to adjust to the new curve
+            float_t extra = 1.0f - (t + d);
+            float_t extraRescaled = extra / _paths[ms.pathIndex].curves[(size_t)ms.distanceTraveled].curveScale * _paths[ms.pathIndex].curves[(size_t)ms.distanceTraveled + 1].curveScale;
+            d = d - extra + extraRescaled;
+        }
+        ms.distanceTraveled += d;
 
         //
         // Calculate position and tangent vector of bezier
         // @COPYPASTA
+    // @TODO: @INCOMPLETE!!!!! FINISH THIS!         START HERE WITH CALCULATING THE CORERCT BEZIER CURVE!!!!!
         //
+        t = ms.distanceTraveled - (float_t)(int32_t)ms.distanceTraveled;
         glm::vec3 controlPointsCooked[] = {
             glm::vec3(),
             glm::vec3(),
@@ -123,7 +133,7 @@ void MinecartSystem::physicsUpdate(const float_t& physicsDeltaTime)
         // Calculate velocity to keep the cart on the exact position it needs to be
         btVector3 vbc = physutil::toVec3(velocity) / physicsDeltaTime;
         ms.physicsObj->setLinearVelocity(vbc);
-    }*/
+    }
 
     //
     // Draw the debug lines for the minecart
@@ -390,27 +400,29 @@ void MinecartSystem::renderImGui()
     }
 
     // @TODO fix simple syntax errors on this section!
-    /*ImGui::Separator();
+    ImGui::Separator();
     if (ImGui::Button("Add 1 minecart simulation"))
     {
+        glm::vec3 startpos = _paths[0].firstCtrlPt + glm::vec3(0, 2, 0);
         MinecartSimulation newMS = {};
         newMS.physicsObj =
             PhysicsEngine::getInstance().registerPhysicsObject(
                 100000.0f,
-                _paths[0].controlPoints[0],
+                startpos,
                 glm::quat(),
-                new btBoxShape({ 1, 1, 1 }),
+                new btBoxShape({ 2, 1, 5 }),
                 &getGUID()
             );
+        newMS.physicsObj->setGravity({ 0, 0, 0 });
         newMS.renderObj =
             _rom->registerRenderObject({
                 .model = _minecartModel,
-                .transformMatrix = glm::translate(glm::mat4(1.0f), _paths[0].controlPoints[0]),
+                .transformMatrix = glm::translate(glm::mat4(1.0f), startpos),
                 .renderLayer = RenderLayer::VISIBLE,
                 .attachedEntityGuid = getGUID(),
             });
         _minecartSims.push_back(newMS);
-    }*/
+    }
 }
 
 bool MinecartSystem::getControlPointPathAndSubIndices(size_t& outPathIndex, size_t& outCurveIndex, int32_t& outControlPointIndex)
@@ -472,7 +484,7 @@ void MinecartSystem::reconstructBezierCurves()
         for (auto& curve : path.curves)
         {
             for (
-                size_t i = (firstCurve && path.parentPathId < 0) ? 1 : 0;
+                size_t i = (firstCurve && path.parentPathId < 0) ? 0 : 1;
                 i < 4;
                 i++)
             {
