@@ -36,9 +36,7 @@ private:
     vkglTF::Model*                        _minecartModel;
     vkglTF::Model*                        _builder_bezierControlPointHandleModel;  // @NOTE: put the renderobjects created from this in the builder section
     std::vector<RenderObject*>            _builder_bezierControlPointRenderObjs;
-    std::vector<RenderObject*>            _renderObjs;
     RenderObjectManager*                  _rom;
-    std::vector<RegisteredPhysicsObject*> _physicsObjs;  // Holds the minecarts and the rail physics objects
 
     glm::mat4 _load_transform = glm::mat4(1.0f);  // @NOTE: try to ignore scale
 
@@ -51,11 +49,16 @@ private:
     //
     struct Path
     {
-        int32_t                parentPathId = -1;    // -1 is no parent
-        int32_t                parentPathCPId = -1;  // -1 is no parent
-        float_t                pathScale;            // Baked: This is multiplied by `(distanceTraveled - startPathDistance)`
-        float_t                startPathDistance;    // Baked: note that this is the "real" distance, as in, it's not multiplied by `pathScale` and it's supposed to be used with `distanceTraveled`
-        std::vector<glm::vec3> controlPoints;        // @NOTE: this is handled using quadratic bezier curves, hence the usage of control points
+        int32_t   parentPathId      = -1;  // -1 is no parent
+        int32_t   parentPathCurveId = -1;  // -1 is no parent
+        glm::vec3 firstCtrlPt;          // @NOTE: only used if there is no parent, or else the referenced pathid and pathcpid is used
+
+        struct Curve
+        {
+            float_t   curveScale = 1.0f;  // Baked: This is the multiplier to change the "length" of the path to [0-1)
+            glm::vec3 controlPoints[3];   // Use the last ctrl point of the previous curve to get C0 of this curve!
+        };
+        std::vector<Curve> curves;
     };
 
     struct PathSwitch
@@ -68,19 +71,21 @@ private:
 
     struct MinecartSimulation  // @NOTE: multiple of these are created along with a single minecart renderobject and physicsobject... bc this is the equivalent to a single minecart traveling down the set path
     {
-        bool    isOnAPath;         // Once the minecart simulation finishes out all paths it simulates thru, it will fall off and just do a freefall simulation (where `isOnAPath == false`).
-        size_t  pathIndex;         // The currect Path that is being traveled down. This index is used to do a calculation on the exact position of the minecart.
-        float_t distanceTraveled;  // @NOTE: this is the unscaled number where `(speed * speedMultiplier)` adds to.
-        float_t speedMultiplier;   // This value gets tweaked by the slope that the minecart is sitting on with the rails. Of course a steeper slope it's sitting at will make it go faster, though it may only increase in speed at the rate that `speedChangeSpeed` allows for. 
+        bool    isOnAPath = true;         // Once the minecart simulation finishes out all paths it simulates thru, it will fall off and just do a freefall simulation (where `isOnAPath == false`).
+        size_t  pathIndex = 0;            // The currect Path that is being traveled down. This index is used to do a calculation on the exact position of the minecart.
+        float_t distanceTraveled = 0.0f;  // @NOTE: `(speed * speedMultiplier * pathScale)` adds to this.
+        float_t speedMultiplier = 1.0f;   // This value gets tweaked by the slope that the minecart is sitting on with the rails. Of course a steeper slope it's sitting at will make it go faster, though it may only increase in speed at the rate that `speedChangeSpeed` allows for. 
+        RenderObject*            renderObj;
+        RegisteredPhysicsObject* physicsObj;
     };
 
     struct MinecartSimulationSettings
     {
-        float_t speed;             // Constant value of base speed of the minecarts.
-        float_t speedChangeSpeed;  // The speed at which `speedMultiplier` can change. This is effectively the "acceleration" of `speedMultiplier`.
+        float_t speed            = 1.0f;  // Constant value of base speed of the minecarts.
+        float_t speedChangeSpeed = 0.0f;  // The speed at which `speedMultiplier` can change. This is effectively the "acceleration" of `speedMultiplier`.
     };
 
-    bool getControlPointPathAndSubIndices(size_t& outPathIndex, size_t& outSubIndex);
+    bool getControlPointPathAndSubIndices(size_t& outPathIndex, size_t& outCurveIndex, int32_t& outControlPointIndex);
     void reconstructBezierCurves();
 
     // Tweak Props

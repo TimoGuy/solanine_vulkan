@@ -188,129 +188,6 @@ Player::~Player()
     // @TODO: figure out if I need to call `delete _collisionShape;` or not
 }
 
-void Player::update(const float_t& deltaTime)
-{
-    if (input::onKeyJumpPress)
-    {
-        _flagJump = true;
-        _jumpInputBufferFramesTimer = _jumpInputBufferFrames;
-    }
-
-    if (input::onKeyF9Press)
-    {
-        if (_recordingState != RecordingState::RECORDING)
-        {
-            _recordingState = RecordingState::RECORDING;
-
-            // Start the recording
-            glm::vec3 sp = physutil::toVec3(_physicsObj->body->getWorldTransform().getOrigin());
-            float_t   sd = _facingDirection;
-            _replayData.startRecording(sp, sd);
-
-            debug::pushDebugMessage({
-                .message = "Started Recording",
-            });
-        }
-        else
-        {
-            _recordingState = RecordingState::NONE;
-            
-            size_t recordingSize = _replayData.getRecordingSize();
-
-            debug::pushDebugMessage({
-                .message = "Stopped Recording. Current Length is " + std::to_string(recordingSize) + " bytes",
-            });
-        }
-    }
-
-    if (input::onKeyF8Press)
-    {
-        if (_recordingState != RecordingState::PLAYING)
-        {
-            _recordingState = RecordingState::PLAYING;
-
-            // Start the playback
-            glm::vec3 sp;
-            float_t   sd;
-            _replayData.playRecording(sp, sd);
-
-            _physicsObj->body->setWorldTransform(
-                btTransform(btQuaternion::getIdentity(), btVector3(sp.x, sp.y, sp.z))
-            );
-            _facingDirection = sd;
-
-            debug::pushDebugMessage({
-                .message = "Started Playing Recording",
-            });
-        }
-        else
-        {
-            _recordingState = RecordingState::NONE;
-
-            debug::pushDebugMessage({
-                .message = "Stopped Playing Recording Midway",
-            });
-        }
-    }
-
-    if (input::onRMBPress)
-    {
-        _flagDrawOrSheathWeapon = true;
-    }
-
-    if (input::onLMBPress && _isWeaponDrawn)
-    {
-        _flagAttack = true;
-    }
-
-    //
-    // Calculate render object transform
-    //
-    if (_recordingState != RecordingState::PLAYING)
-    {
-        glm::vec2 input(0.0f);  // @COPYPASTA
-        input.x += input::keyLeftPressed  ? -1.0f : 0.0f;
-        input.x += input::keyRightPressed ?  1.0f : 0.0f;
-        input.y += input::keyUpPressed    ?  1.0f : 0.0f;
-        input.y += input::keyDownPressed  ? -1.0f : 0.0f;
-
-        if (_camera->freeCamMode.enabled || ImGui::GetIO().WantTextInput)  // @DEBUG: for the level editor
-        {
-            input = glm::vec2(0.0f);
-            _flagJump = false;
-            _flagAttack = false;
-            _flagDrawOrSheathWeapon = false;
-        }
-
-        if (_isWeaponDrawn && _attackStage != AttackStage::NONE)
-        {
-            input = glm::vec2(0);
-        }
-
-        glm::vec3 flatCameraFacingDirection = _camera->sceneCamera.facingDirection;
-        flatCameraFacingDirection.y = 0.0f;
-        flatCameraFacingDirection = glm::normalize(flatCameraFacingDirection);
-
-        _worldSpaceInput =
-            input.y * flatCameraFacingDirection +
-            input.x * glm::normalize(glm::cross(flatCameraFacingDirection, glm::vec3(0, 1, 0)));
-    }
-
-    // Update render transform
-    if (glm::length2(_worldSpaceInput) > 0.01f)
-        _facingDirection = glm::atan(_worldSpaceInput.x, _worldSpaceInput.z);
-}
-
-void Player::lateUpdate(const float_t& deltaTime)
-{
-    glm::vec3 interpPos                  = physutil::getPosition(_physicsObj->interpolatedTransform);
-    _characterRenderObj->transformMatrix = glm::translate(glm::mat4(1.0f), interpPos) * glm::toMat4(glm::quat(glm::vec3(0, _facingDirection, 0)));
-
-    glm::mat4 attachmentJointMat         = _characterRenderObj->animator->getJointMatrix(_weaponAttachmentJointName);
-    _weaponRenderObj->transformMatrix    = _characterRenderObj->transformMatrix * attachmentJointMat;
-    _handleRenderObj->transformMatrix    = _weaponRenderObj->transformMatrix;
-}
-
 void Player::physicsUpdate(const float_t& physicsDeltaTime)
 {
     //
@@ -671,6 +548,129 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
 
     btVector3 linVelo = physutil::toVec3(velocity + (_displacementToTarget + _attachmentVelocity) / physicsDeltaTime + _windZoneVelocity);
     _physicsObj->body->setLinearVelocity(linVelo);
+}
+
+void Player::update(const float_t& deltaTime)
+{
+    if (input::onKeyJumpPress)
+    {
+        _flagJump = true;
+        _jumpInputBufferFramesTimer = _jumpInputBufferFrames;
+    }
+
+    if (input::onKeyF9Press)
+    {
+        if (_recordingState != RecordingState::RECORDING)
+        {
+            _recordingState = RecordingState::RECORDING;
+
+            // Start the recording
+            glm::vec3 sp = physutil::toVec3(_physicsObj->body->getWorldTransform().getOrigin());
+            float_t   sd = _facingDirection;
+            _replayData.startRecording(sp, sd);
+
+            debug::pushDebugMessage({
+                .message = "Started Recording",
+            });
+        }
+        else
+        {
+            _recordingState = RecordingState::NONE;
+            
+            size_t recordingSize = _replayData.getRecordingSize();
+
+            debug::pushDebugMessage({
+                .message = "Stopped Recording. Current Length is " + std::to_string(recordingSize) + " bytes",
+            });
+        }
+    }
+
+    if (input::onKeyF8Press)
+    {
+        if (_recordingState != RecordingState::PLAYING)
+        {
+            _recordingState = RecordingState::PLAYING;
+
+            // Start the playback
+            glm::vec3 sp;
+            float_t   sd;
+            _replayData.playRecording(sp, sd);
+
+            _physicsObj->body->setWorldTransform(
+                btTransform(btQuaternion::getIdentity(), btVector3(sp.x, sp.y, sp.z))
+            );
+            _facingDirection = sd;
+
+            debug::pushDebugMessage({
+                .message = "Started Playing Recording",
+            });
+        }
+        else
+        {
+            _recordingState = RecordingState::NONE;
+
+            debug::pushDebugMessage({
+                .message = "Stopped Playing Recording Midway",
+            });
+        }
+    }
+
+    if (input::onRMBPress)
+    {
+        _flagDrawOrSheathWeapon = true;
+    }
+
+    if (input::onLMBPress && _isWeaponDrawn)
+    {
+        _flagAttack = true;
+    }
+
+    //
+    // Calculate render object transform
+    //
+    if (_recordingState != RecordingState::PLAYING)
+    {
+        glm::vec2 input(0.0f);  // @COPYPASTA
+        input.x += input::keyLeftPressed  ? -1.0f : 0.0f;
+        input.x += input::keyRightPressed ?  1.0f : 0.0f;
+        input.y += input::keyUpPressed    ?  1.0f : 0.0f;
+        input.y += input::keyDownPressed  ? -1.0f : 0.0f;
+
+        if (_camera->freeCamMode.enabled || ImGui::GetIO().WantTextInput)  // @DEBUG: for the level editor
+        {
+            input = glm::vec2(0.0f);
+            _flagJump = false;
+            _flagAttack = false;
+            _flagDrawOrSheathWeapon = false;
+        }
+
+        if (_isWeaponDrawn && _attackStage != AttackStage::NONE)
+        {
+            input = glm::vec2(0);
+        }
+
+        glm::vec3 flatCameraFacingDirection = _camera->sceneCamera.facingDirection;
+        flatCameraFacingDirection.y = 0.0f;
+        flatCameraFacingDirection = glm::normalize(flatCameraFacingDirection);
+
+        _worldSpaceInput =
+            input.y * flatCameraFacingDirection +
+            input.x * glm::normalize(glm::cross(flatCameraFacingDirection, glm::vec3(0, 1, 0)));
+    }
+
+    // Update render transform
+    if (glm::length2(_worldSpaceInput) > 0.01f)
+        _facingDirection = glm::atan(_worldSpaceInput.x, _worldSpaceInput.z);
+}
+
+void Player::lateUpdate(const float_t& deltaTime)
+{
+    glm::vec3 interpPos                  = physutil::getPosition(_physicsObj->interpolatedTransform);
+    _characterRenderObj->transformMatrix = glm::translate(glm::mat4(1.0f), interpPos) * glm::toMat4(glm::quat(glm::vec3(0, _facingDirection, 0)));
+
+    glm::mat4 attachmentJointMat         = _characterRenderObj->animator->getJointMatrix(_weaponAttachmentJointName);
+    _weaponRenderObj->transformMatrix    = _characterRenderObj->transformMatrix * attachmentJointMat;
+    _handleRenderObj->transformMatrix    = _weaponRenderObj->transformMatrix;
 }
 
 void Player::dump(DataSerializer& ds)
