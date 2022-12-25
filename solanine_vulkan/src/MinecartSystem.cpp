@@ -65,6 +65,9 @@ void MinecartSystem::physicsUpdate(const float_t& physicsDeltaTime)
             if (ms.distanceTraveled + 1 >= (float_t)_paths[ms.pathIndex].curves.size())
             {
                 ms.isOnAPath = false;
+                // https://docs.panda3d.org/1.10/python/programming/physics/bullet/ccd
+                ms.physicsObj->body->setCcdMotionThreshold(1e-7f);
+                ms.physicsObj->body->setCcdSweptSphereRadius(0.5f);
                 ms.physicsObj->body->setGravity(PhysicsEngine::getInstance().getGravity());
                 continue;
             }
