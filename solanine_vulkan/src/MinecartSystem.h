@@ -74,7 +74,7 @@ private:
         bool    isOnAPath = true;         // Once the minecart simulation finishes out all paths it simulates thru, it will fall off and just do a freefall simulation (where `isOnAPath == false`).
         size_t  pathIndex = 0;            // The currect Path that is being traveled down. This index is used to do a calculation on the exact position of the minecart.
         float_t distanceTraveled = 0.0f;  // @NOTE: `(speed * speedMultiplier * pathScale)` adds to this.
-        float_t speedMultiplier = 1.0f;   // This value gets tweaked by the slope that the minecart is sitting on with the rails. Of course a steeper slope it's sitting at will make it go faster, though it may only increase in speed at the rate that `speedChangeSpeed` allows for. 
+        float_t speedMultiplier  = 1.0f;  // This value gets tweaked by the slope that the minecart is sitting on with the rails. Of course a steeper slope it's sitting at will make it go faster, though it may only increase in speed at the rate that `speedChangeSpeed` allows for. 
         RenderObject*            renderObj;
         RegisteredPhysicsObject* physicsObj;
     };

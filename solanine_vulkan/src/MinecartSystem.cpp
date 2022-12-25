@@ -61,6 +61,14 @@ void MinecartSystem::physicsUpdate(const float_t& physicsDeltaTime)
         float_t d = _minecartSimSettings.speed * ms.speedMultiplier * _paths[ms.pathIndex].curves[(size_t)ms.distanceTraveled].curveScale * physicsDeltaTime;
         if (t + d >= 1.0f)
         {
+            // Exit from path if gone too far
+            if (ms.distanceTraveled + 1 >= (float_t)_paths[ms.pathIndex].curves.size())
+            {
+                ms.isOnAPath = false;
+                ms.physicsObj->body->setGravity(PhysicsEngine::getInstance().getGravity());
+                continue;
+            }
+
             // Use extra to adjust to the new curve
             float_t extra = 1.0f - (t + d);
             float_t extraRescaled = extra / _paths[ms.pathIndex].curves[(size_t)ms.distanceTraveled].curveScale * _paths[ms.pathIndex].curves[(size_t)ms.distanceTraveled + 1].curveScale;
@@ -71,34 +79,32 @@ void MinecartSystem::physicsUpdate(const float_t& physicsDeltaTime)
         //
         // Calculate position and tangent vector of bezier
         // @COPYPASTA
-    // @TODO: @INCOMPLETE!!!!! FINISH THIS!         START HERE WITH CALCULATING THE CORERCT BEZIER CURVE!!!!!
         //
         t = ms.distanceTraveled - (float_t)(int32_t)ms.distanceTraveled;
+
+        auto& path = _paths[ms.pathIndex];
+        auto& curve = path.curves[(size_t)ms.distanceTraveled];
+        bool firstCurve = ((size_t)ms.distanceTraveled) == 0;
+
         glm::vec3 controlPointsCooked[] = {
             glm::vec3(),
             glm::vec3(),
             glm::vec3(),
             glm::vec3(),
         };
-        if (path.parentPathId < 0)
-        {
-            controlPointsCooked[0] = path.controlPoints[i + 0];
-            controlPointsCooked[1] = path.controlPoints[i + 1];
-            controlPointsCooked[2] = path.controlPoints[i + 2];
-            controlPointsCooked[3] = path.controlPoints[i + 3];
-        }
+        if (firstCurve && path.parentPathId < 0)
+            controlPointsCooked[0] = path.firstCtrlPt;
+        else if (firstCurve)
+            controlPointsCooked[0] = _paths[(size_t)path.parentPathId].curves[(size_t)path.parentPathCurveId].controlPoints[2];
         else
-        {
-            if (i == 0)
-                controlPointsCooked[0] = _paths[(size_t)path.parentPathId].controlPoints[(size_t)path.parentPathCurveId];
-            else
-                controlPointsCooked[0] = path.controlPoints[i - 1];
-            controlPointsCooked[1] = path.controlPoints[i + 0];
-            controlPointsCooked[2] = path.controlPoints[i + 1];
-            controlPointsCooked[3] = path.controlPoints[i + 2];
-        }
+            controlPointsCooked[0] = path.curves[(size_t)ms.distanceTraveled - 1].controlPoints[2];
+        controlPointsCooked[1] = curve.controlPoints[0];
+        controlPointsCooked[2] = curve.controlPoints[1];
+        controlPointsCooked[3] = curve.controlPoints[2];
 
-        glm::vec3 evalCtrlPtsLayer1[] = {
+        glm::vec3 t3(t);
+
+        glm::vec3 evalCtrlPtsLayer1[] = {  // @NOTE: use geometric bezier curve evaluation in production code!!! Idk if this will be prod code however.
             physutil::lerp(
                 controlPointsCooked[0],
                 controlPointsCooked[1],
@@ -131,8 +137,9 @@ void MinecartSystem::physicsUpdate(const float_t& physicsDeltaTime)
         glm::vec3 evalBezierPoint = physutil::lerp(evalCtrlPtsLayer2[0], evalCtrlPtsLayer2[1], t3);
 
         // Calculate velocity to keep the cart on the exact position it needs to be
-        btVector3 vbc = physutil::toVec3(velocity) / physicsDeltaTime;
-        ms.physicsObj->setLinearVelocity(vbc);
+        btVector3 deltaPosition = physutil::toVec3(evalBezierPoint) - ms.physicsObj->body->getWorldTransform().getOrigin();
+        btVector3 vbc = deltaPosition / physicsDeltaTime;
+        ms.physicsObj->body->setLinearVelocity(vbc);
     }
 
     //
@@ -413,7 +420,7 @@ void MinecartSystem::renderImGui()
                 new btBoxShape({ 2, 1, 5 }),
                 &getGUID()
             );
-        newMS.physicsObj->setGravity({ 0, 0, 0 });
+        newMS.physicsObj->body->setGravity({ 0, 0, 0 });
         newMS.renderObj =
             _rom->registerRenderObject({
                 .model = _minecartModel,
