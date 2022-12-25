@@ -70,7 +70,7 @@ void MinecartSystem::physicsUpdate(const float_t& physicsDeltaTime)
             }
 
             // Use extra to adjust to the new curve
-            float_t extra = 1.0f - (t + d);
+            float_t extra = (t + d) - 1.0f;
             float_t extraRescaled = extra / _paths[ms.pathIndex].curves[(size_t)ms.distanceTraveled].curveScale * _paths[ms.pathIndex].curves[(size_t)ms.distanceTraveled + 1].curveScale;
             d = d - extra + extraRescaled;
         }
@@ -113,7 +113,7 @@ void MinecartSystem::physicsUpdate(const float_t& physicsDeltaTime)
             physutil::lerp(
                 controlPointsCooked[1],
                 controlPointsCooked[2],
-                t3
+                t3  
             ),
             physutil::lerp(
                 controlPointsCooked[2],
@@ -136,7 +136,17 @@ void MinecartSystem::physicsUpdate(const float_t& physicsDeltaTime)
         glm::vec3 evalBezierTang  = glm::normalize(evalCtrlPtsLayer2[1] - evalCtrlPtsLayer2[0]);
         glm::vec3 evalBezierPoint = physutil::lerp(evalCtrlPtsLayer2[0], evalCtrlPtsLayer2[1], t3);
 
-        // Calculate velocity to keep the cart on the exact position it needs to be
+        // Calculate the normal of the curve
+        glm::vec3 TxU = glm::normalize(glm::cross(evalBezierTang, glm::vec3(0, 1, 0)));
+        glm::vec3 TxUxT = glm::normalize(glm::cross(TxU, evalBezierTang));
+        evalBezierPoint += TxUxT * 3.0f;
+
+        // Calculate linear and angular velocity to keep the cart on the exact position it needs to be
+        btVector3 forward = ms.physicsObj->body->getWorldTransform().getBasis() * btVector3(0, 0, 1);
+        glm::quat deltaRotation = glm::quat(physutil::toVec3(forward), evalBezierTang);
+        btVector3 avc = physutil::toVec3(glm::eulerAngles(deltaRotation) / physicsDeltaTime);
+        ms.physicsObj->body->setAngularVelocity(avc);
+
         btVector3 deltaPosition = physutil::toVec3(evalBezierPoint) - ms.physicsObj->body->getWorldTransform().getOrigin();
         btVector3 vbc = deltaPosition / physicsDeltaTime;
         ms.physicsObj->body->setLinearVelocity(vbc);
@@ -177,6 +187,9 @@ void MinecartSystem::physicsUpdate(const float_t& physicsDeltaTime)
             controlPointsCooked[1] = curve.controlPoints[0];
             controlPointsCooked[2] = curve.controlPoints[1];
             controlPointsCooked[3] = curve.controlPoints[2];
+
+            // Calculate the length of the curve
+            float_t totalLengthOfCurve = 0.0f;
 
             // Draw the bezier curve
             for (size_t i = 1; i <= numSlices; i++)
@@ -221,6 +234,8 @@ void MinecartSystem::physicsUpdate(const float_t& physicsDeltaTime)
                     bezierColor
                 );
 
+                totalLengthOfCurve += glm::length(evalBezierPoint - prevEvalBezierPoint);
+
                 prevEvalBezierPoint = evalBezierPoint;
             }
 
@@ -237,6 +252,7 @@ void MinecartSystem::physicsUpdate(const float_t& physicsDeltaTime)
             );
 
             // Move to the next curve
+            curve.curveScale = 1.0f / totalLengthOfCurve;
             firstCurve = false;
             prevCurve  = &curve;
         }
