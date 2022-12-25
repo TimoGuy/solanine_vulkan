@@ -69,10 +69,30 @@ void MinecartSystem::physicsUpdate(const float_t& physicsDeltaTime)
                 continue;
             }
 
-            // Use extra to adjust to the new curve
+            // Use extra movement to adjust to the new curve
             float_t extra = (t + d) - 1.0f;
-            float_t extraRescaled = extra / _paths[ms.pathIndex].curves[(size_t)ms.distanceTraveled].curveScale * _paths[ms.pathIndex].curves[(size_t)ms.distanceTraveled + 1].curveScale;
-            d = d - extra + extraRescaled;
+            float_t extraUnscaled = extra / _paths[ms.pathIndex].curves[(size_t)ms.distanceTraveled].curveScale;
+
+            // Switch to new path/curve if there is a switch
+            bool switchedPaths = false;
+            for (auto& sw: _paths[ms.pathIndex].switches)
+            {
+                if (!sw.isOn) continue;
+                if (sw.curveIndex != (size_t)ms.distanceTraveled) continue;
+
+                ms.pathIndex = sw.toPathIndex;
+                ms.distanceTraveled = extraUnscaled * _paths[ms.pathIndex].curves[0].curveScale;
+                switchedPaths = true;
+
+                d = 0.0f;  // Cancel out the moving forward since it already was just taken care of when `ms.distanceTraveled` was set again
+            }
+
+            // Apply rescaled curve scale to `d`
+            if (!switchedPaths)
+            {
+                float_t extraRescaled = extraUnscaled * _paths[ms.pathIndex].curves[(size_t)ms.distanceTraveled + 1].curveScale;
+                d = d - extra + extraRescaled;
+            }
         }
         ms.distanceTraveled += d;
 

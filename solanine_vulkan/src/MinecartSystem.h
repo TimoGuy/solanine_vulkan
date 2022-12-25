@@ -59,14 +59,14 @@ private:
             glm::vec3 controlPoints[3];   // Use the last ctrl point of the previous curve to get C0 of this curve!
         };
         std::vector<Curve> curves;
-    };
 
-    struct PathSwitch
-    {
-        bool   isOn;
-        size_t pathIndex;     // Path index being referenced with this switch.
-        size_t toPathIndex0;  // Path index to go to if the switch is off.
-        size_t toPathIndex1;  // Path index to go to if the switch is on.
+        struct Switch
+        {
+            bool isOn = false;
+            size_t curveIndex;   // @NOTE: the switch check would happen at the end of this curve (i.e. not at the beginning)
+            size_t toPathIndex;  // Path to switch to if switch is on
+        };
+        std::vector<Switch> switches;
     };
 
     struct MinecartSimulation  // @NOTE: multiple of these are created along with a single minecart renderobject and physicsobject... bc this is the equivalent to a single minecart traveling down the set path
@@ -81,7 +81,7 @@ private:
 
     struct MinecartSimulationSettings
     {
-        float_t speed            = 5.0f;  // Constant value of base speed of the minecarts.
+        float_t speed            = 15.0f;  // Constant value of base speed of the minecarts.
         float_t speedChangeSpeed = 0.0f;  // The speed at which `speedMultiplier` can change. This is effectively the "acceleration" of `speedMultiplier`.
     };
 
@@ -91,7 +91,6 @@ private:
     // Tweak Props
     size_t                          _editingPath = 0;      // The path being currently edited.
     std::vector<Path>               _paths;                // This will be tweaked using the rendered control handles (which show up depending on `editingPath`).
-    std::vector<PathSwitch>         _switches;             // This will be tweaked in the property panel
     std::vector<MinecartSimulation> _minecartSims;         // Ehhh, this isn't really a tweak prop. It's more to view how the simulation is going.
     MinecartSimulationSettings      _minecartSimSettings;
     bool                            _isDirty = false;      // Whether edited settings or bezier path nodes are edited, then this is set to true and a button shows up that says you need to click it to rebake the path.
