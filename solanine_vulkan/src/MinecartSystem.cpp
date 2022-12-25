@@ -431,6 +431,16 @@ void MinecartSystem::renderImGui()
         reconstructBezierCurves();  // Automatically just rebake when adding new points
     }
 
+    // @TODO: delete this bc I don't think I need this!!!
+    /*if (showSelectedIndex &&  
+        ImGui::CollapsingHeader(("Path Switches for Path #" + std::to_string(selectedPathIndex)).c_str(), ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        if (ImGui::Button("Add new Switch"))
+        {
+
+        }
+    }*/
+
     if (_isDirty)
     {
         if (ImGui::Button("Rebake System"))
@@ -442,7 +452,18 @@ void MinecartSystem::renderImGui()
         }
     }
 
-    // @TODO fix simple syntax errors on this section!
+    // Path Switches
+    ImGui::Separator();
+    for (size_t i = 0; i < _paths.size(); i++)
+    {
+        auto& path = _paths[i];
+        for (auto& sw : path.switches)
+        {
+            ImGui::Checkbox(("Path" + std::to_string(i) + " on curve" + std::to_string(sw.curveIndex) + " to Path" + std::to_string(sw.toPathIndex)).c_str(), &sw.isOn);
+        }
+    }
+
+    // Minecart simulations
     ImGui::Separator();
     if (ImGui::Button("Add 1 minecart simulation"))
     {
@@ -521,15 +542,16 @@ void MinecartSystem::reconstructBezierCurves()
 
     _builder_bezierControlPointRenderObjs.clear();
 
-    for (auto& path : _paths)
+    for (size_t p = 0; p < _paths.size(); p++)
     {
+        auto& path = _paths[p];
+
         bool firstCurve = true;
         for (auto& curve : path.curves)
         {
-            for (
-                size_t i = (firstCurve && path.parentPathId < 0) ? 0 : 1;
-                i < 4;
-                i++)
+            for (size_t i = (firstCurve && path.parentPathId < 0) ? 0 : 1;
+                 i < 4;
+                 i++)
             {
                 glm::vec3 pos = i == 0 ? path.firstCtrlPt : curve.controlPoints[i - 1];
 
@@ -544,6 +566,15 @@ void MinecartSystem::reconstructBezierCurves()
             }
 
             firstCurve = false;
+        }
+
+        // Add in a path switch
+        if (path.parentPathId >= 0)
+        {
+            _paths[(size_t)path.parentPathId].switches.push_back({
+                .curveIndex = (size_t)path.parentPathCurveId,
+                .toPathIndex = p,
+            });
         }
     }
 }
