@@ -109,7 +109,37 @@ namespace vkglTF
 
 	glm::mat4 Node::localMatrix()
 	{
-		return glm::translate(glm::mat4(1.0f), translation) * glm::mat4(rotation) * glm::scale(glm::mat4(1.0f), scale) * matrix;
+		// @NOTE: the fast transform baking is only really effective on debug builds. It seems to not
+		//        really make a difference on release, or at least this isn't the bottleneck anymore
+		//        for release builds.
+		// @TODO: figure out whether this makes a difference on Tristan's computer (release builds)!
+		//          -Timo 2022/12/27
+#define USE_FAST_TRANSFORM_BAKING 1
+#if     USE_FAST_TRANSFORM_BAKING
+		glm::mat4 transform(rotation);
+
+		transform[3][0] = translation.x;
+		transform[3][1] = translation.y;
+		transform[3][2] = translation.z;
+
+		transform[0][0] *= scale.x;
+		transform[0][1] *= scale.x;
+		transform[0][2] *= scale.x;
+		transform[1][0] *= scale.y;
+		transform[1][1] *= scale.y;
+		transform[1][2] *= scale.y;
+		transform[2][0] *= scale.z;
+		transform[2][1] *= scale.z;
+		transform[2][2] *= scale.z;
+
+		return transform * matrix;
+#else
+		return
+			glm::translate(glm::mat4(1.0f), translation) *
+			glm::mat4(rotation) *
+			glm::scale(glm::mat4(1.0f), scale) *
+			matrix;
+#endif
 	}
 
 	glm::mat4 Node::getMatrix()
