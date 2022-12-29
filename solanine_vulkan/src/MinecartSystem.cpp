@@ -184,7 +184,7 @@ void MinecartSystem::physicsUpdate(const float_t& physicsDeltaTime)
         // Calculate the normal of the curve
         glm::vec3 TxU = glm::normalize(glm::cross(evalBezierTang, glm::vec3(0, 1, 0)));
         glm::vec3 TxUxT = glm::normalize(glm::cross(TxU, evalBezierTang));
-        evalBezierPoint += TxUxT * 3.0f;
+        evalBezierPoint += TxUxT * _minecartSimSettings.cartFloatingAmount;
 
         // Calculate linear and angular velocity to keep the cart on the exact position it needs to be
         btVector3 forward = ms.physicsObj->body->getWorldTransform().getBasis() * btVector3(0, 0, 1);
@@ -489,11 +489,11 @@ void MinecartSystem::renderImGui()
 void MinecartSystem::spawnMinecartSimulation()
 {
     btCompoundShape* bcs = new btCompoundShape(true, 5);
-    bcs->addChildShape(btTransform(btQuaternion(0, 0, 0, 1), btVector3( 0, 0,  0)), new btBoxShape({ 2, 1, 5 }));
-    bcs->addChildShape(btTransform(btQuaternion(0, 0, 0, 1), btVector3( 0, 2,  5)), new btBoxShape({ 2, 2, 1 }));
-    bcs->addChildShape(btTransform(btQuaternion(0, 0, 0, 1), btVector3( 0, 2, -5)), new btBoxShape({ 2, 2, 1 }));
-    bcs->addChildShape(btTransform(btQuaternion(0, 0, 0, 1), btVector3( 2, 2,  0)), new btBoxShape({ 1, 2, 5 }));
-    bcs->addChildShape(btTransform(btQuaternion(0, 0, 0, 1), btVector3(-2, 2,  0)), new btBoxShape({ 1, 2, 5 }));
+    bcs->addChildShape(btTransform(btQuaternion(0, 0, 0, 1), btVector3( 0, -0.5,  0)), new btBoxShape({   2, 0.5,   5 }));
+    bcs->addChildShape(btTransform(btQuaternion(0, 0, 0, 1), btVector3( 0,    2,  5)), new btBoxShape({   2,   2, 0.5 }));
+    bcs->addChildShape(btTransform(btQuaternion(0, 0, 0, 1), btVector3( 0,    2, -5)), new btBoxShape({   2,   2, 0.5 }));
+    bcs->addChildShape(btTransform(btQuaternion(0, 0, 0, 1), btVector3( 2,    2,  0)), new btBoxShape({ 0.5,   2,   5 }));
+    bcs->addChildShape(btTransform(btQuaternion(0, 0, 0, 1), btVector3(-2,    2,  0)), new btBoxShape({ 0.5,   2,   5 }));
 
     glm::vec3 startpos = _paths[0].firstCtrlPt + glm::vec3(0, 2, 0);
     MinecartSimulation newMS = {};

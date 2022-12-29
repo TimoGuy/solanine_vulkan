@@ -82,6 +82,7 @@ private:
 
     struct MinecartSimulationSettings
     {
+        float_t cartFloatingAmount    = 5.0f;
         float_t speed                 = 15.0f;  // Constant value of base speed of the minecarts.
         float_t speedChangeSpeed      = 0.0f;  // The speed at which `speedMultiplier` can change. This is effectively the "acceleration" of `speedMultiplier`.
         float_t leftTrackDelTime      = 5.0f;
