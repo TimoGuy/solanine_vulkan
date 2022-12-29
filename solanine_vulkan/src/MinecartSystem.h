@@ -71,8 +71,9 @@ private:
 
     struct MinecartSimulation  // @NOTE: multiple of these are created along with a single minecart renderobject and physicsobject... bc this is the equivalent to a single minecart traveling down the set path
     {
-        bool    isOnAPath = true;         // Once the minecart simulation finishes out all paths it simulates thru, it will fall off and just do a freefall simulation (where `isOnAPath == false`).
-        size_t  pathIndex = 0;            // The currect Path that is being traveled down. This index is used to do a calculation on the exact position of the minecart.
+        bool    isOnAPath     = true;     // Once the minecart simulation finishes out all paths it simulates thru, it will fall off and just do a freefall simulation (where `isOnAPath == false`).
+        float_t leftPathTimer = 0.0f;     // Timer for deleting this sim after it's left the tracks
+        size_t  pathIndex     = 0;        // The currect Path that is being traveled down. This index is used to do a calculation on the exact position of the minecart.
         float_t distanceTraveled = 0.0f;  // @NOTE: `(speed * speedMultiplier * pathScale)` adds to this.
         float_t speedMultiplier  = 1.0f;  // This value gets tweaked by the slope that the minecart is sitting on with the rails. Of course a steeper slope it's sitting at will make it go faster, though it may only increase in speed at the rate that `speedChangeSpeed` allows for. 
         RenderObject*            renderObj;
@@ -81,10 +82,14 @@ private:
 
     struct MinecartSimulationSettings
     {
-        float_t speed            = 15.0f;  // Constant value of base speed of the minecarts.
-        float_t speedChangeSpeed = 0.0f;  // The speed at which `speedMultiplier` can change. This is effectively the "acceleration" of `speedMultiplier`.
+        float_t speed                 = 15.0f;  // Constant value of base speed of the minecarts.
+        float_t speedChangeSpeed      = 0.0f;  // The speed at which `speedMultiplier` can change. This is effectively the "acceleration" of `speedMultiplier`.
+        float_t leftTrackDelTime      = 5.0f;
+        float_t simSpawnInterval      = 5.0f;
+        float_t simSpawnIntervalTimer = 0.0f;
     };
 
+    void spawnMinecartSimulation();
     bool getControlPointPathAndSubIndices(size_t& outPathIndex, size_t& outCurveIndex, int32_t& outControlPointIndex);
     void reconstructBezierCurves();
 

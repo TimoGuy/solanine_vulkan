@@ -100,6 +100,7 @@ private:
     void appendDebugShapeVertices(btSphereShape* shape, size_t physObjIndex, std::vector<DebugDrawVertex>& vertexList);
     void appendDebugShapeVertices(btCylinderShape* shape, size_t physObjIndex, std::vector<DebugDrawVertex>& vertexList);
     void appendDebugShapeVertices(btCapsuleShape* shape, size_t physObjIndex, std::vector<DebugDrawVertex>& vertexList);
+    void appendDebugShapeVertices(btCompoundShape* shape, size_t physObjIndex, std::vector<DebugDrawVertex>& vertexList);
     void recreateDebugDrawBuffer();
 
     const size_t _oneFrameVertexListAllocation = 10000;

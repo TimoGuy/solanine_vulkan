@@ -52,9 +52,31 @@ void MinecartSystem::physicsUpdate(const float_t& physicsDeltaTime)
     //
     // Slide all minecart simulations along the path
     //
+    _minecartSimSettings.simSpawnIntervalTimer += physicsDeltaTime;
+    if (_minecartSimSettings.simSpawnIntervalTimer > _minecartSimSettings.simSpawnInterval)
+    {
+        _minecartSimSettings.simSpawnIntervalTimer = 0.0f;  // Reset timer
+        spawnMinecartSimulation();
+    }
+
+    for (int32_t i = (int32_t)_minecartSims.size() - 1; i >= 0; i--)
+    {
+        auto& ms = _minecartSims[(size_t)i];
+        if (ms.leftPathTimer > _minecartSimSettings.leftTrackDelTime)
+        {
+            PhysicsEngine::getInstance().unregisterPhysicsObject(ms.physicsObj);  // @COPYPASTA
+            _rom->unregisterRenderObject(ms.renderObj);
+            _minecartSims.erase(_minecartSims.begin() + (size_t)i);
+        }
+    }
+
     for (auto& ms : _minecartSims)
     {
-        if (!ms.isOnAPath) continue;
+        if (!ms.isOnAPath)
+        {
+            ms.leftPathTimer += physicsDeltaTime;
+            continue;
+        }
 
         // Move forward in the path
         float_t t = ms.distanceTraveled - (float_t)(int32_t)ms.distanceTraveled;
@@ -434,16 +456,6 @@ void MinecartSystem::renderImGui()
         reconstructBezierCurves();  // Automatically just rebake when adding new points
     }
 
-    // @TODO: delete this bc I don't think I need this!!!
-    /*if (showSelectedIndex &&  
-        ImGui::CollapsingHeader(("Path Switches for Path #" + std::to_string(selectedPathIndex)).c_str(), ImGuiTreeNodeFlags_DefaultOpen))
-    {
-        if (ImGui::Button("Add new Switch"))
-        {
-
-        }
-    }*/
-
     if (_isDirty)
     {
         if (ImGui::Button("Rebake System"))
@@ -470,26 +482,38 @@ void MinecartSystem::renderImGui()
     ImGui::Separator();
     if (ImGui::Button("Add 1 minecart simulation"))
     {
-        glm::vec3 startpos = _paths[0].firstCtrlPt + glm::vec3(0, 2, 0);
-        MinecartSimulation newMS = {};
-        newMS.physicsObj =
-            PhysicsEngine::getInstance().registerPhysicsObject(
-                100000.0f,
-                startpos,
-                glm::quat(),
-                new btBoxShape({ 2, 1, 5 }),
-                &getGUID()
-            );
-        newMS.physicsObj->body->setGravity({ 0, 0, 0 });
-        newMS.renderObj =
-            _rom->registerRenderObject({
-                .model = _minecartModel,
-                .transformMatrix = glm::translate(glm::mat4(1.0f), startpos),
-                .renderLayer = RenderLayer::VISIBLE,
-                .attachedEntityGuid = getGUID(),
-            });
-        _minecartSims.push_back(newMS);
+        spawnMinecartSimulation();
     }
+}
+
+void MinecartSystem::spawnMinecartSimulation()
+{
+    btCompoundShape* bcs = new btCompoundShape(true, 5);
+    bcs->addChildShape(btTransform(btQuaternion(0, 0, 0, 1), btVector3( 0, 0,  0)), new btBoxShape({ 2, 1, 5 }));
+    bcs->addChildShape(btTransform(btQuaternion(0, 0, 0, 1), btVector3( 0, 2,  5)), new btBoxShape({ 2, 2, 1 }));
+    bcs->addChildShape(btTransform(btQuaternion(0, 0, 0, 1), btVector3( 0, 2, -5)), new btBoxShape({ 2, 2, 1 }));
+    bcs->addChildShape(btTransform(btQuaternion(0, 0, 0, 1), btVector3( 2, 2,  0)), new btBoxShape({ 1, 2, 5 }));
+    bcs->addChildShape(btTransform(btQuaternion(0, 0, 0, 1), btVector3(-2, 2,  0)), new btBoxShape({ 1, 2, 5 }));
+
+    glm::vec3 startpos = _paths[0].firstCtrlPt + glm::vec3(0, 2, 0);
+    MinecartSimulation newMS = {};
+    newMS.physicsObj =
+        PhysicsEngine::getInstance().registerPhysicsObject(
+            100000.0f,
+            startpos,
+            glm::quat(),
+            bcs,
+            &getGUID()
+        );
+    newMS.physicsObj->body->setGravity({ 0, 0, 0 });
+    newMS.renderObj =
+        _rom->registerRenderObject({
+            .model = _minecartModel,
+            .transformMatrix = glm::translate(glm::mat4(1.0f), startpos),
+            .renderLayer = RenderLayer::VISIBLE,
+            .attachedEntityGuid = getGUID(),
+        });
+    _minecartSims.push_back(newMS);
 }
 
 bool MinecartSystem::getControlPointPathAndSubIndices(size_t& outPathIndex, size_t& outCurveIndex, int32_t& outControlPointIndex)

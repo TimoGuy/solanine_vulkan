@@ -689,6 +689,53 @@ void PhysicsEngine::appendDebugShapeVertices(btCapsuleShape* shape, size_t physO
 	}
 }
 
+void PhysicsEngine::appendDebugShapeVertices(btCompoundShape* shape, size_t physObjIndex, std::vector<DebugDrawVertex>& vertexList)
+{
+	size_t numChildShapes       = shape->getNumChildShapes();
+	btCompoundShapeChild* child = shape->getChildList();
+	for (size_t i = 0; i < numChildShapes; i++)
+	{
+		glm::mat4 trans(1.0f);
+		child->m_transform.getOpenGLMatrix(glm::value_ptr(trans));
+		std::vector<DebugDrawVertex> tempVL;
+
+		// @COPYPASTA
+		btCollisionShape* shape = child->m_childShape;
+
+		switch (child->m_childShapeType)
+		{
+		case BOX_SHAPE_PROXYTYPE:
+			appendDebugShapeVertices((btBoxShape*)shape, physObjIndex, tempVL);
+			break;
+		case SPHERE_SHAPE_PROXYTYPE:
+			appendDebugShapeVertices((btSphereShape*)shape, physObjIndex, tempVL);
+			break;
+		case CYLINDER_SHAPE_PROXYTYPE:
+			appendDebugShapeVertices((btCylinderShape*)shape, physObjIndex, tempVL);
+			break;
+		case CAPSULE_SHAPE_PROXYTYPE:
+			appendDebugShapeVertices((btCapsuleShape*)shape, physObjIndex, tempVL);
+			break;
+		/*case COMPOUND_SHAPE_PROXYTYPE:
+			appendDebugShapeVertices((btCompoundShape*)shape, physObjIndex, tempVL);
+			break;*/
+		default:
+			std::cerr << "[CREATING PHYSICS ENGINE DEBUG DRAW BUFFER]" << std::endl
+				<< "ERROR: shape type currently not supported: " << shape->getShapeType() << std::endl;
+			break;
+		}
+
+		// Transform the temporary vertex list into the correct transform
+		for (auto& ddv : tempVL)
+		{
+			ddv.pos = trans * glm::vec4(ddv.pos, 1.0f);
+			vertexList.push_back(ddv);
+		}
+
+		child++;
+	}
+}
+
 void PhysicsEngine::recreateDebugDrawBuffer()
 {
 	vkDeviceWaitIdle(_engine->_device);
@@ -715,6 +762,9 @@ void PhysicsEngine::recreateDebugDrawBuffer()
 			break;
 		case CAPSULE_SHAPE_PROXYTYPE:
 			appendDebugShapeVertices((btCapsuleShape*)shape, ssboIndex, vertexList);
+			break;
+		case COMPOUND_SHAPE_PROXYTYPE:
+			appendDebugShapeVertices((btCompoundShape*)shape, ssboIndex, vertexList);
 			break;
 		default:
 			std::cerr << "[CREATING PHYSICS ENGINE DEBUG DRAW BUFFER]" << std::endl
