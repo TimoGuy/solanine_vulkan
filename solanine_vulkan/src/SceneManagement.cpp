@@ -16,6 +16,7 @@
 #include "NoteTaker.h"
 #include "Scollision.h"
 #include "MinecartSystem.h"
+#include "Leever.h"
 
 
 // @PALETTE: where to add serialized names for the entities
@@ -26,13 +27,15 @@ const std::vector<std::string> ENTITY_TYPE_NAMES = {
     ":notetaker",
     ":scollision",
     ":minecart",
+    ":leever",
 };
-const std::string Player::TYPE_NAME     = ENTITY_TYPE_NAMES[0];
-const std::string Yosemite::TYPE_NAME   = ENTITY_TYPE_NAMES[1];
-const std::string Enemy::TYPE_NAME      = ENTITY_TYPE_NAMES[2];
-const std::string NoteTaker::TYPE_NAME  = ENTITY_TYPE_NAMES[3];
-const std::string Scollision::TYPE_NAME = ENTITY_TYPE_NAMES[4];
+const std::string Player::TYPE_NAME           = ENTITY_TYPE_NAMES[0];
+const std::string Yosemite::TYPE_NAME         = ENTITY_TYPE_NAMES[1];
+const std::string Enemy::TYPE_NAME            = ENTITY_TYPE_NAMES[2];
+const std::string NoteTaker::TYPE_NAME        = ENTITY_TYPE_NAMES[3];
+const std::string Scollision::TYPE_NAME       = ENTITY_TYPE_NAMES[4];
 const std::string MinecartSystem::TYPE_NAME   = ENTITY_TYPE_NAMES[5];
+const std::string Leever::TYPE_NAME           = ENTITY_TYPE_NAMES[6];
 
 
 namespace scene
@@ -57,6 +60,8 @@ namespace scene
             ent = new Scollision(engine->_entityManager, engine->_roManager, ds);
         if (objectName == MinecartSystem::TYPE_NAME)
             ent = new MinecartSystem(engine, engine->_entityManager, engine->_roManager, ds);
+        if (objectName == Leever::TYPE_NAME)
+            ent = new Leever(engine->_entityManager, engine->_roManager, ds);
 
         if (ent == nullptr)
         {

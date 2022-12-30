@@ -167,10 +167,6 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
     body->setCcdMotionThreshold(1e-7f);
     body->setCcdSweptSphereRadius(0.5f);
 
-    _onCollisionStayFunc =
-        [&](btPersistentManifold* manifold, bool amIB) { onCollisionStay(manifold, amIB); };
-    _physicsObj->onCollisionStayCallback = &_onCollisionStayFunc;
-
     _enablePhysicsUpdate = true;
     _enableUpdate = true;
     _enableLateUpdate = true;
@@ -1192,25 +1188,4 @@ void Player::processWeaponCollision()
 
         _weaponPrevTransform = _weaponRenderObj->transformMatrix;
     }
-}
-
-void Player::onCollisionStay(btPersistentManifold* manifold, bool amIB)
-{
-    // @NOTE: this was causing lots of movement popping
-    /*_groundContactNormal = glm::vec3(0.0f);
-    size_t numContacts = (size_t)manifold->getNumContacts();
-    for (int32_t i = 0; i < numContacts; i++)
-    {
-        auto contact = manifold->getContactPoint(i);
-        auto contactNormal = contact.m_normalWorldOnB * (amIB ? -1.0f : 1.0f);
-        bool isGroundContactNormal = contactNormal.y() > glm::cos(glm::radians(47.0f));
-        if (isGroundContactNormal)
-        {
-            _onGround = true;
-            _groundContactNormal += physutil::toVec3(contactNormal);
-        }
-    }
-    
-    if (_onGround)
-        _groundContactNormal = glm::normalize(_groundContactNormal);*/
 }

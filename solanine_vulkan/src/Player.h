@@ -117,10 +117,6 @@ private:
     enum class RecordingState { NONE, RECORDING, PLAYING };
     RecordingState _recordingState = RecordingState::NONE;
 
-    // Callbacks
-    std::function<void(btPersistentManifold*, bool amIB)> _onCollisionStayFunc;
-    void onCollisionStay(btPersistentManifold* manifold, bool amIB);
-
     // Load Props
     glm::vec3 _load_position = glm::vec3(0.0f);
 

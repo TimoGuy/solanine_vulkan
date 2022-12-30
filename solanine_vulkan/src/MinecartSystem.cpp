@@ -489,11 +489,11 @@ void MinecartSystem::renderImGui()
 void MinecartSystem::spawnMinecartSimulation()
 {
     btCompoundShape* bcs = new btCompoundShape(true, 5);
-    bcs->addChildShape(btTransform(btQuaternion(0, 0, 0, 1), btVector3( 0, -0.5,  0)), new btBoxShape({   2, 0.5,   5 }));
-    bcs->addChildShape(btTransform(btQuaternion(0, 0, 0, 1), btVector3( 0,    2,  5)), new btBoxShape({   2,   2, 0.5 }));
-    bcs->addChildShape(btTransform(btQuaternion(0, 0, 0, 1), btVector3( 0,    2, -5)), new btBoxShape({   2,   2, 0.5 }));
-    bcs->addChildShape(btTransform(btQuaternion(0, 0, 0, 1), btVector3( 2,    2,  0)), new btBoxShape({ 0.5,   2,   5 }));
-    bcs->addChildShape(btTransform(btQuaternion(0, 0, 0, 1), btVector3(-2,    2,  0)), new btBoxShape({ 0.5,   2,   5 }));
+    bcs->addChildShape(btTransform(btQuaternion(0, 0, 0, 1), btVector3( 0, -0.5,  0)), new btBoxShape({   2, 0.5,   3 }));
+    bcs->addChildShape(btTransform(btQuaternion(0, 0, 0, 1), btVector3( 0,    2,  3)), new btBoxShape({   2,   2, 0.5 }));
+    bcs->addChildShape(btTransform(btQuaternion(0, 0, 0, 1), btVector3( 0,    2, -3)), new btBoxShape({   2,   2, 0.5 }));
+    bcs->addChildShape(btTransform(btQuaternion(0, 0, 0, 1), btVector3( 2,    2,  0)), new btBoxShape({ 0.5,   2,   3 }));
+    bcs->addChildShape(btTransform(btQuaternion(0, 0, 0, 1), btVector3(-2,    2,  0)), new btBoxShape({ 0.5,   2,   3 }));
 
     glm::vec3 startpos = _paths[0].firstCtrlPt + glm::vec3(0, 2, 0);
     MinecartSimulation newMS = {};

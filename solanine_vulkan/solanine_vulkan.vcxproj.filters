@@ -221,6 +221,9 @@
     <ClInclude Include="src\MinecartSystem.h">
       <Filter>Source Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\Leever.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Main.cpp">
@@ -341,6 +344,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\MinecartSystem.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Leever.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
