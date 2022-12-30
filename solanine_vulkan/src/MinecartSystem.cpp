@@ -5,6 +5,7 @@
 #include "VkglTFModel.h"
 #include "PhysicsEngine.h"
 #include "DataSerialization.h"
+#include "Debug.h"
 #include "imgui/imgui.h"
 #include "imgui/imgui_stdlib.h"
 
@@ -361,6 +362,35 @@ void MinecartSystem::load(DataSerialized& ds)
 
             _paths.push_back(newP);
         }
+    }
+}
+
+bool MinecartSystem::processMessage(DataSerialized& message)
+{
+    auto eventName = message.loadString();
+    if (eventName == "event_update_isOn")
+    {
+        size_t portNum = (size_t)message.loadFloat();
+        bool   isOn    = (bool)message.loadFloat();
+
+        for (auto& path : _paths)
+            for (auto& sw : path.switches)
+            {
+                if (portNum != 0)
+                {
+                    portNum--;
+                    continue;
+                }
+
+                sw.isOn = isOn;
+                return true;
+            }
+
+        debug::pushDebugMessage({
+            .message = "ERROR: port number not valid/found for event_update_isOn!",
+            .type = 2,
+            });
+        return false;
     }
 }
 

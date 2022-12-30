@@ -18,8 +18,11 @@ public:
     Leever(EntityManager* em, RenderObjectManager* rom, DataSerialized* ds);
     ~Leever();
 
+    void update(const float_t& deltaTime);
+
     void dump(DataSerializer& ds);
     void load(DataSerialized& ds);
+    bool processMessage(DataSerialized& message);
 
     void reportMoved(void* matrixMoved);
     void renderImGui();
@@ -30,11 +33,15 @@ private:
     RenderObjectManager*     _rom        = nullptr;
     RegisteredPhysicsObject* _physicsObj = nullptr;
 
-    glm::mat4 _load_transform = glm::mat4(1.0f);
+    glm::mat4 _load_transform        = glm::mat4(1.0f);
+    float_t   _attackedDebounce      = 0.5f;
+    float_t   _attackedDebounceTimer = 0.0f;
+
+    void sendUpdateIsOnMessage();
 
     // Callbacks
-    std::function<void(btPersistentManifold*, bool amIB)> _onCollisionStayFunc;
-    void onCollisionStay(btPersistentManifold* manifold, bool amIB);
+    /*std::function<void(btPersistentManifold*, bool amIB)> _onCollisionStayFunc;
+    void onCollisionStay(btPersistentManifold* manifold, bool amIB);*/
 
     // Tweak Props
     std::string _messageReceiverGuid;  // @NOTE: this is the object that the switch will affect.

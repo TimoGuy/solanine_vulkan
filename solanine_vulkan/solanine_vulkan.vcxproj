@@ -176,6 +176,7 @@ copy $(SolutionDir)libs\fmod_studio\lib\fmodstudio.dll $(OutDirfullPath)fmodstud
     <ClInclude Include="src\StringHelper.h" />
     <ClInclude Include="src\WindManager.h" />
     <ClInclude Include="src\MinecartSystem.h" />
+    <ClInclude Include="src\Leever.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\MovementHelper.cpp" />
@@ -221,6 +222,7 @@ copy $(SolutionDir)libs\fmod_studio\lib\fmodstudio.dll $(OutDirfullPath)fmodstud
     <ClCompile Include="src\Yosemite.cpp" />
     <ClCompile Include="src\WindManager.cpp" />
     <ClCompile Include="src\MinecartSystem.cpp" />
+    <ClCompile Include="src\Leever.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\core\core.vcxproj">

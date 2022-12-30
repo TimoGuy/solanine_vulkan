@@ -14,6 +14,7 @@ class MinecartSystem : public Entity
 {
 public:
     static const std::string TYPE_NAME;
+    std::string getTypeName() { return TYPE_NAME; }
 
     MinecartSystem(VulkanEngine* engine, EntityManager* em, RenderObjectManager* rom, DataSerialized* ds);
     ~MinecartSystem();
@@ -23,7 +24,7 @@ public:
 
     void dump(DataSerializer& ds);
     void load(DataSerialized& ds);
-    std::string getTypeName() { return TYPE_NAME; }
+    bool processMessage(DataSerialized& message);
 
     void loadModelWithName(const std::string& modelName);
     void createCollisionMeshFromModel();

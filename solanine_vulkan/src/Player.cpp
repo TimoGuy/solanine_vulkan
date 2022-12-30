@@ -148,15 +148,16 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
     _collisionShape = new btCapsuleShape(_capsuleRadius, _totalHeight - _bottomRaycastFeetDist);  // @NOTE: it appears that this shape has a margin in the direction of the sausage (i.e. Y in this case) and then the radius is the actual radius
     _adjustedHalfHeight = (_totalHeight - _bottomRaycastFeetDist) * 0.5f + _collisionShape->getMargin();
 
+    const glm::vec3 toff(0, -4.25f, 0);
     _physicsObj =
         PhysicsEngine::getInstance().registerPhysicsObject(
             1.0f,
-            _load_position,
+            _load_position - toff,
             glm::quat(glm::vec3(0.0f)),
             _collisionShape,
             &getGUID()
         );
-    _physicsObj->transformOffset = glm::vec3(0, -4.25f, 0);
+    _physicsObj->transformOffset = toff;
     auto body = _physicsObj->body;
     body->setAngularFactor(0.0f);
     body->setDamping(0.0f, 0.0f);

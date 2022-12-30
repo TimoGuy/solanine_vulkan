@@ -4679,6 +4679,9 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 						if (matrixToMoveMoved)
 							foundEnt->reportMoved(_movingMatrix.matrixToMove);
 
+						std::string guidCopy = foundEnt->getGUID();
+						ImGui::InputText("GUID", &guidCopy);
+
 						foundEnt->renderImGui();
 					}
 				}

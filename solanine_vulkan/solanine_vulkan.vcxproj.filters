@@ -219,10 +219,10 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\MinecartSystem.h">
-      <Filter>Source Files</Filter>
+      <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\Leever.h">
-      <Filter>Source Files</Filter>
+      <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
