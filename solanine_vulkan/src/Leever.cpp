@@ -54,26 +54,35 @@ void Leever::reportMoved(void* matrixMoved)
 
 void Leever::renderImGui()
 {
-    // @TODO: add in the imgui stuff for the reciever guid, port num, and the ison message
-
-
-    /*
-    DataSerializer ds;
-    ds.dumpString("event_attacked");
-    ds.dumpVec3(pushDirection);
-
-    DataSerialized dsd = ds.getSerializedData();
-    if (_em->sendMessage(*(std::string*)collisionObj->getUserPointer(), dsd))
+    ImGui::InputText("_messageReceiverGuid", &_messageReceiverGuid);
+    if (!_em->getEntityViaGUID(_messageReceiverGuid))
+        ImGui::TextColored(ImVec4(1, 0, 0, 1), "Entity with this GUID does not exist.");
+    
+    ImGui::InputInt("_receiverPortNumber", &_receiverPortNumber);
+    
+    if (ImGui::Checkbox("_isOn", &_isOn))
     {
-        // velocity = -pushDirection * 10.0f;
+        // @TODO: this will likely be copypasta, so make sure that it gets taken care of and consolidated into a function
+        DataSerializer ds;
+        ds.dumpString("event_update_isOn");
+        ds.dumpFloat((float_t)_receiverPortNumber);
+        ds.dumpFloat((float_t)_isOn);
+
+        DataSerialized dsd = ds.getSerializedData();
+        if (!_em->sendMessage(_messageReceiverGuid, dsd))
+        {
+            debug::pushDebugMessage({
+                .message = "ERROR: message `event_update_isOn` sending failed!",
+                .type = 2,
+                });
+        }
     }
-    */
 }
 
 void Leever::onCollisionStay(btPersistentManifold* manifold, bool amIB)
 {
     // @TODO: create the collision interface for this object! (note it should switch the leever's position with this and have a bit of a debounce to play nice)
-
+    //        Or you could alternatively set up a receiver for the sword slashing event that the player sends to objects! (This will probs be the better option too btw)
 
 
 
