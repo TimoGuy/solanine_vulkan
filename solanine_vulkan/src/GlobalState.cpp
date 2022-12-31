@@ -9,10 +9,13 @@
 namespace globalState
 {
     // Default values
-    extern std::string activeScene = "sample_scene_simplified.ssdat";
+    std::string activeScene                = "sample_scene_simplified.ssdat";
 
-    extern glm::vec3   playerSavedPosition        = glm::vec3(0);    // Currently unused. @TODO
-    extern float_t     playerSavedFacingDirection = 0.0f;            // Currently unused. @TODO
+    glm::vec3   playerSavedPosition        = glm::vec3(0);    // Currently unused. @TODO
+    float_t     playerSavedFacingDirection = 0.0f;            // Currently unused. @TODO
+
+    int32_t     playerHealth               = 100;
+    int32_t     playerMaxHealth            = 100;
 
     SceneCamera* sceneCameraRef = nullptr;
 
@@ -53,6 +56,8 @@ namespace globalState
         sceneCameraRef->fov                          = dsd.loadFloat();
         playerSavedPosition                          = dsd.loadVec3();
         playerSavedFacingDirection                   = dsd.loadFloat();
+        playerHealth                                 = dsd.loadFloat();
+        playerMaxHealth                              = dsd.loadFloat();
 
         debug::pushDebugMessage({
             .message = "Successfully read state from \"" + gsFname + "\"",
@@ -79,6 +84,8 @@ namespace globalState
         ds.dumpFloat(sceneCameraRef->fov);
         ds.dumpVec3(playerSavedPosition);
         ds.dumpFloat(playerSavedFacingDirection);
+        ds.dumpFloat(playerHealth);
+        ds.dumpFloat(playerMaxHealth);
 
         DataSerialized dsd = ds.getSerializedData();
         size_t count = dsd.getSerializedValuesCount();
