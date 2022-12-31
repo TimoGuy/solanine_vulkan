@@ -34,8 +34,7 @@ private:
     RegisteredPhysicsObject* _physicsObj = nullptr;
 
     glm::mat4 _load_transform        = glm::mat4(1.0f);
-    float_t   _attackedDebounce      = 0.5f;
-    float_t   _attackedDebounceTimer = 0.0f;
+    bool      _canBeAttacked         = true;  // Disable when leever is animating
 
     void sendUpdateIsOnMessage();
 

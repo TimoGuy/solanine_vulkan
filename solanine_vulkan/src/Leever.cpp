@@ -18,9 +18,25 @@ Leever::Leever(EntityManager* em, RenderObjectManager* rom, DataSerialized* ds) 
 
     _model = _rom->getModel("Leever", this, [](){});
 
+    std::vector<vkglTF::Animator::AnimatorCallback> animatorCallbacks = {
+        {
+            "EventPlaySFXBonk", [&]() {
+                AudioEngine::getInstance().playSoundFromList({
+                    "res/sfx/wip_bonk.ogg",
+                });
+            }
+        },
+        {
+            "EventEnableCanBeAttacked", [&]() {
+                _canBeAttacked = true;
+            }
+        },
+    };
+
     _renderObj =
         _rom->registerRenderObject({
             .model = _model,
+            .animator = new vkglTF::Animator(_model, animatorCallbacks),
             .transformMatrix = _load_transform,
             .renderLayer = RenderLayer::VISIBLE,
             .attachedEntityGuid = getGUID(),
@@ -46,6 +62,7 @@ Leever::Leever(EntityManager* em, RenderObjectManager* rom, DataSerialized* ds) 
 
 Leever::~Leever()
 {
+    delete _renderObj->animator;
     _rom->unregisterRenderObject(_renderObj);
     _rom->removeModelCallbacks(this);
     PhysicsEngine::getInstance().unregisterPhysicsObject(_physicsObj);
@@ -53,7 +70,6 @@ Leever::~Leever()
 
 void Leever::update(const float_t& deltaTime)
 {
-    _attackedDebounceTimer -= deltaTime;
     _renderObj->transformMatrix = _physicsObj->interpolatedTransform;
 }
 
@@ -80,17 +96,13 @@ bool Leever::processMessage(DataSerialized& message)
     auto eventName = message.loadString();
     if (eventName == "event_attacked")
     {
-        if (_attackedDebounceTimer > 0.0f)
+        if (!_canBeAttacked)
             return false;
 
         _isOn = !_isOn;
+        _renderObj->animator->setTrigger(_isOn ? "goto_on" : "goto_off");
+        _canBeAttacked = false;
         sendUpdateIsOnMessage();
-
-        AudioEngine::getInstance().playSoundFromList({
-            "res/sfx/wip_bonk.ogg",
-        });
-
-        _attackedDebounceTimer = _attackedDebounce;
 
         return true;
     }
@@ -120,7 +132,11 @@ void Leever::renderImGui()
     ImGui::InputInt("_receiverPortNumber", &_receiverPortNumber);
     
     if (ImGui::Checkbox("_isOn", &_isOn))
+    {
+        _renderObj->animator->setTrigger(_isOn ? "goto_on" : "goto_off");
+        _canBeAttacked = false;
         sendUpdateIsOnMessage();
+    }
 }
 
 void Leever::sendUpdateIsOnMessage()

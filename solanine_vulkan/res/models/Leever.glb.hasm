@@ -1,0 +1,13 @@
+:StateOff  # Default anim bc it's the first defined
+animation Goto_Off
+loop      0
+trans     goto_on    StateOn
+event     0.0        EventPlaySFXBonk
+event     0.999      EventEnableCanBeAttacked
+
+:StateOn
+animation Goto_On
+loop      0
+trans     goto_off   StateOff
+event     0.0        EventPlaySFXBonk
+event     0.999      EventEnableCanBeAttacked
