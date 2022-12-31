@@ -18,6 +18,7 @@ class Enemy : public Entity
 {
 public:
     static const std::string TYPE_NAME;
+    std::string getTypeName() { return TYPE_NAME; };
 
     Enemy(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSerialized* ds);
     ~Enemy();
@@ -28,7 +29,6 @@ public:
     void dump(DataSerializer& ds);
     void load(DataSerialized& ds);
     bool processMessage(DataSerialized& message);
-    std::string getTypeName() { return TYPE_NAME; };
 
     void reportMoved(void* matrixMoved);
     void renderImGui();
@@ -90,10 +90,6 @@ private:
     float_t   _airDashSpeedY              = 50.0f;
     float_t   _airDashFinishSpeedFracCooked;
     float_t   _airDashFinishSpeedFrac     = 0.25f;
-
-    // Callbacks
-    std::function<void(btPersistentManifold*, bool amIB)> _onCollisionStayFunc;
-    void onCollisionStay(btPersistentManifold* manifold, bool amIB);
 
     // Load Props
     glm::vec3 _load_position = glm::vec3(0.0f);

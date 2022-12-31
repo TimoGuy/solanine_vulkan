@@ -29,10 +29,10 @@ Enemy::Enemy(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSe
             .attachedEntityGuid = getGUID(),
             });
 
-    _totalHeight = 5.0f;
+    _totalHeight = 4.5f;
     _maxClimbAngle = glm::radians(47.0f);
 
-    _capsuleRadius = 0.5f;
+    _capsuleRadius = 1.0f;
     //float_t d = (r - r * glm::sin(_maxClimbAngle)) / glm::sin(_maxClimbAngle);  // This is the "perfect algorithm", but we want stair stepping abilities too...
     constexpr float_t raycastMargin = 0.05f;
     _bottomRaycastFeetDist = 2.0f + raycastMargin;
@@ -41,24 +41,25 @@ Enemy::Enemy(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSe
     _collisionShape = new btCapsuleShape(_capsuleRadius, _totalHeight - _bottomRaycastFeetDist);  // @NOTE: it appears that this shape has a margin in the direction of the sausage (i.e. Y in this case) and then the radius is the actual radius
     _adjustedHalfHeight = (_totalHeight - _bottomRaycastFeetDist) * 0.5f + _collisionShape->getMargin();
 
+    const glm::vec3 toff(0, -4.25f, 0);
     _physicsObj =
         PhysicsEngine::getInstance().registerPhysicsObject(
             1.0f,
-            _load_position,
+            _load_position - toff,
             glm::quat(glm::vec3(0.0f)),
             _collisionShape,
             &getGUID()
         );
-    _physicsObj->transformOffset = glm::vec3(0, -4, 0);
+    _physicsObj->transformOffset = toff;
     auto body = _physicsObj->body;
     body->setAngularFactor(0.0f);
     body->setDamping(0.0f, 0.0f);
     body->setFriction(0.0f);
     body->setActivationState(DISABLE_DEACTIVATION);
 
-    _onCollisionStayFunc =
-        [&](btPersistentManifold* manifold, bool amIB) { onCollisionStay(manifold, amIB); };
-    _physicsObj->onCollisionStayCallback = &_onCollisionStayFunc;
+    // https://docs.panda3d.org/1.10/python/programming/physics/bullet/ccd 
+    body->setCcdMotionThreshold(1e-7f);
+    body->setCcdSweptSphereRadius(0.5f);
 
     _enablePhysicsUpdate = true;
     _enableUpdate = true;
@@ -729,24 +730,4 @@ void Enemy::processGrounded(glm::vec3& velocity, float_t& groundAccelMult, const
     // Clear attachment velocity
     _prevAttachmentVelocity = _attachmentVelocity;
     _attachmentVelocity     = attachmentVelocityReset;
-}
-
-void Enemy::onCollisionStay(btPersistentManifold* manifold, bool amIB)
-{
-    _groundContactNormal = glm::vec3(0.0f);
-    size_t numContacts = (size_t)manifold->getNumContacts();
-    for (int32_t i = 0; i < numContacts; i++)
-    {
-        auto contact = manifold->getContactPoint(i);
-        auto contactNormal = contact.m_normalWorldOnB * (amIB ? -1.0f : 1.0f);
-        bool isGroundContactNormal = contactNormal.y() > glm::cos(glm::radians(47.0f));
-        if (isGroundContactNormal)
-        {
-            _onGround = true;
-            _groundContactNormal += physutil::toVec3(contactNormal);
-        }
-    }
-    
-    if (_onGround)
-        _groundContactNormal = glm::normalize(_groundContactNormal);
 }
