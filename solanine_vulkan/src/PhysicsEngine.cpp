@@ -175,9 +175,9 @@ void PhysicsEngine::update(float_t deltaTime, std::vector<Entity*>* entities)   
 		//
 		RegisteredPhysicsObject* obj0 = _rigidBodyToPhysicsObjectMap[(void*)manifold->getBody0()];
 		RegisteredPhysicsObject* obj1 = _rigidBodyToPhysicsObjectMap[(void*)manifold->getBody1()];
-		if (obj0->onCollisionStayCallback)
+		if (obj0 && obj0->onCollisionStayCallback)
 			(*obj0->onCollisionStayCallback)(manifold, false);
-		if (obj1->onCollisionStayCallback)
+		if (obj1 && obj1->onCollisionStayCallback)
 			(*obj1->onCollisionStayCallback)(manifold, true);
 	}
 
@@ -326,6 +326,11 @@ void PhysicsEngine::unregisterPhysicsObject(RegisteredPhysicsObject* objRegistra
 
 	std::cerr << "[UNREGISTER PHYSICS OBJECT]" << std::endl
 		<< "ERROR: physics object " << objRegistration << " was not found. Nothing unregistered." << std::endl;
+}
+
+RegisteredPhysicsObject* PhysicsEngine::getPhysicsObjectFromVoidPtr(void* ptr)
+{
+	return _rigidBodyToPhysicsObjectMap[ptr];
 }
 
 RegisteredGhostObject* PhysicsEngine::registerGhostObject(const glm::vec3& origin, const glm::quat& rotation, btCollisionShape* shape, void* guid)
@@ -519,14 +524,29 @@ btRigidBody* PhysicsEngine::createRigidBody(float_t mass, const btTransform& sta
 	return body;
 }
 
+/*
+void motorPreTickCallback (btDynamicsWorld *world, btScalar timeStep)
+{
+  	for(int i = 0; i < ghostObject->getNumOverlappingObjects(); i++)
+ 	{
+        if (btRigidBody* body = dynamic_cast<btRigidBody*>(ghostObject->getOverlappingObject(i)))
+		{
+			
+		}
+        // do whatever you want to do with these pairs of colliding objects
+    }
+}
+*/
+
 btPairCachingGhostObject* PhysicsEngine::createGhostObject(const btTransform& startTransform, btCollisionShape* shape, void* guid)
 {
 	btPairCachingGhostObject* ghost = new btPairCachingGhostObject();
 	ghost->setCollisionShape(shape);
+	// ghost->setCollisionFlags(btCollisionObject::CF_NO_CONTACT_RESPONSE);
 	ghost->setWorldTransform(startTransform);
 	ghost->setUserPointer(guid);
 	ghost->setUserIndex(-1);
-	_dynamicsWorld->addCollisionObject(ghost);
+	_dynamicsWorld->addCollisionObject(ghost, btBroadphaseProxy::SensorTrigger, btBroadphaseProxy::AllFilter & ~btBroadphaseProxy::SensorTrigger);
 
 	static bool did = false;
 	if (!did)

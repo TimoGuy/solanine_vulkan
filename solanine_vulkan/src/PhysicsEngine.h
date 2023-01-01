@@ -42,6 +42,9 @@ struct RegisteredGhostObject
 {
     btPairCachingGhostObject* ghost;
 
+    // Tweakable properties
+    std::function<void(btRigidBody* overlappingBody)>* onOverlapCallback = nullptr;
+
     void reportMoved(const glm::mat4& newTrans);
 };
 
@@ -60,6 +63,7 @@ public:
 
     RegisteredPhysicsObject* registerPhysicsObject(float_t mass, glm::vec3 origin, glm::quat rotation, btCollisionShape* shape, void* guid);    // @NOTE: setting mass=0.0 will make the rigidbody be static
     void unregisterPhysicsObject(RegisteredPhysicsObject* objRegistration);
+    RegisteredPhysicsObject* getPhysicsObjectFromVoidPtr(void* ptr);
 
     RegisteredGhostObject* registerGhostObject(const glm::vec3& origin, const glm::quat& rotation, btCollisionShape* shape, void* guid);
     void unregisterGhostObject(RegisteredGhostObject* objRegistration);

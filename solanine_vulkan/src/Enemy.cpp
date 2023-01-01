@@ -61,6 +61,15 @@ Enemy::Enemy(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSe
     body->setCcdMotionThreshold(1e-7f);
     body->setCcdSweptSphereRadius(0.5f);
 
+    const glm::vec3 gtoff(0, -4.25f, 0);
+    _ghostObj =
+        PhysicsEngine::getInstance().registerGhostObject(
+            _load_position - gtoff,
+            glm::quat(glm::vec3(0.0f)),
+            new btBoxShape({ 1, 1, 1 }),
+            &getGUID()
+        );
+
     _enablePhysicsUpdate = true;
     _enableUpdate = true;
 }
@@ -71,6 +80,7 @@ Enemy::~Enemy()
     _rom->unregisterRenderObject(_renderObj);
     _rom->removeModelCallbacks(this);
     PhysicsEngine::getInstance().unregisterPhysicsObject(_physicsObj);
+    PhysicsEngine::getInstance().unregisterGhostObject(_ghostObj);
 
     // @TODO: figure out if I need to call `delete _collisionShape;` or not
 }
@@ -129,6 +139,28 @@ void Enemy::physicsUpdate(const float_t& physicsDeltaTime)
     // Clear state
     //
     _onGround = false;
+
+    //
+    // Check if attacked player
+    //
+    for(int32_t i = 0; i < _ghostObj->ghost->getNumOverlappingObjects(); i++)
+ 	{
+        if (RegisteredPhysicsObject* rpo = PhysicsEngine::getInstance().getPhysicsObjectFromVoidPtr((void*)_ghostObj->ghost->getOverlappingObject(i)))
+		{
+            std::string guid = *(std::string*)rpo->body->getUserPointer();
+            if (guid == getGUID()) continue;
+
+            // Send attacked message
+            glm::vec3 pushDirection = glm::quat(glm::vec3(0, _facingDirection, 0)) * glm::vec3(0, 0, 1);
+
+            DataSerializer ds;
+            ds.dumpString("event_attacked");
+            ds.dumpVec3(pushDirection);
+
+            DataSerialized dsd = ds.getSerializedData();
+			_em->sendMessage(guid, dsd);
+		}
+    }
 
     //
     // Update state
