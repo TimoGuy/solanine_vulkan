@@ -9,6 +9,7 @@
 #include <btBulletCollisionCommon.h>
 #include <BulletCollision/CollisionDispatch/btCollisionDispatcherMt.h>
 #include <BulletCollision/CollisionDispatch/btCollisionWorld.h>
+#include <BulletCollision/CollisionDispatch/btGhostObject.h>
 #include <BulletCollision/BroadphaseCollision/btBroadphaseProxy.h>
 #include <BulletCollision/NarrowPhaseCollision/btRaycastCallback.h>
 #include <BulletDynamics/Dynamics/btDiscreteDynamicsWorldMt.h>
@@ -31,10 +32,17 @@ struct RegisteredPhysicsObject
     glm::mat4 interpolatedTransform;    // @NOTE: these are calculated at the end of simulation
 
     // Tweakable properties
-    glm::vec3 transformOffset;
+    glm::vec3 transformOffset;  // @TODO: this makes no sense and I want there to be a better system for setting the transform offset of these
     std::function<void(btPersistentManifold*, bool amIB)>* onCollisionStayCallback = nullptr;
 
     void reportMoved(const glm::mat4& newTrans, bool resetVelocity);
+};
+
+struct RegisteredGhostObject
+{
+    btPairCachingGhostObject* ghost;
+
+    void reportMoved(const glm::mat4& newTrans);
 };
 
 class PhysicsEngine
@@ -52,6 +60,9 @@ public:
 
     RegisteredPhysicsObject* registerPhysicsObject(float_t mass, glm::vec3 origin, glm::quat rotation, btCollisionShape* shape, void* guid);    // @NOTE: setting mass=0.0 will make the rigidbody be static
     void unregisterPhysicsObject(RegisteredPhysicsObject* objRegistration);
+
+    RegisteredGhostObject* registerGhostObject(const glm::vec3& origin, const glm::quat& rotation, btCollisionShape* shape, void* guid);
+    void unregisterGhostObject(RegisteredGhostObject* objRegistration);
 
     void lazyRecreateDebugDrawBuffer();
     void renderDebugDraw(VkCommandBuffer cmd, const VkDescriptorSet& globalDescriptor);
@@ -77,10 +88,17 @@ private:
     std::vector<size_t>                                               _physicsObjectsIndices;
     std::array<bool,                    PHYSICS_OBJECTS_MAX_CAPACITY> _physicsObjectsIsRegistered;  // @NOTE: this will be filled with `false` on init  (https://stackoverflow.com/questions/67648693/safely-initializing-a-stdarray-of-bools)
     std::array<RegisteredPhysicsObject, PHYSICS_OBJECTS_MAX_CAPACITY> _physicsObjectPool;
+    std::map<void*, RegisteredPhysicsObject*>                         _rigidBodyToPhysicsObjectMap;
+
+    std::vector<size_t>                                               _ghostObjectsIndices;
+    std::array<bool,                  PHYSICS_OBJECTS_MAX_CAPACITY>   _ghostObjectsIsRegistered;
+    std::array<RegisteredGhostObject, PHYSICS_OBJECTS_MAX_CAPACITY>   _ghostObjectPool;
+    std::map<void*, RegisteredGhostObject*>                           _ghostObjectToRegisteredGhostObjectMap;
+
     void calculateInterpolatedTransform(RegisteredPhysicsObject& obj, const float_t& physicsAlpha);
 
-    std::map<void*, RegisteredPhysicsObject*> _rigidBodyToPhysicsObjectMap;
     btRigidBody* createRigidBody(float_t mass, const btTransform& startTransform, btCollisionShape* shape, void* guid, const btVector4& color = btVector4(1, 0, 0, 1));  // @NOTE: the `shape` param looks like just one shape, but in bullet physics you need to add in a `CompoundShape` type into the shape to be able to add in multiple shapes to a single rigidbody
+    btPairCachingGhostObject* createGhostObject(const btTransform& startTransform, btCollisionShape* shape, void* guid);
 
     struct DebugDrawVertex
     {

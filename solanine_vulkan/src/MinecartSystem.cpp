@@ -392,6 +392,8 @@ bool MinecartSystem::processMessage(DataSerialized& message)
             });
         return false;
     }
+
+    return false;
 }
 
 void MinecartSystem::loadModelWithName(const std::string& modelName)

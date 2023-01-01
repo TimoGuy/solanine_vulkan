@@ -20,6 +20,13 @@ void RegisteredPhysicsObject::reportMoved(const glm::mat4& newTrans, bool resetV
     	body->setLinearVelocity(btVector3(0, 0, 0));
 }
 
+void RegisteredGhostObject::reportMoved(const glm::mat4& newTrans)
+{
+	ghost->setWorldTransform(
+		physutil::toTransform(newTrans)
+	);
+}
+
 PhysicsEngine& PhysicsEngine::getInstance()
 {
 	static PhysicsEngine instance;
@@ -198,6 +205,11 @@ void PhysicsEngine::update(float_t deltaTime, std::vector<Entity*>* entities)   
 		_physicsObjectPool[poolIndex].body->getWorldTransform().getOpenGLMatrix(glm::value_ptr(objectSSBO->modelMatrix));
 		objectSSBO++;  // Extra Dmitri in this one
 	}
+	for (size_t poolIndex : _ghostObjectsIndices)
+	{
+		_ghostObjectPool[poolIndex].ghost->getWorldTransform().getOpenGLMatrix(glm::value_ptr(objectSSBO->modelMatrix));
+		objectSSBO++;
+	}
 	vmaUnmapMemory(_engine->_allocator, _transformsBuffer._allocation);
 #endif
 
@@ -314,6 +326,74 @@ void PhysicsEngine::unregisterPhysicsObject(RegisteredPhysicsObject* objRegistra
 
 	std::cerr << "[UNREGISTER PHYSICS OBJECT]" << std::endl
 		<< "ERROR: physics object " << objRegistration << " was not found. Nothing unregistered." << std::endl;
+}
+
+RegisteredGhostObject* PhysicsEngine::registerGhostObject(const glm::vec3& origin, const glm::quat& rotation, btCollisionShape* shape, void* guid)
+{
+	// @NOTE: this whole system just copies the one for the physics objects
+	if (_ghostObjectsIndices.size() >= PHYSICS_OBJECTS_MAX_CAPACITY)
+	{
+		std::cerr << "[REGISTER GHOST OBJECT]" << std::endl
+			<< "ERROR: trying to register ghost object when capacity is at maximum." << std::endl
+			<< "       Current capacity: " << _ghostObjectsIndices.size() << std::endl
+			<< "       Maximum capacity: " << _ghostObjectPool.size() << std::endl;
+		return nullptr;
+	}
+
+	glm::mat4 glmTrans = glm::translate(glm::mat4(1.0f), origin) * glm::toMat4(rotation);
+
+	btTransform trans = physutil::toTransform(glmTrans);
+	RegisteredGhostObject rgo = {
+		.ghost = createGhostObject(trans, shape, guid),
+	};
+
+	// Find next open spot in pool
+	// @COPYPASTA
+	size_t registerIndex = 0;
+	for (size_t i = 0; i < _ghostObjectsIsRegistered.size(); i++)
+	{
+		if (!_ghostObjectsIsRegistered[i])
+		{
+			registerIndex = i;
+			break;
+		}
+	}
+
+	// Register object
+	_ghostObjectPool[registerIndex] = rgo;
+	_ghostObjectsIsRegistered[registerIndex] = true;
+	_ghostObjectsIndices.push_back(registerIndex);
+	_ghostObjectToRegisteredGhostObjectMap[(void*)rgo.ghost] = &_ghostObjectPool[registerIndex];
+
+	_recreateDebugDrawBuffer = true;
+
+	return &_ghostObjectPool[registerIndex];
+}
+
+void PhysicsEngine::unregisterGhostObject(RegisteredGhostObject* objRegistration)
+{
+	size_t indicesIndex = 0;
+	for (size_t poolIndex : _ghostObjectsIndices)
+	{
+		auto& rgo = _ghostObjectPool[poolIndex];
+		if (&rgo == objRegistration)
+		{
+			// Unregister object
+			_dynamicsWorld->removeCollisionObject(rgo.ghost);
+			_ghostObjectToRegisteredGhostObjectMap.erase((void*)rgo.ghost);
+			_physicsObjectsIsRegistered[poolIndex] = false;
+			_ghostObjectsIndices.erase(_ghostObjectsIndices.begin() + indicesIndex);
+
+			_recreateDebugDrawBuffer = true;
+
+			return;
+		}
+
+		indicesIndex++;
+	}
+
+	std::cerr << "[UNREGISTER GHOST OBJECT]" << std::endl
+		<< "ERROR: ghost object " << objRegistration << " was not found. Nothing unregistered." << std::endl;
 }
 
 void PhysicsEngine::lazyRecreateDebugDrawBuffer()
@@ -437,6 +517,25 @@ btRigidBody* PhysicsEngine::createRigidBody(float_t mass, const btTransform& sta
 	body->setUserIndex(-1);
 	_dynamicsWorld->addRigidBody(body);
 	return body;
+}
+
+btPairCachingGhostObject* PhysicsEngine::createGhostObject(const btTransform& startTransform, btCollisionShape* shape, void* guid)
+{
+	btPairCachingGhostObject* ghost = new btPairCachingGhostObject();
+	ghost->setCollisionShape(shape);
+	ghost->setWorldTransform(startTransform);
+	ghost->setUserPointer(guid);
+	ghost->setUserIndex(-1);
+	_dynamicsWorld->addCollisionObject(ghost);
+
+	static bool did = false;
+	if (!did)
+	{
+		_dynamicsWorld->getBroadphase()->getOverlappingPairCache()->setInternalGhostPairCallback(new btGhostPairCallback());
+		did = true;
+	}
+
+	return ghost;
 }
 
 void PhysicsEngine::appendDebugShapeVertices(btBoxShape* shape, size_t physObjIndex, std::vector<DebugDrawVertex>& vertexList)
@@ -748,6 +847,35 @@ void PhysicsEngine::recreateDebugDrawBuffer()
 	for (size_t poolIndex : _physicsObjectsIndices)
 	{
 		btCollisionShape* shape = _physicsObjectPool[poolIndex].body->getCollisionShape();
+
+		switch (shape->getShapeType())
+		{
+		case BOX_SHAPE_PROXYTYPE:
+			appendDebugShapeVertices((btBoxShape*)shape, ssboIndex, vertexList);
+			break;
+		case SPHERE_SHAPE_PROXYTYPE:
+			appendDebugShapeVertices((btSphereShape*)shape, ssboIndex, vertexList);
+			break;
+		case CYLINDER_SHAPE_PROXYTYPE:
+			appendDebugShapeVertices((btCylinderShape*)shape, ssboIndex, vertexList);
+			break;
+		case CAPSULE_SHAPE_PROXYTYPE:
+			appendDebugShapeVertices((btCapsuleShape*)shape, ssboIndex, vertexList);
+			break;
+		case COMPOUND_SHAPE_PROXYTYPE:
+			appendDebugShapeVertices((btCompoundShape*)shape, ssboIndex, vertexList);
+			break;
+		default:
+			std::cerr << "[CREATING PHYSICS ENGINE DEBUG DRAW BUFFER]" << std::endl
+				<< "ERROR: shape type currently not supported: " << shape->getShapeType() << std::endl;
+			break;
+		}
+		ssboIndex++;
+	}
+
+	for (size_t poolIndex : _ghostObjectsIndices)  // @COPYPASTA
+	{
+		btCollisionShape* shape = _ghostObjectPool[poolIndex].ghost->getCollisionShape();
 
 		switch (shape->getShapeType())
 		{
