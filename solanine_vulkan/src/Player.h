@@ -18,6 +18,7 @@ class Player : public Entity
 {
 public:
     static const std::string TYPE_NAME;
+    std::string getTypeName() { return TYPE_NAME; };
 
     Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSerialized* ds);
     ~Player();
@@ -28,7 +29,7 @@ public:
 
     void dump(DataSerializer& ds);
     void load(DataSerialized& ds);
-    std::string getTypeName() { return TYPE_NAME; };
+    bool processMessage(DataSerialized& message);
 
     void reportMoved(void* matrixMoved);
     void renderImGui();
@@ -48,6 +49,9 @@ private:
     float_t _bottomRaycastFeetDist;
     float_t _bottomRaycastExtraDist;
     float_t _adjustedHalfHeight;
+    
+    float_t _attackedDebounce = 0.25f;
+    float_t _attackedDebounceTimer = 0.0f;
 
     void processGrounded(glm::vec3& velocity, float_t& groundAccelMult, const float_t& physicsDeltaTime);
 

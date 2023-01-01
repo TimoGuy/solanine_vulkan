@@ -9,6 +9,7 @@
 #include "InputManager.h"
 #include "AudioEngine.h"
 #include "DataSerialization.h"
+#include "GlobalState.h"
 #include "Debug.h"
 #include "imgui/imgui.h"
 #include "Yosemite.h"
@@ -549,6 +550,8 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
 
 void Player::update(const float_t& deltaTime)
 {
+    _attackedDebounceTimer -= deltaTime;
+    
     if (input::onKeyJumpPress)
     {
         _flagJump = true;
@@ -682,6 +685,28 @@ void Player::load(DataSerialized& ds)
     Entity::load(ds);
     _load_position         = ds.loadVec3();
     _facingDirection       = ds.loadFloat();
+}
+
+bool Player::processMessage(DataSerialized& message)
+{
+    auto eventName = message.loadString();
+    if (eventName == "event_attacked")
+    {
+        if (_attackedDebounceTimer > 0.0f)
+            return false;
+
+        AudioEngine::getInstance().playSoundFromList({
+            "res/sfx/wip_hurt.ogg",
+        });
+
+        globalState::playerHealth--;
+
+        _attackedDebounceTimer = _attackedDebounce;
+
+        return true;
+    }
+
+    return false;
 }
 
 void Player::reportMoved(void* matrixMoved)
