@@ -524,25 +524,11 @@ btRigidBody* PhysicsEngine::createRigidBody(float_t mass, const btTransform& sta
 	return body;
 }
 
-/*
-void motorPreTickCallback (btDynamicsWorld *world, btScalar timeStep)
-{
-  	for(int i = 0; i < ghostObject->getNumOverlappingObjects(); i++)
- 	{
-        if (btRigidBody* body = dynamic_cast<btRigidBody*>(ghostObject->getOverlappingObject(i)))
-		{
-			
-		}
-        // do whatever you want to do with these pairs of colliding objects
-    }
-}
-*/
-
 btPairCachingGhostObject* PhysicsEngine::createGhostObject(const btTransform& startTransform, btCollisionShape* shape, void* guid)
 {
 	btPairCachingGhostObject* ghost = new btPairCachingGhostObject();
 	ghost->setCollisionShape(shape);
-	ghost->setCollisionFlags(btCollisionObject::CF_KINEMATIC_OBJECT | btCollisionObject::CF_NO_CONTACT_RESPONSE);  // @TODO: figure out why this ins't colliding this is probably the key to this!
+	ghost->setCollisionFlags(btCollisionObject::CF_KINEMATIC_OBJECT | btCollisionObject::CF_NO_CONTACT_RESPONSE);
 	ghost->setWorldTransform(startTransform);
 	ghost->setUserPointer(guid);
 	ghost->setUserIndex(-1);

@@ -1193,9 +1193,11 @@ void Player::processWeaponCollision()
                 if (hitInfo.hasHit())
                 {
                     auto& collisionObj = hitInfo.m_collisionObject;
+                    std::string guid = *(std::string*)collisionObj->getUserPointer();
+                    if (guid == getGUID()) continue;
 
                     std::cout << "[PLAYER ATTACK HIT]" << std::endl
-                        << "Detected object guid: " << *(std::string*)collisionObj->getUserPointer() << std::endl;
+                        << "Detected object guid: " << guid << std::endl;
 
                     glm::vec3 pushDirection = glm::quat(glm::vec3(0, _facingDirection, 0)) * glm::vec3(0, 0, 1);
 
@@ -1204,7 +1206,7 @@ void Player::processWeaponCollision()
                     ds.dumpVec3(pushDirection);
 
                     DataSerialized dsd = ds.getSerializedData();
-                    if (_em->sendMessage(*(std::string*)collisionObj->getUserPointer(), dsd))
+                    if (_em->sendMessage(guid, dsd))
                     {
                         // velocity = -pushDirection * 10.0f;
                     }

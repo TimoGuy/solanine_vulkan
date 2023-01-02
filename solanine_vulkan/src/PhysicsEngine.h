@@ -74,8 +74,8 @@ public:
 	std::vector<VkVertexInputAttributeDescription> getVertexAttributeDescriptions();
     std::vector<VkVertexInputBindingDescription> getVertexBindingDescriptions();
 
-    btCollisionWorld::ClosestRayResultCallback raycast(const btVector3& from, const btVector3& to, int32_t filterGroups = btBroadphaseProxy::DefaultFilter, int32_t mask = btBroadphaseProxy::AllFilter, uint32_t flags = btTriangleRaycastCallback::kF_FilterBackfaces);
-    btCollisionWorld::ClosestConvexResultCallback boxcast(const btTransform& from, const btTransform& to, const glm::vec3& halfExtents, int32_t filterGroups = btBroadphaseProxy::DefaultFilter, int32_t mask = btBroadphaseProxy::AllFilter);
+    btCollisionWorld::ClosestRayResultCallback raycast(const btVector3& from, const btVector3& to, int32_t filterGroups = btBroadphaseProxy::DefaultFilter, int32_t mask = btBroadphaseProxy::AllFilter & ~btBroadphaseProxy::SensorTrigger, uint32_t flags = btTriangleRaycastCallback::kF_FilterBackfaces);
+    btCollisionWorld::ClosestConvexResultCallback boxcast(const btTransform& from, const btTransform& to, const glm::vec3& halfExtents, int32_t filterGroups = btBroadphaseProxy::DefaultFilter, int32_t mask = btBroadphaseProxy::AllFilter & ~btBroadphaseProxy::SensorTrigger);
 
 private:
     btITaskScheduler* _mainTaskScheduler              = nullptr;

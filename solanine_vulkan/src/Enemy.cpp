@@ -163,6 +163,17 @@ void Enemy::physicsUpdate(const float_t& physicsDeltaTime)
     }
 
     //
+    // Move ghost object
+    //
+    btVector3 pos = _physicsObj->body->getWorldTransform().getOrigin();
+    _ghostObj->ghost->setWorldTransform(
+        btTransform(
+            btQuaternion(0, 0, 0, 1),
+            pos + physutil::toVec3(glm::toMat4(glm::quat(glm::vec3(0, _facingDirection, 0))) * glm::vec3(0, 0, 1))
+        )
+    );
+
+    //
     // Update state
     //
     _stepsSinceLastGrounded++;
