@@ -66,9 +66,13 @@ Enemy::Enemy(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSe
         PhysicsEngine::getInstance().registerGhostObject(
             _load_position - gtoff,
             glm::quat(glm::vec3(0.0f)),
-            new btBoxShape({ 1, 1, 1 }),
+            new btBoxShape({ 5, 0.5, 0.5 }),
             &getGUID()
         );
+
+    _onOverlapFunc =
+        [&](RegisteredPhysicsObject* rpo) { onOverlap(rpo); };
+    _ghostObj->onOverlapCallback = &_onOverlapFunc;
 
     _enablePhysicsUpdate = true;
     _enableUpdate = true;
@@ -141,35 +145,14 @@ void Enemy::physicsUpdate(const float_t& physicsDeltaTime)
     _onGround = false;
 
     //
-    // Check if attacked player
-    //
-    for(int32_t i = 0; i < _ghostObj->ghost->getNumOverlappingObjects(); i++)
- 	{
-        if (RegisteredPhysicsObject* rpo = PhysicsEngine::getInstance().getPhysicsObjectFromVoidPtr((void*)_ghostObj->ghost->getOverlappingObject(i)))
-		{
-            std::string guid = *(std::string*)rpo->body->getUserPointer();
-            if (guid == getGUID()) continue;
-
-            // Send attacked message
-            glm::vec3 pushDirection = glm::quat(glm::vec3(0, _facingDirection, 0)) * glm::vec3(0, 0, 1);
-
-            DataSerializer ds;
-            ds.dumpString("event_attacked");
-            ds.dumpVec3(pushDirection);
-
-            DataSerialized dsd = ds.getSerializedData();
-			_em->sendMessage(guid, dsd);
-		}
-    }
-
-    //
     // Move ghost object
     //
     btVector3 pos = _physicsObj->body->getWorldTransform().getOrigin();
+    glm::quat rot = glm::quat(glm::vec3(0, _facingDirection, 0));
     _ghostObj->ghost->setWorldTransform(
         btTransform(
-            btQuaternion(0, 0, 0, 1),
-            pos + physutil::toVec3(glm::toMat4(glm::quat(glm::vec3(0, _facingDirection, 0))) * glm::vec3(0, 0, 1))
+            btQuaternion(rot.x, rot.y, rot.z, rot.w),
+            pos + physutil::toVec3(glm::toMat3(rot) * glm::vec3(0, 0, 1))
         )
     );
 
@@ -497,6 +480,7 @@ void Enemy::reportMoved(void* matrixMoved)
 void Enemy::renderImGui()
 {
     ImGui::Text(("_onGround: " + std::to_string(_onGround)).c_str());
+    ImGui::DragFloat("_facingDirection", &_facingDirection);
     ImGui::DragFloat("_maxSpeed", &_maxSpeed);
     ImGui::DragFloat("_maxAcceleration", &_maxAcceleration);
     ImGui::DragFloat("_maxDeceleration", &_maxDeceleration);
@@ -773,4 +757,20 @@ void Enemy::processGrounded(glm::vec3& velocity, float_t& groundAccelMult, const
     // Clear attachment velocity
     _prevAttachmentVelocity = _attachmentVelocity;
     _attachmentVelocity     = attachmentVelocityReset;
+}
+
+void Enemy::onOverlap(RegisteredPhysicsObject* rpo)
+{
+    std::string guid = *(std::string*)rpo->body->getUserPointer();
+    if (guid == getGUID()) return;
+
+    // Send attacked message
+    glm::vec3 pushDirection = glm::quat(glm::vec3(0, _facingDirection, 0)) * glm::vec3(0, 0, 1);
+
+    DataSerializer ds;
+    ds.dumpString("event_attacked");
+    ds.dumpVec3(pushDirection);
+
+    DataSerialized dsd = ds.getSerializedData();
+    _em->sendMessage(guid, dsd);
 }

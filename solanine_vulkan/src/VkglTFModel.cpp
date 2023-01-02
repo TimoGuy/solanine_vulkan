@@ -116,7 +116,7 @@ namespace vkglTF
 		//          -Timo 2022/12/27
 #define USE_FAST_TRANSFORM_BAKING 1
 #if     USE_FAST_TRANSFORM_BAKING
-		glm::mat4 transform(rotation);
+		glm::mat4 transform = glm::toMat4(rotation);
 
 		transform[3][0] = translation.x;
 		transform[3][1] = translation.y;
@@ -136,7 +136,7 @@ namespace vkglTF
 #else
 		return
 			glm::translate(glm::mat4(1.0f), translation) *
-			glm::mat4(rotation) *
+			glm::toMat4(rotation) *
 			glm::scale(glm::mat4(1.0f), scale) *
 			matrix;
 #endif

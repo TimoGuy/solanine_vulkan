@@ -53,10 +53,6 @@ Leever::Leever(EntityManager* em, RenderObjectManager* rom, DataSerialized* ds) 
         );
     _physicsObj->transformOffset = toff;
 
-    /*_onCollisionStayFunc =
-        [&](btPersistentManifold* manifold, bool amIB) { onCollisionStay(manifold, amIB); };
-    _physicsObj->onCollisionStayCallback = &_onCollisionStayFunc;*/
-
     _enableUpdate = true;
 }
 

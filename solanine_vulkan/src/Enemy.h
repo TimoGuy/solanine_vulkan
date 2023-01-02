@@ -96,6 +96,10 @@ private:
     // Load Props
     glm::vec3 _load_position = glm::vec3(0.0f);
 
+    // Callbacks
+    std::function<void(RegisteredPhysicsObject*)> _onOverlapFunc;
+    void onOverlap(RegisteredPhysicsObject* rpo);
+
     // Tweak Props
     float_t _facingDirection = 0.0f;
     float_t _maxSpeed = 20.0f;

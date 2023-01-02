@@ -173,12 +173,30 @@ void PhysicsEngine::update(float_t deltaTime, std::vector<Entity*>* entities)   
 		//        `RegisteredPhysicsObject*` pointer so that tags and whatnot can get
 		//        compared to each other.  -Timo
 		//
-		RegisteredPhysicsObject* obj0 = _rigidBodyToPhysicsObjectMap[(void*)manifold->getBody0()];
-		RegisteredPhysicsObject* obj1 = _rigidBodyToPhysicsObjectMap[(void*)manifold->getBody1()];
+		void* body0 = (void*)manifold->getBody0();
+		void* body1 = (void*)manifold->getBody1();
+
+		RegisteredPhysicsObject* obj0 = _rigidBodyToPhysicsObjectMap[body0];
+		RegisteredPhysicsObject* obj1 = _rigidBodyToPhysicsObjectMap[body1];
 		if (obj0 && obj0->onCollisionStayCallback)
 			(*obj0->onCollisionStayCallback)(manifold, false);
 		if (obj1 && obj1->onCollisionStayCallback)
 			(*obj1->onCollisionStayCallback)(manifold, true);
+
+		// Check to see if this could be a trigger x rigidbody collision
+		// @NOTE: triggers won't trigger if intersected with another trigger
+		if (!obj0 && obj1)
+		{
+			RegisteredGhostObject* rgo = _ghostObjectToRegisteredGhostObjectMap[body0];
+			if (rgo && rgo->onOverlapCallback)
+				(*rgo->onOverlapCallback)(obj1);
+		}
+		else if (obj0 && !obj1)
+		{
+			RegisteredGhostObject* rgo = _ghostObjectToRegisteredGhostObjectMap[body1];
+			if (rgo && rgo->onOverlapCallback)
+				(*rgo->onOverlapCallback)(obj0);
+		}
 	}
 
 	//

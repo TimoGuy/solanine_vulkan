@@ -43,7 +43,7 @@ struct RegisteredGhostObject
     btPairCachingGhostObject* ghost;
 
     // Tweakable properties
-    std::function<void(btRigidBody* overlappingBody)>* onOverlapCallback = nullptr;
+    std::function<void(RegisteredPhysicsObject*)>* onOverlapCallback = nullptr;
 
     void reportMoved(const glm::mat4& newTrans);
 };

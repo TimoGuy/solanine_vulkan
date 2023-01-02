@@ -38,10 +38,6 @@ private:
 
     void sendUpdateIsOnMessage();
 
-    // Callbacks
-    /*std::function<void(btPersistentManifold*, bool amIB)> _onCollisionStayFunc;
-    void onCollisionStay(btPersistentManifold* manifold, bool amIB);*/
-
     // Tweak Props
     std::string _messageReceiverGuid;  // @NOTE: this is the object that the switch will affect.
     int32_t     _receiverPortNumber;   // This is to distinguish this Leever in case if there are multiple (i.e. for MinecartSystems this number is necessary).
