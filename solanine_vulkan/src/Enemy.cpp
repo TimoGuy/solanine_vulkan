@@ -66,7 +66,7 @@ Enemy::Enemy(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSe
         PhysicsEngine::getInstance().registerGhostObject(
             _load_position - gtoff,
             glm::quat(glm::vec3(0.0f)),
-            new btBoxShape({ 5, 0.5, 0.5 }),
+            new btBoxShape({ 0.5, 0.5, 0.5 }),
             &getGUID()
         );
 
