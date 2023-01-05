@@ -115,6 +115,15 @@ private:
     float_t   _airDashSpeed               = 100.0f;
     float_t   _airDashFinishSpeedFracCooked;
     float_t   _airDashFinishSpeedFrac     = 0.25f;
+    
+    // Being grabbed data
+    struct BeingGrabbedData
+    {
+        uint32_t stage = 0;  // 0: none; 1: is being grabbed; 2: is being kicked out
+        glm::vec3 gotoPosition;
+        float_t gotoFacingDirection;
+        glm::vec3 kickoutVelocity;
+    } _beingGrabbedData;
 
     // Replay system
     ReplayData _replayData;

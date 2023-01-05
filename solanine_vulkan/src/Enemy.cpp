@@ -13,7 +13,7 @@
 #include "Yosemite.h"
 
 
-Enemy::Enemy(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSerialized* ds) : Entity(em, ds), _rom(rom), _camera(camera)
+Enemy::Enemy(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSerialized* ds) : Entity(em, ds), _rom(rom), _camera(camera), _currentAttackStage(GRAPPLEATTACKSTAGE::NONE)
 {
     if (ds)
         load(*ds);
@@ -133,12 +133,15 @@ void Enemy::update(const float_t& deltaTime)
     if (glm::length2(_worldSpaceInput) > 0.01f)
         _facingDirection = glm::atan(_worldSpaceInput.x, _worldSpaceInput.z);
 
+    _facingDirection += glm::radians(45.0f) * deltaTime;
+
     glm::vec3 interpPos = physutil::getPosition(_physicsObj->interpolatedTransform);
     _renderObj->transformMatrix = glm::translate(glm::mat4(1.0f), interpPos) * glm::toMat4(glm::quat(glm::vec3(0, _facingDirection, 0)));
 }
 
 void Enemy::physicsUpdate(const float_t& physicsDeltaTime)
 {
+
     //
     // Clear state
     //
@@ -147,14 +150,55 @@ void Enemy::physicsUpdate(const float_t& physicsDeltaTime)
     //
     // Move ghost object
     //
-    btVector3 pos = _physicsObj->body->getWorldTransform().getOrigin();
     glm::quat rot = glm::quat(glm::vec3(0, _facingDirection, 0));
+    btVector3 pos = _physicsObj->body->getWorldTransform().getOrigin() + physutil::toVec3(glm::toMat3(rot) * _grapplePointPreTransPosition);
+    _grapplePoint = physutil::toVec3(pos);
     _ghostObj->ghost->setWorldTransform(
         btTransform(
             btQuaternion(rot.x, rot.y, rot.z, rot.w),
-            pos + physutil::toVec3(glm::toMat3(rot) * glm::vec3(0, 0, 1))
+            pos
         )
     );
+
+    //
+    // Send messages to entity being grappled (if grappling rn)
+    //
+    if (_currentAttackStage == GRAPPLEATTACKSTAGE::GRAPPLE)
+    {
+        // @COPYPASTA
+        DataSerializer ds;
+        ds.dumpString("event_grapple_hold");
+        ds.dumpVec3(_grapplePoint);
+        ds.dumpFloat(_facingDirection + glm::radians(180.0f));
+
+        DataSerialized dsd = ds.getSerializedData();
+        _em->sendMessage(_grapplingEntityGUID, dsd);
+
+        // Update timer
+        _grappleStageGrappleTimer += physicsDeltaTime;
+        if (_grappleStageGrappleTimer > 1.0f)
+        {
+            _currentAttackStage = GRAPPLEATTACKSTAGE::KICKOUT;
+        }
+    }
+    else if (_currentAttackStage == GRAPPLEATTACKSTAGE::KICKOUT)
+    {
+        if (_grappleStageKickoutTimer == 0.0f)
+        {
+            glm::vec3 grappleKickoutCooked = glm::quat(glm::vec3(0, _facingDirection, 0)) * _grappleKickoutVelocity;
+
+            DataSerializer ds;
+            ds.dumpString("event_grapple_kickout");
+            ds.dumpVec3(grappleKickoutCooked);
+
+            DataSerialized dsd = ds.getSerializedData();
+            _em->sendMessage(_grapplingEntityGUID, dsd);
+        }
+
+        _grappleStageKickoutTimer += physicsDeltaTime;
+        if (_grappleStageKickoutTimer > 1.0f)
+            _currentAttackStage = GRAPPLEATTACKSTAGE::NONE;
+    }
 
     //
     // Update state
@@ -169,7 +213,7 @@ void Enemy::physicsUpdate(const float_t& physicsDeltaTime)
     float groundAccelMult;
     processGrounded(velocity, groundAccelMult, physicsDeltaTime);
 
-    if (_flagDrawOrSheathWeapon)
+    /*if (_flagDrawOrSheathWeapon)
     {
         //
         // Enter/exit combat mode
@@ -210,9 +254,9 @@ void Enemy::physicsUpdate(const float_t& physicsDeltaTime)
             _airDashFinishSpeedFracCooked = 1.0f;
             _airDashSpeed = _airDashSpeedXZ;
         }
-    }
+    }*/
 
-    if (_airDashMove)
+    /*if (_airDashMove)
     {
         //
         // Process air dash
@@ -259,11 +303,11 @@ void Enemy::physicsUpdate(const float_t& physicsDeltaTime)
         glm::vec2 a(velocity.x, velocity.z);
         glm::vec2 b(desiredVelocity.x, desiredVelocity.z);
 
-        /*if (_onGround)
-            if (glm::length2(b) < 0.0001f)
-                _renderObj->animator->setTrigger("goto_idle");
-            else
-                _renderObj->animator->setTrigger("goto_run");*/
+        //if (_onGround)
+        //    if (glm::length2(b) < 0.0001f)
+        //        _renderObj->animator->setTrigger("goto_idle");
+        //    else
+        //        _renderObj->animator->setTrigger("goto_run");
 
         bool useAcceleration;
         if (glm::length2(b) < 0.0001f)
@@ -294,7 +338,7 @@ void Enemy::physicsUpdate(const float_t& physicsDeltaTime)
             _flagJump = false;
         }
     }
-    else
+    else*/
     {
         //
         // Calculate rigidbody velocity
@@ -459,6 +503,7 @@ bool Enemy::processMessage(DataSerialized& message)
         });
 
         _attackedDebounceTimer = _attackedDebounce;
+        std::cout << "Yatta!" << std::endl;
 
         return true;
     }
@@ -494,7 +539,7 @@ void Enemy::renderImGui()
 
     ImGui::Separator();
 
-    ImGui::Text(("_isCombatMode: " + std::to_string(_isCombatMode)).c_str());
+    /*ImGui::Text(("_isCombatMode: " + std::to_string(_isCombatMode)).c_str());
     
     ImGui::Separator();
 
@@ -509,10 +554,15 @@ void Enemy::renderImGui()
     ImGui::DragFloat("_airDashFinishSpeedFracCooked", &_airDashFinishSpeedFracCooked);
     ImGui::DragFloat("_airDashFinishSpeedFrac", &_airDashFinishSpeedFrac);
 
-    ImGui::Separator();
+    ImGui::Separator();*/
 
     ImGui::DragFloat("_attackedDebounce", &_attackedDebounce);
     ImGui::DragFloat("_attackedPushBackStrength", &_attackedPushBackStrength);
+
+    ImGui::Separator();
+
+    ImGui::DragFloat3("_grapplePointPreTransPosition", &_grapplePointPreTransPosition.x);
+    ImGui::DragFloat3("_grappleKickoutVelocity", &_grappleKickoutVelocity.x);
 }
 
 void Enemy::processGrounded(glm::vec3& velocity, float_t& groundAccelMult, const float_t& physicsDeltaTime)
@@ -761,6 +811,9 @@ void Enemy::processGrounded(glm::vec3& velocity, float_t& groundAccelMult, const
 
 void Enemy::onOverlap(RegisteredPhysicsObject* rpo)
 {
+    if (_currentAttackStage != GRAPPLEATTACKSTAGE::NONE)
+        return;  // Ignore this overlap if currently grappling another entity
+
     std::string guid = *(std::string*)rpo->body->getUserPointer();
     if (guid == getGUID()) return;
 
@@ -768,9 +821,15 @@ void Enemy::onOverlap(RegisteredPhysicsObject* rpo)
     glm::vec3 pushDirection = glm::quat(glm::vec3(0, _facingDirection, 0)) * glm::vec3(0, 0, 1);
 
     DataSerializer ds;
-    ds.dumpString("event_attacked");
-    ds.dumpVec3(pushDirection);
+    ds.dumpString("event_grapple_hold");
+    ds.dumpVec3(_grapplePoint);
+    ds.dumpFloat(_facingDirection + glm::radians(180.0f));
 
     DataSerialized dsd = ds.getSerializedData();
     _em->sendMessage(guid, dsd);
+
+    _currentAttackStage       = GRAPPLEATTACKSTAGE::GRAPPLE;
+    _grappleStageGrappleTimer = 0.0f;
+    _grappleStageKickoutTimer = 0.0f;
+    _grapplingEntityGUID      = guid;
 }

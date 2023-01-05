@@ -92,6 +92,18 @@ private:
     float_t   _airDashSpeedY              = 50.0f;
     float_t   _airDashFinishSpeedFracCooked;
     float_t   _airDashFinishSpeedFrac     = 0.25f;
+    
+    // Grapple attack
+    enum class GRAPPLEATTACKSTAGE
+    {
+        NONE, GRAPPLE, KICKOUT
+    } _currentAttackStage;
+    std::string _grapplingEntityGUID;
+    glm::vec3   _grapplePointPreTransPosition = glm::vec3(0, 1, 2.35);
+    glm::vec3   _grapplePoint;
+    float_t     _grappleStageGrappleTimer = 0.0f;
+    glm::vec3   _grappleKickoutVelocity   = glm::vec3(0, 50, 20);
+    float_t     _grappleStageKickoutTimer = 0.0f;
 
     // Load Props
     glm::vec3 _load_position = glm::vec3(0.0f);

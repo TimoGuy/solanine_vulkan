@@ -415,137 +415,167 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     //        the character tripped because of the sudden velocity speed drop when running
     //        into a nick.
     //
-    glm::vec3 desiredVelocity = _worldSpaceInput * _maxSpeed;  // @NOTE: we just ignore the y component in this desired velocity thing
+    if (_beingGrabbedData.stage)
+    {
+        //
+        // Being Grabbed method (go to the exact position that's requested)
+        // @TODO: see if you can just turn off gravity of the rigidbody when it's being grabbed
+        //
+        if (_beingGrabbedData.stage == 1)
+        {
+            // Being grabbed
+            btVector3 pos   = _physicsObj->body->getWorldTransform().getOrigin();
+            btVector3 delta = physutil::toVec3(_beingGrabbedData.gotoPosition) - pos;
+            _physicsObj->body->setLinearVelocity(delta / physicsDeltaTime);
 
-    glm::vec2 a(velocity.x, velocity.z);
-    glm::vec2 b(desiredVelocity.x, desiredVelocity.z);
+            _facingDirection = _beingGrabbedData.gotoFacingDirection;
+        }
+        else if (_beingGrabbedData.stage == 2)
+        {
+            // Being kicked out
+            _physicsObj->body->setLinearVelocity(physutil::toVec3(_beingGrabbedData.kickoutVelocity));
+            _stepsSinceLastGrounded = _jumpCoyoteFrames;  // This is to prevent ground sticking right after a jump and multiple jumps performed right after another jump was done!
 
-    if (_onGround)
-        if (glm::length2(b) < 0.0001f)
-            _characterRenderObj->animator->setTrigger("goto_idle");
-        else
-            _characterRenderObj->animator->setTrigger("goto_run");
-
-    bool useAcceleration;
-    if (glm::length2(b) < 0.0001f)
-        useAcceleration = false;
-    else if (glm::length2(a) < 0.0001f)
-        useAcceleration = true;
+            _beingGrabbedData.stage = 0;
+        }
+    }
     else
     {
-        float_t AdotB = glm::dot(glm::normalize(a), glm::normalize(b));
-        if (glm::length(a) * AdotB > glm::length(b))    // @TODO: use your head and think of how to use length2 for this
+        //
+        // Normal Method (based off input movement)
+        //
+        glm::vec3 desiredVelocity = _worldSpaceInput * _maxSpeed;  // @NOTE: we just ignore the y component in this desired velocity thing
+
+        glm::vec2 a(velocity.x, velocity.z);
+        glm::vec2 b(desiredVelocity.x, desiredVelocity.z);
+
+        if (_onGround)
+            if (glm::length2(b) < 0.0001f)
+                _characterRenderObj->animator->setTrigger("goto_idle");
+            else
+                _characterRenderObj->animator->setTrigger("goto_run");
+
+        bool useAcceleration;
+        if (glm::length2(b) < 0.0001f)
             useAcceleration = false;
-        else
+        else if (glm::length2(a) < 0.0001f)
             useAcceleration = true;
-    }
-
-    float_t acceleration    = _onGround ? _maxAcceleration * groundAccelMult : _maxMidairAcceleration;
-    if (!useAcceleration)
-        acceleration        = _onGround ? _maxDeceleration * groundAccelMult : _maxMidairDeceleration;
-    float_t maxSpeedChange  = acceleration * physicsDeltaTime;
-
-    glm::vec2 c = physutil::moveTowardsVec2(a, b, maxSpeedChange);
-    velocity.x = c.x;
-    velocity.z = c.y;
-
-    if (_isWeaponDrawn)
-        _flagJump = false;
-
-    if (_flagJump)
-    {
-        //
-        // Do the normal jump
-        //
-        enum JumpType
+        else
         {
-            GROUNDED_JUMP,
-            AIR_DASH,
-            NONE,
-        } jumpType;
+            float_t AdotB = glm::dot(glm::normalize(a), glm::normalize(b));
+            if (glm::length(a) * AdotB > glm::length(b))    // @TODO: use your head and think of how to use length2 for this
+                useAcceleration = false;
+            else
+                useAcceleration = true;
+        }
 
-        jumpType = (_onGround || (int32_t)_stepsSinceLastGrounded <= _jumpCoyoteFrames) ? GROUNDED_JUMP : (_usedAirDash ? NONE : AIR_DASH);
+        float_t acceleration    = _onGround ? _maxAcceleration * groundAccelMult : _maxMidairAcceleration;
+        if (!useAcceleration)
+            acceleration        = _onGround ? _maxDeceleration * groundAccelMult : _maxMidairDeceleration;
+        float_t maxSpeedChange  = acceleration * physicsDeltaTime;
 
-        bool jumpFlagProcessed = false;
-        switch (jumpType)
+        glm::vec2 c = physutil::moveTowardsVec2(a, b, maxSpeedChange);
+        velocity.x = c.x;
+        velocity.z = c.y;
+
+        if (_isWeaponDrawn)
+            _flagJump = false;
+
+        if (_flagJump)
         {
-        case GROUNDED_JUMP:
-            if (_onGround || (int32_t)_stepsSinceLastGrounded <= _jumpCoyoteFrames)
+            //
+            // Do the normal jump
+            //
+            enum JumpType
             {
-                // @DEBUG: if you want something to look at coyote time and jump buffering metrics, uncomment:
-                //std::cout << "[JUMP INFO]" << std::endl
-                //    << "Buffer Frames left:         " << _jumpInputBufferFramesTimer << std::endl
-                //    << "Frames since last grounded: " << _stepsSinceLastGrounded << std::endl;
-                velocity.y = 
-                    glm::sqrt(_jumpHeight * 2.0f * PhysicsEngine::getInstance().getGravityStrength());
-                _displacementToTarget = glm::vec3(0.0f);
-                _stepsSinceLastGrounded = _jumpCoyoteFrames;  // This is to prevent ground sticking right after a jump and multiple jumps performed right after another jump was done!
-                
-                if (!_isAttachedBodyStale)
+                GROUNDED_JUMP,
+                AIR_DASH,
+                NONE,
+            } jumpType;
+
+            jumpType = (_onGround || (int32_t)_stepsSinceLastGrounded <= _jumpCoyoteFrames) ? GROUNDED_JUMP : (_usedAirDash ? NONE : AIR_DASH);
+
+            bool jumpFlagProcessed = false;
+            switch (jumpType)
+            {
+            case GROUNDED_JUMP:
+                if (_onGround || (int32_t)_stepsSinceLastGrounded <= _jumpCoyoteFrames)
                 {
-                    // Apply jump pushaway to attached body
-                    btVector3 relPos = physutil::toVec3(_attachmentWorldPosition) - _attachedBody->getWorldTransform().getOrigin();
-                    _attachedBody->applyForce(
-                        physutil::toVec3(-velocity) * _physicsObj->body->getMass() * _landingApplyMassMult,
-                        relPos
-                    );
+                    // @DEBUG: if you want something to look at coyote time and jump buffering metrics, uncomment:
+                    //std::cout << "[JUMP INFO]" << std::endl
+                    //    << "Buffer Frames left:         " << _jumpInputBufferFramesTimer << std::endl
+                    //    << "Frames since last grounded: " << _stepsSinceLastGrounded << std::endl;
+                    velocity.y = 
+                        glm::sqrt(_jumpHeight * 2.0f * PhysicsEngine::getInstance().getGravityStrength());
+                    _displacementToTarget = glm::vec3(0.0f);
+                    _stepsSinceLastGrounded = _jumpCoyoteFrames;  // This is to prevent ground sticking right after a jump and multiple jumps performed right after another jump was done!
+                    
+                    if (!_isAttachedBodyStale)
+                    {
+                        // Apply jump pushaway to attached body
+                        btVector3 relPos = physutil::toVec3(_attachmentWorldPosition) - _attachedBody->getWorldTransform().getOrigin();
+                        _attachedBody->applyForce(
+                            physutil::toVec3(-velocity) * _physicsObj->body->getMass() * _landingApplyMassMult,
+                            relPos
+                        );
+                    }
+
+                    // @TODO: add some kind of audio event system, or even better, figure out how to use FMOD!!! Bc it's freakign integrated lol
+                    AudioEngine::getInstance().playSoundFromList({
+                        "res/sfx/wip_jump1.ogg",
+                        "res/sfx/wip_jump2.ogg",
+                        //"res/sfx/wip_hollow_knight_sfx/hero_jump.wav",
+                        });
+
+                    jumpFlagProcessed = true;                    
+                }
+                break;
+
+            case AIR_DASH:
+            {
+                // @TODO: you're gonna have to check for jump buffer time for this bc there is a chance that the player is intending to jump on the ground despite having
+                //        a jump they can do in the air. You will need to detect whether they are too close to the ground to store the jump input rather than do it as a
+                //        air dash  -Timo
+                if (glm::length2(_worldSpaceInput) > 0.0001f)
+                {
+                    _airDashDirection = glm::normalize(_worldSpaceInput);
+                }
+                else
+                {
+                    _airDashDirection = glm::quat(glm::vec3(0, _facingDirection, 0)) * glm::vec3(0, 0, 1);
                 }
 
-                // @TODO: add some kind of audio event system, or even better, figure out how to use FMOD!!! Bc it's freakign integrated lol
-                AudioEngine::getInstance().playSoundFromList({
-                    "res/sfx/wip_jump1.ogg",
-                    "res/sfx/wip_jump2.ogg",
-                    //"res/sfx/wip_hollow_knight_sfx/hero_jump.wav",
-                    });
+                _airDashMove = true;
+                _usedAirDash = true;
+                _airDashTimeElapsed = 0.0f;
+                _airDashFinishSpeedFracCooked = _airDashFinishSpeedFrac;
 
-                jumpFlagProcessed = true;                    
+                jumpFlagProcessed = true;
+
+                break;
             }
-            break;
 
-        case AIR_DASH:
-        {
-            // @TODO: you're gonna have to check for jump buffer time for this bc there is a chance that the player is intending to jump on the ground despite having
-            //        a jump they can do in the air. You will need to detect whether they are too close to the ground to store the jump input rather than do it as a
-            //        air dash  -Timo
-            if (glm::length2(_worldSpaceInput) > 0.0001f)
+            case NONE:
+                _flagJump = false;
+                break;
+            }
+
+            // Turn off flag for sure if successfully jumped
+            if (jumpFlagProcessed)
             {
-                _airDashDirection = glm::normalize(_worldSpaceInput);
-            }
-            else
-            {
-                _airDashDirection = glm::quat(glm::vec3(0, _facingDirection, 0)) * glm::vec3(0, 0, 1);
+                _jumpPreventOnGroundCheckFramesTimer = _jumpPreventOnGroundCheckFrames;
+                _jumpInputBufferFramesTimer = -1;
+                _flagJump = false;
             }
 
-            _airDashMove = true;
-            _usedAirDash = true;
-            _airDashTimeElapsed = 0.0f;
-            _airDashFinishSpeedFracCooked = _airDashFinishSpeedFrac;
-
-            jumpFlagProcessed = true;
-
-            break;
+            // Turn off flag if jump buffer frames got exhausted
+            if (_jumpInputBufferFramesTimer-- < 0)
+                _flagJump = false;
         }
 
-        case NONE:
-            _flagJump = false;
-            break;
-        }
-
-        // Turn off flag for sure if successfully jumped
-        if (jumpFlagProcessed)
-        {
-            _jumpPreventOnGroundCheckFramesTimer = _jumpPreventOnGroundCheckFrames;
-            _jumpInputBufferFramesTimer = -1;
-            _flagJump = false;
-        }
-
-        // Turn off flag if jump buffer frames got exhausted
-        if (_jumpInputBufferFramesTimer-- < 0)
-            _flagJump = false;
+        btVector3 linVelo = physutil::toVec3(velocity + (_displacementToTarget + _attachmentVelocity) / physicsDeltaTime + _windZoneVelocity);
+        _physicsObj->body->setLinearVelocity(linVelo);
     }
-
-    btVector3 linVelo = physutil::toVec3(velocity + (_displacementToTarget + _attachmentVelocity) / physicsDeltaTime + _windZoneVelocity);
-    _physicsObj->body->setLinearVelocity(linVelo);
 }
 
 void Player::update(const float_t& deltaTime)
@@ -702,6 +732,37 @@ bool Player::processMessage(DataSerialized& message)
         globalState::playerHealth--;
 
         _attackedDebounceTimer = _attackedDebounce;
+
+        return true;
+    }
+    else if (eventName == "event_grapple_hold")
+    {
+        glm::vec3 grapplePoint         = message.loadVec3();
+        float_t   forceFacingDirection = message.loadFloat();
+
+        /*
+        std::cout << "GP:  " << grapplePoint.x << ", " << grapplePoint.y << ", "  << grapplePoint.z << std::endl;
+        std::cout << "FFD: " << forceFacingDirection << std::endl;
+        */
+
+        _beingGrabbedData.stage               = 1;
+        _beingGrabbedData.gotoPosition        = grapplePoint;
+        _beingGrabbedData.gotoFacingDirection = forceFacingDirection;
+
+        _physicsObj->body->setGravity(btVector3(0, 0, 0));
+
+        return true;
+    }
+    else if (eventName == "event_grapple_kickout")
+    {
+        // @HERE nocheckin
+        glm::vec3 launchVelocity = message.loadVec3();
+        std::cout << "LV:  " << launchVelocity.x << ", " << launchVelocity.y << ", "  << launchVelocity.z << std::endl;
+
+        _beingGrabbedData.stage = 2;
+        _beingGrabbedData.kickoutVelocity = launchVelocity;
+
+        _physicsObj->body->setGravity(PhysicsEngine::getInstance().getGravity());
 
         return true;
     }
