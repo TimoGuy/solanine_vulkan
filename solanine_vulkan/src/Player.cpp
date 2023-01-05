@@ -1058,7 +1058,7 @@ void Player::processGrounded(glm::vec3& velocity, float_t& groundAccelMult, cons
                     glm::max(0.0f, _prevAttachmentVelocity.y),
                     _prevAttachmentVelocity.z
                 ) / physicsDeltaTime;
-            velocity += applyVelocity;
+            velocity += applyVelocity;  // @TODO: fix this bc the velocity that gets applied is way too much! Idk how to adjust this or make sure that velocity is retained. This might be a nasty @BUG
         }
     }
 
