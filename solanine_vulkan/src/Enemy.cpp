@@ -13,7 +13,7 @@
 #include "Yosemite.h"
 
 
-Enemy::Enemy(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSerialized* ds) : Entity(em, ds), _rom(rom), _camera(camera), _currentAttackStage(GRAPPLEATTACKSTAGE::NONE)
+Enemy::Enemy(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSerialized* ds) : Entity(em, ds), _rom(rom), _camera(camera), _currentAttackStage(AttackStage::IDLE)
 {
     if (ds)
         load(*ds);
@@ -62,17 +62,28 @@ Enemy::Enemy(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSe
     body->setCcdSweptSphereRadius(0.5f);
 
     const glm::vec3 gtoff(0, -4.25f, 0);
-    _ghostObj =
+    _grappleGhostObj =
         PhysicsEngine::getInstance().registerGhostObject(
             _load_position - gtoff,
             glm::quat(glm::vec3(0.0f)),
             new btBoxShape({ 0.5, 0.5, 0.5 }),
             &getGUID()
         );
+    _stalkGhostObj =
+        PhysicsEngine::getInstance().registerGhostObject(
+            _load_position,
+            glm::quat(glm::vec3(0.0f)),
+            new btSphereShape(50.0f),
+            &getGUID()
+        );
 
-    _onOverlapFunc =
-        [&](RegisteredPhysicsObject* rpo) { onOverlap(rpo); };
-    _ghostObj->onOverlapCallback = &_onOverlapFunc;
+    _onOverlapStalkSensorFunc =
+        [&](RegisteredPhysicsObject* rpo) { onOverlapStalkSensor(rpo); };
+    _stalkGhostObj->onOverlapCallback = &_onOverlapStalkSensorFunc;
+
+    _onOverlapGrappleSensorFunc =
+        [&](RegisteredPhysicsObject* rpo) { onOverlapGrappleSensor(rpo); };
+    _grappleGhostObj->onOverlapCallback = &_onOverlapGrappleSensorFunc;
 
     _enablePhysicsUpdate = true;
     _enableUpdate = true;
@@ -84,7 +95,8 @@ Enemy::~Enemy()
     _rom->unregisterRenderObject(_renderObj);
     _rom->removeModelCallbacks(this);
     PhysicsEngine::getInstance().unregisterPhysicsObject(_physicsObj);
-    PhysicsEngine::getInstance().unregisterGhostObject(_ghostObj);
+    PhysicsEngine::getInstance().unregisterGhostObject(_grappleGhostObj);
+    PhysicsEngine::getInstance().unregisterGhostObject(_stalkGhostObj);
 
     // @TODO: figure out if I need to call `delete _collisionShape;` or not
 }
@@ -153,17 +165,46 @@ void Enemy::physicsUpdate(const float_t& physicsDeltaTime)
     glm::quat rot = glm::quat(glm::vec3(0, _facingDirection, 0));
     btVector3 pos = _physicsObj->body->getWorldTransform().getOrigin() + physutil::toVec3(glm::toMat3(rot) * _grapplePointPreTransPosition);
     _grapplePoint = physutil::toVec3(pos);
-    _ghostObj->ghost->setWorldTransform(
+    _grappleGhostObj->ghost->setWorldTransform(
         btTransform(
             btQuaternion(rot.x, rot.y, rot.z, rot.w),
             pos
         )
     );
 
+    _stalkGhostObj->ghost->setWorldTransform(
+        btTransform(
+            btQuaternion(0, 0, 0, 1),
+            _physicsObj->body->getWorldTransform().getOrigin()
+        )
+    );
+
     //
     // Send messages to entity being grappled (if grappling rn)
     //
-    if (_currentAttackStage == GRAPPLEATTACKSTAGE::GRAPPLE)
+    switch (_currentAttackStage)
+    {
+    case AttackStage::IDLE:
+        _worldSpaceInput = glm::vec3(0.0f);
+        break;
+
+    case AttackStage::STALK:
+    {
+        _worldSpaceInput = _stalkingTargetPoint - physutil::toVec3(_physicsObj->body->getWorldTransform().getOrigin());
+        _worldSpaceInput.y = 0.0f;
+        _worldSpaceInput = glm::normalize(_worldSpaceInput);
+
+        if (_stalkingTimeToRevertToIdleTimer < 0.0f)
+        {
+            _currentAttackStage = AttackStage::IDLE;
+        }
+        _stalkingTimeToRevertToIdleTimer -= physicsDeltaTime;
+    } break;
+
+    case AttackStage::LUNGE:
+        break;
+
+    case AttackStage::GRAPPLE:
     {
         // @COPYPASTA
         DataSerializer ds;
@@ -178,10 +219,11 @@ void Enemy::physicsUpdate(const float_t& physicsDeltaTime)
         _grappleStageGrappleTimer += physicsDeltaTime;
         if (_grappleStageGrappleTimer > 1.0f)
         {
-            _currentAttackStage = GRAPPLEATTACKSTAGE::KICKOUT;
+            _currentAttackStage = AttackStage::KICKOUT;
         }
-    }
-    else if (_currentAttackStage == GRAPPLEATTACKSTAGE::KICKOUT)
+    } break;
+
+    case AttackStage::KICKOUT:
     {
         if (_grappleStageKickoutTimer == 0.0f)
         {
@@ -197,7 +239,8 @@ void Enemy::physicsUpdate(const float_t& physicsDeltaTime)
 
         _grappleStageKickoutTimer += physicsDeltaTime;
         if (_grappleStageKickoutTimer > 1.0f)
-            _currentAttackStage = GRAPPLEATTACKSTAGE::NONE;
+            _currentAttackStage = AttackStage::IDLE;
+    } break;
     }
 
     //
@@ -809,10 +852,38 @@ void Enemy::processGrounded(glm::vec3& velocity, float_t& groundAccelMult, const
     _attachmentVelocity     = attachmentVelocityReset;
 }
 
-void Enemy::onOverlap(RegisteredPhysicsObject* rpo)
+void Enemy::onOverlapStalkSensor(RegisteredPhysicsObject* rpo)
 {
-    if (_currentAttackStage != GRAPPLEATTACKSTAGE::NONE)
-        return;  // Ignore this overlap if currently grappling another entity
+    // Ignore this overlap if currently grappling another entity
+    if (_currentAttackStage >= AttackStage::GRAPPLE) return;
+
+    std::string guid = *(std::string*)rpo->body->getUserPointer();
+    if (guid == getGUID()) return;
+
+    // Update target point and short circuit if this
+    // is the entity already stalking
+    if (_currentAttackStage == AttackStage::STALK &&
+        guid == _stalkingEntityGUID)
+    {
+        _stalkingTargetPoint = physutil::toVec3(rpo->body->getWorldTransform().getOrigin());
+        _stalkingTimeToRevertToIdleTimer = _stalkingTimeToRevertToIdle;
+        return;
+    }
+
+    // Choose best one to stalk (i.e. first player you see)
+    if (_em->getEntityViaGUID(guid)->getTypeName() != ":player") return;
+
+    _currentAttackStage = AttackStage::STALK;
+    _stalkingEntityGUID = guid;
+
+    _stalkingTargetPoint = physutil::toVec3(rpo->body->getWorldTransform().getOrigin());
+    _stalkingTimeToRevertToIdleTimer = _stalkingTimeToRevertToIdle;
+}
+
+void Enemy::onOverlapGrappleSensor(RegisteredPhysicsObject* rpo)
+{
+    // Ignore this overlap if currently grappling another entity
+    if (_currentAttackStage >= AttackStage::GRAPPLE) return;
 
     std::string guid = *(std::string*)rpo->body->getUserPointer();
     if (guid == getGUID()) return;
@@ -828,7 +899,7 @@ void Enemy::onOverlap(RegisteredPhysicsObject* rpo)
     DataSerialized dsd = ds.getSerializedData();
     _em->sendMessage(guid, dsd);
 
-    _currentAttackStage       = GRAPPLEATTACKSTAGE::GRAPPLE;
+    _currentAttackStage       = AttackStage::GRAPPLE;
     _grappleStageGrappleTimer = 0.0f;
     _grappleStageKickoutTimer = 0.0f;
     _grapplingEntityGUID      = guid;

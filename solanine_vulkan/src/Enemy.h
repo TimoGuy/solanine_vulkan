@@ -40,7 +40,8 @@ private:
     RenderObjectManager*     _rom;
     btCapsuleShape*          _collisionShape;
     RegisteredPhysicsObject* _physicsObj;
-    RegisteredGhostObject*   _ghostObj;
+    RegisteredGhostObject*   _stalkGhostObj;
+    RegisteredGhostObject*   _grappleGhostObj;
     Camera* _camera;
     float_t _totalHeight;
     float_t _maxClimbAngle;
@@ -94,10 +95,15 @@ private:
     float_t   _airDashFinishSpeedFrac     = 0.25f;
     
     // Grapple attack
-    enum class GRAPPLEATTACKSTAGE
+    enum class AttackStage
     {
-        NONE, GRAPPLE, KICKOUT
+        IDLE, STALK, LUNGE, GRAPPLE, KICKOUT
     } _currentAttackStage;
+    std::string _stalkingEntityGUID;
+    glm::vec3   _stalkingTargetPoint;
+    float_t     _stalkingTimeToRevertToIdle      = 1.0f;
+    float_t     _stalkingTimeToRevertToIdleTimer = 0.0f;
+
     std::string _grapplingEntityGUID;
     glm::vec3   _grapplePointPreTransPosition = glm::vec3(0, 1, 2.35);
     glm::vec3   _grapplePoint;
@@ -109,8 +115,11 @@ private:
     glm::vec3 _load_position = glm::vec3(0.0f);
 
     // Callbacks
-    std::function<void(RegisteredPhysicsObject*)> _onOverlapFunc;
-    void onOverlap(RegisteredPhysicsObject* rpo);
+    std::function<void(RegisteredPhysicsObject*)> _onOverlapStalkSensorFunc;
+    void onOverlapStalkSensor(RegisteredPhysicsObject* rpo);
+
+    std::function<void(RegisteredPhysicsObject*)> _onOverlapGrappleSensorFunc;
+    void onOverlapGrappleSensor(RegisteredPhysicsObject* rpo);
 
     // Tweak Props
     float_t _facingDirection = 0.0f;

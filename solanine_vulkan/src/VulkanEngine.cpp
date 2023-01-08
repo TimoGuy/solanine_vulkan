@@ -107,7 +107,7 @@ void VulkanEngine::init()
 
 	_isInitialized = true;
 
-	scene::loadScene(globalState::activeScene, this);
+	scene::loadScene(globalState::savedActiveScene, this);
 }
 
 void VulkanEngine::run()
@@ -4117,9 +4117,9 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 
 	static float_t scenePropertiesWindowWidth = 0.0f;
 	ImGui::SetNextWindowPos(ImVec2(_windowExtent.width - scenePropertiesWindowWidth, 0.0f), ImGuiCond_Always);
-	ImGui::Begin((globalState::activeScene + " Properties").c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
+	ImGui::Begin((globalState::savedActiveScene + " Properties").c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
 	{
-		ImGui::Text(globalState::activeScene.c_str());
+		ImGui::Text(globalState::savedActiveScene.c_str());
 
 		static std::vector<std::string> listOfScenes;
 		if (ImGui::Button("Open Scene.."))
@@ -4143,7 +4143,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 
 		ImGui::SameLine();
 		if (ImGui::Button("Save Scene"))
-			scene::saveScene(globalState::activeScene, _entityManager->_entities, this);
+			scene::saveScene(globalState::savedActiveScene, _entityManager->_entities, this);
 
 		ImGui::SameLine();
 		if (ImGui::Button("Save Scene As.."))
@@ -4155,7 +4155,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 			if (ImGui::Button(("Save As \"" + saveSceneAsFname + ".ssdat\"").c_str()))
 			{
 				scene::saveScene(saveSceneAsFname + ".ssdat", _entityManager->_entities, this);
-				globalState::activeScene = saveSceneAsFname + ".ssdat";
+				globalState::savedActiveScene = saveSceneAsFname + ".ssdat";
 				ImGui::CloseCurrentPopup();
 			}
 			ImGui::EndPopup();
@@ -4194,7 +4194,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 	ImGui::SetNextWindowPos(ImVec2(_windowExtent.width * 0.5f + windowPadding, _windowExtent.height - gamestateInfoWindowHeight), ImGuiCond_Always);		// @NOTE: the ImGuiCond_Always means that this line will execute always, when set to once, this line will be ignored after the first time it's called
 	ImGui::Begin("##GameState Info", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs);
 	{
-		ImGui::Text(("Health: " + std::to_string(globalState::playerHealth) + " / " + std::to_string(globalState::playerMaxHealth)).c_str());
+		ImGui::Text(("Health: " + std::to_string(globalState::savedPlayerHealth) + " / " + std::to_string(globalState::savedPlayerMaxHealth)).c_str());
 
 		/*
 		ImGui::Text((std::format("{:.2f}", _debugStats.renderTimesMS[_debugStats.renderTimesMSHeadIndex]) + "ms").c_str());

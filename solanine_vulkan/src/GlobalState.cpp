@@ -9,13 +9,13 @@
 namespace globalState
 {
     // Default values
-    std::string activeScene                = "sample_scene_simplified.ssdat";
+    std::string savedActiveScene                = "sample_scene_simplified.ssdat";
 
-    glm::vec3   playerSavedPosition        = glm::vec3(0);    // Currently unused. @TODO
-    float_t     playerSavedFacingDirection = 0.0f;            // Currently unused. @TODO
+    glm::vec3   savedPlayerPosition        = glm::vec3(0);    // Currently unused. @TODO
+    float_t     savedPlayerFacingDirection = 0.0f;            // Currently unused. @TODO
 
-    int32_t     playerHealth               = 100;
-    int32_t     playerMaxHealth            = 100;
+    int32_t     savedPlayerHealth               = 100;
+    int32_t     savedPlayerMaxHealth            = 100;
 
     SceneCamera* sceneCameraRef = nullptr;
 
@@ -50,14 +50,14 @@ namespace globalState
         }
 
         DataSerialized dsd = ds.getSerializedData();
-        activeScene                                  = dsd.loadString();
+        savedActiveScene                                  = dsd.loadString();
         sceneCameraRef->gpuCameraData.cameraPosition = dsd.loadVec3();
         sceneCameraRef->facingDirection              = dsd.loadVec3();
         sceneCameraRef->fov                          = dsd.loadFloat();
-        playerSavedPosition                          = dsd.loadVec3();
-        playerSavedFacingDirection                   = dsd.loadFloat();
-        playerHealth                                 = dsd.loadFloat();
-        playerMaxHealth                              = dsd.loadFloat();
+        savedPlayerPosition                          = dsd.loadVec3();
+        savedPlayerFacingDirection                   = dsd.loadFloat();
+        savedPlayerHealth                                 = dsd.loadFloat();
+        savedPlayerMaxHealth                              = dsd.loadFloat();
 
         debug::pushDebugMessage({
             .message = "Successfully read state from \"" + gsFname + "\"",
@@ -78,14 +78,14 @@ namespace globalState
         }
 
         DataSerializer ds;
-        ds.dumpString(activeScene);
+        ds.dumpString(savedActiveScene);
         ds.dumpVec3(sceneCameraRef->gpuCameraData.cameraPosition);
         ds.dumpVec3(sceneCameraRef->facingDirection);
         ds.dumpFloat(sceneCameraRef->fov);
-        ds.dumpVec3(playerSavedPosition);
-        ds.dumpFloat(playerSavedFacingDirection);
-        ds.dumpFloat(playerHealth);
-        ds.dumpFloat(playerMaxHealth);
+        ds.dumpVec3(savedPlayerPosition);
+        ds.dumpFloat(savedPlayerFacingDirection);
+        ds.dumpFloat(savedPlayerHealth);
+        ds.dumpFloat(savedPlayerMaxHealth);
 
         DataSerialized dsd = ds.getSerializedData();
         size_t count = dsd.getSerializedValuesCount();

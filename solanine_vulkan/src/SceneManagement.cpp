@@ -162,7 +162,7 @@ namespace scene
             success &= (spinupNewObject(newObjectType, engine, &dsCooked) != nullptr);
         }
 
-        globalState::activeScene = name;
+        globalState::savedActiveScene = name;
 
         if (success)
             debug::pushDebugMessage({

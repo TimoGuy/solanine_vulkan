@@ -6,15 +6,29 @@ struct SceneCamera;
 
 namespace globalState
 {
-    extern std::string activeScene;
+    //
+    // Saved
+    //
+    extern std::string savedActiveScene;
 
-    extern glm::vec3   playerSavedPosition;
-    extern float_t     playerSavedFacingDirection;
+    extern glm::vec3   savedPlayerPosition;
+    extern float_t     savedPlayerFacingDirection;
 
-    extern int32_t     playerHealth;
-    extern int32_t     playerMaxHealth;
+    extern int32_t     savedPlayerHealth;
+    extern int32_t     savedPlayerMaxHealth;
+
+    //
+    // Non-saved
+    //
+    struct EntityInformation
+    {
+        glm::vec3   position;
+        std::string type;
+        bool        isHidden = false;  // Just in case if a disappearing entity would be used like a rabbit that burrows. Then the enemy would be confused (@NOTE that the position still updates)
+    };
+    extern std::vector<EntityInformation*> enemysEnemiesEntInfo;
 
     void initGlobalState(SceneCamera& sc);
-    void launchAsyncWriteTask();
+    void launchAsyncWriteTask();  // @NOTE: this is simply for things that are marked saved
     void cleanupGlobalState();
 }

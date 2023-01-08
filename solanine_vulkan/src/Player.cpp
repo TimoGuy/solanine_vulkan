@@ -729,7 +729,7 @@ bool Player::processMessage(DataSerialized& message)
             "res/sfx/wip_hurt.ogg",
         });
 
-        globalState::playerHealth--;
+        globalState::savedPlayerHealth--;
 
         _attackedDebounceTimer = _attackedDebounce;
 
