@@ -731,6 +731,10 @@ bool Player::processMessage(DataSerialized& message)
             "res/sfx/wip_OOT_YoungLink_Hurt3.wav",
         });
 
+        AudioEngine::getInstance().playSoundFromList({
+            "res/sfx/wip_punch_sound.ogg",
+        });
+
         globalState::savedPlayerHealth--;
 
         _attackedDebounceTimer = _attackedDebounce;
@@ -753,6 +757,11 @@ bool Player::processMessage(DataSerialized& message)
 
         _physicsObj->body->setGravity(btVector3(0, 0, 0));
 
+        return true;
+    }
+    else if (eventName == "event_grapple_release")
+    {
+        _beingGrabbedData.stage = 0;
         return true;
     }
     else if (eventName == "event_grapple_kickout")

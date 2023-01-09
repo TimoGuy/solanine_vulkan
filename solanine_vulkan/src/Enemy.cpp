@@ -305,6 +305,15 @@ void Enemy::physicsUpdate(const float_t& physicsDeltaTime)
         if (_grappleStageKickoutTimer > 1.0f)
             _currentAttackStage = AttackStage::IDLE;
     } break;
+
+    case AttackStage::KNOCKBACK:
+    {
+        _worldSpaceInput = glm::vec3(0.0f);
+
+        if (_knockbackStageTimer < 0.0f)
+            _currentAttackStage = AttackStage::IDLE;
+        _knockbackStageTimer -= physicsDeltaTime;
+    } break;
     }
 
     //
@@ -603,8 +612,22 @@ bool Enemy::processMessage(DataSerialized& message)
         if (_attackedDebounceTimer > 0.0f)
             return false;
 
+        // Let go of grappling entity if currently is
+        if (_currentAttackStage == AttackStage::GRAPPLE)
+        {
+            DataSerializer ds;
+            ds.dumpString("event_grapple_release");
+
+            DataSerialized dsd = ds.getSerializedData();
+            _em->sendMessage(_grapplingEntityGUID, dsd);
+        }
+
+        // Setup knockbock
         btVector3 pushDirection = physutil::toVec3(message.loadVec3());
         _physicsObj->body->setLinearVelocity(pushDirection * _attackedPushBackStrength);
+
+        _currentAttackStage  = AttackStage::KNOCKBACK;
+        _knockbackStageTimer = _knockbackStageTime;
 
         AudioEngine::getInstance().playSoundFromList({
             "res/sfx/wip_bonk.ogg",
@@ -612,7 +635,6 @@ bool Enemy::processMessage(DataSerialized& message)
         });
 
         _attackedDebounceTimer = _attackedDebounce;
-        std::cout << "Yatta!" << std::endl;
 
         return true;
     }

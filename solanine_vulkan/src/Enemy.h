@@ -51,9 +51,9 @@ private:
     float_t _bottomRaycastExtraDist;
     float_t _adjustedHalfHeight;
 
-    float_t _attackedDebounce = 0.25f;
-    float_t _attackedDebounceTimer = 0.0f;
-    float_t _attackedPushBackStrength = 10.0f;
+    float_t _attackedDebounce         = 0.25f;
+    float_t _attackedDebounceTimer    = 0.0f;
+    float_t _attackedPushBackStrength = 50.0f;
 
     void processGrounded(glm::vec3& velocity, float_t& groundAccelMult, const float_t& physicsDeltaTime);
 
@@ -120,7 +120,8 @@ private:
     glm::vec3   _grappleKickoutVelocity   = glm::vec3(0, 50, 20);
     float_t     _grappleStageKickoutTimer = 0.0f;
 
-    // @TODO: create the knockback stage (canceled attack system)
+    float_t     _knockbackStageTime  = 1.25f;
+    float_t     _knockbackStageTimer = 0.0f;
 
     // Load Props
     glm::vec3 _load_position = glm::vec3(0.0f);
