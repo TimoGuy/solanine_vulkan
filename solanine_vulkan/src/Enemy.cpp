@@ -73,7 +73,15 @@ Enemy::Enemy(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSe
         PhysicsEngine::getInstance().registerGhostObject(
             _load_position,
             glm::quat(glm::vec3(0.0f)),
-            new btSphereShape(50.0f),
+            new btSphereShape(40.0f),
+            &getGUID()
+        );
+
+    _debugGhostObj =
+        PhysicsEngine::getInstance().registerGhostObject(
+            _load_position,
+            glm::quat(glm::vec3(0.0f)),
+            new btSphereShape(0.5f),
             &getGUID()
         );
 
@@ -145,8 +153,6 @@ void Enemy::update(const float_t& deltaTime)
     if (glm::length2(_worldSpaceInput) > 0.01f)
         _facingDirection = glm::atan(_worldSpaceInput.x, _worldSpaceInput.z);
 
-    _facingDirection += glm::radians(45.0f) * deltaTime;
-
     glm::vec3 interpPos = physutil::getPosition(_physicsObj->interpolatedTransform);
     _renderObj->transformMatrix = glm::translate(glm::mat4(1.0f), interpPos) * glm::toMat4(glm::quat(glm::vec3(0, _facingDirection, 0)));
 }
@@ -179,6 +185,13 @@ void Enemy::physicsUpdate(const float_t& physicsDeltaTime)
         )
     );
 
+    _debugGhostObj->ghost->setWorldTransform(
+        btTransform(
+            btQuaternion(0, 0, 0, 1),
+            physutil::toVec3(_stalkingTargetPoint)
+        )
+    );
+
     //
     // Send messages to entity being grappled (if grappling rn)
     //
@@ -191,6 +204,15 @@ void Enemy::physicsUpdate(const float_t& physicsDeltaTime)
     case AttackStage::STALK:
     {
         _worldSpaceInput = _stalkingTargetPoint - physutil::toVec3(_physicsObj->body->getWorldTransform().getOrigin());
+        float_t distance = glm::length(_worldSpaceInput);
+        if (distance < _lungingDistanceForActivation)
+        {
+            _currentAttackStage = AttackStage::LUNGE;
+            _lungingStageTimer  = 0.0f;
+            _worldSpaceInput    = glm::vec3(0.0f);
+            break;
+        }
+
         _worldSpaceInput.y = 0.0f;
         _worldSpaceInput = glm::normalize(_worldSpaceInput);
 
@@ -202,10 +224,43 @@ void Enemy::physicsUpdate(const float_t& physicsDeltaTime)
     } break;
 
     case AttackStage::LUNGE:
-        break;
+    {
+        if (_lungingStageTimer == 0.0f)
+        {
+            // Play sound
+        }
+
+        if (_lungingStageTimer < _lungingFaceTowardsTargetTime)
+        {
+            // @COPYPASTA
+            glm::vec3 delta = _stalkingTargetPoint - physutil::toVec3(_physicsObj->body->getWorldTransform().getOrigin());
+            _facingDirection = glm::atan(delta.x, delta.z);
+        }
+
+        if (_lungingStageTimer < _lungingChargeUpTime)
+        {
+            _worldSpaceInput = glm::vec3(0.0f);
+        }
+        else
+        {
+            _worldSpaceInput = glm::quat(glm::vec3(0, _facingDirection, 0)) * glm::vec3(0, 0, 1);
+
+            if (_lungingStageTimer > _lungingStageTotalTime)
+            {
+                // Revert back to idle if end of the lunge
+                // (NOTE: the overlap func will immediately start
+                // stalking the player again if within range)
+                _currentAttackStage = AttackStage::IDLE;
+            }
+        }
+
+        _lungingStageTimer += physicsDeltaTime;
+    } break;
 
     case AttackStage::GRAPPLE:
     {
+        _worldSpaceInput = glm::vec3(0.0f);
+
         // @COPYPASTA
         DataSerializer ds;
         ds.dumpString("event_grapple_hold");
@@ -225,6 +280,8 @@ void Enemy::physicsUpdate(const float_t& physicsDeltaTime)
 
     case AttackStage::KICKOUT:
     {
+        _worldSpaceInput = glm::vec3(0.0f);
+
         if (_grappleStageKickoutTimer == 0.0f)
         {
             glm::vec3 grappleKickoutCooked = glm::quat(glm::vec3(0, _facingDirection, 0)) * _grappleKickoutVelocity;
@@ -397,7 +454,7 @@ void Enemy::physicsUpdate(const float_t& physicsDeltaTime)
         //        the character tripped because of the sudden velocity speed drop when running
         //        into a nick.
         //
-        glm::vec3 desiredVelocity = _worldSpaceInput * _maxSpeed;  // @NOTE: we just ignore the y component in this desired velocity thing
+        glm::vec3 desiredVelocity = _worldSpaceInput * (_currentAttackStage == AttackStage::LUNGE ? _lungingMaxSpeed : _maxSpeed);  // @NOTE: we just ignore the y component in this desired velocity thing
 
         glm::vec2 a(velocity.x, velocity.z);
         glm::vec2 b(desiredVelocity.x, desiredVelocity.z);
@@ -425,6 +482,8 @@ void Enemy::physicsUpdate(const float_t& physicsDeltaTime)
         float_t acceleration    = _onGround ? _maxAcceleration : _maxMidairAcceleration;
         if (!useAcceleration)
             acceleration        = _onGround ? _maxDeceleration : _maxMidairDeceleration;
+        if (_currentAttackStage == AttackStage::LUNGE)
+            acceleration        = _lungingAcceleration;
         float_t maxSpeedChange  = acceleration * physicsDeltaTime;
 
         glm::vec2 c = physutil::moveTowardsVec2(a, b, maxSpeedChange);
@@ -606,6 +665,16 @@ void Enemy::renderImGui()
 
     ImGui::DragFloat3("_grapplePointPreTransPosition", &_grapplePointPreTransPosition.x);
     ImGui::DragFloat3("_grappleKickoutVelocity", &_grappleKickoutVelocity.x);
+
+    ImGui::Separator();
+
+    ImGui::DragFloat("_lungingDistanceForActivation", &_lungingDistanceForActivation);
+    ImGui::DragFloat("_lungingFaceTowardsTargetTime", &_lungingFaceTowardsTargetTime);
+    ImGui::DragFloat("_lungingChargeUpTime", &_lungingChargeUpTime);
+    ImGui::DragFloat("_lungingStageTotalTime", &_lungingStageTotalTime);
+    ImGui::DragFloat("_lungingStageTimer", &_lungingStageTimer);
+    ImGui::DragFloat("_lungingMaxSpeed", &_lungingMaxSpeed);
+    ImGui::DragFloat("_lungingAcceleration", &_lungingAcceleration);
 }
 
 void Enemy::processGrounded(glm::vec3& velocity, float_t& groundAccelMult, const float_t& physicsDeltaTime)
@@ -862,7 +931,7 @@ void Enemy::onOverlapStalkSensor(RegisteredPhysicsObject* rpo)
 
     // Update target point and short circuit if this
     // is the entity already stalking
-    if (_currentAttackStage == AttackStage::STALK &&
+    if ((_currentAttackStage == AttackStage::STALK || _currentAttackStage == AttackStage::LUNGE) &&
         guid == _stalkingEntityGUID)
     {
         _stalkingTargetPoint = physutil::toVec3(rpo->body->getWorldTransform().getOrigin());
@@ -887,6 +956,9 @@ void Enemy::onOverlapGrappleSensor(RegisteredPhysicsObject* rpo)
 
     std::string guid = *(std::string*)rpo->body->getUserPointer();
     if (guid == getGUID()) return;
+
+    // Only grapple players
+    if (_em->getEntityViaGUID(guid)->getTypeName() != ":player") return;
 
     // Send attacked message
     glm::vec3 pushDirection = glm::quat(glm::vec3(0, _facingDirection, 0)) * glm::vec3(0, 0, 1);

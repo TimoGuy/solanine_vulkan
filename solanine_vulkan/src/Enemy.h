@@ -42,6 +42,7 @@ private:
     RegisteredPhysicsObject* _physicsObj;
     RegisteredGhostObject*   _stalkGhostObj;
     RegisteredGhostObject*   _grappleGhostObj;
+    RegisteredGhostObject*   _debugGhostObj;
     Camera* _camera;
     float_t _totalHeight;
     float_t _maxClimbAngle;
@@ -97,12 +98,20 @@ private:
     // Grapple attack
     enum class AttackStage
     {
-        IDLE, STALK, LUNGE, GRAPPLE, KICKOUT
+        IDLE, STALK, LUNGE, GRAPPLE, KICKOUT, KNOCKBACK
     } _currentAttackStage;
     std::string _stalkingEntityGUID;
     glm::vec3   _stalkingTargetPoint;
-    float_t     _stalkingTimeToRevertToIdle      = 1.0f;
+    float_t     _stalkingTimeToRevertToIdle      = 0.1f;
     float_t     _stalkingTimeToRevertToIdleTimer = 0.0f;
+
+    float_t     _lungingDistanceForActivation = 20.0f;
+    float_t     _lungingFaceTowardsTargetTime = 1.3f;
+    float_t     _lungingChargeUpTime          = 1.15f;
+    float_t     _lungingStageTotalTime        = 1.75f;
+    float_t     _lungingStageTimer            = 0.0f;
+    float_t     _lungingMaxSpeed              = 50.0f;
+    float_t     _lungingAcceleration          = 1000.0f;
 
     std::string _grapplingEntityGUID;
     glm::vec3   _grapplePointPreTransPosition = glm::vec3(0, 1, 2.35);
@@ -110,6 +119,8 @@ private:
     float_t     _grappleStageGrappleTimer = 0.0f;
     glm::vec3   _grappleKickoutVelocity   = glm::vec3(0, 50, 20);
     float_t     _grappleStageKickoutTimer = 0.0f;
+
+    // @TODO: create the knockback stage (canceled attack system)
 
     // Load Props
     glm::vec3 _load_position = glm::vec3(0.0f);
@@ -123,7 +134,7 @@ private:
 
     // Tweak Props
     float_t _facingDirection = 0.0f;
-    float_t _maxSpeed = 20.0f;
+    float_t _maxSpeed = 15.0f;
     float_t _maxAcceleration = 150.0f;
     float_t _maxDeceleration = 150.0f;
     float_t _maxMidairAcceleration = 80.0f;

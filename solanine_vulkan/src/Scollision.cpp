@@ -19,7 +19,7 @@ Scollision::Scollision(EntityManager* em, RenderObjectManager* rom, DataSerializ
         _rom->registerRenderObject({
             .model = _model,
             .transformMatrix = _load_transform,
-            .renderLayer = RenderLayer::VISIBLE,
+            .renderLayer = RenderLayer::BUILDER,
             .attachedEntityGuid = getGUID(),
             });
 
