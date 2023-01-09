@@ -726,7 +726,9 @@ bool Player::processMessage(DataSerialized& message)
             return false;
 
         AudioEngine::getInstance().playSoundFromList({
-            "res/sfx/wip_hurt.ogg",
+            "res/sfx/wip_OOT_YoungLink_Hurt1.wav",
+            "res/sfx/wip_OOT_YoungLink_Hurt2.wav",
+            "res/sfx/wip_OOT_YoungLink_Hurt3.wav",
         });
 
         globalState::savedPlayerHealth--;

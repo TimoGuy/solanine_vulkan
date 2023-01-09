@@ -271,11 +271,11 @@ void Enemy::physicsUpdate(const float_t& physicsDeltaTime)
         _em->sendMessage(_grapplingEntityGUID, dsd);
 
         // Update timer
-        _grappleStageGrappleTimer += physicsDeltaTime;
         if (_grappleStageGrappleTimer > 1.0f)
         {
             _currentAttackStage = AttackStage::KICKOUT;
         }
+        _grappleStageGrappleTimer += physicsDeltaTime;
     } break;
 
     case AttackStage::KICKOUT:
@@ -292,6 +292,13 @@ void Enemy::physicsUpdate(const float_t& physicsDeltaTime)
 
             DataSerialized dsd = ds.getSerializedData();
             _em->sendMessage(_grapplingEntityGUID, dsd);
+            
+            // Send damage
+            DataSerializer ds2;
+            ds2.dumpString("event_attacked");
+
+            DataSerialized dsd2 = ds2.getSerializedData();
+            _em->sendMessage(_grapplingEntityGUID, dsd2);
         }
 
         _grappleStageKickoutTimer += physicsDeltaTime;
