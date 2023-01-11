@@ -743,6 +743,10 @@ bool Player::processMessage(DataSerialized& message)
     }
     else if (eventName == "event_grapple_hold")
     {
+        // Undo movement inputs
+        _flagJump = false;
+
+        // Process grapple event
         glm::vec3 grapplePoint         = message.loadVec3();
         float_t   forceFacingDirection = message.loadFloat();
 
