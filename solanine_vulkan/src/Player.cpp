@@ -33,7 +33,6 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
             "EventSwitchToHandAttachment", [&]() {
                 _weaponAttachmentJointName = "Hand Attachment";
                 _isWeaponDrawn = true;
-                _attackStage = AttackStage::NONE;
             }
         },
         {
