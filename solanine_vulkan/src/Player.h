@@ -79,14 +79,12 @@ private:
     glm::vec3    _prevAttachmentVelocity  = { 0, 0, 0 };
 
     // Combat mode
-    bool      _flagDrawOrSheathWeapon    = false;
     bool      _isWeaponDrawn             = false;
     glm::mat4 _weaponPrevTransform       = glm::mat4(0.0f);  // NOTE: this is the flag to show to ignore the prev transform
 
     enum class AttackStage { NONE, PREPAUSE, SWING, CHAIN_COMBO, END };
     enum class AttackType { HORIZONTAL, DIVE_ATTACK, SPIN_ATTACK };
     bool        _flagAttack                = false;
-    bool        _flagAttackHeld            = false;
     bool        _allowComboInput           = false;
     bool        _allowComboTransition      = false;
     bool        _usedSpinAttack            = false;  // You shan't use this multiple times in the air!

@@ -33,6 +33,7 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
             "EventSwitchToHandAttachment", [&]() {
                 _weaponAttachmentJointName = "Hand Attachment";
                 _isWeaponDrawn = true;
+                _attackStage = AttackStage::NONE;
             }
         },
         {
@@ -97,7 +98,6 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
             "EventEndAttack", [&]() {
                 _attackStage = AttackStage::NONE;
                 _flagAttack = false;  // To prevent unusual behavior (i.e. had a random attack just start from the beginning despite no inputs. So this is just to make sure)
-                _flagAttackHeld = false;
             }
         },
         {
@@ -212,14 +212,11 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
             input = glm::vec2(0.0f);
             _flagJump = false;
             _flagAttack = false;
-            _flagAttackHeld = false;
-            _flagDrawOrSheathWeapon = false;
         }
 
         if (_isWeaponDrawn && (_attackStage >= AttackStage::SWING || (_attackStage == AttackStage::PREPAUSE && !_attackPrepauseReady)))
         {
             input = glm::vec2(0);
-            _flagDrawOrSheathWeapon = false;
         }
 
         glm::vec3 flatCameraFacingDirection = _camera->sceneCamera.facingDirection;
@@ -276,31 +273,24 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     float groundAccelMult;
     processGrounded(velocity, groundAccelMult, physicsDeltaTime);
 
-    if (_flagDrawOrSheathWeapon)
+    //
+    // Enter combat mode via pressing the attack button
+    //
+    if (_flagAttack && !_isWeaponDrawn)
     {
         // Reset flags
-        _flagDrawOrSheathWeapon = false;
+        _flagAttack = false;
 
-        /*if (!_isWeaponDrawn && _isSprinting)  @TODO: feature request, to have sprinting
+        if (_onGround)
         {
-            // Start grounded attack immediately
+            _attackStage = AttackStage::NONE;
+            _characterRenderObj->animator->setTrigger("goto_combat_mode");
         }
-        else*/ if (!_isWeaponDrawn && !_onGround)
+        else
         {
             _airDashMove = false;  // @NOTE: I added this back in like 5 minutes after removing it bc the 45deg air dash is with the sword drawn, so it makes sense to nullify it if you're gonna sheath your weapon.  -Timo 2022/11/12    @NOTE: I think that removing this is important so that you can do the airborne sword drawing airdash and then put your sword away to jump easier  -Timo 2022/11/12
             _characterRenderObj->animator->runEvent("EventPlaySFXMaterialize");
             startAttack(AttackType::DIVE_ATTACK);
-        }
-        else
-        {
-            //
-            // Enter/exit combat mode
-            //
-            _attackStage = AttackStage::NONE;
-            if (_isWeaponDrawn)
-                _characterRenderObj->animator->setTrigger("leave_combat_mode");
-            else
-                _characterRenderObj->animator->setTrigger("goto_combat_mode");
         }
     }
 
@@ -362,23 +352,51 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
                 _attackPrepauseTimeElapsed += physicsDeltaTime;
             }
 
-            if ((!_attackPrepauseReady && !_flagAttackHeld) ||
-                (_attackType == AttackType::DIVE_ATTACK && _onGround))
+            if (_attackType == AttackType::DIVE_ATTACK && _onGround)
             {
-                // Exit the prepause step
-                _flagAttack = false;
-                _flagAttackHeld = false;
+                if (_attackPrepauseReady)
+                {
+                    // Convert to a grounded attack
+                    _characterRenderObj->animator->setTrigger("goto_convert_horizontal_hold");
+                    _characterRenderObj->animator->runEvent("EventEnableMCMLayer");
+                    _attackType = AttackType::HORIZONTAL;
+                }
+                else
+                {
+                    // Exit the prepause charging step
+                    _flagAttack = false;
 
-                _characterRenderObj->animator->setTrigger("goto_cancel_attack_prepause");
-                _characterRenderObj->animator->runEvent("EventEnableMCMLayer");
-                _attackStage = AttackStage::NONE;
+                    _characterRenderObj->animator->setTrigger("goto_cancel_attack_prepause");
+                    _characterRenderObj->animator->runEvent("EventEnableMCMLayer");
+                    _attackStage = AttackStage::NONE;
+                }
+            }
+            else if (_attackType == AttackType::HORIZONTAL && !_onGround)
+            {
+                if (_attackPrepauseReady)
+                {
+                    // Convert to a dive attack
+                    _characterRenderObj->animator->setTrigger("goto_convert_diving_hold");
+                    _characterRenderObj->animator->runEvent("EventDisableMCMLayer");
+                    _attackType = AttackType::DIVE_ATTACK;
+                }
+                else
+                {
+                    // Exit the prepause charging step
+                    // @COPYPASTA
+                    _flagAttack = false;
+
+                    _characterRenderObj->animator->setTrigger("goto_cancel_attack_prepause");
+                    _characterRenderObj->animator->runEvent("EventEnableMCMLayer");
+                    _attackStage = AttackStage::NONE;
+                }
             }
 
             if (_attackType == AttackType::DIVE_ATTACK)
             {
-                if (_flagAttackHeld)
+                if (!_attackPrepauseReady)
                     velocity = glm::vec3(0);
-                _physicsObj->body->setGravity(_flagAttackHeld ? btVector3(0, 0, 0) : PhysicsEngine::getInstance().getGravity());  // Make sure this isn't over imposing since it's setting the gravity every frame (note: could overwrite some other code's work when changing the gravity)
+                _physicsObj->body->setGravity(_attackPrepauseReady ? PhysicsEngine::getInstance().getGravity() : btVector3(0, 0, 0));  // Make sure this isn't over imposing since it's setting the gravity every frame (note: could overwrite some other code's work when changing the gravity)
             }
 
             /*if (_attackPrepauseTimeElapsed == 0.0f)
@@ -409,7 +427,6 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
 
             // Reset flags in preparation for next step
             _flagAttack = false;
-            _flagAttackHeld = false;
             _weaponPrevTransform = glm::mat4(0);
 
             /* @TODO: Idk if the spin attack should be a part of the attack mvt set... so just comment it out for now eh!
@@ -528,9 +545,6 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         velocity.x = c.x;
         velocity.z = c.y;
 
-        if (_isWeaponDrawn)
-            _flagJump = false;
-
         if (_flagJump)
         {
             //
@@ -540,10 +554,10 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
             {
                 GROUNDED_JUMP,
                 AIR_DASH,
-                NONE,
+                FAILED_AIR_DASH,
             } jumpType;
 
-            jumpType = (_onGround || (int32_t)_stepsSinceLastGrounded <= _jumpCoyoteFrames) ? GROUNDED_JUMP : (_usedAirDash ? NONE : AIR_DASH);
+            jumpType = (_onGround || (int32_t)_stepsSinceLastGrounded <= _jumpCoyoteFrames) ? GROUNDED_JUMP : (_usedAirDash ? FAILED_AIR_DASH : AIR_DASH);
 
             bool jumpFlagProcessed = false;
             switch (jumpType)
@@ -605,8 +619,8 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
                 break;
             }
 
-            case NONE:
-                _flagJump = false;
+            case FAILED_AIR_DASH:
+                _flagJump = false;  // @NOTE: this is an unsuccessful jump input. It got canceled out bc there were no more airdashes left
                 break;
             }
 
@@ -616,6 +630,13 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
                 _jumpPreventOnGroundCheckFramesTimer = _jumpPreventOnGroundCheckFrames;
                 _jumpInputBufferFramesTimer = -1;
                 _flagJump = false;
+
+                if (_isWeaponDrawn)
+                {
+                    // Exit out of combat mode via a successful jump input
+                    _characterRenderObj->animator->setTrigger("leave_combat_mode");
+                    _isWeaponDrawn = false;  // @HACK: really the animation needs to do this, but this is so that the `goto_convert_diving_hold` trigger doesn't get set off in the animator state machine  -Timo 2023/01/12
+                }
             }
 
             // Turn off flag if jump buffer frames got exhausted
@@ -695,19 +716,9 @@ void Player::update(const float_t& deltaTime)
         }
     }
 
-    if (input::onRMBPress)
-    {
-        _flagDrawOrSheathWeapon = true;
-    }
-
-    if (input::onLMBPress && _isWeaponDrawn)
+    if (input::onLMBPress)
     {
         _flagAttack = true;
-    }
-
-    if ((input::LMBPressed || input::RMBPressed) && _isWeaponDrawn)  // This way holding rmb is included too. @TODO figure out if this is the way you want the controls to be.
-    {
-        _flagAttackHeld = true;
     }
 
     //
@@ -726,8 +737,6 @@ void Player::update(const float_t& deltaTime)
             input = glm::vec2(0.0f);
             _flagJump = false;
             _flagAttack = false;
-            _flagAttackHeld = false;
-            _flagDrawOrSheathWeapon = false;
         }
 
         if (_isWeaponDrawn && (_attackStage >= AttackStage::SWING || (_attackStage == AttackStage::PREPAUSE && !_attackPrepauseReady)))
@@ -805,11 +814,6 @@ bool Player::processMessage(DataSerialized& message)
         // Process grapple event
         glm::vec3 grapplePoint         = message.loadVec3();
         float_t   forceFacingDirection = message.loadFloat();
-
-        /*
-        std::cout << "GP:  " << grapplePoint.x << ", " << grapplePoint.y << ", "  << grapplePoint.z << std::endl;
-        std::cout << "FFD: " << forceFacingDirection << std::endl;
-        */
 
         _beingGrabbedData.stage               = 1;
         _beingGrabbedData.gotoPosition        = grapplePoint;
@@ -1212,19 +1216,16 @@ void Player::processAttackStageSwing(glm::vec3& velocity, const float_t& physics
         _allowComboInput      = false;
         _allowComboTransition = false;
         _flagAttack = false;
-        _flagAttackHeld = false;
     }
     else if (!_allowComboInput)
     {
         _flagAttack = false;   // Prevent attack input from happening except when combo input window is open
-        _flagAttackHeld = false;
     }
     else if (_allowComboTransition && _flagAttack)
     {
         // Transition to next combo!
-        // @COPYPASTA        
+        // @COPYPASTA
         _flagAttack = false;
-        _flagAttackHeld = false;
         _weaponPrevTransform = glm::mat4(0);
         _attackSwingTimeElapsed = 0.0f;
         _characterRenderObj->animator->setTrigger("goto_next_combo_attack");
