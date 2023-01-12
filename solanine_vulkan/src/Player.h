@@ -93,7 +93,7 @@ private:
     AttackStage _attackStage               = AttackStage::NONE;
     AttackType  _attackType;
     bool        _attackPrepauseReady       = false;
-    float_t     _attackPrepauseTime        = 0.4f;
+    float_t     _attackPrepauseTime        = 0.291667f;  // Equivalent of 7 frames of animation @24 fps
     float_t     _attackPrepauseTimeElapsed = 0.0f;
     float_t     _attackSwingTimeElapsed    = 0.0f;
     float_t     _spinAttackUpwardsSpeed    = 30.0f;

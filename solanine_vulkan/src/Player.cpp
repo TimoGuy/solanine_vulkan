@@ -110,17 +110,6 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
                 _characterRenderObj->animator->setMask("MaskCombatMode", false);
             }
         },
-        {
-            "EventAttackCharged", [&]() {
-                AudioEngine::getInstance().playSoundFromList({
-                    "res/sfx/wip_OOT_Sword_Away.wav",
-                });
-
-                _attackPrepauseReady = true;
-
-                _characterRenderObj->animator->setTrigger("goto_attack_charged_hold");
-            }
-        },
     };
 
     vkglTF::Model* characterModel = _rom->getModel("SlimeGirl", this, [](){});
@@ -358,7 +347,23 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
 
         case AttackStage::PREPAUSE:
         {
-            if (!_attackPrepauseReady && !_flagAttackHeld)
+            if (!_attackPrepauseReady)
+            {
+                if (_attackPrepauseTimeElapsed > _attackPrepauseTime)
+                {
+                    // Move to prepause ready state
+                    AudioEngine::getInstance().playSoundFromList({
+                        "res/sfx/wip_OOT_Sword_Away_Edited.wav",
+                    });
+                    _characterRenderObj->animator->setTrigger("goto_attack_charged_hold");
+                    _attackPrepauseReady = true;
+                }
+
+                _attackPrepauseTimeElapsed += physicsDeltaTime;
+            }
+
+            if ((!_attackPrepauseReady && !_flagAttackHeld) ||
+                (_attackType == AttackType::DIVE_ATTACK && _onGround))
             {
                 // Exit the prepause step
                 _flagAttack = false;
@@ -367,6 +372,13 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
                 _characterRenderObj->animator->setTrigger("goto_cancel_attack_prepause");
                 _characterRenderObj->animator->runEvent("EventEnableMCMLayer");
                 _attackStage = AttackStage::NONE;
+            }
+
+            if (_attackType == AttackType::DIVE_ATTACK)
+            {
+                if (_flagAttackHeld)
+                    velocity = glm::vec3(0);
+                _physicsObj->body->setGravity(_flagAttackHeld ? btVector3(0, 0, 0) : PhysicsEngine::getInstance().getGravity());  // Make sure this isn't over imposing since it's setting the gravity every frame (note: could overwrite some other code's work when changing the gravity)
             }
 
             /*if (_attackPrepauseTimeElapsed == 0.0f)
@@ -388,9 +400,9 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
             }
             */
 
+            // Move onto swing attack
             if (_attackPrepauseReady && _flagAttack)
             {
-                // Move onto swing attack
                 _attackStage = AttackStage::SWING;
                 _attackSwingTimeElapsed = 0.0f;
             }
@@ -400,6 +412,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
             _flagAttackHeld = false;
             _weaponPrevTransform = glm::mat4(0);
 
+            /* @TODO: Idk if the spin attack should be a part of the attack mvt set... so just comment it out for now eh!
             if (!_usedSpinAttack && _flagJump)  // Check jump flag before flag gets nuked
             {
                 // Switch attack type to spin attack
@@ -407,6 +420,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
                 _attackType = AttackType::SPIN_ATTACK;
                 _attackSwingTimeElapsed = 0.0f;
             }
+            */
 
             // Apply next animation
             if (_attackStage == AttackStage::SWING)
@@ -691,7 +705,7 @@ void Player::update(const float_t& deltaTime)
         _flagAttack = true;
     }
 
-    if (input::LMBPressed && _isWeaponDrawn)
+    if ((input::LMBPressed || input::RMBPressed) && _isWeaponDrawn)  // This way holding rmb is included too. @TODO figure out if this is the way you want the controls to be.
     {
         _flagAttackHeld = true;
     }

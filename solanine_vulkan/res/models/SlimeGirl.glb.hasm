@@ -94,7 +94,6 @@ animation DW_Charge_Weapon_Initial_Attack
 loop      0
 on_finish StateIdle
 event     0.0                             EventDisableMCMLayer
-event     0.583333                        EventAttackCharged
 event     0.999999                        EventEnableMCMLayer
 trans     goto_cancel_attack_prepause     StateIdle
 trans     goto_horizontal_attack_swing    StateHorizontalAttack
