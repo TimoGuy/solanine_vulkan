@@ -89,12 +89,15 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
         {
             "EventGotoEndAttackStage", [&]() {
                 _attackStage = AttackStage::END;
+                
+                _characterRenderObj->animator->setTrigger("leave_attack_charged_hold");
             }
         },
         {
             "EventEndAttack", [&]() {
                 _attackStage = AttackStage::NONE;
                 _flagAttack = false;  // To prevent unusual behavior (i.e. had a random attack just start from the beginning despite no inputs. So this is just to make sure)
+                _flagAttackHeld = false;
             }
         },
         {
@@ -105,6 +108,17 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
         {
             "EventDisableMCMLayer", [&]() {
                 _characterRenderObj->animator->setMask("MaskCombatMode", false);
+            }
+        },
+        {
+            "EventAttackCharged", [&]() {
+                AudioEngine::getInstance().playSoundFromList({
+                    "res/sfx/wip_OOT_Sword_Away.wav",
+                });
+
+                _attackPrepauseReady = true;
+
+                _characterRenderObj->animator->setTrigger("goto_attack_charged_hold");
             }
         },
     };
@@ -209,10 +223,11 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
             input = glm::vec2(0.0f);
             _flagJump = false;
             _flagAttack = false;
+            _flagAttackHeld = false;
             _flagDrawOrSheathWeapon = false;
         }
 
-        if (_isWeaponDrawn && _attackStage != AttackStage::NONE)
+        if (_isWeaponDrawn && (_attackStage >= AttackStage::SWING || (_attackStage == AttackStage::PREPAUSE && !_attackPrepauseReady)))
         {
             input = glm::vec2(0);
             _flagDrawOrSheathWeapon = false;
@@ -343,11 +358,23 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
 
         case AttackStage::PREPAUSE:
         {
+            if (!_attackPrepauseReady && !_flagAttackHeld)
+            {
+                // Exit the prepause step
+                _flagAttack = false;
+                _flagAttackHeld = false;
+
+                _characterRenderObj->animator->setTrigger("goto_cancel_attack_prepause");
+                _characterRenderObj->animator->runEvent("EventEnableMCMLayer");
+                _attackStage = AttackStage::NONE;
+            }
+
             /*if (_attackPrepauseTimeElapsed == 0.0f)
                 AudioEngine::getInstance().playSoundFromList({
                     "res/sfx/wip_OOT_YoungLink_Grunt.wav",
                     });*/
 
+            /*
             if (_attackPrepauseTimeElapsed < _attackPrepauseTime)
             {
                 if (_attackType == AttackType::DIVE_ATTACK)
@@ -359,9 +386,18 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
                 _attackStage = AttackStage::SWING;
                 _attackSwingTimeElapsed = 0.0f;
             }
+            */
+
+            if (_attackPrepauseReady && _flagAttack)
+            {
+                // Move onto swing attack
+                _attackStage = AttackStage::SWING;
+                _attackSwingTimeElapsed = 0.0f;
+            }
 
             // Reset flags in preparation for next step
             _flagAttack = false;
+            _flagAttackHeld = false;
             _weaponPrevTransform = glm::mat4(0);
 
             if (!_usedSpinAttack && _flagJump)  // Check jump flag before flag gets nuked
@@ -655,6 +691,11 @@ void Player::update(const float_t& deltaTime)
         _flagAttack = true;
     }
 
+    if (input::LMBPressed && _isWeaponDrawn)
+    {
+        _flagAttackHeld = true;
+    }
+
     //
     // Calculate render object transform
     //
@@ -671,10 +712,11 @@ void Player::update(const float_t& deltaTime)
             input = glm::vec2(0.0f);
             _flagJump = false;
             _flagAttack = false;
+            _flagAttackHeld = false;
             _flagDrawOrSheathWeapon = false;
         }
 
-        if (_isWeaponDrawn && _attackStage != AttackStage::NONE)
+        if (_isWeaponDrawn && (_attackStage >= AttackStage::SWING || (_attackStage == AttackStage::PREPAUSE && !_attackPrepauseReady)))
         {
             input = glm::vec2(0);
         }
@@ -770,7 +812,6 @@ bool Player::processMessage(DataSerialized& message)
     }
     else if (eventName == "event_grapple_kickout")
     {
-        // @HERE nocheckin
         glm::vec3 launchVelocity = message.loadVec3();
         std::cout << "LV:  " << launchVelocity.x << ", " << launchVelocity.y << ", "  << launchVelocity.z << std::endl;
 
@@ -1143,6 +1184,7 @@ void Player::startAttack(AttackType type)
     _attackStage = AttackStage::PREPAUSE;
     _attackType = type;
     _attackPrepauseTimeElapsed = 0.0f;
+    _attackPrepauseReady = false;
 }
 
 void Player::processAttackStageSwing(glm::vec3& velocity, const float_t& physicsDeltaTime)
@@ -1156,14 +1198,19 @@ void Player::processAttackStageSwing(glm::vec3& velocity, const float_t& physics
         _allowComboInput      = false;
         _allowComboTransition = false;
         _flagAttack = false;
+        _flagAttackHeld = false;
     }
     else if (!_allowComboInput)
+    {
         _flagAttack = false;   // Prevent attack input from happening except when combo input window is open
+        _flagAttackHeld = false;
+    }
     else if (_allowComboTransition && _flagAttack)
     {
         // Transition to next combo!
         // @COPYPASTA        
         _flagAttack = false;
+        _flagAttackHeld = false;
         _weaponPrevTransform = glm::mat4(0);
         _attackSwingTimeElapsed = 0.0f;
         _characterRenderObj->animator->setTrigger("goto_next_combo_attack");

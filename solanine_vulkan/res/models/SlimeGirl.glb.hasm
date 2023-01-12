@@ -5,7 +5,8 @@ loop      1
 trans     goto_run                          StateRun
 trans     goto_jump                         StateJumpFromIdle
 trans     goto_fall                         StateFall
-trans     goto_horizontal_attack_prepause   StateHorizontalAttackStart
+trans     goto_horizontal_attack_prepause   StateHorizontalAttackPrepause
+trans     goto_horizontal_attack_swing      StateHorizontalAttack
 trans     current_state                     StateMCMDrawWeapon           StateFullbodyDrawWeapon
 trans     current_state                     StateMCMSheathWeapon         StateFullbodySheathWeapon
 
@@ -16,7 +17,8 @@ loop      0
 trans     goto_run                          StateRun                     # @NOTE: this is just a copy of StateIdle's triggers
 trans     goto_jump                         StateJumpFromIdle
 trans     goto_fall                         StateFall
-trans     goto_horizontal_attack_prepause   StateHorizontalAttackStart
+trans     goto_horizontal_attack_prepause   StateHorizontalAttackPrepause
+trans     goto_horizontal_attack_swing      StateHorizontalAttack
 trans     not_current_state                 StateMCMDrawWeapon           StateIdle
 
 
@@ -26,7 +28,8 @@ loop      0
 trans     goto_run                          StateRun                     # @NOTE: this is just a copy of StateIdle's triggers
 trans     goto_jump                         StateJumpFromIdle
 trans     goto_fall                         StateFall
-trans     goto_horizontal_attack_prepause   StateHorizontalAttackStart
+trans     goto_horizontal_attack_prepause   StateHorizontalAttackPrepause
+trans     goto_horizontal_attack_swing      StateHorizontalAttack
 trans     not_current_state                 StateMCMSheathWeapon         StateIdle
 
 
@@ -37,7 +40,8 @@ loop      1
 trans     goto_idle                         StateIdle
 trans     goto_jump                         StateJumpFromRun
 trans     goto_fall                         StateFall
-trans     goto_horizontal_attack_prepause   StateHorizontalAttackStart
+trans     goto_horizontal_attack_prepause   StateHorizontalAttackPrepause
+trans     goto_horizontal_attack_swing      StateHorizontalAttack
 
 
 :StateJumpFromIdle
@@ -45,7 +49,8 @@ animation Jumping_From_Idle
 loop      0
 trans     goto_idle                         StateLandIdle
 trans     goto_run                          StateLandRun
-trans     goto_horizontal_attack_prepause   StateHorizontalAttackStart
+trans     goto_horizontal_attack_prepause   StateHorizontalAttackPrepause
+trans     goto_horizontal_attack_swing      StateHorizontalAttack
 
 
 :StateJumpFromRun
@@ -53,7 +58,8 @@ animation Jumping_From_Run
 loop      0
 trans     goto_idle                         StateLandIdle
 trans     goto_run                          StateLandRun
-trans     goto_horizontal_attack_prepause   StateHorizontalAttackStart
+trans     goto_horizontal_attack_prepause   StateHorizontalAttackPrepause
+trans     goto_horizontal_attack_swing      StateHorizontalAttack
 
 
 :StateFall
@@ -61,7 +67,8 @@ animation Falling
 loop      0
 trans     goto_idle                         StateLandIdle
 trans     goto_run                          StateLandRun
-trans     goto_horizontal_attack_prepause   StateHorizontalAttackStart
+trans     goto_horizontal_attack_prepause   StateHorizontalAttackPrepause
+trans     goto_horizontal_attack_swing      StateHorizontalAttack
 trans     goto_dive_attack_prepause         StateDiveAttackStart
 
 
@@ -69,20 +76,27 @@ trans     goto_dive_attack_prepause         StateDiveAttackStart
 animation Land_From_Jumping_From_Idle
 loop      0
 on_finish StateIdle
-trans     goto_horizontal_attack_prepause   StateHorizontalAttackStart
+trans     goto_horizontal_attack_prepause   StateHorizontalAttackPrepause
+trans     goto_horizontal_attack_swing      StateHorizontalAttack
 
 
 :StateLandRun
 animation Land_From_Jumping_From_Run
 loop      0
 on_finish StateRun
-trans     goto_horizontal_attack_prepause   StateHorizontalAttackStart
+trans     goto_horizontal_attack_prepause   StateHorizontalAttackPrepause
+trans     goto_horizontal_attack_swing      StateHorizontalAttack
 
 
-:StateHorizontalAttackStart               # NOTE: For this state, we don't want any triggers to leave before the ending event triggersStart
-animation DW_Horizontal_Attack_Start
+:StateHorizontalAttackPrepause               # NOTE: For this state, we don't want any triggers to leave before the ending event triggersStart
+#animation DW_Horizontal_Attack_Start
+animation DW_Charge_Weapon_Initial_Attack
 loop      0
+on_finish StateIdle
 event     0.0                             EventDisableMCMLayer
+event     0.583333                        EventAttackCharged
+event     0.999999                        EventEnableMCMLayer
+trans     goto_cancel_attack_prepause     StateIdle
 trans     goto_horizontal_attack_swing    StateHorizontalAttack
 trans     goto_spin_attack_swing          StateSpinAttack
 
@@ -91,6 +105,7 @@ trans     goto_spin_attack_swing          StateSpinAttack
 animation DW_Horizontal_Attack
 loop      0
 on_finish StateHorizontalAttackEnd
+event     0.0                          EventDisableMCMLayer
 event     0.0                          EventPlaySFXAttack
 event     0.4                          EventAllowComboInput
 event     0.666667                     EventAllowComboTransition
@@ -101,9 +116,9 @@ trans     goto_next_combo_attack       StateHorizontalCombo2Attack
 animation DW_Horizontal_Attack_End
 loop      0
 on_finish StateIdle
-event     0.0                 EventGotoEndAttackStage
-event     1.0                 EventEnableMCMLayer
-event     1.0                 EventEndAttack
+event     0.0                          EventGotoEndAttackStage
+event     1.0                          EventEnableMCMLayer
+event     1.0                          EventEndAttack
 
 
 :StateHorizontalCombo2Attack
@@ -164,10 +179,11 @@ event     1.0                 EventEndAttack
 :StateDiveAttackStart
 animation DW_Dive_Attack_Start
 loop      0
-event     0.0                       EventDisableMCMLayer
-event     0.0                       EventSwitchToHandAttachment
-trans     goto_dive_attack_swing    StateDiveAttack
-trans     goto_spin_attack_swing    StateSpinAttack
+event     0.0                             EventDisableMCMLayer
+event     0.0                             EventSwitchToHandAttachment
+trans     goto_cancel_attack_prepause     StateIdle
+trans     goto_dive_attack_swing          StateDiveAttack
+trans     goto_spin_attack_swing          StateSpinAttack
 
 
 :StateDiveAttack
@@ -238,9 +254,10 @@ bone      Hand Attachment
 mask      MaskCombatMode
 animation DW_Idle
 loop      1
-trans     current_state       StateRun       StateMCMRun
-trans     leave_combat_mode   StateMCMSheathWeapon
-trans     goto_combat_mode    StateMCMDrawWeapon
+trans     current_state               StateRun       StateMCMRun
+trans     leave_combat_mode           StateMCMSheathWeapon
+trans     goto_combat_mode            StateMCMDrawWeapon
+trans     goto_attack_charged_hold    StateMCMChargeAttackHold
 
 # @NOTE: current_state and not_current_state are special triggers where they look up what the current state is in a different mask (i.e. the one StateRun is in) and if it is/isn't the state specified (i.e. StateRun), then it will move to a different state on this mask. It's essentially a simple syncing usability.  -Timo
 
@@ -248,9 +265,10 @@ trans     goto_combat_mode    StateMCMDrawWeapon
 mask      MaskCombatMode
 animation DW_Run
 loop      1
-trans     not_current_state   StateRun       StateMCMIdle
-trans     leave_combat_mode   StateMCMSheathWeapon
-trans     goto_combat_mode    StateMCMDrawWeapon
+trans     not_current_state           StateRun       StateMCMIdle
+trans     leave_combat_mode           StateMCMSheathWeapon
+trans     goto_combat_mode            StateMCMDrawWeapon
+trans     goto_attack_charged_hold    StateMCMChargeAttackHold
 
 
 :StateMCMDrawWeapon
@@ -258,10 +276,11 @@ mask      MaskCombatMode  # @NOTE: not specifying a mask puts this at the global
 animation Draw_Weapon
 loop      0
 on_finish StateMCMIdle
-event     0.0                 EventEnableMCMLayer
-event     0.0                 EventSwitchToHandAttachment
-event     0.588235            EventPlaySFXMaterialize
-trans     leave_combat_mode   StateMCMSheathWeapon
+event     0.0                         EventEnableMCMLayer
+event     0.0                         EventSwitchToHandAttachment
+event     0.588235                    EventPlaySFXMaterialize
+trans     leave_combat_mode           StateMCMSheathWeapon
+trans     goto_attack_charged_hold    StateMCMChargeAttackHold
 
 
 :StateMCMSheathWeapon
@@ -269,7 +288,17 @@ mask      MaskCombatMode
 animation Sheath_Weapon
 loop      0
 on_finish StateMCMIdle
-event     1.0                 EventDisableMCMLayer
-event     1.0                 EventSwitchToBackAttachment
-event     0.461538            EventPlaySFXBreakoff
-trans     goto_combat_mode    StateMCMDrawWeapon
+event     1.0                         EventDisableMCMLayer
+event     1.0                         EventSwitchToBackAttachment
+event     0.461538                    EventPlaySFXBreakoff
+trans     goto_combat_mode            StateMCMDrawWeapon
+trans     goto_attack_charged_hold    StateMCMChargeAttackHold
+
+
+:StateMCMChargeAttackHold
+mask      MaskCombatMode
+animation DW_Charge_Weapon_Initial_Attack_Hold
+loop      0
+trans     leave_attack_charged_hold    StateMCMIdle
+trans     leave_combat_mode            StateMCMSheathWeapon
+trans     goto_combat_mode             StateMCMDrawWeapon

@@ -86,11 +86,13 @@ private:
     enum class AttackStage { NONE, PREPAUSE, SWING, CHAIN_COMBO, END };
     enum class AttackType { HORIZONTAL, DIVE_ATTACK, SPIN_ATTACK };
     bool        _flagAttack                = false;
+    bool        _flagAttackHeld            = false;
     bool        _allowComboInput           = false;
     bool        _allowComboTransition      = false;
     bool        _usedSpinAttack            = false;  // You shan't use this multiple times in the air!
     AttackStage _attackStage               = AttackStage::NONE;
     AttackType  _attackType;
+    bool        _attackPrepauseReady       = false;
     float_t     _attackPrepauseTime        = 0.4f;
     float_t     _attackPrepauseTimeElapsed = 0.0f;
     float_t     _attackSwingTimeElapsed    = 0.0f;
