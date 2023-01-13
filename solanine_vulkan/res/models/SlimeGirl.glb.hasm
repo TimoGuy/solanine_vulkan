@@ -98,7 +98,6 @@ trans     goto_convert_diving_hold          StateDiveAttackHold
 
 
 :StateHorizontalAttackPrepause               # NOTE: For this state, we don't want any triggers to leave before the ending event triggersStart
-#animation DW_Horizontal_Attack_Start
 animation DW_Charge_Weapon_Initial_Attack
 loop      0
 on_finish StateIdle
@@ -110,8 +109,7 @@ trans     goto_horizontal_attack_swing    StateHorizontalAttack
 trans     goto_spin_attack_swing          StateSpinAttack
 
 
-:StateHorizontalAttackPrepauseHold
-#animation DW_Horizontal_Attack_Start
+:StateHorizontalAttackPrepauseHold       # @TODO: see if there's a way to not have to have a duplicated state like this!
 animation DW_Charge_Weapon_Initial_Attack_Hold
 loop      0
 on_finish StateIdle
@@ -203,6 +201,7 @@ animation DW_Dive_Attack_Start
 loop      0
 event     0.0                             EventDisableMCMLayer
 event     0.0                             EventSwitchToHandAttachment
+trans     current_state                   StateMCMSheathWeapon    StateIdle
 trans     goto_cancel_attack_prepause     StateIdle
 trans     goto_convert_horizontal_hold    StateHorizontalAttackPrepauseHold
 trans     goto_dive_attack_swing          StateDiveAttack
@@ -214,6 +213,7 @@ animation DW_Dive_Attack_Start     # @TODO: make this into a hold animation in t
 loop      0
 event     0.0                             EventDisableMCMLayer
 event     0.0                             EventSwitchToHandAttachment
+trans     current_state                   StateMCMSheathWeapon    StateIdle
 trans     goto_cancel_attack_prepause     StateIdle
 trans     goto_convert_horizontal_hold    StateHorizontalAttackPrepauseHold
 trans     goto_dive_attack_swing          StateDiveAttack

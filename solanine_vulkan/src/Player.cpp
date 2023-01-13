@@ -544,6 +544,20 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         velocity.x = c.x;
         velocity.z = c.y;
 
+        if (_isWeaponDrawn && _flagJump)
+        {
+            // Eat jump input to put away weapon
+            _flagJump = false;
+
+            if (_attackStage != AttackStage::PREPAUSE || _attackPrepauseReady)
+            {
+                // Exit out of combat mode via a successful jump input
+                _characterRenderObj->animator->setTrigger("leave_combat_mode");
+                _characterRenderObj->animator->runEvent("EventEnableMCMLayer");
+                // _isWeaponDrawn = false;  // @HACK: really the animation needs to do this, but this is so that the `goto_convert_diving_hold` trigger doesn't get set off in the animator state machine  -Timo 2023/01/12
+            }
+        }
+
         if (_flagJump)
         {
             //
@@ -629,13 +643,6 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
                 _jumpPreventOnGroundCheckFramesTimer = _jumpPreventOnGroundCheckFrames;
                 _jumpInputBufferFramesTimer = -1;
                 _flagJump = false;
-
-                if (_isWeaponDrawn)
-                {
-                    // Exit out of combat mode via a successful jump input
-                    _characterRenderObj->animator->setTrigger("leave_combat_mode");
-                    _isWeaponDrawn = false;  // @HACK: really the animation needs to do this, but this is so that the `goto_convert_diving_hold` trigger doesn't get set off in the animator state machine  -Timo 2023/01/12
-                }
             }
 
             // Turn off flag if jump buffer frames got exhausted
