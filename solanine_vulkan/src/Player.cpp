@@ -814,8 +814,16 @@ bool Player::processMessage(DataSerialized& message)
     }
     else if (eventName == "event_grapple_hold")
     {
-        // Undo movement inputs
-        _flagJump = false;
+        // Undo attack mode
+        _isWeaponDrawn = false;
+
+        // @TODO: add some animation that cancels out the attack mode
+        // @TODO: add some animation that does the grapple kickout event
+        // @TODO: add some animation that does the grapple release (just a quick couple frame thing of bursting out motion that then reverts back to idle state)
+
+        // Undo inputs
+        _flagJump   = false;
+        _flagAttack = false;
 
         // Process grapple event
         glm::vec3 grapplePoint         = message.loadVec3();
