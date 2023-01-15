@@ -80,6 +80,7 @@ private:
 
     // Combat mode
     bool      _isWeaponDrawn             = false;
+    bool      _canChangeWeaponDrawnState = true;  // Lock for when input will cause weapon drawn state to change
     glm::mat4 _weaponPrevTransform       = glm::mat4(0.0f);  // NOTE: this is the flag to show to ignore the prev transform
 
     enum class AttackStage { NONE, PREPAUSE, SWING, CHAIN_COMBO, END };

@@ -8,6 +8,7 @@ trans     goto_fall                         StateFall
 trans     goto_horizontal_attack_prepause   StateHorizontalAttackPrepause
 trans     goto_horizontal_attack_swing      StateHorizontalAttack
 trans     goto_convert_diving_hold          StateDiveAttackHold
+trans     goto_grabbed                      StateGrabbed
 trans     current_state                     StateMCMDrawWeapon           StateFullbodyDrawWeapon
 trans     current_state                     StateMCMSheathWeapon         StateFullbodySheathWeapon
 
@@ -21,6 +22,7 @@ trans     goto_fall                         StateFall
 trans     goto_horizontal_attack_prepause   StateHorizontalAttackPrepause
 trans     goto_horizontal_attack_swing      StateHorizontalAttack
 trans     goto_convert_diving_hold          StateDiveAttackHold
+trans     goto_grabbed                      StateGrabbed
 trans     not_current_state                 StateMCMDrawWeapon           StateIdle
 
 
@@ -33,6 +35,7 @@ trans     goto_fall                         StateFall
 trans     goto_horizontal_attack_prepause   StateHorizontalAttackPrepause
 trans     goto_horizontal_attack_swing      StateHorizontalAttack
 trans     goto_convert_diving_hold          StateDiveAttackHold
+trans     goto_grabbed                      StateGrabbed
 trans     not_current_state                 StateMCMSheathWeapon         StateIdle
 
 
@@ -46,6 +49,7 @@ trans     goto_fall                         StateFall
 trans     goto_horizontal_attack_prepause   StateHorizontalAttackPrepause
 trans     goto_horizontal_attack_swing      StateHorizontalAttack
 trans     goto_convert_diving_hold          StateDiveAttackHold
+trans     goto_grabbed                      StateGrabbed
 
 
 :StateJumpFromIdle
@@ -56,6 +60,7 @@ trans     goto_run                          StateLandRun
 trans     goto_horizontal_attack_prepause   StateHorizontalAttackPrepause
 trans     goto_horizontal_attack_swing      StateHorizontalAttack
 trans     goto_convert_diving_hold          StateDiveAttackHold
+trans     goto_grabbed                      StateGrabbed
 
 
 :StateJumpFromRun
@@ -66,6 +71,7 @@ trans     goto_run                          StateLandRun
 trans     goto_horizontal_attack_prepause   StateHorizontalAttackPrepause
 trans     goto_horizontal_attack_swing      StateHorizontalAttack
 trans     goto_convert_diving_hold          StateDiveAttackHold
+trans     goto_grabbed                      StateGrabbed
 
 
 :StateFall
@@ -77,6 +83,7 @@ trans     goto_horizontal_attack_prepause   StateHorizontalAttackPrepause
 trans     goto_horizontal_attack_swing      StateHorizontalAttack
 trans     goto_dive_attack_prepause         StateDiveAttackStart
 trans     goto_convert_diving_hold          StateDiveAttackHold
+trans     goto_grabbed                      StateGrabbed
 
 
 :StateLandIdle
@@ -86,6 +93,7 @@ on_finish StateIdle
 trans     goto_horizontal_attack_prepause   StateHorizontalAttackPrepause
 trans     goto_horizontal_attack_swing      StateHorizontalAttack
 trans     goto_convert_diving_hold          StateDiveAttackHold
+trans     goto_grabbed                      StateGrabbed
 
 
 :StateLandRun
@@ -95,6 +103,13 @@ on_finish StateRun
 trans     goto_horizontal_attack_prepause   StateHorizontalAttackPrepause
 trans     goto_horizontal_attack_swing      StateHorizontalAttack
 trans     goto_convert_diving_hold          StateDiveAttackHold
+trans     goto_grabbed                      StateGrabbed
+
+
+:StateGrabbed
+animation Grabbed
+loop      0
+trans     leave_grabbed                     StateIdle
 
 
 :StateHorizontalAttackPrepause               # NOTE: For this state, we don't want any triggers to leave before the ending event triggersStart
@@ -107,6 +122,7 @@ trans     goto_cancel_attack_prepause     StateIdle
 trans     goto_convert_diving_hold        StateDiveAttackHold
 trans     goto_horizontal_attack_swing    StateHorizontalAttack
 trans     goto_spin_attack_swing          StateSpinAttack
+trans     goto_grabbed                    StateGrabbed
 
 
 :StateHorizontalAttackPrepauseHold       # @TODO: see if there's a way to not have to have a duplicated state like this!
@@ -119,6 +135,7 @@ trans     goto_cancel_attack_prepause     StateIdle
 trans     goto_convert_diving_hold        StateDiveAttackHold
 trans     goto_horizontal_attack_swing    StateHorizontalAttack
 trans     goto_spin_attack_swing          StateSpinAttack
+trans     goto_grabbed                    StateGrabbed
 
 
 :StateHorizontalAttack
@@ -130,6 +147,7 @@ event     0.0                          EventPlaySFXAttack
 event     0.4                          EventAllowComboInput
 event     0.666667                     EventAllowComboTransition
 trans     goto_next_combo_attack       StateHorizontalCombo2Attack
+trans     goto_grabbed                 StateGrabbed
 
 
 :StateHorizontalAttackEnd
@@ -139,6 +157,7 @@ on_finish StateIdle
 event     0.0                          EventGotoEndAttackStage
 event     1.0                          EventEnableMCMLayer
 event     1.0                          EventEndAttack
+trans     goto_grabbed                 StateGrabbed
 
 
 :StateHorizontalCombo2Attack
@@ -149,6 +168,7 @@ event     0.230769                          EventPlaySFXAttack
 event     0.4                               EventAllowComboInput
 event     0.692308                          EventAllowComboTransition
 trans     goto_next_combo_attack            StateHorizontalCombo3Attack
+trans     goto_grabbed                      StateGrabbed
 
 
 :StateHorizontalCombo2AttackEnd
@@ -158,6 +178,7 @@ on_finish StateIdle
 event     0.0                 EventGotoEndAttackStage
 event     1.0                 EventEnableMCMLayer
 event     1.0                 EventEndAttack
+trans     goto_grabbed        StateGrabbed
 
 
 :StateHorizontalCombo3Attack  # PLACEHOLDER: however, idea is to do a slice upwards to lay it down for combo 4  -Timo 2022/11/25
@@ -168,6 +189,7 @@ event     0.230769                          EventPlaySFXAttack
 event     0.4                               EventAllowComboInput
 event     0.692308                          EventAllowComboTransition
 trans     goto_next_combo_attack            StateHorizontalCombo4Attack
+trans     goto_grabbed                      StateGrabbed
 
 
 :StateHorizontalCombo3AttackEnd
@@ -177,6 +199,7 @@ on_finish StateIdle
 event     0.0                 EventGotoEndAttackStage
 event     1.0                 EventEnableMCMLayer
 event     1.0                 EventEndAttack
+trans     goto_grabbed        StateGrabbed
 
 
 :StateHorizontalCombo4Attack   # PLACEHOLDER: however, in the future I want an anim where it's a slice straight down like an ax swing or the spin attack where an aoe is produced and the characters legs are off the ground!  -Timo 2022/11/25
@@ -184,6 +207,7 @@ animation DW_Horizontal_Combo4_Attack
 loop      0
 on_finish StateHorizontalCombo4AttackEnd
 event     0.230769                          EventPlaySFXAttack
+trans     goto_grabbed                      StateGrabbed
 # @NOTE: final combo, so there is no goto_next_combo_attack
 
 
@@ -194,6 +218,7 @@ on_finish StateIdle
 event     0.0                 EventGotoEndAttackStage
 event     1.0                 EventEnableMCMLayer
 event     1.0                 EventEndAttack
+trans     goto_grabbed        StateGrabbed
 
 
 :StateDiveAttackStart
@@ -206,6 +231,7 @@ trans     goto_cancel_attack_prepause     StateIdle
 trans     goto_convert_horizontal_hold    StateHorizontalAttackPrepauseHold
 trans     goto_dive_attack_swing          StateDiveAttack
 trans     goto_spin_attack_swing          StateSpinAttack
+trans     goto_grabbed                    StateGrabbed
 
 
 :StateDiveAttackHold
@@ -218,6 +244,7 @@ trans     goto_cancel_attack_prepause     StateIdle
 trans     goto_convert_horizontal_hold    StateHorizontalAttackPrepauseHold
 trans     goto_dive_attack_swing          StateDiveAttack
 trans     goto_spin_attack_swing          StateSpinAttack
+trans     goto_grabbed                    StateGrabbed
 
 
 :StateDiveAttack
@@ -225,6 +252,7 @@ animation DW_Dive_Attack
 loop      0
 event     0.0                      EventPlaySFXAttack
 trans     goto_dive_attack_end     StateDiveAttackEnd
+trans     goto_grabbed             StateGrabbed
 
 
 :StateDiveAttackEnd
@@ -235,6 +263,7 @@ event     0.0                 EventGotoEndAttackStage
 event     0.0                 EventPlaySFXLandHard
 event     1.0                 EventEnableMCMLayer
 event     1.0                 EventEndAttack
+trans     goto_grabbed        StateGrabbed
 
 
 :StateSpinAttack
@@ -243,6 +272,7 @@ loop      0
 on_finish StateFall
 event     1.0                 EventEnableMCMLayer
 event     1.0                 EventEndAttack
+trans     goto_grabbed        StateGrabbed
 
 
 # This masks the upper body starting with the Mid Back bone. Everything else should still get controlled normally by whatever layers aren't taking the bones
@@ -313,6 +343,7 @@ on_finish StateMCMIdle
 event     0.0                         EventEnableMCMLayer
 event     0.0                         EventSwitchToHandAttachment
 event     0.588235                    EventPlaySFXMaterialize
+event     1.0                         EventReenableCanChangeWeaponState
 trans     leave_combat_mode           StateMCMSheathWeapon
 trans     goto_attack_charged_hold    StateMCMChargeAttackHold
 
@@ -324,6 +355,7 @@ loop      0
 on_finish StateMCMIdle
 event     1.0                         EventDisableMCMLayer
 event     1.0                         EventSwitchToBackAttachment
+event     1.0                         EventReenableCanChangeWeaponState
 event     0.461538                    EventPlaySFXBreakoff
 trans     goto_combat_mode            StateMCMDrawWeapon
 trans     goto_attack_charged_hold    StateMCMChargeAttackHold

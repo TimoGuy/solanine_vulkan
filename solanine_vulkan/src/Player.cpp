@@ -109,6 +109,11 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
                 _characterRenderObj->animator->setMask("MaskCombatMode", false);
             }
         },
+        {
+            "EventReenableCanChangeWeaponState", [&]() {
+                _canChangeWeaponDrawnState = true;
+            }
+        },
     };
 
     vkglTF::Model* characterModel = _rom->getModel("SlimeGirl", this, [](){});
@@ -167,7 +172,7 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
     body->setFriction(0.0f);
     body->setActivationState(DISABLE_DEACTIVATION);
 
-    // https://docs.panda3d.org/1.10/python/programming/physics/bullet/ccd 
+    // https://docs.panda3d.org/1.10/python/programming/physics/bullet/ccd
     body->setCcdMotionThreshold(1e-7f);
     body->setCcdSweptSphereRadius(0.5f);
 
@@ -209,6 +214,13 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         if (_camera->freeCamMode.enabled || ImGui::GetIO().WantTextInput)  // @DEBUG: for the level editor
         {
             input = glm::vec2(0.0f);
+            _flagJump = false;
+            _flagAttack = false;
+        }
+
+        if (!_canChangeWeaponDrawnState)
+        {
+            input = glm::vec2(0);
             _flagJump = false;
             _flagAttack = false;
         }
@@ -275,10 +287,11 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     //
     // Enter combat mode via pressing the attack button
     //
-    if (_flagAttack && !_isWeaponDrawn)
+    if (_flagAttack && !_isWeaponDrawn && _canChangeWeaponDrawnState)
     {
         // Reset flags
         _flagAttack = false;
+        _canChangeWeaponDrawnState = false;
 
         if (_onGround)
         {
@@ -346,6 +359,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
                     });
                     _characterRenderObj->animator->setTrigger("goto_attack_charged_hold");
                     _attackPrepauseReady = true;
+                    _canChangeWeaponDrawnState = true;
                 }
 
                 _attackPrepauseTimeElapsed += physicsDeltaTime;
@@ -544,18 +558,17 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         velocity.x = c.x;
         velocity.z = c.y;
 
-        if (_isWeaponDrawn && _flagJump)
+        if (_flagJump && _isWeaponDrawn && _canChangeWeaponDrawnState)
         {
             // Eat jump input to put away weapon
             _flagJump = false;
+            _canChangeWeaponDrawnState = false;
 
-            if (_attackStage != AttackStage::PREPAUSE || _attackPrepauseReady)
-            {
-                // Exit out of combat mode via a successful jump input
-                _characterRenderObj->animator->setTrigger("leave_combat_mode");
-                _characterRenderObj->animator->runEvent("EventEnableMCMLayer");
-                // _isWeaponDrawn = false;  // @HACK: really the animation needs to do this, but this is so that the `goto_convert_diving_hold` trigger doesn't get set off in the animator state machine  -Timo 2023/01/12
-            }
+            // Exit out of combat mode via a successful jump input
+            _characterRenderObj->animator->setTrigger("leave_combat_mode");
+            _characterRenderObj->animator->runEvent("EventEnableMCMLayer");
+            std::cout << "HELLOASDFJASDFLJASLDJF" << std::endl;
+            // _isWeaponDrawn = false;  // @HACK: really the animation needs to do this, but this is so that the `goto_convert_diving_hold` trigger doesn't get set off in the animator state machine  -Timo 2023/01/12
         }
 
         if (_flagJump)
@@ -745,6 +758,13 @@ void Player::update(const float_t& deltaTime)
             _flagAttack = false;
         }
 
+        if (!_canChangeWeaponDrawnState)
+        {
+            input = glm::vec2(0);
+            _flagJump = false;
+            _flagAttack = false;
+        }
+
         if (_isWeaponDrawn && (_attackStage >= AttackStage::SWING || (_attackStage == AttackStage::PREPAUSE && !_attackPrepauseReady)))
         {
             input = glm::vec2(0);
@@ -814,10 +834,18 @@ bool Player::processMessage(DataSerialized& message)
     }
     else if (eventName == "event_grapple_hold")
     {
-        // Undo attack mode
-        _isWeaponDrawn = false;
-
         // @TODO: add some animation that cancels out the attack mode
+        if (_beingGrabbedData.stage == 0)
+        {
+            _characterRenderObj->animator->setTrigger("goto_grabbed");
+            if (_isWeaponDrawn)
+            {
+                _characterRenderObj->animator->runEvent("EventDisableMCMLayer");
+                _characterRenderObj->animator->runEvent("EventPlaySFXBreakoff");
+            }
+        }
+
+
         // @TODO: add some animation that does the grapple kickout event
         // @TODO: add some animation that does the grapple release (just a quick couple frame thing of bursting out motion that then reverts back to idle state)
 
@@ -839,11 +867,26 @@ bool Player::processMessage(DataSerialized& message)
     }
     else if (eventName == "event_grapple_release")
     {
+        _characterRenderObj->animator->setTrigger("leave_grabbed");
+        if (_isWeaponDrawn)
+        {
+            _characterRenderObj->animator->runEvent("EventEnableMCMLayer");
+            _characterRenderObj->animator->runEvent("EventPlaySFXMaterialize");
+        }
+
         _beingGrabbedData.stage = 0;
+
         return true;
     }
     else if (eventName == "event_grapple_kickout")
     {
+        _characterRenderObj->animator->setTrigger("leave_grabbed");
+        if (_isWeaponDrawn)
+        {
+            _characterRenderObj->animator->runEvent("EventEnableMCMLayer");
+            _characterRenderObj->animator->runEvent("EventPlaySFXMaterialize");
+        }
+
         glm::vec3 launchVelocity = message.loadVec3();
         std::cout << "LV:  " << launchVelocity.x << ", " << launchVelocity.y << ", "  << launchVelocity.z << std::endl;
 
@@ -1217,6 +1260,7 @@ void Player::startAttack(AttackType type)
     _attackType = type;
     _attackPrepauseTimeElapsed = 0.0f;
     _attackPrepauseReady = false;
+    _canChangeWeaponDrawnState = false;
 }
 
 void Player::processAttackStageSwing(glm::vec3& velocity, const float_t& physicsDeltaTime)
