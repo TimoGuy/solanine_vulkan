@@ -758,7 +758,7 @@ void Player::update(const float_t& deltaTime)
             _flagAttack = false;
         }
 
-        if (!_canChangeWeaponDrawnState)
+        if (!_canChangeWeaponDrawnState || _beingGrabbedData.stage == 1)
         {
             input = glm::vec2(0);
             _flagJump = false;
