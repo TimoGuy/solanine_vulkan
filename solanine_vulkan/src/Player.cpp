@@ -516,6 +516,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
             _physicsObj->body->setLinearVelocity(physutil::toVec3(_beingGrabbedData.kickoutVelocity));
             _stepsSinceLastGrounded = _jumpCoyoteFrames;  // This is to prevent ground sticking right after a jump and multiple jumps performed right after another jump was done!
 
+            std::cout << ".stage = 0" << std::endl;
             _beingGrabbedData.stage = 0;
         }
     }
@@ -567,7 +568,6 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
             // Exit out of combat mode via a successful jump input
             _characterRenderObj->animator->setTrigger("leave_combat_mode");
             _characterRenderObj->animator->runEvent("EventEnableMCMLayer");
-            std::cout << "HELLOASDFJASDFLJASLDJF" << std::endl;
             // _isWeaponDrawn = false;  // @HACK: really the animation needs to do this, but this is so that the `goto_convert_diving_hold` trigger doesn't get set off in the animator state machine  -Timo 2023/01/12
         }
 
@@ -857,6 +857,7 @@ bool Player::processMessage(DataSerialized& message)
         glm::vec3 grapplePoint         = message.loadVec3();
         float_t   forceFacingDirection = message.loadFloat();
 
+        std::cout << ".stage = 1" << std::endl;
         _beingGrabbedData.stage               = 1;
         _beingGrabbedData.gotoPosition        = grapplePoint;
         _beingGrabbedData.gotoFacingDirection = forceFacingDirection;
@@ -872,8 +873,10 @@ bool Player::processMessage(DataSerialized& message)
         {
             _characterRenderObj->animator->runEvent("EventEnableMCMLayer");
             _characterRenderObj->animator->runEvent("EventPlaySFXMaterialize");
+            _attackStage = AttackStage::NONE;  // For preventing input lockups when the attackstage never gets reset from the animation event
         }
 
+        std::cout << ".stage = 0" << std::endl;
         _beingGrabbedData.stage = 0;
 
         return true;
@@ -885,11 +888,13 @@ bool Player::processMessage(DataSerialized& message)
         {
             _characterRenderObj->animator->runEvent("EventEnableMCMLayer");
             _characterRenderObj->animator->runEvent("EventPlaySFXMaterialize");
+            _attackStage = AttackStage::NONE;  // For preventing input lockups when the attackstage never gets reset from the animation event
         }
 
         glm::vec3 launchVelocity = message.loadVec3();
         std::cout << "LV:  " << launchVelocity.x << ", " << launchVelocity.y << ", "  << launchVelocity.z << std::endl;
 
+        std::cout << ".stage = 2" << std::endl;
         _beingGrabbedData.stage = 2;
         _beingGrabbedData.kickoutVelocity = launchVelocity;
 
