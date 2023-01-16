@@ -132,7 +132,6 @@
   animation DW_Horizontal_Attack
   loop      0
   on_finish StateCombatGroundedAttackEnd
-  event     0.0                          EventDisableMCMLayer
   event     0.0                          EventPlaySFXAttack
   event     0.4                          EventAllowComboInput
   event     0.666667                     EventAllowComboTransition
@@ -145,9 +144,9 @@
   loop      0
   on_finish StateIdle
   event     0.0                          EventGotoEndAttackStage
-  event     1.0                          EventEnableMCMLayer
-  event     1.0                          EventEndAttack
+  event     1.0                          EventGotoNoneAttackStage
   trans     goto_grabbed                 StateGrabbed
+  trans     goto_combat_prepause         StateCombatGroundedPrepause
 
 
 :StateCombatGroundedAttackCombo2
@@ -165,10 +164,10 @@
   animation DW_Horizontal_Combo2_Attack_End
   loop      0
   on_finish StateIdle
-  event     0.0                 EventGotoEndAttackStage
-  event     1.0                 EventEnableMCMLayer
-  event     1.0                 EventEndAttack
-  trans     goto_grabbed        StateGrabbed
+  event     0.0                     EventGotoEndAttackStage
+  event     1.0                     EventGotoNoneAttackStage
+  trans     goto_grabbed            StateGrabbed
+  trans     goto_combat_prepause    StateCombatGroundedPrepause
 
 
 :StateCombatGroundedAttackCombo3  # PLACEHOLDER: however, idea is to do a slice upwards to lay it down for combo 4  -Timo 2022/11/25
@@ -186,10 +185,10 @@
   animation DW_Horizontal_Combo3_Attack_End
   loop      0
   on_finish StateIdle
-  event     0.0                 EventGotoEndAttackStage
-  event     1.0                 EventEnableMCMLayer
-  event     1.0                 EventEndAttack
-  trans     goto_grabbed        StateGrabbed
+  event     0.0                     EventGotoEndAttackStage
+  event     1.0                     EventGotoNoneAttackStage
+  trans     goto_grabbed            StateGrabbed
+  trans     goto_combat_prepause    StateCombatGroundedPrepause
 
 
 :StateCombatGroundedAttackCombo4   # PLACEHOLDER: however, in the future I want an anim where it's a slice straight down like an ax swing or the spin attack where an aoe is produced and the characters legs are off the ground!  -Timo 2022/11/25
@@ -205,10 +204,10 @@
   animation DW_Horizontal_Combo4_Attack_End
   loop      0
   on_finish StateIdle
-  event     0.0                 EventGotoEndAttackStage
-  event     1.0                 EventEnableMCMLayer
-  event     1.0                 EventEndAttack
-  trans     goto_grabbed        StateGrabbed
+  event     0.0                     EventGotoEndAttackStage
+  event     1.0                     EventGotoNoneAttackStage
+  trans     goto_grabbed            StateGrabbed
+  trans     goto_combat_prepause    StateCombatGroundedPrepause
 
 
 
@@ -230,11 +229,11 @@
   animation DW_Dive_Attack_End
   loop      0
   on_finish StateIdle
-  event     0.0                 EventGotoEndAttackStage
-  event     0.0                 EventPlaySFXLandHard
-  event     1.0                 EventEnableMCMLayer
-  event     1.0                 EventEndAttack
-  trans     goto_grabbed        StateGrabbed
+  event     0.0                     EventGotoEndAttackStage
+  event     0.0                     EventPlaySFXLandHard
+  event     1.0                     EventGotoNoneAttackStage
+  trans     goto_grabbed            StateGrabbed
+  trans     goto_combat_prepause    StateCombatGroundedPrepause  # NOTE: at the end of the airborne attack, you're grounded
 
 
 
@@ -248,8 +247,7 @@
   animation DW_Spin_Attack
   loop      0
   on_finish StateFall
-  event     1.0                 EventEnableMCMLayer
-  event     1.0                 EventEndAttack
+  event     1.0                 EventGotoNoneAttackStage
   trans     goto_grabbed        StateGrabbed
 
 
