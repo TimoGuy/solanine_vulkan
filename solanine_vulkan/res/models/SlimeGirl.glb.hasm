@@ -1,370 +1,329 @@
-:StateIdle  # Default anim bc it's the first defined
-#animation Idle_Hip
-animation Idle
-loop      1
-trans     goto_run                          StateRun
-trans     goto_jump                         StateJumpFromIdle
-trans     goto_fall                         StateFall
-trans     goto_horizontal_attack_prepause   StateHorizontalAttackPrepause
-trans     goto_horizontal_attack_swing      StateHorizontalAttack
-trans     goto_convert_diving_hold          StateDiveAttackHold
-trans     goto_grabbed                      StateGrabbed
-trans     current_state                     StateMCMDrawWeapon           StateFullbodyDrawWeapon
-trans     current_state                     StateMCMSheathWeapon         StateFullbodySheathWeapon
+#######################
+#    Base Movement    #
+#######################
 
 
-:StateFullbodyDrawWeapon
-animation Draw_Weapon
-loop      0
-trans     goto_run                          StateRun                     # @NOTE: this is just a copy of StateIdle's triggers
-trans     goto_jump                         StateJumpFromIdle
-trans     goto_fall                         StateFall
-trans     goto_horizontal_attack_prepause   StateHorizontalAttackPrepause
-trans     goto_horizontal_attack_swing      StateHorizontalAttack
-trans     goto_convert_diving_hold          StateDiveAttackHold
-trans     goto_grabbed                      StateGrabbed
-trans     not_current_state                 StateMCMDrawWeapon           StateIdle
-
-
-:StateFullbodySheathWeapon
-animation Sheath_Weapon
-loop      0
-trans     goto_run                          StateRun                     # @NOTE: this is just a copy of StateIdle's triggers
-trans     goto_jump                         StateJumpFromIdle
-trans     goto_fall                         StateFall
-trans     goto_horizontal_attack_prepause   StateHorizontalAttackPrepause
-trans     goto_horizontal_attack_swing      StateHorizontalAttack
-trans     goto_convert_diving_hold          StateDiveAttackHold
-trans     goto_grabbed                      StateGrabbed
-trans     not_current_state                 StateMCMSheathWeapon         StateIdle
+:StateIdle
+  animation Idle
+  loop      1
+  trans     goto_run                          StateRun
+  trans     goto_jump                         StateJumpFromIdle
+  trans     goto_fall                         StateFall
+  trans     goto_grabbed                      StateGrabbed
+  trans     goto_combat_prepause              StateCombatGroundedPrepause
+  trans     goto_fall_combat_prepause_ready   StateFallCombatAirbornePrepauseReady
+  trans     goto_combat_execute_grounded      StateCombatGroundedAttack
+  trans     goto_combat_execute_airborne      StateCombatAirborneAttack
 
 
 :StateRun
-#animation Running.inmotion
-animation Running.inmotion.LittleUpperbody
-loop      1
-trans     goto_idle                         StateIdle
-trans     goto_jump                         StateJumpFromRun
-trans     goto_fall                         StateFall
-trans     goto_horizontal_attack_prepause   StateHorizontalAttackPrepause
-trans     goto_horizontal_attack_swing      StateHorizontalAttack
-trans     goto_convert_diving_hold          StateDiveAttackHold
-trans     goto_grabbed                      StateGrabbed
-
-
-:StateJumpFromIdle
-animation Jumping_From_Idle
-loop      0
-trans     goto_idle                         StateLandIdle
-trans     goto_run                          StateLandRun
-trans     goto_horizontal_attack_prepause   StateHorizontalAttackPrepause
-trans     goto_horizontal_attack_swing      StateHorizontalAttack
-trans     goto_convert_diving_hold          StateDiveAttackHold
-trans     goto_grabbed                      StateGrabbed
-
-
-:StateJumpFromRun
-animation Jumping_From_Run
-loop      0
-trans     goto_idle                         StateLandIdle
-trans     goto_run                          StateLandRun
-trans     goto_horizontal_attack_prepause   StateHorizontalAttackPrepause
-trans     goto_horizontal_attack_swing      StateHorizontalAttack
-trans     goto_convert_diving_hold          StateDiveAttackHold
-trans     goto_grabbed                      StateGrabbed
-
-
-:StateFall
-animation Falling
-loop      0
-trans     goto_idle                         StateLandIdle
-trans     goto_run                          StateLandRun
-trans     goto_horizontal_attack_prepause   StateHorizontalAttackPrepause
-trans     goto_horizontal_attack_swing      StateHorizontalAttack
-trans     goto_dive_attack_prepause         StateDiveAttackStart
-trans     goto_convert_diving_hold          StateDiveAttackHold
-trans     goto_grabbed                      StateGrabbed
+  animation Running.inmotion.LittleUpperbody
+  loop      1
+  trans     goto_idle                         StateIdle
+  trans     goto_jump                         StateJumpFromRun
+  trans     goto_fall                         StateFall
+  trans     goto_grabbed                      StateGrabbed
+  trans     goto_combat_prepause              StateCombatGroundedPrepause
+  trans     goto_fall_combat_prepause_ready   StateFallCombatAirbornePrepauseReady
+  trans     goto_combat_execute_grounded      StateCombatGroundedAttack
+  trans     goto_combat_execute_airborne      StateCombatAirborneAttack
 
 
 :StateLandIdle
-animation Land_From_Jumping_From_Idle
-loop      0
-on_finish StateIdle
-trans     goto_horizontal_attack_prepause   StateHorizontalAttackPrepause
-trans     goto_horizontal_attack_swing      StateHorizontalAttack
-trans     goto_convert_diving_hold          StateDiveAttackHold
-trans     goto_grabbed                      StateGrabbed
+  animation Land_From_Jumping_From_Idle
+  loop      0
+  on_finish StateIdle
+  trans     goto_run                          StateRun
+  trans     goto_jump                         StateJumpFromIdle
+  trans     goto_fall                         StateFall
+  trans     goto_grabbed                      StateGrabbed
+  trans     goto_combat_prepause              StateCombatGroundedPrepause
+  trans     goto_fall_combat_prepause_ready   StateFallCombatAirbornePrepauseReady
+  trans     goto_combat_execute_grounded      StateCombatGroundedAttack
+  trans     goto_combat_execute_airborne      StateCombatAirborneAttack
 
 
 :StateLandRun
-animation Land_From_Jumping_From_Run
-loop      0
-on_finish StateRun
-trans     goto_horizontal_attack_prepause   StateHorizontalAttackPrepause
-trans     goto_horizontal_attack_swing      StateHorizontalAttack
-trans     goto_convert_diving_hold          StateDiveAttackHold
-trans     goto_grabbed                      StateGrabbed
+  animation Land_From_Jumping_From_Run
+  loop      0
+  on_finish StateRun
+  trans     goto_idle                         StateIdle
+  trans     goto_jump                         StateJumpFromRun
+  trans     goto_fall                         StateFall
+  trans     goto_grabbed                      StateGrabbed
+  trans     goto_combat_prepause              StateCombatGroundedPrepause
+  trans     goto_fall_combat_prepause_ready   StateFallCombatAirbornePrepauseReady
+  trans     goto_combat_execute_grounded      StateCombatGroundedAttack
+  trans     goto_combat_execute_airborne      StateCombatAirborneAttack
+
+
+:StateJumpFromIdle
+  animation Jumping_From_Idle
+  loop      0
+  trans     goto_idle                         StateLandIdle
+  trans     goto_run                          StateLandRun
+  trans     goto_grabbed                      StateGrabbed
+  trans     goto_combat_prepause              StateCombatAirbornePrepause
+
+
+:StateJumpFromRun
+  animation Jumping_From_Run
+  loop      0
+  trans     goto_idle                         StateLandIdle
+  trans     goto_run                          StateLandRun
+  trans     goto_grabbed                      StateGrabbed
+  trans     goto_combat_prepause              StateCombatAirbornePrepause
+
+
+:StateFall
+  animation Falling
+  loop      0
+  trans     goto_idle                         StateLandIdle
+  trans     goto_run                          StateLandRun
+  trans     goto_grabbed                      StateGrabbed
+  trans     goto_combat_prepause              StateCombatAirbornePrepause
+  trans     goto_fall_combat_prepause_ready   StateFallCombatAirbornePrepauseReady
+
+
+:StateFallCombatAirbornePrepauseReady
+  animation DW_Dive_Attack_Start  # @NOTE: this is a temporary animation. Have some anim that is just a 1 frame thingo like this in the future though.
+  loop      0
+  trans     goto_idle                         StateLandIdle
+  trans     goto_run                          StateLandRun
+  trans     goto_fall                         StateFall
+  trans     goto_grabbed                      StateGrabbed
+  trans     goto_combat_execute_grounded      StateCombatGroundedAttack
+  trans     goto_combat_execute_airborne      StateCombatAirborneAttack
 
 
 :StateGrabbed
-animation Grabbed
-loop      0
-trans     leave_grabbed                     StateIdle
+  animation Grabbed
+  loop      0
+  trans     leave_grabbed                     StateIdle  # @TODO: this should be able to split into multiple different animations to go to instead of just going to idle animation
 
 
-:StateHorizontalAttackPrepause               # NOTE: For this state, we don't want any triggers to leave before the ending event triggersStart
-animation DW_Charge_Weapon_Initial_Attack
-loop      0
-on_finish StateIdle
-event     0.0                             EventDisableMCMLayer
-event     0.999999                        EventEnableMCMLayer
-trans     goto_cancel_attack_prepause     StateIdle
-trans     goto_convert_diving_hold        StateDiveAttackHold
-trans     goto_horizontal_attack_swing    StateHorizontalAttack
-trans     goto_spin_attack_swing          StateSpinAttack
-trans     goto_grabbed                    StateGrabbed
 
 
-:StateHorizontalAttackPrepauseHold       # @TODO: see if there's a way to not have to have a duplicated state like this!
-animation DW_Charge_Weapon_Initial_Attack_Hold
-loop      0
-on_finish StateIdle
-event     0.0                             EventDisableMCMLayer
-event     0.999999                        EventEnableMCMLayer
-trans     goto_cancel_attack_prepause     StateIdle
-trans     goto_convert_diving_hold        StateDiveAttackHold
-trans     goto_horizontal_attack_swing    StateHorizontalAttack
-trans     goto_spin_attack_swing          StateSpinAttack
-trans     goto_grabbed                    StateGrabbed
+#########################
+#    Combat Prepause    #
+#########################
 
 
-:StateHorizontalAttack
-animation DW_Horizontal_Attack
-loop      0
-on_finish StateHorizontalAttackEnd
-event     0.0                          EventDisableMCMLayer
-event     0.0                          EventPlaySFXAttack
-event     0.4                          EventAllowComboInput
-event     0.666667                     EventAllowComboTransition
-trans     goto_next_combo_attack       StateHorizontalCombo2Attack
-trans     goto_grabbed                 StateGrabbed
+:StateCombatGroundedPrepause
+  animation DW_Charge_Weapon_Initial_Attack
+  loop      0
+  trans     goto_grabbed                    StateGrabbed
+  trans     goto_finish_prepause_grounded   StateIdle
+  trans     goto_finish_prepause_airborne   StateFallCombatAirbornePrepauseReady
 
 
-:StateHorizontalAttackEnd
-animation DW_Horizontal_Attack_End
-loop      0
-on_finish StateIdle
-event     0.0                          EventGotoEndAttackStage
-event     1.0                          EventEnableMCMLayer
-event     1.0                          EventEndAttack
-trans     goto_grabbed                 StateGrabbed
+:StateCombatAirbornePrepause
+  animation DW_Dive_Attack_Start
+  loop      0
+  trans     goto_grabbed                    StateGrabbed
+  trans     goto_finish_prepause_grounded   StateIdle
+  trans     goto_finish_prepause_airborne   StateFallCombatAirbornePrepauseReady
 
 
-:StateHorizontalCombo2Attack
-animation DW_Horizontal_Combo2_Attack
-loop      0
-on_finish StateHorizontalCombo2AttackEnd
-event     0.230769                          EventPlaySFXAttack
-event     0.4                               EventAllowComboInput
-event     0.692308                          EventAllowComboTransition
-trans     goto_next_combo_attack            StateHorizontalCombo3Attack
-trans     goto_grabbed                      StateGrabbed
 
 
-:StateHorizontalCombo2AttackEnd
-animation DW_Horizontal_Combo2_Attack_End
-loop      0
-on_finish StateIdle
-event     0.0                 EventGotoEndAttackStage
-event     1.0                 EventEnableMCMLayer
-event     1.0                 EventEndAttack
-trans     goto_grabbed        StateGrabbed
+#########################
+#    Grounded Combat    #
+#########################
 
 
-:StateHorizontalCombo3Attack  # PLACEHOLDER: however, idea is to do a slice upwards to lay it down for combo 4  -Timo 2022/11/25
-animation DW_Horizontal_Combo3_Attack
-loop      0
-on_finish StateHorizontalCombo3AttackEnd
-event     0.230769                          EventPlaySFXAttack
-event     0.4                               EventAllowComboInput
-event     0.692308                          EventAllowComboTransition
-trans     goto_next_combo_attack            StateHorizontalCombo4Attack
-trans     goto_grabbed                      StateGrabbed
+# @TODO: since these are configured with near-non-interruptable animatinos, I think that there's some extent that you can add events. Think about what you wanna do as far as design for this!  -Timo
 
 
-:StateHorizontalCombo3AttackEnd
-animation DW_Horizontal_Combo3_Attack_End
-loop      0
-on_finish StateIdle
-event     0.0                 EventGotoEndAttackStage
-event     1.0                 EventEnableMCMLayer
-event     1.0                 EventEndAttack
-trans     goto_grabbed        StateGrabbed
+:StateCombatGroundedAttack
+  animation DW_Horizontal_Attack
+  loop      0
+  on_finish StateCombatGroundedAttackEnd
+  event     0.0                          EventPlaySFXAttack
+  event     0.4                          EventAllowComboInput
+  event     0.666667                     EventAllowComboTransition
+  trans     goto_next_combo_attack       StateCombatGroundedAttackCombo2
+  trans     goto_grabbed                 StateGrabbed
 
 
-:StateHorizontalCombo4Attack   # PLACEHOLDER: however, in the future I want an anim where it's a slice straight down like an ax swing or the spin attack where an aoe is produced and the characters legs are off the ground!  -Timo 2022/11/25
-animation DW_Horizontal_Combo4_Attack
-loop      0
-on_finish StateHorizontalCombo4AttackEnd
-event     0.230769                          EventPlaySFXAttack
-trans     goto_grabbed                      StateGrabbed
-# @NOTE: final combo, so there is no goto_next_combo_attack
+:StateCombatGroundedAttackEnd
+  animation DW_Horizontal_Attack_End
+  loop      0
+  on_finish StateIdle
+  event     0.0                          EventGotoEndAttackStage
+  event     1.0                          EventGotoNoneAttackStage
+  trans     goto_grabbed                 StateGrabbed
+  trans     goto_combat_prepause         StateCombatGroundedPrepause
 
 
-:StateHorizontalCombo4AttackEnd
-animation DW_Horizontal_Combo4_Attack_End
-loop      0
-on_finish StateIdle
-event     0.0                 EventGotoEndAttackStage
-event     1.0                 EventEnableMCMLayer
-event     1.0                 EventEndAttack
-trans     goto_grabbed        StateGrabbed
+:StateCombatGroundedAttackCombo2
+  animation DW_Horizontal_Combo2_Attack
+  loop      0
+  on_finish StateCombatGroundedAttackCombo2End
+  event     0.230769                          EventPlaySFXAttack
+  event     0.4                               EventAllowComboInput
+  event     0.692308                          EventAllowComboTransition
+  trans     goto_next_combo_attack            StateCombatGroundedAttackCombo3
+  trans     goto_grabbed                      StateGrabbed
 
 
-:StateDiveAttackStart
-animation DW_Dive_Attack_Start
-loop      0
-event     0.0                             EventDisableMCMLayer
-event     0.0                             EventSwitchToHandAttachment
-trans     current_state                   StateMCMSheathWeapon    StateIdle
-trans     goto_cancel_attack_prepause     StateIdle
-trans     goto_convert_horizontal_hold    StateHorizontalAttackPrepauseHold
-trans     goto_dive_attack_swing          StateDiveAttack
-trans     goto_spin_attack_swing          StateSpinAttack
-trans     goto_grabbed                    StateGrabbed
+:StateCombatGroundedAttackCombo2End
+  animation DW_Horizontal_Combo2_Attack_End
+  loop      0
+  on_finish StateIdle
+  event     0.0                     EventGotoEndAttackStage
+  event     1.0                     EventGotoNoneAttackStage
+  trans     goto_grabbed            StateGrabbed
+  trans     goto_combat_prepause    StateCombatGroundedPrepause
 
 
-:StateDiveAttackHold
-animation DW_Dive_Attack_Start     # @TODO: make this into a hold animation in the future
-loop      0
-event     0.0                             EventDisableMCMLayer
-event     0.0                             EventSwitchToHandAttachment
-trans     current_state                   StateMCMSheathWeapon    StateIdle
-trans     goto_cancel_attack_prepause     StateIdle
-trans     goto_convert_horizontal_hold    StateHorizontalAttackPrepauseHold
-trans     goto_dive_attack_swing          StateDiveAttack
-trans     goto_spin_attack_swing          StateSpinAttack
-trans     goto_grabbed                    StateGrabbed
+:StateCombatGroundedAttackCombo3  # PLACEHOLDER: however, idea is to do a slice upwards to lay it down for combo 4  -Timo 2022/11/25
+  animation DW_Horizontal_Combo3_Attack
+  loop      0
+  on_finish StateCombatGroundedAttackCombo3End
+  event     0.230769                          EventPlaySFXAttack
+  event     0.4                               EventAllowComboInput
+  event     0.692308                          EventAllowComboTransition
+  trans     goto_next_combo_attack            StateCombatGroundedAttackCombo4
+  trans     goto_grabbed                      StateGrabbed
 
 
-:StateDiveAttack
-animation DW_Dive_Attack
-loop      0
-event     0.0                      EventPlaySFXAttack
-trans     goto_dive_attack_end     StateDiveAttackEnd
-trans     goto_grabbed             StateGrabbed
+:StateCombatGroundedAttackCombo3End
+  animation DW_Horizontal_Combo3_Attack_End
+  loop      0
+  on_finish StateIdle
+  event     0.0                     EventGotoEndAttackStage
+  event     1.0                     EventGotoNoneAttackStage
+  trans     goto_grabbed            StateGrabbed
+  trans     goto_combat_prepause    StateCombatGroundedPrepause
 
 
-:StateDiveAttackEnd
-animation DW_Dive_Attack_End
-loop      0
-on_finish StateIdle
-event     0.0                 EventGotoEndAttackStage
-event     0.0                 EventPlaySFXLandHard
-event     1.0                 EventEnableMCMLayer
-event     1.0                 EventEndAttack
-trans     goto_grabbed        StateGrabbed
+:StateCombatGroundedAttackCombo4   # PLACEHOLDER: however, in the future I want an anim where it's a slice straight down like an ax swing or the spin attack where an aoe is produced and the characters legs are off the ground!  -Timo 2022/11/25
+  animation DW_Horizontal_Combo4_Attack
+  loop      0
+  on_finish StateCombatGroundedAttackCombo4End
+  event     0.230769                          EventPlaySFXAttack
+  trans     goto_grabbed                      StateGrabbed
+  # @NOTE: final combo, so there is no goto_next_combo_attack
+
+
+:StateCombatGroundedAttackCombo4End
+  animation DW_Horizontal_Combo4_Attack_End
+  loop      0
+  on_finish StateIdle
+  event     0.0                     EventGotoEndAttackStage
+  event     1.0                     EventGotoNoneAttackStage
+  trans     goto_grabbed            StateGrabbed
+  trans     goto_combat_prepause    StateCombatGroundedPrepause
+
+
+
+
+#########################
+#    Airborne Combat    #
+#########################
+
+
+:StateCombatAirborneAttack
+  animation DW_Dive_Attack
+  loop      0
+  event     0.0                      EventPlaySFXAttack
+  trans     goto_dive_attack_end     StateCombatAirborneAttackEnd
+  trans     goto_grabbed             StateGrabbed
+
+
+:StateCombatAirborneAttackEnd
+  animation DW_Dive_Attack_End
+  loop      0
+  on_finish StateIdle
+  event     0.0                     EventGotoEndAttackStage
+  event     0.0                     EventPlaySFXLandHard
+  event     1.0                     EventGotoNoneAttackStage
+  trans     goto_grabbed            StateGrabbed
+  trans     goto_combat_prepause    StateCombatGroundedPrepause  # NOTE: at the end of the airborne attack, you're grounded
+
+
+
+
+#####################
+#    Misc Combat    #
+#####################
 
 
 :StateSpinAttack
-animation DW_Spin_Attack
-loop      0
-on_finish StateFall
-event     1.0                 EventEnableMCMLayer
-event     1.0                 EventEndAttack
-trans     goto_grabbed        StateGrabbed
+  animation DW_Spin_Attack
+  loop      0
+  on_finish StateFall
+  event     1.0                 EventGotoNoneAttackStage
+  trans     goto_grabbed        StateGrabbed
+
+
+
+
+#########################
+#    Upper Body Mask    #
+#########################
 
 
 # This masks the upper body starting with the Mid Back bone. Everything else should still get controlled normally by whatever layers aren't taking the bones
 ~MaskCombatMode
-enabled   0
-bone      Shoulder.L  # @NOTE: you need to have some way of doing errors in case if these bones are named incorrectly
-bone      Upper Arm.L
-bone      Forearm.L
-bone      Hand.L
-bone      IndexF1.L
-bone      IndexF2.L
-bone      MiddleF1.L
-bone      MiddleF2.L
-bone      RingF1.L
-bone      RingF2.L
-bone      Pinky1.L
-bone      Pinky2.L
-bone      Thumb1.L
-bone      Thumb2.L
-bone      Shoulder.R
-bone      Upper Arm.R
-bone      Forearm.R
-bone      Hand.R
-bone      IndexF1.R
-bone      IndexF2.R
-bone      MiddleF1.R
-bone      MiddleF2.R
-bone      RingF1.R
-bone      RingF2.R
-bone      Pinky1.R
-bone      Pinky2.R
-bone      Thumb1.R
-bone      Thumb2.R
-bone      Mid Back
-bone      Upper Back
-bone      Neck
-bone      Head
-bone      Back Attachment
-bone      Hand Attachment
+  enabled   0
+  bone      Shoulder.L  # @NOTE: you need to have some way of doing errors in case if these bones are named incorrectly
+  bone      Upper Arm.L
+  bone      Forearm.L
+  bone      Hand.L
+  bone      IndexF1.L
+  bone      IndexF2.L
+  bone      MiddleF1.L
+  bone      MiddleF2.L
+  bone      RingF1.L
+  bone      RingF2.L
+  bone      Pinky1.L
+  bone      Pinky2.L
+  bone      Thumb1.L
+  bone      Thumb2.L
+  bone      Shoulder.R
+  bone      Upper Arm.R
+  bone      Forearm.R
+  bone      Hand.R
+  bone      IndexF1.R
+  bone      IndexF2.R
+  bone      MiddleF1.R
+  bone      MiddleF2.R
+  bone      RingF1.R
+  bone      RingF2.R
+  bone      Pinky1.R
+  bone      Pinky2.R
+  bone      Thumb1.R
+  bone      Thumb2.R
+  bone      Mid Back
+  bone      Upper Back
+  bone      Neck
+  bone      Head
+  bone      Back Attachment
+  bone      Hand Attachment
 
 
 :StateMCMIdle  # Default anim for this mask bc it's the first defined
-mask      MaskCombatMode
-animation DW_Idle
-loop      1
-trans     current_state               StateRun       StateMCMRun
-trans     leave_combat_mode           StateMCMSheathWeapon
-trans     goto_combat_mode            StateMCMDrawWeapon
-trans     goto_attack_charged_hold    StateMCMChargeAttackHold
+  mask      MaskCombatMode
+  animation DW_Idle
+  loop      1
+  trans     current_state                       StateRun       StateMCMRun
+  trans     goto_mcm_grounded_prepause_ready    StateMCMGroundedPrepauseReady
 
-# @NOTE: current_state and not_current_state are special triggers where they look up what the current state is in a different mask (i.e. the one StateRun is in) and if it is/isn't the state specified (i.e. StateRun), then it will move to a different state on this mask. It's essentially a simple syncing usability.  -Timo
 
 :StateMCMRun
-mask      MaskCombatMode
-animation DW_Run
-loop      1
-trans     not_current_state           StateRun       StateMCMIdle
-trans     leave_combat_mode           StateMCMSheathWeapon
-trans     goto_combat_mode            StateMCMDrawWeapon
-trans     goto_attack_charged_hold    StateMCMChargeAttackHold
+  mask      MaskCombatMode
+  animation DW_Run
+  loop      1
+  trans     not_current_state                   StateRun       StateMCMIdle
+  trans     goto_mcm_grounded_prepause_ready    StateMCMGroundedPrepauseReady
 
 
-:StateMCMDrawWeapon
-mask      MaskCombatMode  # @NOTE: not specifying a mask puts this at the global mask. A mask is a whole other state machine running
-animation Draw_Weapon
-loop      0
-on_finish StateMCMIdle
-event     0.0                         EventEnableMCMLayer
-event     0.0                         EventSwitchToHandAttachment
-event     0.588235                    EventPlaySFXMaterialize
-event     1.0                         EventReenableCanChangeWeaponState
-trans     leave_combat_mode           StateMCMSheathWeapon
-trans     goto_attack_charged_hold    StateMCMChargeAttackHold
+:StateMCMGroundedPrepauseReady
+  mask      MaskCombatMode
+  animation DW_Charge_Weapon_Initial_Attack_Hold
+  trans     leave_mcm_grounded_prepause_ready   StateMCMIdle
 
 
-:StateMCMSheathWeapon
-mask      MaskCombatMode
-animation Sheath_Weapon
-loop      0
-on_finish StateMCMIdle
-event     1.0                         EventDisableMCMLayer
-event     1.0                         EventSwitchToBackAttachment
-event     1.0                         EventReenableCanChangeWeaponState
-event     0.461538                    EventPlaySFXBreakoff
-trans     goto_combat_mode            StateMCMDrawWeapon
-trans     goto_attack_charged_hold    StateMCMChargeAttackHold
-
-
-:StateMCMChargeAttackHold
-mask      MaskCombatMode
-animation DW_Charge_Weapon_Initial_Attack_Hold
-loop      0
-trans     leave_attack_charged_hold    StateMCMIdle
-trans     leave_combat_mode            StateMCMSheathWeapon
-trans     goto_combat_mode             StateMCMDrawWeapon
+# @NOTE: current_state and not_current_state are special triggers where they look up what the current state is in a different mask (i.e. the one StateRun is in) and if it is/isn't the state specified (i.e. StateRun), then it will move to a different state on this mask. It's essentially a simple syncing usability.  -Timo

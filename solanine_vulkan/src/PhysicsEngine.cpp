@@ -125,7 +125,7 @@ void PhysicsEngine::initialize(VulkanEngine* engine)
 
 void PhysicsEngine::update(float_t deltaTime, std::vector<Entity*>* entities)    // https://gafferongames.com/post/fix_your_timestep/
 {
-	constexpr float_t physicsDeltaTime = 0.04f;    // 25fps
+	constexpr float_t physicsDeltaTime = 0.02f;    // 50fps  @NOTE: DO NOT CHANGE THIS TO 0.04f because the update needs to happen often enough to do an airdash to platform and jump to retain velocity move (and other quick platforming moves too)  -Timo 2023/01/16
 	_accumulatedTimeForPhysics += deltaTime;
 
 	//

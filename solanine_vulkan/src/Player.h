@@ -69,6 +69,17 @@ private:
     int32_t   _jumpPreventOnGroundCheckFramesTimer = -1;
     int32_t   _jumpInputBufferFramesTimer          = -1;
 
+    enum class GroundedMovementStage {
+        NONE,             // None state: if in midair or something like that
+        IDLE,             // No movement input and no movement; standing still
+        RUN,              // Putting in movement input to run
+        RUN_REALLY_FAST,  // If you got propelled by a conveyer belt and you're putting in movement input to run (running faster than you can handle; you slow down to regular running speed)
+        GROUNDED_DASH,    // If you press the dash button while on the ground (like air dash but on the ground)
+        SKID_TO_HALT,     // If you're running and you cease movement input
+        TURN_AROUND,      // If you're running and you switch directions 180 all of a sudden
+    };
+    GroundedMovementStage _groundedMovementStage = GroundedMovementStage::NONE;
+
     // Moving platforms
     btRigidBody* _attachedBody            = nullptr;
     bool         _isAttachedBodyStale     = true;
@@ -80,7 +91,6 @@ private:
 
     // Combat mode
     bool      _isWeaponDrawn             = false;
-    bool      _canChangeWeaponDrawnState = true;  // Lock for when input will cause weapon drawn state to change
     glm::mat4 _weaponPrevTransform       = glm::mat4(0.0f);  // NOTE: this is the flag to show to ignore the prev transform
 
     enum class AttackStage { NONE, PREPAUSE, SWING, CHAIN_COMBO, END };
