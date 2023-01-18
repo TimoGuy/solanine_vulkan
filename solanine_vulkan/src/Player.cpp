@@ -701,18 +701,19 @@ void Player::update(const float_t& deltaTime)
     // Update render transform
     if (glm::length2(_worldSpaceInput) > 0.01f)
         _facingDirection = glm::atan(_worldSpaceInput.x, _worldSpaceInput.z);
-}
 
-void Player::lateUpdate(const float_t& deltaTime)
-{
     //
     // Update mask for animation
+    // @TODO: there is popping for some reason. Could be how the transitions/triggers work in the game or could be a different underlying issue. Figure it out pls!  -Timo
     //
     _characterRenderObj->animator->setMask(
         "MaskCombatMode",
         _isWeaponDrawn && (_attackStage == AttackStage::NONE || (_attackStage == AttackStage::PREPAUSE && _attackPrepauseReady && _onGround))
     );
+}
 
+void Player::lateUpdate(const float_t& deltaTime)
+{
     //
     // Update position of character and weapon
     //

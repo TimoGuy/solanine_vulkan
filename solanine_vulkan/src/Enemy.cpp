@@ -209,6 +209,7 @@ void Enemy::physicsUpdate(const float_t& physicsDeltaTime)
         {
             _currentAttackStage = AttackStage::LUNGE;
             _lungingStageTimer  = 0.0f;
+            _lungingChargingFirstFrame  = true;
             _worldSpaceInput    = glm::vec3(0.0f);
             break;
         }
@@ -227,7 +228,9 @@ void Enemy::physicsUpdate(const float_t& physicsDeltaTime)
     {
         if (_lungingStageTimer == 0.0f)
         {
-            // Play sound
+            AudioEngine::getInstance().playSoundFromList({
+                "res/sfx/wip_char_bad_disappear.ogg",
+            });
         }
 
         if (_lungingStageTimer < _lungingFaceTowardsTargetTime)
@@ -241,17 +244,32 @@ void Enemy::physicsUpdate(const float_t& physicsDeltaTime)
         {
             _worldSpaceInput = glm::vec3(0.0f);
         }
+        else if (_lungingStageTimer < _lungingChargingTime)
+        {
+            if (_lungingChargingFirstFrame)
+            {
+                AudioEngine::getInstance().playSoundFromList({
+                    "res/sfx/wip_char_bad_boss_bullet_shot_01.ogg",
+                    "res/sfx/wip_char_bad_boss_bullet_shot_02.ogg",
+                    "res/sfx/wip_char_bad_boss_bullet_shot_03.ogg",
+                    "res/sfx/wip_char_bad_boss_bullet_shot_04.ogg",
+                });
+                _lungingChargingFirstFrame = false;
+            }
+
+            _worldSpaceInput = glm::quat(glm::vec3(0, _facingDirection, 0)) * glm::vec3(0, 0, 1);
+        }
         else
         {
-            _worldSpaceInput = glm::quat(glm::vec3(0, _facingDirection, 0)) * glm::vec3(0, 0, 1);
+            _worldSpaceInput = glm::vec3(0.0f);
+        }
 
-            if (_lungingStageTimer > _lungingStageTotalTime)
-            {
-                // Revert back to idle if end of the lunge
-                // (NOTE: the overlap func will immediately start
-                // stalking the player again if within range)
-                _currentAttackStage = AttackStage::IDLE;
-            }
+        if (_lungingStageTimer > _lungingStageTotalTime)
+        {
+            // Revert back to idle if end of the lunge
+            // (NOTE: the overlap func will immediately start
+            // stalking the player again if within range)
+            _currentAttackStage = AttackStage::IDLE;
         }
 
         _lungingStageTimer += physicsDeltaTime;
@@ -700,6 +718,7 @@ void Enemy::renderImGui()
     ImGui::DragFloat("_lungingDistanceForActivation", &_lungingDistanceForActivation);
     ImGui::DragFloat("_lungingFaceTowardsTargetTime", &_lungingFaceTowardsTargetTime);
     ImGui::DragFloat("_lungingChargeUpTime", &_lungingChargeUpTime);
+    ImGui::DragFloat("_lungingChargingTime", &_lungingChargingTime);
     ImGui::DragFloat("_lungingStageTotalTime", &_lungingStageTotalTime);
     ImGui::DragFloat("_lungingStageTimer", &_lungingStageTimer);
     ImGui::DragFloat("_lungingMaxSpeed", &_lungingMaxSpeed);
@@ -981,7 +1000,8 @@ void Enemy::onOverlapStalkSensor(RegisteredPhysicsObject* rpo)
 void Enemy::onOverlapGrappleSensor(RegisteredPhysicsObject* rpo)
 {
     // Ignore this overlap if currently grappling another entity
-    if (_currentAttackStage >= AttackStage::GRAPPLE) return;
+    if (_currentAttackStage != AttackStage::LUNGE) return;
+    if (!(_lungingStageTimer >= _lungingChargeUpTime && _lungingStageTimer < _lungingChargingTime)) return;
 
     std::string guid = *(std::string*)rpo->body->getUserPointer();
     if (guid == getGUID()) return;

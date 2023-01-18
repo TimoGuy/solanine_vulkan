@@ -106,11 +106,13 @@ private:
     float_t     _stalkingTimeToRevertToIdleTimer = 0.0f;
 
     float_t     _lungingDistanceForActivation = 20.0f;
-    float_t     _lungingFaceTowardsTargetTime = 1.3f;
-    float_t     _lungingChargeUpTime          = 1.15f;
-    float_t     _lungingStageTotalTime        = 1.75f;
+    float_t     _lungingFaceTowardsTargetTime = 0.5f;
+    float_t     _lungingChargeUpTime          = 0.5f;
+    bool        _lungingChargingFirstFrame    = true;
+    float_t     _lungingChargingTime          = 0.75f;
+    float_t     _lungingStageTotalTime        = 2.5f;
     float_t     _lungingStageTimer            = 0.0f;
-    float_t     _lungingMaxSpeed              = 50.0f;
+    float_t     _lungingMaxSpeed              = 150.0f;
     float_t     _lungingAcceleration          = 1000.0f;
 
     std::string _grapplingEntityGUID;
