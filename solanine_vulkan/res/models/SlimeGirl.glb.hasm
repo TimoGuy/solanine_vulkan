@@ -99,6 +99,7 @@
 :StateGrabbed
   animation Grabbed
   loop      0
+  event     0.0                               EventPlaySFXGrabbed
   trans     leave_grabbed                     StateIdle  # @TODO: this should be able to split into multiple different animations to go to instead of just going to idle animation
 
 

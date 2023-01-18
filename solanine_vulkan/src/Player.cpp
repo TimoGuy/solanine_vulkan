@@ -42,6 +42,13 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
             }
         },
         {
+            "EventPlaySFXGrabbed", [&]() {
+                AudioEngine::getInstance().playSoundFromList({
+                    "res/sfx/wip_OOT_Link_Freeze.wav",
+                });
+            }
+        },
+        {
             "EventAllowComboInput", [&]() {
                 _allowComboInput = true;
             }
