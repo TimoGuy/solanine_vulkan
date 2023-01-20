@@ -70,6 +70,16 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
                 _flagAttack = false;  // To prevent unusual behavior (i.e. had a random attack just start from the beginning despite no inputs. So this is just to make sure)
             }
         },
+        /*{
+            "EventEnableBroadSensingAttack1", [&]() {
+                _enableBroadSensingAttack1Timer = 0.1f;  // How long to have the broad sensing attack on (this prevents grabs and attacks from enemies until it's off)
+            }
+        },
+        {
+            "EventEnableNarrowSensingAttack1", [&]() {
+                _enableNarrowSensingAttack1 = true;  // @NOTE: this is an "animation" that's run in the physicsupdate() routine. The `true` is essentially just a flag.
+            }
+        },*/
     };
 
     vkglTF::Model* characterModel = _rom->getModel("SlimeGirl", this, [](){});
@@ -132,6 +142,270 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
     body->setCcdMotionThreshold(1e-7f);
     body->setCcdSweptSphereRadius(0.5f);
 
+    // @NOTE: Generated from a gltf file export from blender fyi
+    btCompoundShape* bcs = new btCompoundShape();
+    bcs->addChildShape(
+        btTransform(
+            btQuaternion(0, 0, 0, 1),
+            btVector3(
+                -2.427243232727051,
+                4.324337005615234,
+                -0.7442868947982788
+            )
+        ),
+        new btSphereShape(1.0f)
+    );
+    bcs->addChildShape(
+        btTransform(
+            btQuaternion(0, 0, 0, 1),
+            btVector3(
+                -4.652688980102539,
+                4.324337005615234,
+                -1.7126106023788452
+            )
+        ),
+        new btSphereShape(1.0f)
+    );
+    bcs->addChildShape(
+        btTransform(
+            btQuaternion(0, 0, 0, 1),
+            btVector3(
+                -4.754617691040039,
+                4.324337005615234,
+                0.05415546894073486
+            )
+        ),
+        new btSphereShape(1.0f)
+    );
+    bcs->addChildShape(
+        btTransform(
+            btQuaternion(0, 0, 0, 1),
+            btVector3(
+                -4.414855003356934,
+                4.324337005615234,
+                1.8379096984863281
+            )
+        ),
+        new btSphereShape(1.0f)
+    );
+    bcs->addChildShape(
+        btTransform(
+            btQuaternion(0, 0, 0, 1),
+            btVector3(
+                -1.6967535018920898,
+                4.324337005615234,
+                1.6170639991760254
+            )
+        ),
+        new btSphereShape(1.0f)
+    );
+    bcs->addChildShape(
+        btTransform(
+            btQuaternion(0, 0, 0, 1),
+            btVector3(
+                -2.206397533416748,
+                4.324337005615234,
+                0.46187078952789307
+            )
+        ),
+        new btSphereShape(1.0f)
+    );
+    bcs->addChildShape(
+        btTransform(
+            btQuaternion(0, 0, 0, 1),
+            btVector3(
+                -3.718341588973999,
+                4.324337005615234,
+                -1.067061424255371
+            )
+        ),
+        new btSphereShape(1.0f)
+    );
+    bcs->addChildShape(
+        btTransform(
+            btQuaternion(0, 0, 0, 1),
+            btVector3(
+                -3.2766499519348145,
+                4.324337005615234,
+                1.2433249950408936
+            )
+        ),
+        new btSphereShape(1.0f)
+    );
+    bcs->addChildShape(
+        btTransform(
+            btQuaternion(0, 0, 0, 1),
+            btVector3(
+                0.07001256942749023,
+                4.324337005615234,
+                3.8594977855682373
+            )
+        ),
+        new btSphereShape(1.0f)
+    );
+    bcs->addChildShape(
+        btTransform(
+            btQuaternion(0, 0, 0, 1),
+            btVector3(
+                0.3588108718395233,
+                4.324337005615234,
+                2.5004467964172363
+            )
+        ),
+        new btSphereShape(1.0f)
+    );
+    bcs->addChildShape(
+        btTransform(
+            btQuaternion(0, 0, 0, 1),
+            btVector3(
+                -0.3377026617527008,
+                4.324337005615234,
+                5.286500930786133
+            )
+        ),
+        new btSphereShape(1.0f)
+    );
+    bcs->addChildShape(
+        btTransform(
+            btQuaternion(0, 0, 0, 1),
+            btVector3(
+                -1.7816940546035767,
+                4.324337005615234,
+                4.776856899261475
+            )
+        ),
+        new btSphereShape(1.0f)
+    );
+    bcs->addChildShape(
+        btTransform(
+            btQuaternion(0, 0, 0, 1),
+            btVector3(
+                -3.46351957321167,
+                4.324337005615234,
+                3.4857585430145264
+            )
+        ),
+        new btSphereShape(1.0f)
+    );
+    bcs->addChildShape(
+        btTransform(
+            btQuaternion(0, 0, 0, 1),
+            btVector3(
+                -2.223385810852051,
+                4.324337005615234,
+                2.993102550506592
+            )
+        ),
+        new btSphereShape(1.0f)
+    );
+    bcs->addChildShape(
+        btTransform(
+            btQuaternion(0, 0, 0, 1),
+            btVector3(
+                -0.8303587436676025,
+                4.324337005615234,
+                2.976114511489868
+            )
+        ),
+        new btSphereShape(1.0f)
+    );
+    bcs->addChildShape(
+        btTransform(
+            btQuaternion(0, 0, 0, 1),
+            btVector3(
+                1.8197903633117676,
+                4.324337005615234,
+                2.2965891361236572
+            )
+        ),
+        new btSphereShape(1.0f)
+    );
+    bcs->addChildShape(
+        btTransform(
+            btQuaternion(0, 0, 0, 1),
+            btVector3(
+                2.7541377544403076,
+                4.324337005615234,
+                3.553711175918579
+            )
+        ),
+        new btSphereShape(1.0f)
+    );
+    bcs->addChildShape(
+        btTransform(
+            btQuaternion(0, 0, 0, 1),
+            btVector3(
+                3.7564377784729004,
+                4.324337005615234,
+                4.793845176696777
+            )
+        ),
+        new btSphereShape(1.0f)
+    );
+    bcs->addChildShape(
+        btTransform(
+            btQuaternion(0, 0, 0, 1),
+            btVector3(
+                1.9896717071533203,
+                4.324337005615234,
+                5.490358829498291
+            )
+        ),
+        new btSphereShape(1.0f)
+    );
+    bcs->addChildShape(
+        btTransform(
+            btQuaternion(0, 0, 0, 1),
+            btVector3(
+                1.3611106872558594,
+                4.324337005615234,
+                4.301188945770264
+            )
+        ),
+        new btSphereShape(1.0f)
+    );
+    bcs->addChildShape(
+        btTransform(
+            btQuaternion(0, 0, 0, 1),
+            btVector3(
+                5.217417240142822,
+                4.324337005615234,
+                2.5514111518859863
+            )
+        ),
+        new btSphereShape(1.0f)
+    );
+    bcs->addChildShape(
+        btTransform(
+            btQuaternion(0, 0, 0, 1),
+            btVector3(
+                2.8220901489257812,
+                4.324337005615234,
+                1.2942891120910645
+            )
+        ),
+        new btSphereShape(1.0f)
+    );
+    bcs->addChildShape(
+        btTransform(
+            btQuaternion(0, 0, 0, 1),
+            btVector3(
+                3.977283477783203,
+                4.324337005615234,
+                2.0077908039093018
+            )
+        ),
+        new btSphereShape(1.0f)
+    );
+
+    _attack1BroadSensingGhostObj =
+        PhysicsEngine::getInstance().registerGhostObject(
+            _load_position + toff,
+            glm::quat(glm::vec3(0.0f)),
+            bcs,
+            &getGUID()
+        );
+
     _enablePhysicsUpdate = true;
     _enableUpdate = true;
     _enableLateUpdate = true;
@@ -145,6 +419,7 @@ Player::~Player()
     _rom->unregisterRenderObject(_weaponRenderObj);
     _rom->removeModelCallbacks(this);
     PhysicsEngine::getInstance().unregisterPhysicsObject(_physicsObj);
+    PhysicsEngine::getInstance().unregisterGhostObject(_attack1BroadSensingGhostObj);
 
     // @TODO: figure out if I need to call `delete _collisionShape;` or not
 }
@@ -155,6 +430,17 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     // Clear state
     //
     _onGround = false;
+
+    //
+    // Move ghost object
+    //
+    glm::quat rot = glm::quat(glm::vec3(0, _facingDirection, 0));
+    _attack1BroadSensingGhostObj->ghost->setWorldTransform(
+        btTransform(
+            btQuaternion(rot.x, rot.y, rot.z, rot.w),
+            _physicsObj->body->getWorldTransform().getOrigin() + physutil::toVec3(_physicsObj->transformOffset)
+        )
+    );
 
     //
     // Calculate input
@@ -1117,7 +1403,7 @@ void Player::processGrounded(glm::vec3& velocity, float_t& groundAccelMult, cons
     // Process if grounded or not
     if (_onGround)
     {
-        if (_stepsSinceLastGrounded > 8)  // @NOTE: @HARDCODED just a random number
+        if (_stepsSinceLastGrounded > 8)  // @NOTE: @HARDCODED just a number
             AudioEngine::getInstance().playSoundFromList({
                 "res/sfx/wip_OOT_Steps_Dirt1.wav",
                 "res/sfx/wip_OOT_Steps_Dirt2.wav",
@@ -1161,7 +1447,7 @@ void Player::processGrounded(glm::vec3& velocity, float_t& groundAccelMult, cons
             physutil::toVec3(_physicsObj->body->getWorldTransform().getOrigin()));
     if (wzo != (windmgr::WZOState)_windZoneOccupancyPrevEnum)
     {
-        // Stop any sfx being payed
+        // Stop any sfx being played
         if (_windZoneSFXChannelId >= 0)
             AudioEngine::getInstance().stopChannel(_windZoneSFXChannelId);
         _windZoneSFXChannelId = -1;
