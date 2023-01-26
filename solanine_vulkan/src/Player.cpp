@@ -1622,6 +1622,8 @@ void Player::processWeaponCollision()
     //
     // Calculate approx of weapon collision
     //
+    // @TODO: @NOTE: this will likely be improved in the future, with proper recording of what the weapon slice positions corresponding to the animation timing so that this is all consistent.  -Timo 2023/01/26
+    //
     if (_weaponPrevTransform == glm::mat4(0))
     {
         // First frame is wasted, but don't want to leak the last frame into the collision
