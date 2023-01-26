@@ -1051,6 +1051,9 @@ bool Player::processMessage(DataSerialized& message)
     }
     else if (eventName == "event_grapple_hold")
     {
+        // Cancel out early if the message is blocked with an attack stage of swing
+        if (_isWeaponDrawn && _attackStage == AttackStage::SWING)  return false;  // @TODO: figure out why the animation can sometimes get reset to StateMCMIdle when hitting an enemy while getting grappled at the same time
+
         // @TODO: add some animation that cancels out the attack mode
         if (_beingGrabbedData.stage == 0)
         {
