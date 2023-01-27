@@ -398,14 +398,6 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
         new btSphereShape(1.0f)
     );
 
-    _attack1BroadSensingGhostObj =
-        PhysicsEngine::getInstance().registerGhostObject(
-            _load_position + toff,
-            glm::quat(glm::vec3(0.0f)),
-            bcs,
-            &getGUID()
-        );
-
     _enablePhysicsUpdate = true;
     _enableUpdate = true;
     _enableLateUpdate = true;
@@ -419,7 +411,6 @@ Player::~Player()
     _rom->unregisterRenderObject(_weaponRenderObj);
     _rom->removeModelCallbacks(this);
     PhysicsEngine::getInstance().unregisterPhysicsObject(_physicsObj);
-    PhysicsEngine::getInstance().unregisterGhostObject(_attack1BroadSensingGhostObj);
 
     // @TODO: figure out if I need to call `delete _collisionShape;` or not
 }
@@ -430,17 +421,6 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     // Clear state
     //
     _onGround = false;
-
-    //
-    // Move ghost object
-    //
-    glm::quat rot = glm::quat(glm::vec3(0, _facingDirection, 0));
-    _attack1BroadSensingGhostObj->ghost->setWorldTransform(
-        btTransform(
-            btQuaternion(rot.x, rot.y, rot.z, rot.w),
-            _physicsObj->body->getWorldTransform().getOrigin() + physutil::toVec3(_physicsObj->transformOffset)
-        )
-    );
 
     //
     // Calculate input
@@ -1052,17 +1032,12 @@ bool Player::processMessage(DataSerialized& message)
     else if (eventName == "event_grapple_hold")
     {
         // Cancel out early if the message is blocked with an attack stage of swing
-        if (_isWeaponDrawn && _attackStage == AttackStage::SWING)  return false;  // @TODO: figure out why the animation can sometimes get reset to StateMCMIdle when hitting an enemy while getting grappled at the same time
+        if (_isWeaponDrawn && _attackStage == AttackStage::SWING)  return false;
 
         // @TODO: add some animation that cancels out the attack mode
         if (_beingGrabbedData.stage == 0)
         {
             _characterRenderObj->animator->setTrigger("goto_grabbed");
-            if (_isWeaponDrawn)
-            {
-                _characterRenderObj->animator->runEvent("EventDisableMCMLayer");
-                _characterRenderObj->animator->runEvent("EventPlaySFXBreakoff");
-            }
         }
 
 
@@ -1110,11 +1085,11 @@ bool Player::processMessage(DataSerialized& message)
     }
     else if (eventName == "event_grapple_release")
     {
+        if (_beingGrabbedData.stage == 0)  return false;  // @NOTE: Upon successful hit on an enemy that's trying to request a grab on you, it will emit this event. Ignore it if you never accepted the grab in the first place!
+
         _characterRenderObj->animator->setTrigger("leave_grabbed");
         if (_isWeaponDrawn)
         {
-            _characterRenderObj->animator->runEvent("EventEnableMCMLayer");
-            _characterRenderObj->animator->runEvent("EventPlaySFXMaterialize");
             _attackStage = AttackStage::NONE;  // For preventing input lockups when the attackstage never gets reset from the animation event
         }
 
@@ -1125,11 +1100,11 @@ bool Player::processMessage(DataSerialized& message)
     }
     else if (eventName == "event_grapple_kickout")
     {
+        if (_beingGrabbedData.stage == 0)  return false;  // @NOTE: Upon successful hit on an enemy that's trying to request a grab on you, it will emit this event. Ignore it if you never accepted the grab in the first place!
+
         _characterRenderObj->animator->setTrigger("leave_grabbed");
         if (_isWeaponDrawn)
         {
-            _characterRenderObj->animator->runEvent("EventEnableMCMLayer");
-            _characterRenderObj->animator->runEvent("EventPlaySFXMaterialize");
             _attackStage = AttackStage::NONE;  // For preventing input lockups when the attackstage never gets reset from the animation event
         }
 

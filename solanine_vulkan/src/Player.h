@@ -43,7 +43,6 @@ private:
     RenderObjectManager*     _rom;
     btCapsuleShape*          _collisionShape;
     RegisteredPhysicsObject* _physicsObj;
-    RegisteredGhostObject*   _attack1BroadSensingGhostObj;
     Camera* _camera;
     float_t _totalHeight;
     float_t _maxClimbAngle;

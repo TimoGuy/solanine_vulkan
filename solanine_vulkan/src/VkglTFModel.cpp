@@ -2173,8 +2173,8 @@ namespace vkglTF
 				if (stateChanged)
 				{
 					// @DEBUG: for testing when the animator state changes
-					//std::cout << "[ANIMATOR RUN EVENT]" << std::endl
-					//	<< "INFO: ASM: State changed to " << mask.states[mask.asmStateIndex].stateName << std::endl;
+					std::cout << "[ANIMATOR RUN EVENT]" << std::endl
+						<< "INFO: ASM: State changed to " << mask.states[mask.asmStateIndex].stateName << std::endl;
 
 					auto& state = mask.states[mask.asmStateIndex];
 					playAnimation(i, state.animationIndex, state.loop);
