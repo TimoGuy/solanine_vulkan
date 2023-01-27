@@ -652,7 +652,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         }
         else if (_beingGrabbedData.stage == 2)
         {
-            // Being kicked out
+            // Being kicked out  (@BUG: sometimes the kickout is weaker in the Y axis. It seems like it's caused by the enemy capsule collider shape rubbing up against the player collider shape for some reason. Verified cause of the weak kickout is unknown however)
             _onGround = false;  // To force going to a fall state when getting kicked out (NOTE this doesn't eliminate the times that the player gets not as high of a push up, just reduce it to very rare cases. So this fix does something!  -Timo 2023/01/26)
             _stepsSinceLastGrounded = _jumpCoyoteFrames;  // This is to prevent ground sticking right after a jump and multiple jumps performed right after another jump was done!
 
