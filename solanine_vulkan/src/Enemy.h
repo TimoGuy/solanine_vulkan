@@ -119,7 +119,7 @@ private:
     glm::vec3   _grapplePointPreTransPosition = glm::vec3(0, 1, 2.35);
     glm::vec3   _grapplePoint;
     float_t     _grappleStageGrappleTimer = 0.0f;
-    glm::vec3   _grappleKickoutVelocity   = glm::vec3(0, 50, 20);
+    glm::vec3   _grappleKickoutVelocity   = glm::vec3(0, 10, 20);
     float_t     _grappleStageKickoutTimer = 0.0f;
 
     float_t     _knockbackStageTime  = 1.25f;

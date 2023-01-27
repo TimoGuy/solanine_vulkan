@@ -646,18 +646,21 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
             // Being grabbed
             btVector3 pos   = _physicsObj->body->getWorldTransform().getOrigin();
             btVector3 delta = physutil::toVec3(_beingGrabbedData.gotoPosition) - pos;
-            _physicsObj->body->setLinearVelocity(delta / physicsDeltaTime);
-
             _facingDirection = _beingGrabbedData.gotoFacingDirection;
+
+            _physicsObj->body->setLinearVelocity(delta / physicsDeltaTime);
         }
         else if (_beingGrabbedData.stage == 2)
         {
             // Being kicked out
-            _physicsObj->body->setLinearVelocity(physutil::toVec3(_beingGrabbedData.kickoutVelocity));
+            _onGround = false;  // To force going to a fall state when getting kicked out (NOTE this doesn't eliminate the times that the player gets not as high of a push up, just reduce it to very rare cases. So this fix does something!  -Timo 2023/01/26)
             _stepsSinceLastGrounded = _jumpCoyoteFrames;  // This is to prevent ground sticking right after a jump and multiple jumps performed right after another jump was done!
 
             std::cout << ".stage = 0" << std::endl;
             _beingGrabbedData.stage = 0;
+
+            std::cout << "KV:  " << _beingGrabbedData.kickoutVelocity.x << ", " << _beingGrabbedData.kickoutVelocity.y << ", "  << _beingGrabbedData.kickoutVelocity.z << std::endl;
+            _physicsObj->body->setLinearVelocity(physutil::toVec3(_beingGrabbedData.kickoutVelocity));
         }
     }
     else
