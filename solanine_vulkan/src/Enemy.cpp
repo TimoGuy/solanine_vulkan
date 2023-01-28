@@ -988,7 +988,7 @@ void Enemy::onOverlapStalkSensor(RegisteredPhysicsObject* rpo)
     }
 
     // Choose best one to stalk (i.e. first player you see)
-    if (_em->getEntityViaGUID(guid)->getTypeName() != ":player") return;
+    if (Entity* e = _em->getEntityViaGUID(guid); e && e->getTypeName() != ":player") return;
 
     _currentAttackStage = AttackStage::STALK;
     _stalkingEntityGUID = guid;
