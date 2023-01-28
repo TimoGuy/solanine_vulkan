@@ -12,6 +12,15 @@
 #include "imgui/imgui.h"
 #include "Yosemite.h"
 
+//
+// @IDEAS
+//
+// For cases with multiple enemies (this type), I notice:
+//     - If you can hit all the enemies at the same swing, then their knockback and charge in timer will be "synced" up
+//     - Multiple enemies should "take turns" to do their attack (kinda negating/mitigating/avoiding the previous point)
+//     - @BUG: if multiple enemies commit to a grab to the player, then wild weird stuff happens (where to put the player?!?!?!?!)
+// 
+
 
 Enemy::Enemy(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSerialized* ds) : Entity(em, ds), _rom(rom), _camera(camera), _currentAttackStage(AttackStage::IDLE)
 {
