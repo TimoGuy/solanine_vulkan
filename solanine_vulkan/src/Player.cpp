@@ -142,7 +142,7 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
     body->setCcdMotionThreshold(1e-7f);
     body->setCcdSweptSphereRadius(0.5f);
 
-    // @NOTE: Generated from a gltf file export from blender fyi
+    /* // @NOTE: Generated from a gltf file export from blender fyi
     btCompoundShape* bcs = new btCompoundShape();
     bcs->addChildShape(
         btTransform(
@@ -396,7 +396,7 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
             )
         ),
         new btSphereShape(1.0f)
-    );
+    );*/
 
     _enablePhysicsUpdate = true;
     _enableUpdate = true;
