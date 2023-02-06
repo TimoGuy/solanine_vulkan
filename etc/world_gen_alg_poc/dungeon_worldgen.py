@@ -16,12 +16,14 @@ There are multiple types of dungeon I want to generate:
 
 Each dungeon type will have 5 dungeons for a total of 15 dungeons.
 
-Some will have an npc that tells you about the skill check to get into the dungeon.
+Some will have an npc that tells you about the skill needed to get into the dungeon.
 
 Some will have just an obstacle that will make the skill check required.
 
 Maybe at this point having the dungeons not be randomly generated could be good to pull down the complexity. Perhaps just the overworld being random gen would be the best.
 
-Each dungeon should be accessible to get the first item if the dungeon gets completed and gets their overworld change (usu. opening up a path to another area)
+Each dungeon should be accessible to get the first item if the dungeon gets completed and gets their overworld outside structure changes (usu. opening up a path to another area) bc the player could lose the item upon dying.
+
+
 
 """
