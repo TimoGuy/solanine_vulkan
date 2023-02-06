@@ -137,13 +137,10 @@ if __name__ == '__main__':
                     if d < distance:
                         distance = d
                         cluster_idx = idx
-            
-            if distance <= 0.5:
-                arr[x][y] = [0, 0, 0]
-            else:
-                d_norm = distance / img.width * 255.0
-                d_norm_cooked = 255.0 - (d_norm * 4.0)
-                arr[x][y] = [c * d_norm_cooked / 255.0 for c in cluster_colors[cluster_idx]]  # 255 is multiplied in twice, so divide it out once!
+
+            d_norm = distance / img.width * 255.0
+            d_norm_cooked = 255.0 - (d_norm * 4.0)
+            arr[x][y] = [c * d_norm_cooked / 255.0 for c in cluster_colors[cluster_idx]]  # 255 is multiplied in twice, so divide it out once!
     
     Image.fromarray(arr).show()
 
