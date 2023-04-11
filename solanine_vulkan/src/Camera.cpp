@@ -218,7 +218,7 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 		else
 			mainCamMode.focusPosition = targetPosition;
 	}
-	constexpr glm::vec3 worldUp = { 0.0f, 1.0f, 0.0f };
+	const glm::vec3 worldUp = { 0.0f, 1.0f, 0.0f };
 
 	//
 	// Manual rotation via mouse input
@@ -297,7 +297,7 @@ void Camera::updateFreeCam(const float_t& deltaTime, CameraModeChangeEvent chang
 
 	if (glm::length(mousePositionDeltaCooked) > 0.0f || glm::length(inputToVelocity) > 0.0f || glm::abs(worldUpVelocity) > 0.0f)
 	{
-		constexpr glm::vec3 worldUp = { 0.0f, 1.0f, 0.0f };
+		const glm::vec3 worldUp = { 0.0f, 1.0f, 0.0f };
 
 		// Update camera facing direction with mouse input
 		glm::vec3 newCamFacingDirection =
