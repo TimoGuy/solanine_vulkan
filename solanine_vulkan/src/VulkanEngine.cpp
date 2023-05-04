@@ -3999,8 +3999,8 @@ void VulkanEngine::checkIfResourceUpdatedThenHotswapRoutine()
 {
 	for (auto& resource : resourcesToWatch)
 	{
-		try
-		{
+		/*try
+		{*/
 			const std::filesystem::file_time_type lastWriteTime = std::filesystem::last_write_time(resource.path);
 			if (resource.lastWriteTime == lastWriteTime)
 				continue;
@@ -4044,8 +4044,8 @@ void VulkanEngine::checkIfResourceUpdatedThenHotswapRoutine()
 			// Nothing to do to the resource!
 			// That means there's no routine for this certain resource
 			std::cout << "WARNING: No routine for " << ext << " files!" << std::endl;
-		}
-		catch (...) { }   // Just continue on if you get the filesystem error
+		/*}
+		catch (...) { }*/   // Just continue on if you get the filesystem error
 	}
 }
 
