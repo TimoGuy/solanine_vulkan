@@ -9,12 +9,10 @@
 #include "GLSLToSPIRVHelper.h"
 #include "VkglTFModel.h"
 #include "AudioEngine.h"
-#include "PhysicsEngine.h"
 #include "InputManager.h"
 #include "RenderObject.h"
 #include "Entity.h"
 #include "EntityManager.h"
-#include "WindManager.h"
 #include "Camera.h"
 #include "SceneManagement.h"
 #include "DataSerialization.h"
@@ -100,7 +98,6 @@ void VulkanEngine::init()
 
 	vkglTF::Animator::initializeEmpty(this);
 	AudioEngine::getInstance().initialize();
-	PhysicsEngine::getInstance().initialize(this);
 	globalState::initGlobalState(_camera->sceneCamera);
 
 	SDL_ShowWindow(_window);
@@ -163,6 +160,7 @@ void VulkanEngine::run()
 		// Update DeltaTime
 		uint64_t currentFrame = SDL_GetPerformanceCounter();
 		const float_t deltaTime = (float_t)(currentFrame - lastFrame) * ticksFrequency;
+		const float_t scaledDeltaTime = deltaTime * timeScale;
 		lastFrame = currentFrame;
 
 		// Stop anything from updating when window is minimized
@@ -174,11 +172,6 @@ void VulkanEngine::run()
 		//        right after all of the simulations...
 		if (_isWindowMinimized)
 			continue;
-
-		// Update physics
-		const float_t scaledDeltaTime = deltaTime * timeScale;
-		auto& entities = _entityManager->_entities;
-		PhysicsEngine::getInstance().update(scaledDeltaTime, &entities);
 
 		// Collect debug stats
 		updateDebugStats(deltaTime);
@@ -212,7 +205,6 @@ void VulkanEngine::run()
 		// Render
 		if (_recreateSwapchain)
 			recreateSwapchain();
-		PhysicsEngine::getInstance().lazyRecreateDebugDrawBuffer();
 
 		renderImGui(deltaTime);
 		render();
@@ -232,7 +224,6 @@ void VulkanEngine::cleanup()
 		delete _entityManager;  // @NOTE: all entities must be deleted before the physicsengine can shut down
 
 		globalState::cleanupGlobalState();
-		PhysicsEngine::getInstance().cleanup();
 		AudioEngine::getInstance().cleanup();
 
 		delete _roManager;
@@ -367,8 +358,6 @@ void VulkanEngine::render()
 		uploadCurrentFrameToGPU(currentFrame);
 		renderRenderObjects(cmd, currentFrame, 0, _roManager->_renderObjectsIndices.size(), true, false, nullptr, false);
 		renderPickedObject(cmd, currentFrame);
-		if (_showCollisionDebugDraw)
-			PhysicsEngine::getInstance().renderDebugDraw(cmd, currentFrame.globalDescriptor);
 
 		// End renderpass
 		vkCmdEndRenderPass(cmd);
@@ -2307,51 +2296,9 @@ void VulkanEngine::initPipelines()
 		vkDestroyShaderModule(_device, shaderStage.module, nullptr);
 
 	//
-	// Debug Physics Object pipeline
-	//
-	VkPipelineLayoutCreateInfo debugPhysicsObjectPipelineLayoutInfo = wireframeColorPipelineLayoutInfo;
-
-	debugPhysicsObjectPipelineLayoutInfo.pPushConstantRanges = nullptr;
-	debugPhysicsObjectPipelineLayoutInfo.pushConstantRangeCount = 0;
-
-	VkDescriptorSetLayout setLayouts5[] = { _globalSetLayout, _objectSetLayout };
-	debugPhysicsObjectPipelineLayoutInfo.pSetLayouts = setLayouts5;
-	debugPhysicsObjectPipelineLayoutInfo.setLayoutCount = 2;
-
-	VkPipelineLayout _debugPhysicsObjectPipelineLayout;
-	VK_CHECK(vkCreatePipelineLayout(_device, &debugPhysicsObjectPipelineLayoutInfo, nullptr, &_debugPhysicsObjectPipelineLayout));
-
-	auto attributes = PhysicsEngine::getInstance().getVertexAttributeDescriptions();
-	auto bindings = PhysicsEngine::getInstance().getVertexBindingDescriptions();
-
-	pipelineBuilder._shaderStages.clear();
-	pipelineBuilder._shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, debugPhysicsObjectVertShader));
-	pipelineBuilder._shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, debugPhysicsObjectFragShader));
-
-	pipelineBuilder._vertexInputInfo = vkinit::vertexInputStateCreateInfo();
-	pipelineBuilder._vertexInputInfo.pVertexAttributeDescriptions = attributes.data();
-	pipelineBuilder._vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributes.size());
-	pipelineBuilder._vertexInputInfo.pVertexBindingDescriptions = bindings.data();
-	pipelineBuilder._vertexInputInfo.vertexBindingDescriptionCount = static_cast<uint32_t>(bindings.size());
-
-	pipelineBuilder._inputAssembly = vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_LINE_LIST);
-
-	pipelineBuilder._rasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_LINE, VK_CULL_MODE_NONE);
-	pipelineBuilder._depthStencil = vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_NEVER);
-	pipelineBuilder._pipelineLayout = _debugPhysicsObjectPipelineLayout;
-
-	auto _debugPhysicsObjectPipeline = pipelineBuilder.buildPipeline(_device, _mainRenderPass);
-	createMaterial(_debugPhysicsObjectPipeline, _debugPhysicsObjectPipelineLayout, "debugPhysicsObjectMaterial");
-
-	for (auto shaderStage : pipelineBuilder._shaderStages)
-		vkDestroyShaderModule(_device, shaderStage.module, nullptr);
-
-	//
 	// Shadow Depth Pass pipeline
 	//
-	VkPipelineLayoutCreateInfo shadowDepthPassPipelineLayoutInfo = debugPhysicsObjectPipelineLayoutInfo;
+	VkPipelineLayoutCreateInfo shadowDepthPassPipelineLayoutInfo = wireframeColorPipelineLayoutInfo;
 
 	pushConstant = {
 		.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
@@ -2471,8 +2418,6 @@ void VulkanEngine::initPipelines()
 		vkDestroyPipeline(_device, _wireframeColorPipeline, nullptr);
 		vkDestroyPipeline(_device, _wireframeColorBehindPipeline, nullptr);
 		vkDestroyPipelineLayout(_device, _wireframeColorPipelineLayout, nullptr);
-		vkDestroyPipeline(_device, _debugPhysicsObjectPipeline, nullptr);
-		vkDestroyPipelineLayout(_device, _debugPhysicsObjectPipelineLayout, nullptr);
 		vkDestroyPipeline(_device, _shadowDepthPassPipeline, nullptr);
 		vkDestroyPipelineLayout(_device, _shadowDepthPassPipelineLayout, nullptr);
 		vkDestroyPipeline(_device, _postprocessPipeline, nullptr);
@@ -4273,7 +4218,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 				break;
 
 			case 3:
-				isLayerActive = _showCollisionDebugDraw;
+				isLayerActive = false;  // _showCollisionDebugDraw;
 				break;
 			}
 
@@ -4308,7 +4253,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 
 				case 3:
 					// Collision Layer debug draw toggle
-					_showCollisionDebugDraw = !_showCollisionDebugDraw;
+					// _showCollisionDebugDraw = !_showCollisionDebugDraw;
 					break;
 				}
 
@@ -4346,69 +4291,6 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 			ImGui::DragFloat("focusRadiusY", &_camera->mainCamMode.focusRadiusY, 1.0f, 0.0f);
 			ImGui::SliderFloat("focusCentering", &_camera->mainCamMode.focusCentering, 0.0f, 1.0f);
 			ImGui::DragFloat3("focusPositionOffset", &_camera->mainCamMode.focusPositionOffset.x);
-		}
-
-		accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
-		maxWindowWidth = glm::max(maxWindowWidth, ImGui::GetWindowWidth());
-	}
-	ImGui::End();
-
-	//
-	// Wind Manager
-	//
-	ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight + windowOffsetY), ImGuiCond_Always);
-	ImGui::Begin("Wind Manager", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
-	{
-		ImGui::DragFloat3("Wind Velocity", &windmgr::windVelocity.x);
-		ImGui::DragFloat("Wind check ray length", &windmgr::windCheckRayLength);
-		ImGui::Checkbox("DEBUG Render wind zones", &windmgr::debugRenderCollisionDataFlag);
-
-		if (ImGui::CollapsingHeader("Wind Zones", ImGuiTreeNodeFlags_DefaultOpen))
-		{
-			size_t wzIndex = 0;
-			for (auto& windZone : windmgr::windZones)
-			{
-				ImGui::Text(("Wind Zone #" + std::to_string(wzIndex)).c_str());
-				ImGui::DragFloat3(("Pos### POS Wind Zone #" + std::to_string(wzIndex)).c_str(), &windZone.position.x);
-
-				glm::vec3 eulerDegreesOfRotation = glm::degrees(glm::eulerAngles(windZone.rotation));
-				if (ImGui::DragFloat3(("Rot### ROT Wind Zone #" + std::to_string(wzIndex)).c_str(), &eulerDegreesOfRotation.x))
-					windZone.rotation = glm::quat(glm::radians(eulerDegreesOfRotation));
-				
-				ImGui::DragFloat3(("Sca### SCA Wind Zone #" + std::to_string(wzIndex)).c_str(), &windZone.halfExtents.x);
-
-				if (ImGui::TreeNode(("Finer Transform Controls### FTC Wind Zone #" + std::to_string(wzIndex)).c_str()))
-				{
-					glm::vec3 adjMinAABB(0.0f);
-					glm::vec3 adjMaxAABB(0.0f);
-
-					bool changed = false;
-					changed |= ImGui::DragFloat3(("Adjust Min AABB### FTC MINAABB Wind Zone #" + std::to_string(wzIndex)).c_str(), &adjMinAABB.x);
-					changed |= ImGui::DragFloat3(("Adjust Max AABB### FTC MAXAABB Wind Zone #" + std::to_string(wzIndex)).c_str(), &adjMaxAABB.x);
-					if (changed)
-					{
-						windZone.position    += (-adjMinAABB + adjMaxAABB) * 0.5f;
-						windZone.halfExtents += (adjMinAABB + adjMaxAABB) * 0.5f;
-					}
-
-					ImGui::TreePop();
-				}
-
-				if (ImGui::Button(("Delete!### DEL Wind Zone #" + std::to_string(wzIndex)).c_str()))
-				{
-					windmgr::windZones.erase(windmgr::windZones.begin() + wzIndex);
-					break;
-				}
-
-				ImGui::Separator();
-
-				wzIndex++;
-			}
-
-			if (ImGui::Button("Add new Wind Zone"))
-			{
-				windmgr::windZones.push_back({});
-			}
 		}
 
 		accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
