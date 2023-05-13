@@ -3,18 +3,17 @@
 #include "Entity.h"
 class EntityManager;
 class RenderObjectManager;
-struct Camera;
-struct Player_XData;
+struct VoxelField_XData;
 
 
-class Player : public Entity
+class VoxelField : public Entity
 {
 public:
     static const std::string TYPE_NAME;
     std::string getTypeName() { return TYPE_NAME; };
 
-    Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSerialized* ds);
-    ~Player();
+    VoxelField(EntityManager* em, RenderObjectManager* rom, DataSerialized* ds);
+    ~VoxelField();
 
     void physicsUpdate(const float_t& physicsDeltaTime);
     void update(const float_t& deltaTime);
@@ -22,11 +21,10 @@ public:
 
     void dump(DataSerializer& ds);
     void load(DataSerialized& ds);
-    bool processMessage(DataSerialized& message);
 
     void reportMoved(void* matrixMoved);
     void renderImGui();
 
 private:
-    Player_XData* _data;
+    VoxelField_XData* _data;
 };

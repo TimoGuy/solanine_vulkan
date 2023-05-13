@@ -1,5 +1,6 @@
 #include "Player.h"
 
+#include "Imports.h"
 #include "PhysUtil.h"
 #include "VkglTFModel.h"
 #include "RenderObject.h"
@@ -13,12 +14,38 @@
 #include "imgui/imgui.h"
 
 
-Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSerialized* ds) : Entity(em, ds), _rom(rom), _camera(camera)
+struct Player_XData
 {
+    RenderObjectManager*     rom;
+    Camera*                  camera;
+    RenderObject*            characterRenderObj;
+    RenderObject*            handleRenderObj;
+    RenderObject*            weaponRenderObj;
+    std::string              weaponAttachmentJointName;
+
+    glm::vec3 worldSpaceInput = glm::vec3(0.0f);
+
+    // Load Props
+    glm::vec3 load_position = glm::vec3(0.0f);
+
+    // Tweak Props
+    float_t facingDirection = 0.0f;
+};
+
+
+Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSerialized* ds) : Entity(em, ds), _data(new Player_XData())
+{
+    Entity::_enablePhysicsUpdate = true;
+    Entity::_enableUpdate = true;
+    Entity::_enableLateUpdate = true;
+
+    _data->rom = rom;
+    _data->camera = camera;
+
     if (ds)
         load(*ds);
 
-    _weaponAttachmentJointName = "Back Attachment";
+    _data->weaponAttachmentJointName = "Back Attachment";
     std::vector<vkglTF::Animator::AnimatorCallback> animatorCallbacks = {
         {
             "EventPlaySFXAttack", [&]() {
@@ -79,47 +106,44 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
         },*/
     };
 
-    vkglTF::Model* characterModel = _rom->getModel("SlimeGirl", this, [](){});
-    _characterRenderObj =
-        _rom->registerRenderObject({
+    vkglTF::Model* characterModel = _data->rom->getModel("SlimeGirl", this, [](){});
+    _data->characterRenderObj =
+        _data->rom->registerRenderObject({
             .model = characterModel,
             .animator = new vkglTF::Animator(characterModel, animatorCallbacks),
-            .transformMatrix = glm::translate(glm::mat4(1.0f), _load_position) * glm::toMat4(glm::quat(glm::vec3(0, _facingDirection, 0))),
+            .transformMatrix = glm::translate(glm::mat4(1.0f), _data->load_position) * glm::toMat4(glm::quat(glm::vec3(0, _data->facingDirection, 0))),
             .renderLayer = RenderLayer::VISIBLE,
             .attachedEntityGuid = getGUID(),
             });
 
-    vkglTF::Model* handleModel = _rom->getModel("Handle", this, [](){});
-    _handleRenderObj =
-        _rom->registerRenderObject({
+    vkglTF::Model* handleModel = _data->rom->getModel("Handle", this, [](){});
+    _data->handleRenderObj =
+        _data->rom->registerRenderObject({
             .model = handleModel,
             .renderLayer = RenderLayer::VISIBLE,
             .attachedEntityGuid = getGUID(),
             });
 
-    vkglTF::Model* weaponModel = _rom->getModel("WingWeapon", this, [](){});
-    _weaponRenderObj =
-        _rom->registerRenderObject({
+    vkglTF::Model* weaponModel = _data->rom->getModel("WingWeapon", this, [](){});
+    _data->weaponRenderObj =
+        _data->rom->registerRenderObject({
             .model = weaponModel,
             .renderLayer = RenderLayer::INVISIBLE,
             .attachedEntityGuid = getGUID(),
             });
 
-    _camera->mainCamMode.setMainCamTargetObject(_characterRenderObj);  // @NOTE: I believe that there should be some kind of main camera system that targets the player by default but when entering different volumes etc. the target changes depending.... essentially the system needs to be more built out imo
-
-
-    _enablePhysicsUpdate = true;
-    _enableUpdate = true;
-    _enableLateUpdate = true;
+    _data->camera->mainCamMode.setMainCamTargetObject(_data->characterRenderObj);  // @NOTE: I believe that there should be some kind of main camera system that targets the player by default but when entering different volumes etc. the target changes depending.... essentially the system needs to be more built out imo
 }
 
 Player::~Player()
 {
-    delete _characterRenderObj->animator;
-    _rom->unregisterRenderObject(_characterRenderObj);
-    _rom->unregisterRenderObject(_handleRenderObj);
-    _rom->unregisterRenderObject(_weaponRenderObj);
-    _rom->removeModelCallbacks(this);
+    delete _data->characterRenderObj->animator;
+    _data->rom->unregisterRenderObject(_data->characterRenderObj);
+    _data->rom->unregisterRenderObject(_data->handleRenderObj);
+    _data->rom->unregisterRenderObject(_data->weaponRenderObj);
+    _data->rom->removeModelCallbacks(this);
+
+    delete _data;
 
     // @TODO: figure out if I need to call `delete _collisionShape;` or not
 }
@@ -135,23 +159,23 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     input.y += input::keyUpPressed    ?  1.0f : 0.0f;
     input.y += input::keyDownPressed  ? -1.0f : 0.0f;
 
-    if (_camera->freeCamMode.enabled || ImGui::GetIO().WantTextInput)  // @DEBUG: for the level editor
+    if (_data->camera->freeCamMode.enabled || ImGui::GetIO().WantTextInput)  // @DEBUG: for the level editor
     {
         input = glm::vec2(0.0f);
     }
 
-    glm::vec3 flatCameraFacingDirection = _camera->sceneCamera.facingDirection;
+    glm::vec3 flatCameraFacingDirection = _data->camera->sceneCamera.facingDirection;
     flatCameraFacingDirection.y = 0.0f;
     flatCameraFacingDirection = glm::normalize(flatCameraFacingDirection);
 
-    _worldSpaceInput =
+    _data->worldSpaceInput =
         input.y * flatCameraFacingDirection +
         input.x * glm::normalize(glm::cross(flatCameraFacingDirection, glm::vec3(0, 1, 0)));
 
-    if (glm::length2(_worldSpaceInput) < 0.01f)
-        _worldSpaceInput = glm::vec3(0.0f);
+    if (glm::length2(_data->worldSpaceInput) < 0.01f)
+        _data->worldSpaceInput = glm::vec3(0.0f);
     else
-        _worldSpaceInput = physutil::clampVector(_worldSpaceInput, 0.0f, 1.0f);
+        _data->worldSpaceInput = physutil::clampVector(_data->worldSpaceInput, 0.0f, 1.0f);
 
 
     //
@@ -171,28 +195,28 @@ void Player::update(const float_t& deltaTime)
     input.y += input::keyUpPressed    ?  1.0f : 0.0f;
     input.y += input::keyDownPressed  ? -1.0f : 0.0f;
 
-    if (_camera->freeCamMode.enabled || ImGui::GetIO().WantTextInput)  // @DEBUG: for the level editor
+    if (_data->camera->freeCamMode.enabled || ImGui::GetIO().WantTextInput)  // @DEBUG: for the level editor
     {
         input = glm::vec2(0.0f);
     }
 
-    glm::vec3 flatCameraFacingDirection = _camera->sceneCamera.facingDirection;
+    glm::vec3 flatCameraFacingDirection = _data->camera->sceneCamera.facingDirection;
     flatCameraFacingDirection.y = 0.0f;
     flatCameraFacingDirection = glm::normalize(flatCameraFacingDirection);
 
-    _worldSpaceInput =
+    _data->worldSpaceInput =
         input.y * flatCameraFacingDirection +
         input.x * glm::normalize(glm::cross(flatCameraFacingDirection, glm::vec3(0, 1, 0)));
 
     // Update render transform
-    if (glm::length2(_worldSpaceInput) > 0.01f)
-        _facingDirection = glm::atan(_worldSpaceInput.x, _worldSpaceInput.z);
+    if (glm::length2(_data->worldSpaceInput) > 0.01f)
+        _data->facingDirection = glm::atan(_data->worldSpaceInput.x, _data->worldSpaceInput.z);
 
     //
     // Update mask for animation
     // @TODO: there is popping for some reason. Could be how the transitions/triggers work in the game or could be a different underlying issue. Figure it out pls!  -Timo
     //
-    _characterRenderObj->animator->setMask(
+    _data->characterRenderObj->animator->setMask(
         "MaskCombatMode",
         false
     );
@@ -203,26 +227,26 @@ void Player::lateUpdate(const float_t& deltaTime)
     //
     // Update position of character and weapon
     //
-    glm::vec3 interpPos                  = glm::vec3(0.0f);  //physutil::getPosition(_physicsObj->interpolatedTransform);
-    _characterRenderObj->transformMatrix = glm::translate(glm::mat4(1.0f), interpPos) * glm::toMat4(glm::quat(glm::vec3(0, _facingDirection, 0)));
+    glm::vec3 interpPos                        = glm::vec3(0.0f);  //physutil::getPosition(_physicsObj->interpolatedTransform);
+    _data->characterRenderObj->transformMatrix = glm::translate(glm::mat4(1.0f), interpPos) * glm::toMat4(glm::quat(glm::vec3(0, _data->facingDirection, 0)));
 
-    glm::mat4 attachmentJointMat         = _characterRenderObj->animator->getJointMatrix(_weaponAttachmentJointName);
-    _weaponRenderObj->transformMatrix    = _characterRenderObj->transformMatrix * attachmentJointMat;
-    _handleRenderObj->transformMatrix    = _weaponRenderObj->transformMatrix;
+    glm::mat4 attachmentJointMat               = _data->characterRenderObj->animator->getJointMatrix(_data->weaponAttachmentJointName);
+    _data->weaponRenderObj->transformMatrix    = _data->characterRenderObj->transformMatrix * attachmentJointMat;
+    _data->handleRenderObj->transformMatrix    = _data->weaponRenderObj->transformMatrix;
 }
 
 void Player::dump(DataSerializer& ds)
 {
     Entity::dump(ds);
-    ds.dumpVec3(physutil::getPosition(_characterRenderObj->transformMatrix));
-    ds.dumpFloat(_facingDirection);
+    ds.dumpVec3(physutil::getPosition(_data->characterRenderObj->transformMatrix));
+    ds.dumpFloat(_data->facingDirection);
 }
 
 void Player::load(DataSerialized& ds)
 {
     Entity::load(ds);
-    _load_position         = ds.loadVec3();
-    _facingDirection       = ds.loadFloat();
+    _data->load_position         = ds.loadVec3();
+    _data->facingDirection       = ds.loadFloat();
 }
 
 bool Player::processMessage(DataSerialized& message)
