@@ -47,5 +47,5 @@ namespace physengine
     bool destroyCapsule(CapsulePhysicsData* cpd);
 
     bool debugCheckPointColliding(const glm::vec3& point);
-    bool debugCheckCapsuleColliding(const CapsulePhysicsData& cpd);
+    bool debugCheckCapsuleColliding(const CapsulePhysicsData& cpd, glm::vec3& collisionNormal, float_t& penetrationDepth);
 }

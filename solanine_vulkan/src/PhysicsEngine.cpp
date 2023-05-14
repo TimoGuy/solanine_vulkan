@@ -168,7 +168,7 @@ namespace physengine
         }
     }
 
-    bool checkCapsuleCollidingWithVoxelField(const VoxelFieldPhysicsData& vfpd, const CapsulePhysicsData& cpd)
+    bool checkCapsuleCollidingWithVoxelField(const VoxelFieldPhysicsData& vfpd, const CapsulePhysicsData& cpd, glm::vec3& collisionNormal, float_t& penetrationDepth)
     {
         //
         // Broad phase: turn both objects into AABB and do collision
@@ -208,40 +208,73 @@ namespace physengine
             glm::max(glm::floor(capsuleAABBMinMax[0].z), voxelFieldAABBMinMax[0].z)
         );
         glm::ivec3 searchMax = glm::ivec3(
-            glm::min(glm::floor(capsuleAABBMinMax[1].x), voxelFieldAABBMinMax[1].x),
-            glm::min(glm::floor(capsuleAABBMinMax[1].y), voxelFieldAABBMinMax[1].y),
-            glm::min(glm::floor(capsuleAABBMinMax[1].z), voxelFieldAABBMinMax[1].z)
+            glm::min(glm::floor(capsuleAABBMinMax[1].x), voxelFieldAABBMinMax[1].x - 1),
+            glm::min(glm::floor(capsuleAABBMinMax[1].y), voxelFieldAABBMinMax[1].y - 1),
+            glm::min(glm::floor(capsuleAABBMinMax[1].z), voxelFieldAABBMinMax[1].z - 1)
         );
-        for (size_t i = searchMin.x; i < searchMax.x; i++)
-        for (size_t j = searchMin.y; j < searchMax.y; j++)
-        for (size_t k = searchMin.z; k < searchMax.z; k++)
+
+        bool collisionSuccessful = false;
+        float_t lowestDpSqrDist = std::numeric_limits<float_t>::max();
+        for (size_t i = searchMin.x; i <= searchMax.x; i++)
+        for (size_t j = searchMin.y; j <= searchMax.y; j++)
+        for (size_t k = searchMin.z; k <= searchMax.z; k++)
         {
             uint8_t vd = vfpd.voxelData[i * vfpd.sizeY * vfpd.sizeZ + j * vfpd.sizeZ + k];
-            if (vd == 0)
-                continue;
 
-            //
-            // Test collision with this voxel
-            // @TODO: implement more than the one
-            //
-            glm::vec3 point;
-            closestPointToLineSegment(glm::vec3(i + 0.5f, j + 0.5f, k + 0.5f), capsulePtATransformed, capsulePtBTransformed, point);
-            glm::vec3 boundedPoint = glm::clamp(point, glm::vec3(i, j, k), glm::vec3(i + 1.0f, j + 1.0f, k + 1.0f));
-            glm::vec3 deltaPoint = point - boundedPoint;
-            float_t dpSqrDist = glm::length2(deltaPoint);
-            
-            if (dpSqrDist < cpd.radius * cpd.radius)
-                return true;  // @TODO: make a better, more comprehensive way of checking collision of all potentially touching voxels
+            switch (vd)
+            {
+                // Empty space
+                case 0:
+                    continue;
+
+                // Filled space
+                case 1:
+                {
+                    //
+                    // Test collision with this voxel
+                    //
+                    glm::vec3 point;
+                    closestPointToLineSegment(glm::vec3(i + 0.5f, j + 0.5f, k + 0.5f), capsulePtATransformed, capsulePtBTransformed, point);
+                    glm::vec3 boundedPoint = glm::clamp(point, glm::vec3(i, j, k), glm::vec3(i + 1.0f, j + 1.0f, k + 1.0f));
+                    glm::vec3 deltaPoint = point - boundedPoint;
+                    float_t dpSqrDist = glm::length2(deltaPoint);
+
+                    if (dpSqrDist < 0.000001f)
+                    {
+                        // Collider is stuck
+                        collisionSuccessful = true;
+                        collisionNormal = glm::vec3(0, 1, 0);
+                        penetrationDepth = 1.0f;
+                    }
+                    else if (dpSqrDist < cpd.radius * cpd.radius && dpSqrDist < lowestDpSqrDist)
+                    {
+                        // Collision successful
+                        collisionSuccessful = true;
+                        lowestDpSqrDist = dpSqrDist;
+                        collisionNormal = glm::normalize(deltaPoint);
+                        penetrationDepth = cpd.radius - glm::sqrt(dpSqrDist);
+                    }
+                } break;
+            }
         }
+
+        return collisionSuccessful;
     }
 
-    bool debugCheckCapsuleColliding(const CapsulePhysicsData& cpd)
+    bool debugCheckCapsuleColliding(const CapsulePhysicsData& cpd, glm::vec3& collisionNormal, float_t& penetrationDepth)
     {
+        glm::vec3 normal;
+        float_t penDepth;
+
         for (size_t i = 0; i < numVFsCreated; i++)
         {
             size_t& index = voxelFieldIndices[i];
-            if (checkCapsuleCollidingWithVoxelField(voxelFieldPool[index], cpd))
+            if (checkCapsuleCollidingWithVoxelField(voxelFieldPool[index], cpd, normal, penDepth))
+            {
+                collisionNormal = normal;
+                penetrationDepth = penDepth;
                 return true;
+            }
         }
         return false;
     }

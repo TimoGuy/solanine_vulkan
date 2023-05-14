@@ -228,9 +228,14 @@ void Player::update(const float_t& deltaTime)
     // @DEBUG: @TEST: try doing some voxel collision
     //
     // bool collided = physengine::debugCheckPointColliding(_data->position);
+    glm::vec3 normal;
+    float_t penetrationDepth;
     _data->cpd->basePosition = _data->position;
-    bool collided = physengine::debugCheckCapsuleColliding(*_data->cpd);
-    std::cout << collided << std::endl;
+    if (physengine::debugCheckCapsuleColliding(*_data->cpd, normal, penetrationDepth))
+    {
+        std::cout << "collided: normal: " << normal.x << ", " << normal.y << ", " << normal.z << "\tdepth: " << penetrationDepth << std::endl;
+        _data->position += normal * (penetrationDepth + 0.0001f);
+    }
 }
 
 void Player::lateUpdate(const float_t& deltaTime)
