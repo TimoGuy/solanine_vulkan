@@ -233,8 +233,16 @@ namespace physengine
                     //
                     // Test collision with this voxel
                     //
+                    glm::vec3 boundedPointA = glm::clamp(capsulePtATransformed - glm::vec3(i, j, k), glm::vec3(0.0f), glm::vec3(1.0f));
+                    glm::vec3 boundedPointB = glm::clamp(capsulePtBTransformed - glm::vec3(i, j, k), glm::vec3(0.0f), glm::vec3(1.0f));
+                    glm::vec3 boundedPointMid = (boundedPointA + boundedPointB) * 0.5f;
+                    glm::vec3 boundedPointMidLocalized = boundedPointMid * 2.0f - glm::vec3(1.0f);  // [0 to 1] to [-1 to 1] space
+                    float_t largestAxis = glm::max(glm::abs(boundedPointMidLocalized.x), glm::max(glm::abs(boundedPointMidLocalized.y), glm::abs(boundedPointMidLocalized.z)));
+                    boundedPointMidLocalized /= largestAxis;  // Reproject the midpoint back onto the voxel bounds
+                    boundedPointMid = boundedPointMidLocalized * 0.5f + 0.5f + glm::vec3(i, j, k);  // [-1 to 1] to [i,j,k to i+1,j+1,k+1] space
+
                     glm::vec3 point;
-                    closestPointToLineSegment(glm::vec3(i + 0.5f, j + 0.5f, k + 0.5f), capsulePtATransformed, capsulePtBTransformed, point);
+                    closestPointToLineSegment(boundedPointMid, capsulePtATransformed, capsulePtBTransformed, point);
                     glm::vec3 boundedPoint = glm::clamp(point, glm::vec3(i, j, k), glm::vec3(i + 1.0f, j + 1.0f, k + 1.0f));
                     glm::vec3 deltaPoint = point - boundedPoint;
                     float_t dpSqrDist = glm::length2(deltaPoint);
@@ -251,7 +259,7 @@ namespace physengine
                         // Collision successful
                         collisionSuccessful = true;
                         lowestDpSqrDist = dpSqrDist;
-                        collisionNormal = glm::normalize(deltaPoint);
+                        collisionNormal = glm::mat3(vfpd.transform) * glm::normalize(deltaPoint);
                         penetrationDepth = cpd.radius - glm::sqrt(dpSqrDist);
                     }
                 } break;

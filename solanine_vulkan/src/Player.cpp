@@ -233,7 +233,7 @@ void Player::update(const float_t& deltaTime)
     velocity += glm::vec3(0, input::keyWorldUpPressed ? 1.0f : 0.0f, 0);
     velocity += glm::vec3(0, input::keyWorldDownPressed ? -1.0f : 0.0f, 0);
 
-    const float_t ccdDistance = 0.4f;  // @NOTE: This number is fine as long as it's below the capsule radius (or the radius of the voxels, whichever is smaller)
+    const float_t ccdDistance = 0.25f;  // @NOTE: This number is fine as long as it's below the capsule radius (or the radius of the voxels, whichever is smaller)
     glm::vec3 deltaPosition = velocity;
     while (glm::length2(deltaPosition) > 0.000001f)
     {
