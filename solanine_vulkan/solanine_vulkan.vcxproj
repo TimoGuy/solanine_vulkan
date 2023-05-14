@@ -175,6 +175,7 @@ copy $(SolutionDir)libs\fmod_studio\lib\fmodstudio.dll $(OutDirfullPath)fmodstud
     <ClInclude Include="src\StringHelper.h" />
     <ClInclude Include="src\PhysUtil.h" />
     <ClInclude Include="src\VoxelField.h" />
+    <ClInclude Include="src\PhysicsEngine.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\AudioEngine.cpp" />
@@ -215,6 +216,7 @@ copy $(SolutionDir)libs\fmod_studio\lib\fmodstudio.dll $(OutDirfullPath)fmodstud
     <ClCompile Include="src\VulkanEngine.cpp" />
     <ClCompile Include="src\PhysUtil.cpp" />
     <ClCompile Include="src\VoxelField.cpp" />
+    <ClCompile Include="src\PhysicsEngine.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\core\core.vcxproj">

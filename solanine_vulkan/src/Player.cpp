@@ -2,6 +2,7 @@
 
 #include "Imports.h"
 #include "PhysUtil.h"
+#include "PhysicsEngine.h"
 #include "VkglTFModel.h"
 #include "RenderObject.h"
 #include "EntityManager.h"
@@ -23,12 +24,12 @@ struct Player_XData
     RenderObject*            weaponRenderObj;
     std::string              weaponAttachmentJointName;
 
+    physengine::CapsulePhysicsData* cpd;
+
     glm::vec3 worldSpaceInput = glm::vec3(0.0f);
 
-    // Load Props
-    glm::vec3 load_position = glm::vec3(0.0f);
-
     // Tweak Props
+    glm::vec3 position;
     float_t facingDirection = 0.0f;
 };
 
@@ -111,7 +112,7 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
         _data->rom->registerRenderObject({
             .model = characterModel,
             .animator = new vkglTF::Animator(characterModel, animatorCallbacks),
-            .transformMatrix = glm::translate(glm::mat4(1.0f), _data->load_position) * glm::toMat4(glm::quat(glm::vec3(0, _data->facingDirection, 0))),
+            .transformMatrix = glm::translate(glm::mat4(1.0f), _data->position) * glm::toMat4(glm::quat(glm::vec3(0, _data->facingDirection, 0))),
             .renderLayer = RenderLayer::VISIBLE,
             .attachedEntityGuid = getGUID(),
             });
@@ -133,6 +134,8 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
             });
 
     _data->camera->mainCamMode.setMainCamTargetObject(_data->characterRenderObj);  // @NOTE: I believe that there should be some kind of main camera system that targets the player by default but when entering different volumes etc. the target changes depending.... essentially the system needs to be more built out imo
+
+    _data->cpd = physengine::createCapsule(1.0f, 4.0f);  // Total height is 6, but r*2 is subtracted to get the capsule height (i.e. the line segment length that the capsule rides along)
 }
 
 Player::~Player()
@@ -143,9 +146,9 @@ Player::~Player()
     _data->rom->unregisterRenderObject(_data->weaponRenderObj);
     _data->rom->removeModelCallbacks(this);
 
-    delete _data;
+    physengine::destroyCapsule(_data->cpd);
 
-    // @TODO: figure out if I need to call `delete _collisionShape;` or not
+    delete _data;
 }
 
 void Player::physicsUpdate(const float_t& physicsDeltaTime)
@@ -220,6 +223,14 @@ void Player::update(const float_t& deltaTime)
         "MaskCombatMode",
         false
     );
+
+    //
+    // @DEBUG: @TEST: try doing some voxel collision
+    //
+    // bool collided = physengine::debugCheckPointColliding(_data->position);
+    _data->cpd->basePosition = _data->position;
+    bool collided = physengine::debugCheckCapsuleColliding(*_data->cpd);
+    std::cout << collided << std::endl;
 }
 
 void Player::lateUpdate(const float_t& deltaTime)
@@ -227,7 +238,7 @@ void Player::lateUpdate(const float_t& deltaTime)
     //
     // Update position of character and weapon
     //
-    glm::vec3 interpPos                        = glm::vec3(0.0f);  //physutil::getPosition(_physicsObj->interpolatedTransform);
+    glm::vec3 interpPos                        = _data->position;  //physutil::getPosition(_physicsObj->interpolatedTransform);
     _data->characterRenderObj->transformMatrix = glm::translate(glm::mat4(1.0f), interpPos) * glm::toMat4(glm::quat(glm::vec3(0, _data->facingDirection, 0)));
 
     glm::mat4 attachmentJointMat               = _data->characterRenderObj->animator->getJointMatrix(_data->weaponAttachmentJointName);
@@ -238,14 +249,14 @@ void Player::lateUpdate(const float_t& deltaTime)
 void Player::dump(DataSerializer& ds)
 {
     Entity::dump(ds);
-    ds.dumpVec3(physutil::getPosition(_data->characterRenderObj->transformMatrix));
+    ds.dumpVec3(_data->position);
     ds.dumpFloat(_data->facingDirection);
 }
 
 void Player::load(DataSerialized& ds)
 {
     Entity::load(ds);
-    _data->load_position         = ds.loadVec3();
+    _data->position         = ds.loadVec3();
     _data->facingDirection       = ds.loadFloat();
 }
 
@@ -256,7 +267,7 @@ bool Player::processMessage(DataSerialized& message)
 
 void Player::reportMoved(void* matrixMoved)
 {
-    return;
+    _data->position = physutil::getPosition(*(glm::mat4*)matrixMoved);
 }
 
 void Player::renderImGui()

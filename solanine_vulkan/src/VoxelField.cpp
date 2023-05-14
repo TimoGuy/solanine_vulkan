@@ -1,38 +1,26 @@
 #include "VoxelField.h"
 
+#include "Imports.h"
+#include "VkglTFModel.h"
+#include "RenderObject.h"
+#include "PhysicsEngine.h"
+#include "imgui/imgui.h"
+
 
 struct VoxelField_XData
 {
     RenderObjectManager* rom;
+    vkglTF::Model* voxelModel;
+    std::vector<RenderObject*> voxelRenderObjs;
+    std::vector<glm::vec3> voxelOffsets;
 
-    //
-    // @NOTE: VOXEL DATA GUIDE
-    //
-    // Will implement:
-    //        0: empty space
-    //        1: filled space
-    //
-    // For the future:
-    //        2: half-height space (bottom)
-    //        3: half-height space (top)
-    //        4: 4-step stair space (South 0.0 height, North 0.5 height)
-    //        5: 4-step stair space (South 0.5 height, North 1.0 height)
-    //        6: 4-step stair space (North 0.0 height, South 0.5 height)
-    //        7: 4-step stair space (North 0.5 height, South 1.0 height)
-    //        8: 4-step stair space (East  0.0 height, West  0.5 height)
-    //        9: 4-step stair space (East  0.5 height, West  1.0 height)
-    //       10: 4-step stair space (West  0.0 height, East  0.5 height)
-    //       11: 4-step stair space (West  0.5 height, East  1.0 height)
-    //
-    size_t sizeX = 8,
-           sizeY = 8,
-           sizeZ = 8;
-    uint8_t* voxelData;
+    physengine::VoxelFieldPhysicsData* vfpd;
 };
 
 inline void    buildVoxelData(VoxelField_XData& data);
 inline uint8_t getVoxelDataAtPosition(VoxelField_XData& data, const int32_t& x, const int32_t& y, const int32_t& z);
-inline void    assembleVoxelRenderObjects(VoxelField_XData& data);
+inline void    assembleVoxelRenderObjects(VoxelField_XData& data, const std::string& attachedEntityGuid);
+inline void    deleteVoxelRenderObjects(VoxelField_XData& data);
 
 
 VoxelField::VoxelField(EntityManager* em, RenderObjectManager* rom, DataSerialized* ds) : Entity(em, ds), _data(new VoxelField_XData())
@@ -49,13 +37,15 @@ VoxelField::VoxelField(EntityManager* em, RenderObjectManager* rom, DataSerializ
     //
     // Initialization
     //
+    _data->voxelModel = _data->rom->getModel("DevBoxWood", this, [](){});
     buildVoxelData(*_data);
-    assembleVoxelRenderObjects(*_data);
+    assembleVoxelRenderObjects(*_data, getGUID());
 }
 
 VoxelField::~VoxelField()
 {
-    delete _data->voxelData;
+    deleteVoxelRenderObjects(*_data);
+    physengine::destroyVoxelField(_data->vfpd);
     delete _data;
 }
 
@@ -86,39 +76,56 @@ void VoxelField::load(DataSerialized& ds)
 
 void VoxelField::reportMoved(void* matrixMoved)
 {
+    // Search for which block was moved
+    size_t i = 0;
+    for (; i < _data->voxelRenderObjs.size(); i++)
+        if (&_data->voxelRenderObjs[i]->transformMatrix == matrixMoved)
+            break;
+    
+    _data->vfpd->transform = glm::translate(*(glm::mat4*)matrixMoved, -_data->voxelOffsets[i]);
 
+    // Move all blocks according to the transform
+    for (size_t i2 = 0; i2 < _data->voxelOffsets.size(); i2++)
+    {
+        if (i2 == i)
+            continue;
+        _data->voxelRenderObjs[i2]->transformMatrix = glm::translate(_data->vfpd->transform, _data->voxelOffsets[i2]);
+    }
 }
 
 void VoxelField::renderImGui()
 {
-
+    ImGui::Text("Hello there!");
 }
 
 
 inline void buildVoxelData(VoxelField_XData& data)
 {
-    uint8_t* vd = new uint8_t[data.sizeX * data.sizeY * data.sizeZ];
-    for (size_t i = 0; i < data.sizeX; i++)
-    for (size_t j = 0; j < data.sizeY; j++)
-    for (size_t k = 0; k < data.sizeZ; k++)
-        vd[i * data.sizeY * data.sizeZ + j * data.sizeZ + k] = 1;
-    data.voxelData = vd;
+    size_t sizeX = 8, sizeY = 8, sizeZ = 8;
+    uint8_t* vd = new uint8_t[sizeX * sizeY * sizeZ];
+    for (size_t i = 0; i < sizeX; i++)
+    for (size_t j = 0; j < sizeY; j++)
+    for (size_t k = 0; k < sizeZ; k++)
+        vd[i * sizeY * sizeZ + j * sizeZ + k] = 1;
+    data.vfpd = physengine::createVoxelField(sizeX, sizeY, sizeZ, vd);
 }
 
 inline uint8_t getVoxelDataAtPosition(VoxelField_XData& data, const int32_t& x, const int32_t& y, const int32_t& z)
 {
-    if (x < 0 || y < 0 || z < 0 ||
-        x >= data.sizeX || y >= data.sizeY || z >= data.sizeZ)
+    if (x < 0                 || y < 0                 || z < 0                ||
+        x >= data.vfpd->sizeX || y >= data.vfpd->sizeY || z >= data.vfpd->sizeZ)
         return 0;
-    return data.voxelData[(size_t)x * data.sizeY * data.sizeZ + (size_t)y * data.sizeZ + (size_t)z];
+    return data.vfpd->voxelData[(size_t)x * data.vfpd->sizeY * data.vfpd->sizeZ + (size_t)y * data.vfpd->sizeZ + (size_t)z];
 }
 
-inline void assembleVoxelRenderObjects(VoxelField_XData& data)
+inline void assembleVoxelRenderObjects(VoxelField_XData& data, const std::string& attachedEntityGuid)
 {
+    deleteVoxelRenderObjects(data);
+
     // Check for if voxel is filled and not surrounded
-    for (int32_t i = 0; i < data.sizeX; i++)
-    for (int32_t j = 0; j < data.sizeY; j++)
-    for (int32_t k = 0; k < data.sizeZ; k++)
+    for (int32_t i = 0; i < data.vfpd->sizeX; i++)
+    for (int32_t j = 0; j < data.vfpd->sizeY; j++)
+    for (int32_t k = 0; k < data.vfpd->sizeZ; k++)
     {
         if (getVoxelDataAtPosition(data, i, j, k))
         {
@@ -129,7 +136,26 @@ inline void assembleVoxelRenderObjects(VoxelField_XData& data)
                 !getVoxelDataAtPosition(data, i, j - 1, k) ||
                 !getVoxelDataAtPosition(data, i, j, k + 1) ||
                 !getVoxelDataAtPosition(data, i, j, k - 1))
-                addRenderObjectAtPosition(i, j, k);  // @TODO
+            {
+                glm::vec3 offset = glm::vec3(i, j, k) + glm::vec3(0.5f, 0.5f, 0.5f);
+                RenderObject* newRO =
+                    data.rom->registerRenderObject({
+                        .model = data.voxelModel,
+                        .transformMatrix = glm::translate(data.vfpd->transform, offset),
+                        .renderLayer = RenderLayer::VISIBLE,
+                        .attachedEntityGuid = attachedEntityGuid,
+                    });
+                data.voxelRenderObjs.push_back(newRO);
+                data.voxelOffsets.push_back(offset);
+            }
         }
     }
+}
+
+inline void deleteVoxelRenderObjects(VoxelField_XData& data)
+{
+    for (auto& v : data.voxelRenderObjs)
+        data.rom->unregisterRenderObject(v);
+    data.voxelRenderObjs.clear();
+    data.voxelOffsets.clear();
 }
