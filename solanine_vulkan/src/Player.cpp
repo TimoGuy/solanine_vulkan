@@ -31,6 +31,7 @@ struct Player_XData
     // Tweak Props
     glm::vec3 position;
     float_t facingDirection = 0.0f;
+    float_t modelSize = 0.3f;
 };
 
 
@@ -112,7 +113,7 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
         _data->rom->registerRenderObject({
             .model = characterModel,
             .animator = new vkglTF::Animator(characterModel, animatorCallbacks),
-            .transformMatrix = glm::translate(glm::mat4(1.0f), _data->position) * glm::toMat4(glm::quat(glm::vec3(0, _data->facingDirection, 0))),
+            .transformMatrix = glm::translate(glm::mat4(1.0f), _data->position) * glm::toMat4(glm::quat(glm::vec3(0, _data->facingDirection, 0))) * glm::scale(glm::mat4(1.0f), glm::vec3(_data->modelSize)),
             .renderLayer = RenderLayer::VISIBLE,
             .attachedEntityGuid = getGUID(),
             });
@@ -135,7 +136,7 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
 
     _data->camera->mainCamMode.setMainCamTargetObject(_data->characterRenderObj);  // @NOTE: I believe that there should be some kind of main camera system that targets the player by default but when entering different volumes etc. the target changes depending.... essentially the system needs to be more built out imo
 
-    _data->cpd = physengine::createCapsule(1.0f, 4.0f);  // Total height is 6, but r*2 is subtracted to get the capsule height (i.e. the line segment length that the capsule rides along)
+    _data->cpd = physengine::createCapsule(0.5f, 1.0f);  // Total height is 2, but r*2 is subtracted to get the capsule height (i.e. the line segment length that the capsule rides along)
 }
 
 Player::~Player()
@@ -227,14 +228,38 @@ void Player::update(const float_t& deltaTime)
     //
     // @DEBUG: @TEST: try doing some voxel collision
     //
-    // bool collided = physengine::debugCheckPointColliding(_data->position);
-    glm::vec3 normal;
-    float_t penetrationDepth;
-    _data->cpd->basePosition = _data->position;
-    if (physengine::debugCheckCapsuleColliding(*_data->cpd, normal, penetrationDepth))
+    glm::vec3 velocity = glm::vec3(0.0f);
+    velocity += _data->worldSpaceInput;
+    velocity += glm::vec3(0, input::keyWorldUpPressed ? 1.0f : 0.0f, 0);
+    velocity += glm::vec3(0, input::keyWorldDownPressed ? -1.0f : 0.0f, 0);
+
+    const float_t ccdDistance = 0.4f;  // @NOTE: This number is fine as long as it's below the capsule radius (or the radius of the voxels, whichever is smaller)
+    glm::vec3 deltaPosition = velocity;
+    while (glm::length2(deltaPosition) > 0.000001f)
     {
-        std::cout << "collided: normal: " << normal.x << ", " << normal.y << ", " << normal.z << "\tdepth: " << penetrationDepth << std::endl;
-        _data->position += normal * (penetrationDepth + 0.0001f);
+        if (glm::length2(deltaPosition) > ccdDistance * ccdDistance)
+        {
+            // Move at a max of the ccdDistance
+            glm::vec3 m = glm::normalize(deltaPosition) * ccdDistance;
+            _data->position += m;
+            deltaPosition -= m;
+        }
+        else
+        {
+            // Move the rest of the way
+            _data->position += deltaPosition;
+            deltaPosition = glm::vec3(0.0f);
+        }
+
+        // Check for collision
+        glm::vec3 normal;
+        float_t penetrationDepth;
+        _data->cpd->basePosition = _data->position;
+        if (physengine::debugCheckCapsuleColliding(*_data->cpd, normal, penetrationDepth))
+        {
+            std::cout << "collided: normal: " << normal.x << ", " << normal.y << ", " << normal.z << "\tdepth: " << penetrationDepth << std::endl;
+            _data->position += normal * (penetrationDepth + 0.0001f);
+        }
     }
 }
 
@@ -244,7 +269,7 @@ void Player::lateUpdate(const float_t& deltaTime)
     // Update position of character and weapon
     //
     glm::vec3 interpPos                        = _data->position;  //physutil::getPosition(_physicsObj->interpolatedTransform);
-    _data->characterRenderObj->transformMatrix = glm::translate(glm::mat4(1.0f), interpPos) * glm::toMat4(glm::quat(glm::vec3(0, _data->facingDirection, 0)));
+    _data->characterRenderObj->transformMatrix = glm::translate(glm::mat4(1.0f), interpPos) * glm::toMat4(glm::quat(glm::vec3(0, _data->facingDirection, 0))) * glm::scale(glm::mat4(1.0f), glm::vec3(_data->modelSize));
 
     glm::mat4 attachmentJointMat               = _data->characterRenderObj->animator->getJointMatrix(_data->weaponAttachmentJointName);
     _data->weaponRenderObj->transformMatrix    = _data->characterRenderObj->transformMatrix * attachmentJointMat;
@@ -277,5 +302,5 @@ void Player::reportMoved(void* matrixMoved)
 
 void Player::renderImGui()
 {
-    
+    ImGui::DragFloat("modelSize", &_data->modelSize);
 }
