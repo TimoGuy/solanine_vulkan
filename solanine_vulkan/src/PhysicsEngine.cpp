@@ -1,6 +1,7 @@
 #include "PhysicsEngine.h"
 
 #include <iostream>
+#include <chrono>
 
 
 namespace physengine
@@ -19,7 +20,10 @@ namespace physengine
             // Pull a voxel field from the pool
             size_t index = 0;
             if (numVFsCreated > 0)
+            {
                 index = (voxelFieldIndices[numVFsCreated - 1] + 1) % PHYSICS_OBJECTS_MAX_CAPACITY;
+                voxelFieldIndices[numVFsCreated] = index;
+            }
             VoxelFieldPhysicsData& vfpd = voxelFieldPool[index];
             numVFsCreated++;
 
@@ -80,7 +84,10 @@ namespace physengine
             // Pull a capsule from the pool
             size_t index = 0;
             if (numCapsCreated > 0)
+            {
                 index = (capsuleIndices[numCapsCreated - 1] + 1) % PHYSICS_OBJECTS_MAX_CAPACITY;
+                capsuleIndices[numCapsCreated] = index;
+            }
             CapsulePhysicsData& cpd = capsulePool[index];
             numCapsCreated++;
 
@@ -181,6 +188,8 @@ namespace physengine
         //
         // Broad phase: turn both objects into AABB and do collision
         //
+        auto broadPhaseTimingStart = std::chrono::high_resolution_clock::now();
+
         glm::vec3 capsulePtATransformed = glm::inverse(vfpd.transform) * glm::vec4(cpd.basePosition + glm::vec3(0, cpd.radius + cpd.height, 0), 1.0f);
         glm::vec3 capsulePtBTransformed = glm::inverse(vfpd.transform) * glm::vec4(cpd.basePosition + glm::vec3(0, cpd.radius, 0), 1.0f);
         glm::vec3 capsuleAABBMinMax[2] = {
@@ -207,9 +216,12 @@ namespace physengine
             capsuleAABBMinMax[1].z < voxelFieldAABBMinMax[0].z)
             return false;
 
+        auto broadPhaseTimingDiff = std::chrono::high_resolution_clock::now() - broadPhaseTimingStart;
+
         //
         // Narrow phase: check all filled voxels within the capsule AABB
         //
+        auto narrowPhaseTimingStart = std::chrono::high_resolution_clock::now();
         glm::ivec3 searchMin = glm::ivec3(
             glm::max(glm::floor(capsuleAABBMinMax[0].x), voxelFieldAABBMinMax[0].x),
             glm::max(glm::floor(capsuleAABBMinMax[0].y), voxelFieldAABBMinMax[0].y),
@@ -224,7 +236,7 @@ namespace physengine
         bool collisionSuccessful = false;
         float_t lowestDpSqrDist = std::numeric_limits<float_t>::max();
         size_t lkjlkj = 0;
-        size_t yuzu = 0;
+        size_t succs = 0;
         for (size_t i = searchMin.x; i <= searchMax.x; i++)
         for (size_t j = searchMin.y; j <= searchMax.y; j++)
         for (size_t k = searchMin.z; k <= searchMax.z; k++)
@@ -267,6 +279,7 @@ namespace physengine
                         if (dpSqrDist < cpd.radius * cpd.radius && dpSqrDist < lowestDpSqrDist)
                         {
                             // Collision successful
+                            succs++;
                             collisionSuccessful = true;
                             lowestDpSqrDist = dpSqrDist;
                             collisionNormal = glm::transpose(glm::inverse(glm::mat3(vfpd.transform))) * glm::normalize(deltaPoint);
@@ -277,8 +290,8 @@ namespace physengine
             }
         }
 
-        bool isGround = (collisionNormal.y >= 0.707106665647);
-        std::cout << "collided: checks: " << lkjlkj << "\tdeferred: " << yuzu << "\tisGround: " << isGround << "\tnormal: " << collisionNormal.x << ", " << collisionNormal.y << ", " << collisionNormal.z << "\tdepth: " << penetrationDepth << std::endl;
+        auto narrowPhaseTimingDiff = std::chrono::high_resolution_clock::now() - narrowPhaseTimingStart;
+        // std::cout << "collided: checks: " << lkjlkj << "\tsuccs: " << succs << "\ttime (broad): " << broadPhaseTimingDiff  << "\ttime (narrow): " << narrowPhaseTimingDiff << "\tisGround: " << (collisionNormal.y >= 0.707106665647) << "\tnormal: " << collisionNormal.x << ", " << collisionNormal.y << ", " << collisionNormal.z << "\tdepth: " << penetrationDepth << std::endl;
 
         return collisionSuccessful;
     }
