@@ -218,7 +218,7 @@ void Player::update(const float_t& deltaTime)
 
     //
     // Update mask for animation
-    // @TODO: there is popping for some reason. Could be how the transitions/triggers work in the game or could be a different underlying issue. Figure it out pls!  -Timo
+    // @TODO: there is popping for some reason. Could be how the transitions/triggers work in the animator controller or could be a different underlying issue. Figure it out pls!  -Timo
     //
     _data->characterRenderObj->animator->setMask(
         "MaskCombatMode",
@@ -232,6 +232,7 @@ void Player::update(const float_t& deltaTime)
     velocity += _data->worldSpaceInput;
     velocity += glm::vec3(0, input::keyWorldUpPressed ? 1.0f : 0.0f, 0);
     velocity += glm::vec3(0, input::keyWorldDownPressed ? -1.0f : 0.0f, 0);
+    velocity *= 0.1f;
 
     const float_t ccdDistance = 0.25f;  // @NOTE: This number is fine as long as it's below the capsule radius (or the radius of the voxels, whichever is smaller)
     glm::vec3 deltaPosition = velocity;
@@ -250,15 +251,27 @@ void Player::update(const float_t& deltaTime)
             _data->position += deltaPosition;
             deltaPosition = glm::vec3(0.0f);
         }
+        _data->cpd->basePosition = _data->position;
 
         // Check for collision
         glm::vec3 normal;
         float_t penetrationDepth;
-        _data->cpd->basePosition = _data->position;
         if (physengine::debugCheckCapsuleColliding(*_data->cpd, normal, penetrationDepth))
         {
-            std::cout << "collided: normal: " << normal.x << ", " << normal.y << ", " << normal.z << "\tdepth: " << penetrationDepth << std::endl;
-            _data->position += normal * (penetrationDepth + 0.0001f);
+            penetrationDepth += 0.0001f;
+            if (normal.y >= 0.707106781187)  // >=45 degrees
+            {
+                // Stick to the ground
+                _data->position.y += penetrationDepth / normal.y;
+            }
+            // else if (glm::abs(normal.y) <= 0.342020143326)  // <= +-20 degrees
+            // {
+            //     // Push against wall (also fudge-hides y-axis edge cases)
+            //     _data->position.x += normal.x * penetrationDepth / normal.y;
+            //     _data->position.z += normal.z * penetrationDepth / normal.y;
+            // }
+            else
+                _data->position += normal * penetrationDepth;
         }
     }
 }

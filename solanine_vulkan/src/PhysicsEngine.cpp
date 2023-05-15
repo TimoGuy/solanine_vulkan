@@ -58,6 +58,14 @@ namespace physengine
         return false;
     }
 
+    uint8_t getVoxelDataAtPosition(const VoxelFieldPhysicsData& vfpd, const int32_t& x, const int32_t& y, const int32_t& z)
+    {
+        if (x < 0           || y < 0           || z < 0          ||
+            x >= vfpd.sizeX || y >= vfpd.sizeY || z >= vfpd.sizeZ)
+            return 0;
+        return vfpd.voxelData[(size_t)x * vfpd.sizeY * vfpd.sizeZ + (size_t)y * vfpd.sizeZ + (size_t)z];
+    }
+
     //
     // Capsule pool
     //
@@ -135,6 +143,22 @@ namespace physengine
                 return true;
         }
         return false;
+    }
+
+    float_t sqrDistPointSegment(const glm::vec3& pt, const glm::vec3& a, const glm::vec3& b)
+    {
+        Vector ab = b - a, ac = pt - a, bc = pt - b;
+        float_t e = glm::dot(ac, ab);
+
+        // Handle cases where pt projects outside ab
+        if (e <= 0.0f)
+            return glm::dot(ac, ac);
+        float_t f = glm::dot(ab, ab);
+        if (e >= f)
+            return glm::dot(bc, bc);
+
+        // Handle cases where pt projects onto ab
+        return glm::dot(ac, ac) - e * e / f;
     }
 
     void closestPointToLineSegment(const glm::vec3& pt, const glm::vec3& a, const glm::vec3& b, glm::vec3 &outPt)
@@ -215,10 +239,13 @@ namespace physengine
 
         bool collisionSuccessful = false;
         float_t lowestDpSqrDist = std::numeric_limits<float_t>::max();
+        size_t lkjlkj = 0;
+        size_t yuzu = 0;
         for (size_t i = searchMin.x; i <= searchMax.x; i++)
         for (size_t j = searchMin.y; j <= searchMax.y; j++)
         for (size_t k = searchMin.z; k <= searchMax.z; k++)
         {
+            lkjlkj++;
             uint8_t vd = vfpd.voxelData[i * vfpd.sizeY * vfpd.sizeZ + j * vfpd.sizeZ + k];
 
             switch (vd)
@@ -233,38 +260,45 @@ namespace physengine
                     //
                     // Test collision with this voxel
                     //
-                    glm::vec3 boundedPointA = glm::clamp(capsulePtATransformed - glm::vec3(i, j, k), glm::vec3(0.0f), glm::vec3(1.0f));
-                    glm::vec3 boundedPointB = glm::clamp(capsulePtBTransformed - glm::vec3(i, j, k), glm::vec3(0.0f), glm::vec3(1.0f));
-                    glm::vec3 boundedPointMid = (boundedPointA + boundedPointB) * 0.5f;
-                    glm::vec3 boundedPointMidLocalized = boundedPointMid * 2.0f - glm::vec3(1.0f);  // [0 to 1] to [-1 to 1] space
-                    float_t largestAxis = glm::max(glm::abs(boundedPointMidLocalized.x), glm::max(glm::abs(boundedPointMidLocalized.y), glm::abs(boundedPointMidLocalized.z)));
-                    boundedPointMidLocalized /= largestAxis;  // Reproject the midpoint back onto the voxel bounds
-                    boundedPointMid = boundedPointMidLocalized * 0.5f + 0.5f + glm::vec3(i, j, k);  // [-1 to 1] to [i,j,k to i+1,j+1,k+1] space
-
                     glm::vec3 point;
-                    closestPointToLineSegment(boundedPointMid, capsulePtATransformed, capsulePtBTransformed, point);
-                    glm::vec3 boundedPoint = glm::clamp(point, glm::vec3(i, j, k), glm::vec3(i + 1.0f, j + 1.0f, k + 1.0f));
-                    glm::vec3 deltaPoint = point - boundedPoint;
-                    float_t dpSqrDist = glm::length2(deltaPoint);
+                    closestPointToLineSegment(glm::vec3(i, j, k) + glm::vec3(0.5f, 0.5f, 0.5f), capsulePtATransformed, capsulePtBTransformed, point);
 
-                    if (dpSqrDist < 0.000001f)
+                    glm::vec3 boundedPoint = glm::clamp(point, glm::vec3(i, j, k), glm::vec3(i + 1.0f, j + 1.0f, k + 1.0f));
+                    if (point == boundedPoint)
                     {
                         // Collider is stuck
                         collisionSuccessful = true;
                         collisionNormal = glm::vec3(0, 1, 0);
                         penetrationDepth = 1.0f;
+                        continue;
                     }
-                    else if (dpSqrDist < cpd.radius * cpd.radius && dpSqrDist < lowestDpSqrDist)
+
+                    // Find closest line segment of cube
+                    
+
+                    else
                     {
-                        // Collision successful
-                        collisionSuccessful = true;
-                        lowestDpSqrDist = dpSqrDist;
-                        collisionNormal = glm::mat3(vfpd.transform) * glm::normalize(deltaPoint);
-                        penetrationDepth = cpd.radius - glm::sqrt(dpSqrDist);
+                        // Get more accurate point with the bounded point
+                        glm::vec3 betterPoint;
+                        closestPointToLineSegment(boundedPoint, capsulePtATransformed, capsulePtBTransformed, betterPoint);
+
+                        glm::vec3 deltaPoint = point - boundedPoint;
+                        float_t dpSqrDist = glm::length2(deltaPoint);
+                        if (dpSqrDist < cpd.radius * cpd.radius && dpSqrDist < lowestDpSqrDist)
+                        {
+                            // Collision successful
+                            collisionSuccessful = true;
+                            lowestDpSqrDist = dpSqrDist;
+                            collisionNormal = glm::transpose(glm::inverse(glm::mat3(vfpd.transform))) * glm::normalize(deltaPoint);
+                            penetrationDepth = cpd.radius - glm::sqrt(dpSqrDist);
+                        }
                     }
                 } break;
             }
         }
+
+        bool isGround = (collisionNormal.y >= 0.707106665647);
+        std::cout << "collided: checks: " << lkjlkj << "\tdeferred: " << yuzu << "\tisGround: " << isGround << "\tnormal: " << collisionNormal.x << ", " << collisionNormal.y << ", " << collisionNormal.z << "\tdepth: " << penetrationDepth << std::endl;
 
         return collisionSuccessful;
     }

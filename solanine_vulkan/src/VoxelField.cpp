@@ -18,7 +18,6 @@ struct VoxelField_XData
 };
 
 inline void    buildVoxelData(VoxelField_XData& data);
-inline uint8_t getVoxelDataAtPosition(VoxelField_XData& data, const int32_t& x, const int32_t& y, const int32_t& z);
 inline void    assembleVoxelRenderObjects(VoxelField_XData& data, const std::string& attachedEntityGuid);
 inline void    deleteVoxelRenderObjects(VoxelField_XData& data);
 
@@ -110,14 +109,6 @@ inline void buildVoxelData(VoxelField_XData& data)
     data.vfpd = physengine::createVoxelField(sizeX, sizeY, sizeZ, vd);
 }
 
-inline uint8_t getVoxelDataAtPosition(VoxelField_XData& data, const int32_t& x, const int32_t& y, const int32_t& z)
-{
-    if (x < 0                 || y < 0                 || z < 0                ||
-        x >= data.vfpd->sizeX || y >= data.vfpd->sizeY || z >= data.vfpd->sizeZ)
-        return 0;
-    return data.vfpd->voxelData[(size_t)x * data.vfpd->sizeY * data.vfpd->sizeZ + (size_t)y * data.vfpd->sizeZ + (size_t)z];
-}
-
 inline void assembleVoxelRenderObjects(VoxelField_XData& data, const std::string& attachedEntityGuid)
 {
     deleteVoxelRenderObjects(data);
@@ -127,15 +118,15 @@ inline void assembleVoxelRenderObjects(VoxelField_XData& data, const std::string
     for (int32_t j = 0; j < data.vfpd->sizeY; j++)
     for (int32_t k = 0; k < data.vfpd->sizeZ; k++)
     {
-        if (getVoxelDataAtPosition(data, i, j, k))
+        if (physengine::getVoxelDataAtPosition(*data.vfpd, i, j, k))
         {
             // Check if surrounded. If not, add a renderobject for this voxel
-            if (!getVoxelDataAtPosition(data, i + 1, j, k) ||
-                !getVoxelDataAtPosition(data, i - 1, j, k) ||
-                !getVoxelDataAtPosition(data, i, j + 1, k) ||
-                !getVoxelDataAtPosition(data, i, j - 1, k) ||
-                !getVoxelDataAtPosition(data, i, j, k + 1) ||
-                !getVoxelDataAtPosition(data, i, j, k - 1))
+            if (!physengine::getVoxelDataAtPosition(*data.vfpd, i + 1, j, k) ||
+                !physengine::getVoxelDataAtPosition(*data.vfpd, i - 1, j, k) ||
+                !physengine::getVoxelDataAtPosition(*data.vfpd, i, j + 1, k) ||
+                !physengine::getVoxelDataAtPosition(*data.vfpd, i, j - 1, k) ||
+                !physengine::getVoxelDataAtPosition(*data.vfpd, i, j, k + 1) ||
+                !physengine::getVoxelDataAtPosition(*data.vfpd, i, j, k - 1))
             {
                 glm::vec3 offset = glm::vec3(i, j, k) + glm::vec3(0.5f, 0.5f, 0.5f);
                 RenderObject* newRO =

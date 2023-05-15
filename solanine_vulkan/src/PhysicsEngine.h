@@ -35,6 +35,7 @@ namespace physengine
 
     VoxelFieldPhysicsData* createVoxelField(const size_t& sizeX, const size_t& sizeY, const size_t& sizeZ, uint8_t* voxelData);
     bool destroyVoxelField(VoxelFieldPhysicsData* vfpd);
+    uint8_t getVoxelDataAtPosition(const VoxelFieldPhysicsData& vfpd, const int32_t& x, const int32_t& y, const int32_t& z);
 
     struct CapsulePhysicsData
     {
