@@ -313,4 +313,44 @@ namespace physengine
         }
         return false;
     }
+
+    void moveCapsuleAccountingForCollision(CapsulePhysicsData& cpd, glm::vec3 deltaPosition, float_t ccdDistance)
+    {
+        do
+        {
+            if (glm::length2(deltaPosition) > ccdDistance * ccdDistance)
+            {
+                // Move at a max of the ccdDistance
+                glm::vec3 m = glm::normalize(deltaPosition) * ccdDistance;
+                cpd.basePosition += m;
+                deltaPosition -= m;
+            }
+            else
+            {
+                // Move the rest of the way
+                cpd.basePosition += deltaPosition;
+                deltaPosition = glm::vec3(0.0f);
+            }
+
+            // Check for collision
+            for (size_t iterations = 0; iterations < 6; iterations++)
+            {
+                glm::vec3 normal;
+                float_t penetrationDepth;
+                if (physengine::debugCheckCapsuleColliding(cpd, normal, penetrationDepth))
+                {
+                    penetrationDepth += 0.0001f;
+                    if (normal.y >= 0.707106781187)  // >=45 degrees
+                    {
+                        // Stick to the ground
+                        cpd.basePosition.y += penetrationDepth / normal.y;
+                    }
+                    else
+                        cpd.basePosition += normal * penetrationDepth;
+                }
+                else
+                    break;
+            }
+        } while (glm::length2(deltaPosition) > 0.000001f);
+    }
 }

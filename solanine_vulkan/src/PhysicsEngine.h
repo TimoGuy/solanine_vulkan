@@ -49,4 +49,5 @@ namespace physengine
 
     bool debugCheckPointColliding(const glm::vec3& point);
     bool debugCheckCapsuleColliding(const CapsulePhysicsData& cpd, glm::vec3& collisionNormal, float_t& penetrationDepth);
+    void moveCapsuleAccountingForCollision(CapsulePhysicsData& cpd, glm::vec3 deltaPosition, float_t ccdDistance = 0.25f);  // @NOTE: `ccdDistance` is fine as long as it's below the capsule radius (or the radius of the voxels, whichever is smaller)
 }

@@ -233,53 +233,8 @@ void Player::update(const float_t& deltaTime)
     velocity += glm::vec3(0, input::keyWorldUpPressed ? 1.0f : 0.0f, 0);
     velocity += glm::vec3(0, input::keyWorldDownPressed ? -1.0f : 0.0f, 0);
     velocity *= 0.1f;
-
-    const float_t ccdDistance = 0.25f;  // @NOTE: This number is fine as long as it's below the capsule radius (or the radius of the voxels, whichever is smaller)
-    glm::vec3 deltaPosition = velocity;
-    do
-    {
-        if (glm::length2(deltaPosition) > ccdDistance * ccdDistance)
-        {
-            // Move at a max of the ccdDistance
-            glm::vec3 m = glm::normalize(deltaPosition) * ccdDistance;
-            _data->position += m;
-            deltaPosition -= m;
-        }
-        else
-        {
-            // Move the rest of the way
-            _data->position += deltaPosition;
-            deltaPosition = glm::vec3(0.0f);
-        }
-
-        // Check for collision
-        for (size_t iterations = 0; iterations < 6; iterations++)
-        {
-            _data->cpd->basePosition = _data->position;
-
-            glm::vec3 normal;
-            float_t penetrationDepth;
-            if (physengine::debugCheckCapsuleColliding(*_data->cpd, normal, penetrationDepth))
-            {
-                penetrationDepth += 0.0001f;
-                if (normal.y >= 0.707106781187)  // >=45 degrees
-                {
-                    // Stick to the ground
-                    _data->position.y += penetrationDepth / normal.y;
-                }
-                // else if (glm::abs(normal.y) <= 0.342020143326)  // <= +-20 degrees
-                // {
-                //     // Push against wall (also fudge-hides y-axis edge cases)
-                //     _data->position.x += normal.x * penetrationDepth / normal.y;
-                //     _data->position.z += normal.z * penetrationDepth / normal.y;
-                // }
-                else
-                    _data->position += normal * penetrationDepth;
-            }
-            else
-                break;
-        }
-    } while (glm::length2(deltaPosition) > 0.000001f);
+    physengine::moveCapsuleAccountingForCollision(*_data->cpd, velocity);
+    _data->position = _data->cpd->basePosition;
 }
 
 void Player::lateUpdate(const float_t& deltaTime)
