@@ -145,22 +145,6 @@ namespace physengine
         return false;
     }
 
-    float_t sqrDistPointSegment(const glm::vec3& pt, const glm::vec3& a, const glm::vec3& b)
-    {
-        Vector ab = b - a, ac = pt - a, bc = pt - b;
-        float_t e = glm::dot(ac, ab);
-
-        // Handle cases where pt projects outside ab
-        if (e <= 0.0f)
-            return glm::dot(ac, ac);
-        float_t f = glm::dot(ab, ab);
-        if (e >= f)
-            return glm::dot(bc, bc);
-
-        // Handle cases where pt projects onto ab
-        return glm::dot(ac, ac) - e * e / f;
-    }
-
     void closestPointToLineSegment(const glm::vec3& pt, const glm::vec3& a, const glm::vec3& b, glm::vec3 &outPt)
     {
         // https://arrowinmyknee.com/2021/03/15/some-math-about-capsule-collision/
@@ -272,17 +256,13 @@ namespace physengine
                         penetrationDepth = 1.0f;
                         continue;
                     }
-
-                    // Find closest line segment of cube
-                    
-
                     else
                     {
                         // Get more accurate point with the bounded point
                         glm::vec3 betterPoint;
                         closestPointToLineSegment(boundedPoint, capsulePtATransformed, capsulePtBTransformed, betterPoint);
 
-                        glm::vec3 deltaPoint = point - boundedPoint;
+                        glm::vec3 deltaPoint = betterPoint - boundedPoint;
                         float_t dpSqrDist = glm::length2(deltaPoint);
                         if (dpSqrDist < cpd.radius * cpd.radius && dpSqrDist < lowestDpSqrDist)
                         {
