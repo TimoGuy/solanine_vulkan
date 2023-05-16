@@ -1,7 +1,6 @@
 #include "EntityManager.h"
 
 #include <iostream>
-#include <mutex>
 #include "Entity.h"
 #include "GenerateGUID.h"
 #include "DataSerialization.h"
@@ -15,10 +14,9 @@ EntityManager::~EntityManager()
 		delete _entities[i];
 }
 
-std::mutex entityCollectionMutex;
 void EntityManager::INTERNALphysicsUpdate(const float_t& deltaTime)
 {
-	std::lock_guard<std::mutex> lg(entityCollectionMutex);
+	std::lock_guard<std::mutex> lg(_entityCollectionMutex);
 
 	// @TODO: multithread this sucker!
 	for (auto it = _entities.begin(); it != _entities.end(); it++)
@@ -83,7 +81,7 @@ void EntityManager::INTERNALdestroyEntity(Entity* entity)
 
 void EntityManager::INTERNALaddRemoveRequestedEntities()
 {
-	std::lock_guard<std::mutex> lg(entityCollectionMutex);
+	std::lock_guard<std::mutex> lg(_entityCollectionMutex);
 
 	// Remove entities requested to be removed
 	_flushEntitiesToDestroyRoutine = true;

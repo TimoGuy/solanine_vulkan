@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <queue>
+#include <mutex>
 
 class Entity;
 class DataSerialized;
@@ -34,6 +35,7 @@ private:
 	std::vector<Entity*> _entities;
 	std::deque<Entity*> _entitiesToAddQueue;
 	std::deque<Entity*> _entitiesToDestroyQueue;
+	std::mutex _entityCollectionMutex;
 	bool _flushEntitiesToDestroyRoutine = false;
 
 	friend class VulkanEngine;
