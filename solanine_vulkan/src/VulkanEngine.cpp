@@ -26,9 +26,6 @@
 #include "imgui/implot.h"
 #include "imgui/ImGuizmo.h"
 
-// @DEBUG: see performance difference between cglm and glm
-#include <cglm/cglm.h>
-
 
 constexpr uint64_t TIMEOUT_1_SEC = 1000000000;
 
