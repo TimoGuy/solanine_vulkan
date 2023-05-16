@@ -26,6 +26,9 @@
 #include "imgui/implot.h"
 #include "imgui/ImGuizmo.h"
 
+// @DEBUG: see performance difference between cglm and glm
+#include <cglm/cglm.h>
+
 
 constexpr uint64_t TIMEOUT_1_SEC = 1000000000;
 
@@ -72,6 +75,38 @@ void VulkanEngine::init()
 	_roManager = new RenderObjectManager(_allocator);
 	_entityManager = new EntityManager();
 	_camera = new Camera(this);
+
+	//
+	// glm vs cglm performance test!!!
+	//
+	uint64_t s = SDL_GetPerformanceCounter();
+	glm::mat4 m1 = glm::mat4(1.0f);
+	glm::mat4 m2 = glm::mat4(1.0f);
+	for (size_t i = 0; i < 1000000; i++)
+		m2 = m1 * m2;
+	uint64_t delta1 = SDL_GetPerformanceCounter() - s;
+
+
+	uint64_t s2 = SDL_GetPerformanceCounter();
+	mat4 cm1 = {
+		1.0f, 0.0f, 0.0f, 0.0f,
+		0.0f, 1.0f, 0.0f, 0.0f,
+		0.0f, 0.0f, 1.0f, 0.0f,
+		0.0f, 0.0f, 0.0f, 1.0f,
+	};
+	mat4 cm2 = {
+		1.0f, 0.0f, 0.0f, 0.0f,
+		0.0f, 1.0f, 0.0f, 0.0f,
+		0.0f, 0.0f, 1.0f, 0.0f,
+		0.0f, 0.0f, 0.0f, 1.0f,
+	};
+	for (size_t i = 0; i < 1000000; i++)
+		glm_mat4_mul(cm1, cm2, cm2);
+	uint64_t delta2 = SDL_GetPerformanceCounter() - s2;
+
+	std::cout << "GLM timing: " << delta1 << "\tCGLM timing: " << delta2 << std::endl;
+	std::cout << "GLM result: " << m2[0][0] << "\tCGLM result: " << cm2[0] << std::endl;
+
 
 #ifdef _DEVELOP
 	hotswapres::buildResourceList();
