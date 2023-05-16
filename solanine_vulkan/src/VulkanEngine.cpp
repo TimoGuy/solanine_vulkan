@@ -6,7 +6,6 @@
 #include "VkBootstrap.h"
 #include "VkInitializers.h"
 #include "VkTextures.h"
-#include "GLSLToSPIRVHelper.h"
 #include "VkglTFModel.h"
 #include "AudioEngine.h"
 #include "PhysicsEngine.h"
@@ -18,6 +17,7 @@
 #include "SceneManagement.h"
 #include "DataSerialization.h"
 #include "Debug.h"
+#include "HotswapResources.h"
 #include "GlobalState.h"
 #include "imgui/imgui.h"
 #include "imgui/imgui_stdlib.h"
@@ -74,7 +74,7 @@ void VulkanEngine::init()
 	_camera = new Camera(this);
 
 #ifdef _DEVELOP
-	buildResourceList();
+	hotswapres::buildResourceList();
 #endif
 
 	initVulkan();
@@ -136,19 +136,27 @@ void VulkanEngine::run()
 	float_t saveGlobalStateTime        = 45.0f;  // 45 seconds
 	float_t saveGlobalStateTimeElapsed = 0.0f;
 
+#ifdef _DEVELOP
+	std::mutex* hotswapMutex = hotswapres::startResourceChecker(this, &_recreateSwapchain, _roManager);
+#endif
+
+	constexpr size_t numPerfs = 14;
+	uint64_t perfs[numPerfs];
+
 	while (isRunning)
 	{
 #ifdef _DEVELOP
-		// Routine to reload any resources when they're updated
-		// NOTE: We mayyyy have to move this to another thread, but it
-		//       really doesn't seem to be slowing anything down. We'll
-		//       see though  -Timo 2022/10/22
-		checkIfResourceUpdatedThenHotswapRoutine();
+		std::lock_guard<std::mutex> lg(*hotswapMutex);
 #endif
 
+
+		perfs[0] = SDL_GetPerformanceCounter();
 		// Poll events from the window
 		input::processInput(&isRunning, &_isWindowMinimized);
+		perfs[0] = SDL_GetPerformanceCounter() - perfs[0];
 
+
+		perfs[1] = SDL_GetPerformanceCounter();
 		// Update time multiplier
 		static float_t timeScale = 1.0f;
 		if (input::onKeyLSBPress || input::onKeyRSBPress)
@@ -158,13 +166,19 @@ void VulkanEngine::run()
 				.message = "Set timescale to " + std::to_string(timeScale),
 			});
 		}
+		perfs[1] = SDL_GetPerformanceCounter() - perfs[1];
 
+
+		perfs[2] = SDL_GetPerformanceCounter();
 		// Update DeltaTime
 		uint64_t currentFrame = SDL_GetPerformanceCounter();
 		const float_t deltaTime = (float_t)(currentFrame - lastFrame) * ticksFrequency;
 		const float_t scaledDeltaTime = deltaTime * timeScale;
 		lastFrame = currentFrame;
+		perfs[2] = SDL_GetPerformanceCounter() - perfs[2];
 
+
+		perfs[3] = SDL_GetPerformanceCounter();
 		// Stop anything from updating when window is minimized
 		// @NOTE: this prevents the VK_ERROR_DEVICE_LOST(-4) error
 		//        once the rendering code gets run while the window
@@ -177,23 +191,41 @@ void VulkanEngine::run()
 
 		// Collect debug stats
 		updateDebugStats(deltaTime);
+		perfs[3] = SDL_GetPerformanceCounter() - perfs[3];
 
+
+		perfs[4] = SDL_GetPerformanceCounter();
 		// Update entities
 		_entityManager->update(scaledDeltaTime);
+		perfs[4] = SDL_GetPerformanceCounter() - perfs[4];
 
+
+		perfs[5] = SDL_GetPerformanceCounter();
 		if (input::keyCtrlPressed)
 			// Update animators
 			_roManager->updateAnimators(scaledDeltaTime);
+		perfs[5] = SDL_GetPerformanceCounter() - perfs[5];
 
+
+		perfs[6] = SDL_GetPerformanceCounter();
 		// Late update (i.e. after animators are run)
 		_entityManager->lateUpdate(scaledDeltaTime);
+		perfs[6] = SDL_GetPerformanceCounter() - perfs[6];
 
+
+		perfs[7] = SDL_GetPerformanceCounter();
 		// Update camera
 		_camera->update(deltaTime);
+		perfs[7] = SDL_GetPerformanceCounter() - perfs[7];
 
+
+		perfs[8] = SDL_GetPerformanceCounter();
 		// Add/Remove requested entities
 		_entityManager->INTERNALaddRemoveRequestedEntities();
+		perfs[8] = SDL_GetPerformanceCounter() - perfs[8];
 
+
+		perfs[9] = SDL_GetPerformanceCounter();
 		// Update global state
 		saveGlobalStateTimeElapsed += deltaTime;
 		if (saveGlobalStateTimeElapsed > saveGlobalStateTime)
@@ -201,23 +233,50 @@ void VulkanEngine::run()
 			saveGlobalStateTimeElapsed = 0.0f;
 			globalState::launchAsyncWriteTask();
 		}
+		perfs[9] = SDL_GetPerformanceCounter() - perfs[9];
 
+
+		perfs[10] = SDL_GetPerformanceCounter();
 		// Update Audio Engine
 		AudioEngine::getInstance().update();
+		perfs[10] = SDL_GetPerformanceCounter() - perfs[10];
 
+
+		perfs[11] = SDL_GetPerformanceCounter();
 		// Render
 		if (_recreateSwapchain)
 			recreateSwapchain();
+		perfs[11] = SDL_GetPerformanceCounter() - perfs[11];
 
+
+		perfs[12] = SDL_GetPerformanceCounter();
 		renderImGui(deltaTime);
+		perfs[12] = SDL_GetPerformanceCounter() - perfs[12];
+
+
+		perfs[13] = SDL_GetPerformanceCounter();
 		render();
+		perfs[13] = SDL_GetPerformanceCounter() - perfs[13];
+
+
+		//
+		// Calculate performance
+		//
+		uint64_t totalPerf = 0;
+		for (size_t i = 0; i < numPerfs; i++)
+			totalPerf += perfs[i];
+
+		std::cout << "Performance:";
+		for (size_t i = 0; i < numPerfs; i++)
+			std::cout << "\t" << (perfs[i] * 100 / totalPerf) << "% (" << perfs[i] << ")";
+		std::cout << std::endl;
 	}
 }
 
 void VulkanEngine::cleanup()
 {
 #ifdef _DEVELOP
-	teardownResourceList();
+	hotswapres::shutdownAndTeardownResourceList();
 #endif
 
 	if (_isInitialized)
@@ -3899,110 +3958,6 @@ void VulkanEngine::updateDebugStats(const float_t& deltaTime)
 	_debugStats.renderTimesMS[_debugStats.renderTimesMSHeadIndex] =
 		_debugStats.renderTimesMS[_debugStats.renderTimesMSHeadIndex + _debugStats.renderTimesMSCount] =
 		renderTime;
-}
-
-void VulkanEngine::buildResourceList()
-{
-	std::vector<std::string> directories = {
-		"res",
-		"shader",
-	};
-	for (auto directory : directories)
-		for (const auto& entry : std::filesystem::recursive_directory_iterator(directory))
-		{
-			// Add the resource if it should be watched
-			const auto& path = entry.path();
-			if (std::filesystem::is_directory(path))
-				continue;		// Ignore directories
-			if (!path.has_extension())
-				continue;		// @NOTE: only allow resource files if they have an extension!  -Timo
-
-			if (path.extension().compare(".spv") == 0 ||
-				path.extension().compare(".log") == 0)
-				continue;		// @NOTE: ignore compiled SPIRV shader files, logs
-
-			ResourceToWatch resource = {
-				.path = path,
-				.lastWriteTime = std::filesystem::last_write_time(path),
-			};
-			resourcesToWatch.push_back(resource);
-
-			// Compile glsl shader if corresponding .spv file isn't up to date
-			const auto& ext = path.extension();
-			if (ext.compare(".vert") == 0 ||
-				ext.compare(".frag") == 0)		// @COPYPASTA
-			{
-				auto spvPath = path;
-				spvPath += ".spv";
-
-				if (!std::filesystem::exists(spvPath) ||
-					std::filesystem::last_write_time(spvPath) <= std::filesystem::last_write_time(path))
-				{
-					glslToSPIRVHelper::compileGLSLShaderToSPIRV(path);
-				}
-			}
-		}
-}
-
-void VulkanEngine::checkIfResourceUpdatedThenHotswapRoutine()
-{
-	for (auto& resource : resourcesToWatch)
-	{
-		/*try
-		{*/
-			const std::filesystem::file_time_type lastWriteTime = std::filesystem::last_write_time(resource.path);
-			if (resource.lastWriteTime == lastWriteTime)
-				continue;
-
-			//
-			// Reload the resource
-			//
-			std::cout << "[RELOAD HOTSWAPPABLE RESOURCE]" << std::endl
-				<< "Name: " << resource.path << std::endl;
-			resource.lastWriteTime = lastWriteTime;
-
-			if (!resource.path.has_extension())
-			{
-				std::cerr << "ERROR: file " << resource.path << " has no extension!" << std::endl;
-				continue;
-			}
-
-			//
-			// Find the extension and execute appropriate routine
-			//
-			const auto& ext = resource.path.extension();
-			if (ext.compare(".vert") == 0 ||
-				ext.compare(".frag") == 0)
-			{
-				// Compile the shader (GLSL -> SPIRV)
-				glslToSPIRVHelper::compileGLSLShaderToSPIRV(resource.path);
-
-				// Trip reloading the shaders (recreate swapchain flag)
-				_recreateSwapchain = true;
-				std::cout << "Recompile shader to SPIRV and trigger swapchain recreation SUCCESS" << std::endl;
-				continue;
-			}
-			else if (ext.compare(".gltf") == 0 ||
-					 ext.compare(".glb")  == 0)
-			{
-				_roManager->reloadModelAndTriggerCallbacks(this, resource.path.stem().string(), resource.path.string());
-				std::cout << "Sent message to model \"" << resource.path.stem().string() << "\" to reload." << std::endl;
-				continue;
-			}
-
-			// Nothing to do to the resource!
-			// That means there's no routine for this certain resource
-			std::cout << "WARNING: No routine for " << ext << " files!" << std::endl;
-		/*}
-		catch (...) { }*/   // Just continue on if you get the filesystem error
-	}
-}
-
-void VulkanEngine::teardownResourceList()
-{
-	// @NOTE: nothing is around to tear down!
-	//        There are just filesystem entries, so they only go until the lifetime
-	//        of the VulkanEngine object, so we don't need to tear that down!
 }
 #endif
 

@@ -81,6 +81,9 @@ void EntityManager::INTERNALdestroyEntity(Entity* entity)
 
 void EntityManager::INTERNALaddRemoveRequestedEntities()
 {
+	if (_entitiesToDestroyQueue.size() == 0 && _entitiesToAddQueue.size() == 0)
+		return;
+
 	std::lock_guard<std::mutex> lg(_entityCollectionMutex);
 
 	// Remove entities requested to be removed

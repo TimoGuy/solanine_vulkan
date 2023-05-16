@@ -33,6 +33,7 @@ namespace physengine
     {
         isAsyncRunnerRunning = false;
         asyncRunner->join();
+        delete asyncRunner;
     }
 
     float_t getPhysicsAlpha()

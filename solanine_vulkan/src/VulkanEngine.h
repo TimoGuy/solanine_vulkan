@@ -331,19 +331,6 @@ private:
 	void updateDebugStats(const float_t& deltaTime);
 
 	//
-	// Hot-swappable resources system
-	//
-	struct ResourceToWatch
-	{
-		std::filesystem::path path;
-		std::filesystem::file_time_type lastWriteTime;
-	};
-	std::vector<ResourceToWatch> resourcesToWatch;
-	void buildResourceList();
-	void checkIfResourceUpdatedThenHotswapRoutine();
-	void teardownResourceList();
-
-	//
 	// Moving matrices around
 	//
 	struct MovingMatrix
