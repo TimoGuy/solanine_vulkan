@@ -14,6 +14,9 @@ private:
 	EntityManager() = default;
 	~EntityManager();
 
+public:
+	void INTERNALphysicsUpdate(const float_t& deltaTime);
+private:
 	void update(const float_t& deltaTime);
 	void lateUpdate(const float_t& deltaTime);
 

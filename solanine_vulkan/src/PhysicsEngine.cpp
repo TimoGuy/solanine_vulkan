@@ -1,14 +1,77 @@
 #include "PhysicsEngine.h"
 
+#include <SDL2/SDL.h>
 #include <iostream>
 #include <chrono>
+#include <thread>
+#include "PhysUtil.h"
+#include "EntityManager.h"
 
 
 namespace physengine
 {
     //
+    // Physics engine works
+    //
+    constexpr float_t physicsDeltaTime = 0.025f;    // 40fps. This seemed to be the sweet spot. 25/30fps would be inconsistent for getting smaller platform jumps with the dash move. 50fps felt like too many physics calculations all at once. 40fps seems right, striking a balance.  -Timo 2023/01/26
+    constexpr float_t oneOverPhysicsDeltaTimeInMS = 1.0f / (physicsDeltaTime * 1000.0f);
+
+    void runPhysicsEngineAsync();
+    EntityManager* entityManager;
+    bool isAsyncRunnerRunning;
+    std::thread* asyncRunner = nullptr;
+    uint64_t lastTick;
+
+    void initialize(EntityManager* em)
+    {
+        entityManager = em;
+        isAsyncRunnerRunning = true;
+        asyncRunner = new std::thread(runPhysicsEngineAsync);
+    }
+
+    void cleanup()
+    {
+        isAsyncRunnerRunning = false;
+        asyncRunner->join();
+    }
+
+    float_t getPhysicsAlpha()
+    {
+        return (SDL_GetTicks64() - lastTick) * oneOverPhysicsDeltaTimeInMS;
+    }
+
+    void tick();
+
+    void runPhysicsEngineAsync()
+    {
+        constexpr uint64_t physicsDeltaTimeInMS = physicsDeltaTime * 1000.0f;
+
+        while (isAsyncRunnerRunning)
+        {
+            lastTick = SDL_GetTicks64();
+            
+            tick();
+            entityManager->INTERNALphysicsUpdate(physicsDeltaTime);
+
+            // Wait for remaining time
+            uint64_t endingTime = SDL_GetTicks64();
+            uint64_t timeDiff = endingTime - lastTick;
+            if (timeDiff > physicsDeltaTimeInMS)
+            {
+                std::cerr << "ERROR: physics engine is running too slow. (" << (timeDiff - physicsDeltaTimeInMS) << "ns behind)" << std::endl;
+            }
+            else
+            {
+                SDL_Delay((uint32_t)(physicsDeltaTimeInMS - timeDiff));
+            }
+        }
+    }
+
+    //
     // Voxel field pool
     //
+    constexpr size_t PHYSICS_OBJECTS_MAX_CAPACITY = 10000;
+
     VoxelFieldPhysicsData voxelFieldPool[PHYSICS_OBJECTS_MAX_CAPACITY];
     size_t voxelFieldIndices[PHYSICS_OBJECTS_MAX_CAPACITY];
     size_t numVFsCreated = 0;
@@ -122,6 +185,24 @@ namespace physengine
             }
         }
         return false;
+    }
+
+    //
+    // Tick
+    //
+    void tick()
+    {
+        // Set previous transform
+        for (size_t i = 0; i < numVFsCreated; i++)
+        {
+            VoxelFieldPhysicsData& vfpd = voxelFieldPool[voxelFieldIndices[i]];
+            vfpd.prevTransform = vfpd.transform;
+        }
+        for (size_t i = 0; i < numCapsCreated; i++)
+        {
+            CapsulePhysicsData& cpd = capsulePool[capsuleIndices[i]];
+            cpd.prevBasePosition = cpd.basePosition;
+        }
     }
 
     //
@@ -262,11 +343,10 @@ namespace physengine
                     glm::vec3 boundedPoint = glm::clamp(point, glm::vec3(i, j, k), glm::vec3(i + 1.0f, j + 1.0f, k + 1.0f));
                     if (point == boundedPoint)
                     {
-                        // Collider is stuck
-                        collisionSuccessful = true;
+                        // Collider is stuck inside
                         collisionNormal = glm::vec3(0, 1, 0);
                         penetrationDepth = 1.0f;
-                        continue;
+                        return true;
                     }
                     else
                     {
@@ -352,5 +432,41 @@ namespace physengine
                     break;
             }
         } while (glm::length2(deltaPosition) > 0.000001f);
+    }
+
+    void setPhysicsObjectInterpolation(const float_t& physicsAlpha)
+    {
+        //
+        // Set interpolated transform
+        //
+        for (size_t i = 0; i < numVFsCreated; i++)
+        {
+            VoxelFieldPhysicsData& vfpd = voxelFieldPool[voxelFieldIndices[i]];
+            if (vfpd.prevTransform != vfpd.transform)
+            {
+                glm::vec3 interpolPos = glm::mix(physutil::getPosition(vfpd.prevTransform), physutil::getPosition(vfpd.transform), physicsAlpha);
+                glm::vec3 interpolSca = glm::mix(   physutil::getScale(vfpd.prevTransform),    physutil::getScale(vfpd.transform), physicsAlpha);
+
+                glm::quat rotA = physutil::getRotation(vfpd.prevTransform);
+                glm::quat rotB = physutil::getRotation(vfpd.transform);
+                float_t omu = 1.0f - physicsAlpha;
+                if (glm::dot(rotA, rotB) < 0.0f)  // Super simple neighboring... might be glitchy  @TODO
+                    omu = -omu;
+                glm::quat interpolRot = glm::normalize(omu * rotA + physicsAlpha * rotB);
+
+                vfpd.interpolTransform =
+                    glm::translate(glm::mat4(1.0f), interpolPos) *
+                    glm::toMat4(interpolRot) *
+                    glm::scale(glm::mat4(1.0f), interpolSca);
+            }
+        }
+        for (size_t i = 0; i < numCapsCreated; i++)
+        {
+            CapsulePhysicsData& cpd = capsulePool[capsuleIndices[i]];
+            if (cpd.prevBasePosition != cpd.basePosition)
+            {
+                cpd.interpolBasePosition = glm::mix(cpd.prevBasePosition, cpd.basePosition, physicsAlpha);
+            }
+        }
     }
 }

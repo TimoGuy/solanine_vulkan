@@ -1,9 +1,11 @@
 #include "EntityManager.h"
 
 #include <iostream>
+#include <mutex>
 #include "Entity.h"
 #include "GenerateGUID.h"
 #include "DataSerialization.h"
+#include "PhysicsEngine.h"
 
 
 EntityManager::~EntityManager()
@@ -13,8 +15,25 @@ EntityManager::~EntityManager()
 		delete _entities[i];
 }
 
+std::mutex entityCollectionMutex;
+void EntityManager::INTERNALphysicsUpdate(const float_t& deltaTime)
+{
+	std::lock_guard<std::mutex> lg(entityCollectionMutex);
+
+	// @TODO: multithread this sucker!
+	for (auto it = _entities.begin(); it != _entities.end(); it++)
+	{
+		Entity* ent = *it;
+		if (ent->_enablePhysicsUpdate)
+			ent->update(deltaTime);
+	}
+}
+
 void EntityManager::update(const float_t& deltaTime)
 {
+	// Interpolate all physics objects
+	physengine::setPhysicsObjectInterpolation(physengine::getPhysicsAlpha());
+
 	// @TODO: multithread this sucker!
 	for (auto it = _entities.begin(); it != _entities.end(); it++)
 	{
@@ -64,6 +83,8 @@ void EntityManager::INTERNALdestroyEntity(Entity* entity)
 
 void EntityManager::INTERNALaddRemoveRequestedEntities()
 {
+	std::lock_guard<std::mutex> lg(entityCollectionMutex);
+
 	// Remove entities requested to be removed
 	_flushEntitiesToDestroyRoutine = true;
 

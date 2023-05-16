@@ -1,11 +1,15 @@
 #pragma once
 
 #include "ImportGLM.h"
+class EntityManager;
 
 
 namespace physengine
 {
-    constexpr size_t PHYSICS_OBJECTS_MAX_CAPACITY = 10000;
+    void initialize(EntityManager* em);
+    void cleanup();
+
+    float_t getPhysicsAlpha();
 
     struct VoxelFieldPhysicsData
     {
@@ -31,6 +35,8 @@ namespace physengine
         size_t sizeX, sizeY, sizeZ;
         uint8_t* voxelData;
         glm::mat4 transform = glm::mat4(1.0f);
+        glm::mat4 prevTransform = glm::mat4(1.0f);
+        glm::mat4 interpolTransform = glm::mat4(1.0f);
     };
 
     VoxelFieldPhysicsData* createVoxelField(const size_t& sizeX, const size_t& sizeY, const size_t& sizeZ, uint8_t* voxelData);
@@ -42,6 +48,8 @@ namespace physengine
         float_t radius;
         float_t height;
         glm::vec3 basePosition = glm::vec3(0.0f);  // It takes `radius + 0.5 * height` to get to the midpoint
+        glm::vec3 prevBasePosition = glm::vec3(0.0f);
+        glm::vec3 interpolBasePosition = glm::vec3(0.0f);
     };
 
     CapsulePhysicsData* createCapsule(const float_t& radius, const float_t& height);
@@ -50,4 +58,6 @@ namespace physengine
     bool debugCheckPointColliding(const glm::vec3& point);
     bool debugCheckCapsuleColliding(const CapsulePhysicsData& cpd, glm::vec3& collisionNormal, float_t& penetrationDepth);
     void moveCapsuleAccountingForCollision(CapsulePhysicsData& cpd, glm::vec3 deltaPosition, float_t ccdDistance = 0.25f);  // @NOTE: `ccdDistance` is fine as long as it's below the capsule radius (or the radius of the voxels, whichever is smaller)
+
+    void setPhysicsObjectInterpolation(const float_t& physicsAlpha);
 }

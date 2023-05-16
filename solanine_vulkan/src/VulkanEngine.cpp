@@ -9,6 +9,7 @@
 #include "GLSLToSPIRVHelper.h"
 #include "VkglTFModel.h"
 #include "AudioEngine.h"
+#include "PhysicsEngine.h"
 #include "InputManager.h"
 #include "RenderObject.h"
 #include "Entity.h"
@@ -98,6 +99,7 @@ void VulkanEngine::init()
 
 	vkglTF::Animator::initializeEmpty(this);
 	AudioEngine::getInstance().initialize();
+	physengine::initialize(_entityManager);
 	globalState::initGlobalState(_camera->sceneCamera);
 
 	SDL_ShowWindow(_window);
@@ -179,8 +181,9 @@ void VulkanEngine::run()
 		// Update entities
 		_entityManager->update(scaledDeltaTime);
 
-		// Update animators
-		_roManager->updateAnimators(scaledDeltaTime);
+		if (input::keyCtrlPressed)
+			// Update animators
+			_roManager->updateAnimators(scaledDeltaTime);
 
 		// Late update (i.e. after animators are run)
 		_entityManager->lateUpdate(scaledDeltaTime);
@@ -224,6 +227,7 @@ void VulkanEngine::cleanup()
 		delete _entityManager;  // @NOTE: all entities must be deleted before the physicsengine can shut down
 
 		globalState::cleanupGlobalState();
+		physengine::cleanup();
 		AudioEngine::getInstance().cleanup();
 
 		delete _roManager;

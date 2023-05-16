@@ -9,6 +9,7 @@
 #include "Imports.h"
 #include "VkglTFModel.h"
 #include "VulkanEngine.h"
+#include "PhysicsEngine.h"
 #include "VkTextures.h"
 #include "VkInitializers.h"
 #include "StringHelper.h"
