@@ -87,6 +87,8 @@ namespace hotswapres
                         continue;
 
                     // Insert lock guard to reload resources
+                    std::cout << "[RELOAD HOTSWAPPABLE RESOURCE]" << std::endl
+                        << "Asking to swap resources..." << std::endl;
                     std::lock_guard<std::mutex> lg(hotswapResourcesMutex);
 
                     //

@@ -145,11 +145,6 @@ void VulkanEngine::run()
 
 	while (isRunning)
 	{
-#ifdef _DEVELOP
-		std::lock_guard<std::mutex> lg(*hotswapMutex);
-#endif
-
-
 		perfs[0] = SDL_GetPerformanceCounter();
 		// Poll events from the window
 		input::processInput(&isRunning, &_isWindowMinimized);
@@ -243,7 +238,13 @@ void VulkanEngine::run()
 
 
 		perfs[11] = SDL_GetPerformanceCounter();
+		//
 		// Render
+		//
+#ifdef _DEVELOP
+		std::lock_guard<std::mutex> lg(*hotswapMutex);
+#endif
+
 		if (_recreateSwapchain)
 			recreateSwapchain();
 		perfs[11] = SDL_GetPerformanceCounter() - perfs[11];
@@ -262,14 +263,14 @@ void VulkanEngine::run()
 		//
 		// Calculate performance
 		//
-		uint64_t totalPerf = 0;
-		for (size_t i = 0; i < numPerfs; i++)
-			totalPerf += perfs[i];
+		// uint64_t totalPerf = 0;
+		// for (size_t i = 0; i < numPerfs; i++)
+		// 	totalPerf += perfs[i];
 
-		std::cout << "Performance:";
-		for (size_t i = 0; i < numPerfs; i++)
-			std::cout << "\t" << (perfs[i] * 100 / totalPerf) << "% (" << perfs[i] << ")";
-		std::cout << std::endl;
+		// std::cout << "Performance:";
+		// for (size_t i = 0; i < numPerfs; i++)
+		// 	std::cout << "\t" << (perfs[i] * 100 / totalPerf) << "% (" << perfs[i] << ")";
+		// std::cout << std::endl;
 	}
 }
 
