@@ -7,7 +7,6 @@
 #include <string>
 #include <map>
 #include <vector>
-#include <glm/fwd.hpp>
 
 struct AudioAdapter_FMOD;
 
