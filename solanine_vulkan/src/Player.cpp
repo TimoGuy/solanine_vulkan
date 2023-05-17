@@ -26,10 +26,10 @@ struct Player_XData
 
     physengine::CapsulePhysicsData* cpd;
 
-    glm::vec3 worldSpaceInput = glm::vec3(0.0f);
+    vec3 worldSpaceInput = GLM_VEC3_ZERO_INIT;
 
     // Tweak Props
-    glm::vec3 position;
+    vec3 position;
     float_t facingDirection = 0.0f;
     float_t modelSize = 0.3f;
 };
@@ -113,7 +113,7 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
         _data->rom->registerRenderObject({
             .model = characterModel,
             .animator = new vkglTF::Animator(characterModel, animatorCallbacks),
-            .transformMatrix = glm::translate(glm::mat4(1.0f), _data->position) * glm::toMat4(glm::quat(glm::vec3(0, _data->facingDirection, 0))) * glm::scale(glm::mat4(1.0f), glm::vec3(_data->modelSize)),
+            .transformMatrix = glm::translate(GLM_MAT4_IDENTITY_INIT, _data->position) * glm::toMat4(glm::quat(vec3(0, _data->facingDirection, 0))) * glm::scale(GLM_MAT4_IDENTITY_INIT, vec3(_data->modelSize)),
             .renderLayer = RenderLayer::VISIBLE,
             .attachedEntityGuid = getGUID(),
             });
@@ -168,16 +168,16 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         input = glm::vec2(0.0f);
     }
 
-    glm::vec3 flatCameraFacingDirection = _data->camera->sceneCamera.facingDirection;
+    vec3 flatCameraFacingDirection = _data->camera->sceneCamera.facingDirection;
     flatCameraFacingDirection.y = 0.0f;
     flatCameraFacingDirection = glm::normalize(flatCameraFacingDirection);
 
     _data->worldSpaceInput =
         input.y * flatCameraFacingDirection +
-        input.x * glm::normalize(glm::cross(flatCameraFacingDirection, glm::vec3(0, 1, 0)));
+        input.x * glm::normalize(glm::cross(flatCameraFacingDirection, GLM_YUP));
 
-    if (glm::length2(_data->worldSpaceInput) < 0.01f)
-        _data->worldSpaceInput = glm::vec3(0.0f);
+    if (glm_vec3_dot(_data->worldSpaceInput, _data->worldSpaceInput) < 0.01f)
+        _data->worldSpaceInput = GLM_VEC3_ZERO_INIT;
     else
         _data->worldSpaceInput = physutil::clampVector(_data->worldSpaceInput, 0.0f, 1.0f);
 
@@ -204,16 +204,16 @@ void Player::update(const float_t& deltaTime)
         input = glm::vec2(0.0f);
     }
 
-    glm::vec3 flatCameraFacingDirection = _data->camera->sceneCamera.facingDirection;
+    vec3 flatCameraFacingDirection = _data->camera->sceneCamera.facingDirection;
     flatCameraFacingDirection.y = 0.0f;
     flatCameraFacingDirection = glm::normalize(flatCameraFacingDirection);
 
     _data->worldSpaceInput =
         input.y * flatCameraFacingDirection +
-        input.x * glm::normalize(glm::cross(flatCameraFacingDirection, glm::vec3(0, 1, 0)));
+        input.x * glm::normalize(glm::cross(flatCameraFacingDirection, GLM_YUP));
 
     // Update render transform
-    if (glm::length2(_data->worldSpaceInput) > 0.01f)
+    if (glm_vec3_dot(_data->worldSpaceInput, _data->worldSpaceInput) > 0.01f)
         _data->facingDirection = glm::atan(_data->worldSpaceInput.x, _data->worldSpaceInput.z);
 
     //
@@ -228,10 +228,10 @@ void Player::update(const float_t& deltaTime)
     //
     // @DEBUG: @TEST: try doing some voxel collision
     //
-    glm::vec3 velocity = glm::vec3(0.0f);
+    vec3 velocity = GLM_VEC3_ZERO_INIT;
     velocity += _data->worldSpaceInput;
-    velocity += glm::vec3(0, input::keyWorldUpPressed ? 1.0f : 0.0f, 0);
-    velocity += glm::vec3(0, input::keyWorldDownPressed ? -1.0f : 0.0f, 0);
+    velocity += vec3(0, input::keyWorldUpPressed ? 1.0f : 0.0f, 0);
+    velocity += vec3(0, input::keyWorldDownPressed ? -1.0f : 0.0f, 0);
     velocity *= 0.1f;
     physengine::moveCapsuleAccountingForCollision(*_data->cpd, velocity);
     _data->position = _data->cpd->basePosition;
@@ -242,10 +242,10 @@ void Player::lateUpdate(const float_t& deltaTime)
     //
     // Update position of character and weapon
     //
-    glm::vec3 interpPos                        = _data->position;  //physutil::getPosition(_physicsObj->interpolatedTransform);
-    _data->characterRenderObj->transformMatrix = glm::translate(glm::mat4(1.0f), interpPos) * glm::toMat4(glm::quat(glm::vec3(0, _data->facingDirection, 0))) * glm::scale(glm::mat4(1.0f), glm::vec3(_data->modelSize));
+    vec3 interpPos                        = _data->position;  //physutil::getPosition(_physicsObj->interpolatedTransform);
+    _data->characterRenderObj->transformMatrix = glm::translate(GLM_MAT4_IDENTITY_INIT, interpPos) * glm::toMat4(glm::quat(vec3(0, _data->facingDirection, 0))) * glm::scale(GLM_MAT4_IDENTITY_INIT, vec3(_data->modelSize));
 
-    glm::mat4 attachmentJointMat               = _data->characterRenderObj->animator->getJointMatrix(_data->weaponAttachmentJointName);
+    mat4 attachmentJointMat               = _data->characterRenderObj->animator->getJointMatrix(_data->weaponAttachmentJointName);
     _data->weaponRenderObj->transformMatrix    = _data->characterRenderObj->transformMatrix * attachmentJointMat;
     _data->handleRenderObj->transformMatrix    = _data->weaponRenderObj->transformMatrix;
 }
@@ -271,7 +271,7 @@ bool Player::processMessage(DataSerialized& message)
 
 void Player::reportMoved(void* matrixMoved)
 {
-    _data->position = physutil::getPosition(*(glm::mat4*)matrixMoved);
+    _data->position = physutil::getPosition(*(mat4*)matrixMoved);
 }
 
 void Player::renderImGui()

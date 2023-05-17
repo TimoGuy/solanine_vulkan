@@ -11,7 +11,7 @@ namespace globalState
     //
     extern std::string savedActiveScene;
 
-    extern glm::vec3   savedPlayerPosition;
+    extern vec3   savedPlayerPosition;
     extern float_t     savedPlayerFacingDirection;
 
     extern int32_t     savedPlayerHealth;
@@ -22,7 +22,7 @@ namespace globalState
     //
     struct EntityInformation
     {
-        glm::vec3   position;
+        vec3   position;
         std::string type;
         bool        isHidden = false;  // Just in case if a disappearing entity would be used like a rabbit that burrows. Then the enemy would be confused (@NOTE that the position still updates)
     };

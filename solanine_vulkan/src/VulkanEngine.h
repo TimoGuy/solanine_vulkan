@@ -26,7 +26,7 @@ struct GPUPBRShadingProps
 	float_t prefilteredCubemapMipLevels;
 	float_t scaleIBLAmbient = 1.0f;
 	glm::vec4 cascadeSplits;
-	glm::mat4 cascadeViewProjMats[SHADOWMAP_CASCADES];
+	mat4 cascadeViewProjMats[SHADOWMAP_CASCADES];
 	float_t zFarShadowZFarRatio;
 	float_t debugViewInputs = 0;
 	float_t debugViewEquation = 0;
@@ -34,7 +34,7 @@ struct GPUPBRShadingProps
 
 struct GPUObjectData
 {
-	glm::mat4 modelMatrix;
+	mat4 modelMatrix;
 };
 
 struct GPUPickingSelectedIdData
@@ -335,11 +335,11 @@ private:
 	//
 	struct MovingMatrix
 	{
-		glm::mat4* matrixToMove = nullptr;
+		mat4* matrixToMove = nullptr;
 	} _movingMatrix;
 	void submitSelectedRenderObjectId(int32_t poolIndex);
 public:
-	glm::mat4* getMatrixToMove() { return _movingMatrix.matrixToMove; }
+	mat4* getMatrixToMove() { return _movingMatrix.matrixToMove; }
 private:
 
 	//

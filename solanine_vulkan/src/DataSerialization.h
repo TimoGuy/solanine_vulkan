@@ -9,9 +9,9 @@ public:
     std::string loadString();
     float_t     loadFloat();
     glm::vec2   loadVec2();
-    glm::vec3   loadVec3();
+    vec3   loadVec3();
     glm::quat   loadQuat();
-    glm::mat4   loadMat4();
+    mat4   loadMat4();
     size_t      getSerializedValuesCount();
 
 private:
@@ -29,9 +29,9 @@ public:
     void           dumpString(const std::string& val);
     void           dumpFloat(const float_t& val);
     void           dumpVec2(const glm::vec2& val);
-    void           dumpVec3(const glm::vec3& val);
+    void           dumpVec3(const vec3& val);
     void           dumpQuat(const glm::quat& val);
-    void           dumpMat4(const glm::mat4& val);
+    void           dumpMat4(const mat4& val);
     DataSerialized getSerializedData();
 
 private:

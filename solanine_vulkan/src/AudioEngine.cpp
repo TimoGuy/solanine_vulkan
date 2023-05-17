@@ -64,7 +64,7 @@ void AudioEngine::unloadSound(const std::string& fname)
 
 int AudioEngine::playSound(const std::string& fname, bool looping)
 {
-    return playSound(fname, looping, glm::vec3(0.0f));
+    return playSound(fname, looping, GLM_VEC3_ZERO_INIT);
 }
 
 int AudioEngine::playSoundFromList(const std::vector<std::string>& fnames)
@@ -73,7 +73,7 @@ int AudioEngine::playSoundFromList(const std::vector<std::string>& fnames)
     return playSound(fnames[index]);
 }
 
-int AudioEngine::playSound(const std::string& fname, bool looping, const glm::vec3& position, float db)
+int AudioEngine::playSound(const std::string& fname, bool looping, const vec3& position, float db)
 {
     int channelId = audioAdapter->nextChannelId++;
     auto sound = audioAdapter->sounds.find(fname);
@@ -117,7 +117,7 @@ int AudioEngine::playSound(const std::string& fname, bool looping, const glm::ve
     return -1;      // New channel didn't get created. Show failure.
 }
 
-void AudioEngine::setChannel3dPosition(int channelId, const glm::vec3& position)
+void AudioEngine::setChannel3dPosition(int channelId, const vec3& position)
 {
     auto channel = audioAdapter->channels.find(channelId);
     if (channel == audioAdapter->channels.end())
@@ -231,7 +231,7 @@ void AudioEngine::getEventParameter(const std::string& eventName, const std::str
     ERRCHECK(event->second->getParameterByName(parameterName.c_str(), outValue));
 }
 
-void AudioEngine::set3dListenerTransform(const glm::vec3& position, const glm::vec3& forward)
+void AudioEngine::set3dListenerTransform(const vec3& position, const vec3& forward)
 {
     FMOD_3D_ATTRIBUTES attributes = { { 0.0f } };
     attributes.position = { position.x, position.y, position.z };

@@ -9,15 +9,15 @@ struct GPUPBRShadingProps;
 
 struct GPUCameraData
 {
-	glm::mat4 view;
-	glm::mat4 projection;
-	glm::mat4 projectionView;
-	glm::vec3 cameraPosition = { 5.43231487, 13.2406960, 1.41502118 };
+	mat4 view;
+	mat4 projection;
+	mat4 projectionView;
+	vec3 cameraPosition = { 5.43231487, 13.2406960, 1.41502118 };
 };
 
 struct GPUCascadeViewProjsData
 {
-	glm::mat4 cascadeViewProjs[SHADOWMAP_CASCADES];
+	mat4 cascadeViewProjs[SHADOWMAP_CASCADES];
 };
 
 //
@@ -28,13 +28,13 @@ struct GPUCascadeViewProjsData
 //
 struct SceneCamera
 {
-	glm::vec3 facingDirection = { -0.570508420, -0.390730739, 0.722388268 };
+	vec3 facingDirection = { -0.570508420, -0.390730739, 0.722388268 };
 	float_t   fov             = glm::radians(70.0f);
 	float_t   aspect;
 	float_t   zNear           = 1.0f;
 	float_t   zFar            = 1500.0f;  // @TODO: I wanna change this to 100,000 but I don't really know how feasible that'd be. Esp. for overworld scenes I want this super far render distance!
 	float_t   zFarShadow      = 200.0f;
-	glm::vec3 boxCastExtents;
+	vec3 boxCastExtents;
 	GPUCameraData gpuCameraData;
 	GPUCascadeViewProjsData gpuCascadeViewProjsData;  // This will get calculated from the scene camera since this is a CSM viewprojs
 
@@ -51,18 +51,18 @@ enum class CameraModeChangeEvent { NONE, ENTER, EXIT };
 struct MainCamMode
 {
 	RenderObject* targetObject = nullptr;
-	glm::vec3 focusPosition = glm::vec3(0);
+	vec3 focusPosition = vec3(0);
 	glm::vec2 sensitivity = glm::vec2(0.1f, 0.1f);
 	glm::vec2 orbitAngles = glm::vec2(glm::radians(45.0f), 0.0f);
-	glm::vec3 calculatedCameraPosition = glm::vec3(0);
-	glm::vec3 calculatedLookDirection = glm::vec3(0, -0.707106781, 0.707106781);
+	vec3 calculatedCameraPosition = vec3(0);
+	vec3 calculatedLookDirection = vec3(0, -0.707106781, 0.707106781);
 
 	// Tweak variables
 	float_t   lookDistance        = 5.0f;
 	float_t   focusRadiusXZ       = 1.0f;
 	float_t   focusRadiusY        = 2.333333f;
 	float_t   focusCentering      = 0.75f;
-	glm::vec3 focusPositionOffset = glm::vec3(0, 2.333333f, 0);
+	vec3 focusPositionOffset = vec3(0, 2.333333f, 0);
 
 	void setMainCamTargetObject(RenderObject* targetObject);
 };

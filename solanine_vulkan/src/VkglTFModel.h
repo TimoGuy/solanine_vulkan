@@ -35,13 +35,13 @@ namespace vkglTF
 
 	struct BoundingBox
 	{
-		glm::vec3 min;
-		glm::vec3 max;
+		vec3 min;
+		vec3 max;
 		bool valid = false;
 
 		BoundingBox();
-		BoundingBox(glm::vec3 min, glm::vec3 max);
-		BoundingBox getAABB(glm::mat4 m);
+		BoundingBox(vec3 min, vec3 max);
+		BoundingBox getAABB(mat4 m);
 	};
 
 	struct TextureSampler
@@ -85,7 +85,7 @@ namespace vkglTF
 			Texture* specularGlossinessTexture;
 			Texture* diffuseTexture;
 			glm::vec4 diffuseFactor = glm::vec4(1.0f);
-			glm::vec3 specularFactor = glm::vec3(0.0f);
+			vec3 specularFactor = GLM_VEC3_ZERO_INIT;
 		} extension;
 	
 		struct PbrWorkflows
@@ -106,7 +106,7 @@ namespace vkglTF
 		bool hasIndices;
 		BoundingBox bb;
 		Primitive(uint32_t firstIndex, uint32_t indexCount, uint32_t vertexCount, PBRMaterial& material);
-		void setBoundingBox(glm::vec3 min, glm::vec3 max);
+		void setBoundingBox(vec3 min, vec3 max);
 	};
 
 	struct Mesh
@@ -119,14 +119,14 @@ namespace vkglTF
 
 		Mesh();
 		~Mesh();
-		void setBoundingBox(glm::vec3 min, glm::vec3 max);
+		void setBoundingBox(vec3 min, vec3 max);
 	};
 
 	struct Skin
 	{
 		std::string name;
 		Node* skeletonRoot = nullptr;
-		std::vector<glm::mat4> inverseBindMatrices;
+		std::vector<mat4> inverseBindMatrices;
 		std::vector<Node*> joints;
 	};
 
@@ -137,20 +137,20 @@ namespace vkglTF
 		Node* parent;
 		uint32_t index;
 		std::vector<Node*> children;
-		glm::mat4 matrix;
+		mat4 matrix;
 		std::string name;
 		Mesh* mesh;
 		Skin* skin;
 		int32_t skinIndex = -1;
-		glm::vec3 translation{};
-		glm::vec3 scale{ 1.0f };
+		vec3 translation{};
+		vec3 scale{ 1.0f };
 		glm::quat rotation{};
 		BoundingBox bvh;
 		BoundingBox aabb;
 
 		void generateCalculateJointMatrixTaskflow(Animator* animator, tf::Taskflow& taskflow, tf::Task* taskPrerequisite);
-		glm::mat4 localMatrix();
-		glm::mat4 getMatrix();
+		mat4 localMatrix();
+		mat4 getMatrix();
 		void update(Animator* animator);
 		~Node();
 	};
@@ -274,8 +274,8 @@ namespace vkglTF
 	{
 		struct Vertex
 		{
-			glm::vec3 pos;
-			glm::vec3 normal;
+			vec3 pos;
+			vec3 normal;
 			glm::vec2 uv0;
 			glm::vec2 uv1;
 			glm::vec4 joint0;
@@ -297,7 +297,7 @@ namespace vkglTF
 			VmaAllocation allocation;
 		} indices;
 
-		glm::mat4 aabb;
+		mat4 aabb;
 
 		std::vector<Node*> nodes;
 		std::vector<Node*> linearNodes;
@@ -312,8 +312,8 @@ namespace vkglTF
 
 		struct Dimensions
 		{
-			glm::vec3 min = glm::vec3(FLT_MAX);
-			glm::vec3 max = glm::vec3(-FLT_MAX);
+			vec3 min = vec3(FLT_MAX);
+			vec3 max = vec3(-FLT_MAX);
 		} dimensions;
 
 		struct LoaderInfo
@@ -391,9 +391,9 @@ namespace vkglTF
 		std::vector<AnimatorCallback> eventCallbacks;
 
 		void updateAnimation();
-		void updateJointMatrices(uint32_t animatorMeshId, vkglTF::Skin* skin, glm::mat4& m);
+		void updateJointMatrices(uint32_t animatorMeshId, vkglTF::Skin* skin, mat4& m);
 	public:
-		glm::mat4 getJointMatrix(const std::string& jointName);
+		mat4 getJointMatrix(const std::string& jointName);
 	private:
 
 		struct UniformBuffer
@@ -406,8 +406,8 @@ namespace vkglTF
 
 		struct UniformBlock
 		{
-			glm::mat4 matrix;
-			glm::mat4 jointMatrix[MAX_NUM_JOINTS]{};
+			mat4 matrix;
+			mat4 jointMatrix[MAX_NUM_JOINTS]{};
 			float_t jointcount{ 0 };
 		};
 		std::vector<UniformBlock> uniformBlocks;

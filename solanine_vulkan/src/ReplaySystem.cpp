@@ -1,7 +1,7 @@
 #include "ReplaySystem.h"
 
 
-void ReplayData::startRecording(const glm::vec3& startPosition, const float_t& startFacingDirectionRadians)
+void ReplayData::startRecording(const vec3& startPosition, const float_t& startFacingDirectionRadians)
 {
     this->startPosition = startPosition;
     this->startFacingDirectionRadians = startFacingDirectionRadians;
@@ -28,7 +28,7 @@ void ReplayData::recordStep(const glm::vec2& worldSpaceInput, const bool& onJump
     replayDataSteps.push_back(step);
 }
 
-void ReplayData::playRecording(glm::vec3& outStartPosition, float_t& outStartFacingDirectionRadians)
+void ReplayData::playRecording(vec3& outStartPosition, float_t& outStartFacingDirectionRadians)
 {
     outStartPosition = startPosition;
     outStartFacingDirectionRadians = startFacingDirectionRadians;

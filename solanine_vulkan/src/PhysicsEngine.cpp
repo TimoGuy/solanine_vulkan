@@ -209,21 +209,24 @@ namespace physengine
     //
     // Collision algorithms
     //
-    bool checkPointCollidingWithVoxelField(const VoxelFieldPhysicsData& vfpd, const glm::vec3& point)
+    bool checkPointCollidingWithVoxelField(const VoxelFieldPhysicsData& vfpd, const vec3& point)
     {
-        glm::vec3 transformedPoint = glm::inverse(vfpd.transform) * glm::vec4(point, 1.0f);
+        mat4 vfpdTransInv;
+        glm_mat4_inv(vfpd.transform, vfpdTransInv);
+        vec3 transformedPoint;
+        glm_mat4_mulv3(vfpdTransInv, point, 1.0f, transformedPoint);
 
         // Check bounding box
-        if (transformedPoint.x < 0           || transformedPoint.y < 0           || transformedPoint.z < 0          ||
-            transformedPoint.x >= vfpd.sizeX || transformedPoint.y >= vfpd.sizeY || transformedPoint.z >= vfpd.sizeZ)
+        if (transformedPoint[0] < 0           || transformedPoint[1] < 0           || transformedPoint[2] < 0          ||
+            transformedPoint[0] >= vfpd.sizeX || transformedPoint[1] >= vfpd.sizeY || transformedPoint[2] >= vfpd.sizeZ)
             return false;
 
         // Check if point is filled
-        uint8_t vd = vfpd.voxelData[(size_t)glm::floor(transformedPoint.x) * vfpd.sizeY * vfpd.sizeZ + (size_t)glm::floor(transformedPoint.y) * vfpd.sizeZ + (size_t)glm::floor(transformedPoint.z)];
+        uint8_t vd = vfpd.voxelData[(size_t)floor(transformedPoint[0]) * vfpd.sizeY * vfpd.sizeZ + (size_t)floor(transformedPoint[1]) * vfpd.sizeZ + (size_t)floor(transformedPoint[2])];
         return (vd == 1);
     }
 
-    bool debugCheckPointColliding(const glm::vec3& point)
+    bool debugCheckPointColliding(const vec3& point)
     {
         for (size_t i = 0; i < numVFsCreated; i++)
         {
@@ -234,13 +237,16 @@ namespace physengine
         return false;
     }
 
-    void closestPointToLineSegment(const glm::vec3& pt, const glm::vec3& a, const glm::vec3& b, glm::vec3 &outPt)
+    void closestPointToLineSegment(const vec3& pt, const vec3& a, const vec3& b, vec3 &outPt)
     {
         // https://arrowinmyknee.com/2021/03/15/some-math-about-capsule-collision/
-        glm::vec3 ab = b - a;
+        vec3 ab;
+        glm_vec3_sub(b, a, ab);
 
         // Project pt onto ab, but deferring divide by Dot(ab, ab)
-        float_t t = glm::dot(pt - a, ab);
+        vec3 pt_a;
+        glm_vec3_sub(pt, a, pt_a);
+        float_t t = glm_vec3_dot(pt_a, ab);
         if (t <= 0.0f)
         {
             // pt projects outside the [a,b] interval, on the a side; clamp to a
@@ -249,7 +255,7 @@ namespace physengine
         }
         else
         {
-            float_t denom = glm::dot(ab, ab); // Always nonnegative since denom = ||ab||∧2
+            float_t denom = glm_vec3_dot(ab, ab); // Always nonnegative since denom = ||ab||∧2
             if (t >= denom)
             {
                 // pt projects outside the [a,b] interval, on the b side; clamp to b
@@ -260,42 +266,43 @@ namespace physengine
             {
                 // pt projects inside the [a,b] interval; must do deferred divide now
                 t = t / denom;
-                outPt = a + t * ab;
+                glm_vec3_mul({ t, t, t }, ab, ab);
+                glm_vec3_add(a, ab, outPt);
             }
         }
     }
 
-    bool checkCapsuleCollidingWithVoxelField(const VoxelFieldPhysicsData& vfpd, const CapsulePhysicsData& cpd, glm::vec3& collisionNormal, float_t& penetrationDepth)
+    bool checkCapsuleCollidingWithVoxelField(const VoxelFieldPhysicsData& vfpd, const CapsulePhysicsData& cpd, vec3& collisionNormal, float_t& penetrationDepth)
     {
         //
         // Broad phase: turn both objects into AABB and do collision
         //
         auto broadPhaseTimingStart = std::chrono::high_resolution_clock::now();
 
-        glm::vec3 capsulePtATransformed = glm::inverse(vfpd.transform) * glm::vec4(cpd.basePosition + glm::vec3(0, cpd.radius + cpd.height, 0), 1.0f);
-        glm::vec3 capsulePtBTransformed = glm::inverse(vfpd.transform) * glm::vec4(cpd.basePosition + glm::vec3(0, cpd.radius, 0), 1.0f);
-        glm::vec3 capsuleAABBMinMax[2] = {
-            glm::vec3(
-                glm::min(capsulePtATransformed.x, capsulePtBTransformed.x) - cpd.radius,  // @NOTE: add/subtract the radius while in voxel field transform space.
-                glm::min(capsulePtATransformed.y, capsulePtBTransformed.y) - cpd.radius,
-                glm::min(capsulePtATransformed.z, capsulePtBTransformed.z) - cpd.radius
-            ),
-            glm::vec3(
-                glm::max(capsulePtATransformed.x, capsulePtBTransformed.x) + cpd.radius,
-                glm::max(capsulePtATransformed.y, capsulePtBTransformed.y) + cpd.radius,
-                glm::max(capsulePtATransformed.z, capsulePtBTransformed.z) + cpd.radius
-            ),
+        vec3 capsulePtATransformed = glm::inverse(vfpd.transform) * glm::vec4(cpd.basePosition + vec3(0, cpd.radius + cpd.height, 0), 1.0f);
+        vec3 capsulePtBTransformed = glm::inverse(vfpd.transform) * glm::vec4(cpd.basePosition + vec3(0, cpd.radius, 0), 1.0f);
+        vec3 capsuleAABBMinMax[2] = {
+            {
+                glm::min(capsulePtATransformed[0], capsulePtBTransformed[0]) - cpd.radius,  // @NOTE: add/subtract the radius while in voxel field transform space.
+                glm::min(capsulePtATransformed[1], capsulePtBTransformed[1]) - cpd.radius,
+                glm::min(capsulePtATransformed[2], capsulePtBTransformed[2]) - cpd.radius
+            },
+            {
+                glm::max(capsulePtATransformed[0], capsulePtBTransformed[0]) + cpd.radius,
+                glm::max(capsulePtATransformed[1], capsulePtBTransformed[1]) + cpd.radius,
+                glm::max(capsulePtATransformed[2], capsulePtBTransformed[2]) + cpd.radius
+            },
         };
-        glm::vec3 voxelFieldAABBMinMax[2] = {
-            glm::vec3(0.0f, 0.0f, 0.0f),
-            glm::vec3(vfpd.sizeX, vfpd.sizeY, vfpd.sizeZ),
+        vec3 voxelFieldAABBMinMax[2] = {
+            { 0.0f, 0.0f, 0.0f },
+            { vfpd.sizeX, vfpd.sizeY, vfpd.sizeZ },
         };
-        if (capsuleAABBMinMax[0].x > voxelFieldAABBMinMax[1].x ||
-            capsuleAABBMinMax[1].x < voxelFieldAABBMinMax[0].x ||
-            capsuleAABBMinMax[0].y > voxelFieldAABBMinMax[1].y ||
-            capsuleAABBMinMax[1].y < voxelFieldAABBMinMax[0].y ||
-            capsuleAABBMinMax[0].z > voxelFieldAABBMinMax[1].z ||
-            capsuleAABBMinMax[1].z < voxelFieldAABBMinMax[0].z)
+        if (capsuleAABBMinMax[0][0] > voxelFieldAABBMinMax[1][0] ||
+            capsuleAABBMinMax[1][0] < voxelFieldAABBMinMax[0][0] ||
+            capsuleAABBMinMax[0][1] > voxelFieldAABBMinMax[1][1] ||
+            capsuleAABBMinMax[1][1] < voxelFieldAABBMinMax[0][1] ||
+            capsuleAABBMinMax[0][2] > voxelFieldAABBMinMax[1][2] ||
+            capsuleAABBMinMax[1][2] < voxelFieldAABBMinMax[0][2])
             return false;
 
         auto broadPhaseTimingDiff = std::chrono::high_resolution_clock::now() - broadPhaseTimingStart;
@@ -305,23 +312,23 @@ namespace physengine
         //
         auto narrowPhaseTimingStart = std::chrono::high_resolution_clock::now();
         glm::ivec3 searchMin = glm::ivec3(
-            glm::max(glm::floor(capsuleAABBMinMax[0].x), voxelFieldAABBMinMax[0].x),
-            glm::max(glm::floor(capsuleAABBMinMax[0].y), voxelFieldAABBMinMax[0].y),
-            glm::max(glm::floor(capsuleAABBMinMax[0].z), voxelFieldAABBMinMax[0].z)
+            glm::max(floor(capsuleAABBMinMax[0][0]), voxelFieldAABBMinMax[0][0]),
+            glm::max(floor(capsuleAABBMinMax[0][1]), voxelFieldAABBMinMax[0][1]),
+            glm::max(floor(capsuleAABBMinMax[0][2]), voxelFieldAABBMinMax[0][2])
         );
         glm::ivec3 searchMax = glm::ivec3(
-            glm::min(glm::floor(capsuleAABBMinMax[1].x), voxelFieldAABBMinMax[1].x - 1),
-            glm::min(glm::floor(capsuleAABBMinMax[1].y), voxelFieldAABBMinMax[1].y - 1),
-            glm::min(glm::floor(capsuleAABBMinMax[1].z), voxelFieldAABBMinMax[1].z - 1)
+            glm::min(floor(capsuleAABBMinMax[1][0]), voxelFieldAABBMinMax[1][0] - 1),
+            glm::min(floor(capsuleAABBMinMax[1][1]), voxelFieldAABBMinMax[1][1] - 1),
+            glm::min(floor(capsuleAABBMinMax[1][2]), voxelFieldAABBMinMax[1][2] - 1)
         );
 
         bool collisionSuccessful = false;
         float_t lowestDpSqrDist = std::numeric_limits<float_t>::max();
         size_t lkjlkj = 0;
         size_t succs = 0;
-        for (size_t i = searchMin.x; i <= searchMax.x; i++)
-        for (size_t j = searchMin.y; j <= searchMax.y; j++)
-        for (size_t k = searchMin.z; k <= searchMax.z; k++)
+        for (size_t i = searchMin[0]; i <= searchMax[0]; i++)
+        for (size_t j = searchMin[1]; j <= searchMax[1]; j++)
+        for (size_t k = searchMin[2]; k <= searchMax[2]; k++)
         {
             lkjlkj++;
             uint8_t vd = vfpd.voxelData[i * vfpd.sizeY * vfpd.sizeZ + j * vfpd.sizeZ + k];
@@ -338,33 +345,39 @@ namespace physengine
                     //
                     // Test collision with this voxel
                     //
-                    glm::vec3 point;
-                    closestPointToLineSegment(glm::vec3(i, j, k) + glm::vec3(0.5f, 0.5f, 0.5f), capsulePtATransformed, capsulePtBTransformed, point);
+                    vec3 point;
+                    closestPointToLineSegment({ i + 0.5f, j + 0.5f, k + 0.5f }, capsulePtATransformed, capsulePtBTransformed, point);
 
-                    glm::vec3 boundedPoint = glm::clamp(point, glm::vec3(i, j, k), glm::vec3(i + 1.0f, j + 1.0f, k + 1.0f));
+                    vec3 boundedPoint;
+                    glm_vec3_copy(point, boundedPoint);
+                    boundedPoint[0] = glm_clamp(boundedPoint[0], i, i + 1.0f);
+                    boundedPoint[1] = glm_clamp(boundedPoint[1], j, j + 1.0f);
+                    boundedPoint[2] = glm_clamp(boundedPoint[2], k, k + 1.0f);
                     if (point == boundedPoint)
                     {
                         // Collider is stuck inside
-                        collisionNormal = glm::vec3(0, 1, 0);
+                        collisionNormal = GLM_YUP;
                         penetrationDepth = 1.0f;
                         return true;
                     }
                     else
                     {
                         // Get more accurate point with the bounded point
-                        glm::vec3 betterPoint;
+                        vec3 betterPoint;
                         closestPointToLineSegment(boundedPoint, capsulePtATransformed, capsulePtBTransformed, betterPoint);
 
-                        glm::vec3 deltaPoint = betterPoint - boundedPoint;
-                        float_t dpSqrDist = glm::length2(deltaPoint);
+                        vec3 deltaPoint;
+                        glm_vec3_sub(betterPoint, boundedPoint, deltaPoint);
+                        float_t dpSqrDist = glm_vec3_dot(deltaPoint, deltaPoint);
                         if (dpSqrDist < cpd.radius * cpd.radius && dpSqrDist < lowestDpSqrDist)
                         {
                             // Collision successful
                             succs++;
                             collisionSuccessful = true;
                             lowestDpSqrDist = dpSqrDist;
-                            collisionNormal = glm::transpose(glm::inverse(glm::mat3(vfpd.transform))) * glm::normalize(deltaPoint);
-                            penetrationDepth = cpd.radius - glm::sqrt(dpSqrDist);
+                            glm_normalize(deltaPoint);
+                            glm_mat4_mulv3(vfpd.transform, deltaPoint, 0.0f, collisionNormal);
+                            penetrationDepth = cpd.radius - std::sqrt(dpSqrDist);
                         }
                     }
                 } break;
@@ -372,14 +385,14 @@ namespace physengine
         }
 
         auto narrowPhaseTimingDiff = std::chrono::high_resolution_clock::now() - narrowPhaseTimingStart;
-        // std::cout << "collided: checks: " << lkjlkj << "\tsuccs: " << succs << "\ttime (broad): " << broadPhaseTimingDiff  << "\ttime (narrow): " << narrowPhaseTimingDiff << "\tisGround: " << (collisionNormal.y >= 0.707106665647) << "\tnormal: " << collisionNormal.x << ", " << collisionNormal.y << ", " << collisionNormal.z << "\tdepth: " << penetrationDepth << std::endl;
+        // std::cout << "collided: checks: " << lkjlkj << "\tsuccs: " << succs << "\ttime (broad): " << broadPhaseTimingDiff  << "\ttime (narrow): " << narrowPhaseTimingDiff << "\tisGround: " << (collisionNormal[1] >= 0.707106665647) << "\tnormal: " << collisionNormal[0] << ", " << collisionNormal[1] << ", " << collisionNormal[2] << "\tdepth: " << penetrationDepth << std::endl;
 
         return collisionSuccessful;
     }
 
-    bool debugCheckCapsuleColliding(const CapsulePhysicsData& cpd, glm::vec3& collisionNormal, float_t& penetrationDepth)
+    bool debugCheckCapsuleColliding(const CapsulePhysicsData& cpd, vec3& collisionNormal, float_t& penetrationDepth)
     {
-        glm::vec3 normal;
+        vec3 normal;
         float_t penDepth;
 
         for (size_t i = 0; i < numVFsCreated; i++)
@@ -387,7 +400,7 @@ namespace physengine
             size_t& index = voxelFieldIndices[i];
             if (checkCapsuleCollidingWithVoxelField(voxelFieldPool[index], cpd, normal, penDepth))
             {
-                collisionNormal = normal;
+                glm_vec3_copy(normal, collisionNormal);
                 penetrationDepth = penDepth;
                 return true;
             }
@@ -395,44 +408,49 @@ namespace physengine
         return false;
     }
 
-    void moveCapsuleAccountingForCollision(CapsulePhysicsData& cpd, glm::vec3 deltaPosition, float_t ccdDistance)
+    void moveCapsuleAccountingForCollision(CapsulePhysicsData& cpd, vec3 deltaPosition, float_t ccdDistance)
     {
         do
         {
-            if (glm::length2(deltaPosition) > ccdDistance * ccdDistance)
+            if (glm_vec3_dot(deltaPosition, deltaPosition) > ccdDistance * ccdDistance)
             {
                 // Move at a max of the ccdDistance
-                glm::vec3 m = glm::normalize(deltaPosition) * ccdDistance;
-                cpd.basePosition += m;
-                deltaPosition -= m;
+                vec3 m;
+                glm_vec3_normalize_to(deltaPosition, m);
+                glm_vec3_scale(m, ccdDistance, m);
+                glm_vec3_add(cpd.basePosition, m, cpd.basePosition);
+                glm_vec3_sub(deltaPosition, m, deltaPosition);
             }
             else
             {
                 // Move the rest of the way
-                cpd.basePosition += deltaPosition;
-                deltaPosition = glm::vec3(0.0f);
+                glm_vec3_add(cpd.basePosition, deltaPosition, cpd.basePosition);
+                deltaPosition[0] = deltaPosition[1] = deltaPosition[2] = 0.0f;
             }
 
             // Check for collision
             for (size_t iterations = 0; iterations < 6; iterations++)
             {
-                glm::vec3 normal;
+                vec3 normal;
                 float_t penetrationDepth;
                 if (physengine::debugCheckCapsuleColliding(cpd, normal, penetrationDepth))
                 {
                     penetrationDepth += 0.0001f;
-                    if (normal.y >= 0.707106781187)  // >=45 degrees
+                    if (normal[1] >= 0.707106781187)  // >=45 degrees
                     {
                         // Stick to the ground
-                        cpd.basePosition.y += penetrationDepth / normal.y;
+                        cpd.basePosition[1] += penetrationDepth / normal[1];
                     }
                     else
-                        cpd.basePosition += normal * penetrationDepth;
+                    {
+                        vec3 penetrationDepthV3 = { penetrationDepth, penetrationDepth, penetrationDepth };
+                        glm_vec3_muladd(normal, penetrationDepthV3, cpd.basePosition);
+                    }
                 }
                 else
                     break;
             }
-        } while (glm::length2(deltaPosition) > 0.000001f);
+        } while (glm_vec3_dot(deltaPosition, deltaPosition) > 0.000001f);
     }
 
     void setPhysicsObjectInterpolation(const float_t& physicsAlpha)
@@ -445,20 +463,30 @@ namespace physengine
             VoxelFieldPhysicsData& vfpd = voxelFieldPool[voxelFieldIndices[i]];
             if (vfpd.prevTransform != vfpd.transform)
             {
-                glm::vec3 interpolPos = glm::mix(physutil::getPosition(vfpd.prevTransform), physutil::getPosition(vfpd.transform), physicsAlpha);
-                glm::vec3 interpolSca = glm::mix(   physutil::getScale(vfpd.prevTransform),    physutil::getScale(vfpd.transform), physicsAlpha);
+                vec3 interpolPos;
+                glm_vec3_lerp(physutil::getPosition(vfpd.prevTransform), physutil::getPosition(vfpd.transform), physicsAlpha, interpolPos);
+                vec3 interpolSca;
+                glm_vec3_lerp(physutil::getScale(vfpd.prevTransform), physutil::getScale(vfpd.transform), physicsAlpha, interpolSca);
 
-                glm::quat rotA = physutil::getRotation(vfpd.prevTransform);
-                glm::quat rotB = physutil::getRotation(vfpd.transform);
+                versor rotA = physutil::getRotation(vfpd.prevTransform);
+                versor rotB = physutil::getRotation(vfpd.transform);
                 float_t omu = 1.0f - physicsAlpha;
-                if (glm::dot(rotA, rotB) < 0.0f)  // Super simple neighboring... might be glitchy  @TODO
+                if (glm_quat_dot(rotA, rotB) < 0.0f)  // Super simple neighboring... might be glitchy  @TODO
                     omu = -omu;
-                glm::quat interpolRot = glm::normalize(omu * rotA + physicsAlpha * rotB);
+                
+                vec4 omuV4          = {          omu,          omu,          omu,          omu };
+                vec4 physicsAlphaV4 = { physicsAlpha, physicsAlpha, physicsAlpha, physicsAlpha };
+                versor interpolRot;
+                glm_vec4_mul(omuV4, rotA, rotA);
+                glm_vec4_mul(physicsAlphaV4, rotB, rotB);
+                glm_vec4_add(rotA, rotB, interpolRot);
+                glm_quat_normalize(interpolRot);
 
-                vfpd.interpolTransform =
-                    glm::translate(glm::mat4(1.0f), interpolPos) *
-                    glm::toMat4(interpolRot) *
-                    glm::scale(glm::mat4(1.0f), interpolSca);
+                mat4 transform;
+                glm_scale(transform, interpolSca);
+                glm_quat_rotate(transform, interpolRot, transform);
+                glm_translate(transform, interpolPos);
+                glm_mat4_copy(transform, vfpd.interpolTransform);
             }
         }
         for (size_t i = 0; i < numCapsCreated; i++)
@@ -466,7 +494,7 @@ namespace physengine
             CapsulePhysicsData& cpd = capsulePool[capsuleIndices[i]];
             if (cpd.prevBasePosition != cpd.basePosition)
             {
-                cpd.interpolBasePosition = glm::mix(cpd.prevBasePosition, cpd.basePosition, physicsAlpha);
+                glm_vec3_lerp(cpd.prevBasePosition, cpd.basePosition, physicsAlpha, cpd.interpolBasePosition);
             }
         }
     }

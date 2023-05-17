@@ -63,14 +63,14 @@ namespace physutil
 		return (maxDistanceDelta >= std::abs(delta)) ? target : (current + mvtDeltaNormalized * maxDistanceDelta);
 	}
 
-	glm::vec3 moveTowardsVec3(glm::vec3 current, glm::vec3 target, float_t maxDistanceDelta)
+	vec3 moveTowardsVec3(vec3 current, vec3 target, float_t maxDistanceDelta)
 	{
 		float_t delta = glm::length(target - current);
-		glm::vec3 mvtDeltaNormalized = glm::normalize(target - current);
+		vec3 mvtDeltaNormalized = glm::normalize(target - current);
 		return (maxDistanceDelta >= std::abs(delta)) ? target : (current + mvtDeltaNormalized * maxDistanceDelta);
 	}
 
-	glm::vec3 clampVector(glm::vec3 vector, float_t min, float_t max)
+	vec3 clampVector(vec3 vector, float_t min, float_t max)
 	{
 		float_t magnitude = glm::length(vector);
 
@@ -79,29 +79,29 @@ namespace physutil
 		return glm::normalize(vector) * std::clamp(magnitude, min, max);
 	}
 
-	glm::vec3 getPosition(const glm::mat4& transform)
+	vec3 getPosition(const mat4& transform)
 	{
-		return glm::vec3(transform[3]);
+		return vec3(transform[3]);
 	}
 
-	glm::quat getRotation(const glm::mat4& transform)
+	glm::quat getRotation(const mat4& transform)
 	{
 		// NOTE: when the scale gets larger, the quaternion will rotate up to however many dimensions there are, thus we have to scale down/normalize this transform to unit scale before extracting the quaternion
-		glm::vec3 scale = getScale(transform);
+		vec3 scale = getScale(transform);
 		const glm::mat3 unitScaledRotationMatrix(
-			glm::vec3(transform[0]) / scale[0],
-			glm::vec3(transform[1]) / scale[1],
-			glm::vec3(transform[2]) / scale[2]
+			vec3(transform[0]) / scale[0],
+			vec3(transform[1]) / scale[1],
+			vec3(transform[2]) / scale[2]
 		);
 		return glm::normalize(glm::quat_cast(unitScaledRotationMatrix));		// NOTE: Seems like the quat created here needs to be normalized. Weird.  -Timo 2022-01-19
 	}
 
-	glm::vec3 getScale(const glm::mat4& transform)
+	vec3 getScale(const mat4& transform)
 	{
-		glm::vec3 scale = {
-			glm::length(glm::vec3(transform[0])),
-			glm::length(glm::vec3(transform[1])),
-			glm::length(glm::vec3(transform[2])),
+		vec3 scale = {
+			glm::length(vec3(transform[0])),
+			glm::length(vec3(transform[1])),
+			glm::length(vec3(transform[2])),
 		};
 		return scale;
 	}
@@ -111,12 +111,12 @@ namespace physutil
 		return ((1.0f - t) * a) + (t * b);
 	}
 
-	glm::vec3 lerp(const glm::vec3& a, const glm::vec3& b, const glm::vec3& t)
+	vec3 lerp(const vec3& a, const vec3& b, const vec3& t)
 	{
-		return glm::vec3(lerp(a.x, b.x, t.x), lerp(a.y, b.y, t.y), lerp(a.z, b.z, t.z));
+		return vec3(lerp(a.x, b.x, t.x), lerp(a.y, b.y, t.y), lerp(a.z, b.z, t.z));
 	}
 
-	bool matrixEquals(const glm::mat4& m1, const glm::mat4& m2, float epsilon)
+	bool matrixEquals(const mat4& m1, const mat4& m2, float epsilon)
 	{
 		return (glm::abs(m1[0][0] - m2[0][0]) < epsilon &&
 			glm::abs(m1[0][1] - m2[0][1]) < epsilon &&

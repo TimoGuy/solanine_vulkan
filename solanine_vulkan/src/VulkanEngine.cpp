@@ -77,8 +77,8 @@ void VulkanEngine::init()
 	// glm vs cglm performance test!!!
 	//
 	uint64_t s = SDL_GetPerformanceCounter();
-	glm::mat4 m1 = glm::mat4(1.0f);
-	glm::mat4 m2 = glm::mat4(1.0f);
+	mat4 m1 = GLM_MAT4_IDENTITY_INIT;
+	mat4 m2 = GLM_MAT4_IDENTITY_INIT;
 	for (size_t i = 0; i < 1000000; i++)
 		m2 = m1 * m2;
 	uint64_t delta1 = SDL_GetPerformanceCounter() - s;
@@ -2883,14 +2883,14 @@ void VulkanEngine::generatePBRCubemaps()
 
 		struct PushBlockIrradiance
 		{
-			glm::mat4 mvp;
+			mat4 mvp;
 			float_t deltaPhi = (2.0f * float_t(M_PI)) / 180.0f;
 			float_t deltaTheta = (0.5f * float_t(M_PI)) / 64.0f;
 		} pushBlockIrradiance;
 
 		struct PushBlockPrefilterEnv
 		{
-			glm::mat4 mvp;
+			mat4 mvp;
 			float_t roughness;
 			uint32_t numSamples = 32u;
 		} pushBlockPrefilterEnv;
@@ -3031,13 +3031,13 @@ void VulkanEngine::generatePBRCubemaps()
 		renderPassBeginInfo.clearValueCount = 1;
 		renderPassBeginInfo.pClearValues = clearValues;
 
-		std::vector<glm::mat4> matrices = {
-			glm::rotate(glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f)), glm::radians(180.0f), glm::vec3(1.0f, 0.0f, 0.0f)),
-			glm::rotate(glm::rotate(glm::mat4(1.0f), glm::radians(-90.0f), glm::vec3(0.0f, 1.0f, 0.0f)), glm::radians(180.0f), glm::vec3(1.0f, 0.0f, 0.0f)),
-			glm::rotate(glm::mat4(1.0f), glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f)),
-			glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f)),
-			glm::rotate(glm::mat4(1.0f), glm::radians(180.0f), glm::vec3(1.0f, 0.0f, 0.0f)),
-			glm::rotate(glm::mat4(1.0f), glm::radians(180.0f), glm::vec3(0.0f, 0.0f, 1.0f)),
+		std::vector<mat4> matrices = {
+			glm::rotate(glm::rotate(GLM_MAT4_IDENTITY_INIT, glm::radians(90.0f), vec3(0.0f, 1.0f, 0.0f)), glm::radians(180.0f), vec3(1.0f, 0.0f, 0.0f)),
+			glm::rotate(glm::rotate(GLM_MAT4_IDENTITY_INIT, glm::radians(-90.0f), vec3(0.0f, 1.0f, 0.0f)), glm::radians(180.0f), vec3(1.0f, 0.0f, 0.0f)),
+			glm::rotate(GLM_MAT4_IDENTITY_INIT, glm::radians(-90.0f), vec3(1.0f, 0.0f, 0.0f)),
+			glm::rotate(GLM_MAT4_IDENTITY_INIT, glm::radians(90.0f), vec3(1.0f, 0.0f, 0.0f)),
+			glm::rotate(GLM_MAT4_IDENTITY_INIT, glm::radians(180.0f), vec3(1.0f, 0.0f, 0.0f)),
+			glm::rotate(GLM_MAT4_IDENTITY_INIT, glm::radians(180.0f), vec3(0.0f, 0.0f, 1.0f)),
 		};
 
 		VkViewport viewport{};
@@ -4394,18 +4394,18 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 		//
 		// Move the matrix via ImGuizmo
 		//
-		glm::mat4 projection = _camera->sceneCamera.gpuCameraData.projection;
+		mat4 projection = _camera->sceneCamera.gpuCameraData.projection;
 		projection[1][1] *= -1.0f;
 
 		static ImGuizmo::OPERATION manipulateOperation = ImGuizmo::OPERATION::TRANSLATE;
 		static ImGuizmo::MODE manipulateMode           = ImGuizmo::MODE::WORLD;
 
-		glm::vec3 snapValues(0.0f);
+		vec3 snapValues(0.0f);
 		if (input::keyCtrlPressed)
 			if (manipulateOperation == ImGuizmo::OPERATION::ROTATE)
-				snapValues = glm::vec3(45.0f);
+				snapValues = vec3(45.0f);
 			else
-				snapValues = glm::vec3(0.5f);
+				snapValues = vec3(0.5f);
 
 		bool matrixToMoveMoved =
 			ImGuizmo::Manipulate(
@@ -4426,7 +4426,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 		{
 			if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen))
 			{
-				glm::vec3 position, eulerAngles, scale;
+				vec3 position, eulerAngles, scale;
 				ImGuizmo::DecomposeMatrixToComponents(
 					glm::value_ptr(*_movingMatrix.matrixToMove),
 					glm::value_ptr(position),

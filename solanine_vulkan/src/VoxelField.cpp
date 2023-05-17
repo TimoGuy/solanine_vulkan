@@ -13,7 +13,7 @@ struct VoxelField_XData
     RenderObjectManager* rom;
     vkglTF::Model* voxelModel;
     std::vector<RenderObject*> voxelRenderObjs;
-    std::vector<glm::vec3> voxelOffsets;
+    std::vector<vec3> voxelOffsets;
 
     physengine::VoxelFieldPhysicsData* vfpd = nullptr;
 };
@@ -70,7 +70,7 @@ void VoxelField::dump(DataSerializer& ds)
 {
     Entity::dump(ds);
     ds.dumpMat4(_data->vfpd->transform);
-    ds.dumpVec3(glm::vec3(_data->vfpd->sizeX, _data->vfpd->sizeY, _data->vfpd->sizeZ));
+    ds.dumpVec3(vec3(_data->vfpd->sizeX, _data->vfpd->sizeY, _data->vfpd->sizeZ));
 
     size_t totalSize = _data->vfpd->sizeX * _data->vfpd->sizeY * _data->vfpd->sizeZ;
     for (size_t i = 0; i < totalSize; i++)
@@ -80,8 +80,8 @@ void VoxelField::dump(DataSerializer& ds)
 void VoxelField::load(DataSerialized& ds)
 {
     Entity::load(ds);
-    glm::mat4 load_transform = ds.loadMat4();
-    glm::vec3 load_size      = ds.loadVec3();
+    mat4 load_transform = ds.loadMat4();
+    vec3 load_size      = ds.loadVec3();
 
     size_t    totalSize      = (size_t)load_size.x * (size_t)load_size.y * (size_t)load_size.z;
     uint8_t*  load_voxelData = new uint8_t[totalSize];
@@ -101,7 +101,7 @@ void VoxelField::reportMoved(void* matrixMoved)
         if (&_data->voxelRenderObjs[i]->transformMatrix == matrixMoved)
             break;
     
-    _data->vfpd->transform = glm::translate(*(glm::mat4*)matrixMoved, -_data->voxelOffsets[i]);
+    _data->vfpd->transform = glm::translate(*(mat4*)matrixMoved, -_data->voxelOffsets[i]);
 
     // Move all blocks according to the transform
     for (size_t i2 = 0; i2 < _data->voxelOffsets.size(); i2++)
@@ -148,7 +148,7 @@ inline void assembleVoxelRenderObjects(VoxelField_XData& data, const std::string
                 !physengine::getVoxelDataAtPosition(*data.vfpd, i, j, k + 1) ||
                 !physengine::getVoxelDataAtPosition(*data.vfpd, i, j, k - 1))
             {
-                glm::vec3 offset = glm::vec3(i, j, k) + glm::vec3(0.5f, 0.5f, 0.5f);
+                vec3 offset = vec3(i, j, k) + vec3(0.5f, 0.5f, 0.5f);
                 RenderObject* newRO =
                     data.rom->registerRenderObject({
                         .model = data.voxelModel,
