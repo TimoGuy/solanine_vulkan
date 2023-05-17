@@ -393,7 +393,7 @@ namespace vkglTF
 		void updateAnimation();
 		void updateJointMatrices(uint32_t animatorMeshId, vkglTF::Skin* skin, mat4& m);
 	public:
-		mat4 getJointMatrix(const std::string& jointName);
+		bool getJointMatrix(const std::string& jointName, mat4& out);
 	private:
 
 		struct UniformBuffer

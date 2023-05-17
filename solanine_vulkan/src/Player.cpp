@@ -176,15 +176,20 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     glm_normalize(flatCameraFacingDirection);
 
     glm_vec3_scale(flatCameraFacingDirection, input[1], _data->worldSpaceInput);
-
-    _data->worldSpaceInput =
-        input[1] * flatCameraFacingDirection +
-        input[0] * glm::normalize(glm::cross(flatCameraFacingDirection, GLM_YUP));
+    vec3 up = { 0.0f, 1.0f, 0.0f };
+    vec3 flatCamRight;
+    glm_vec3_cross(flatCameraFacingDirection, up, flatCamRight);
+    glm_normalize(flatCamRight);
+    glm_vec3_muladds(flatCamRight, input[0], _data->worldSpaceInput);
 
     if (glm_vec3_dot(_data->worldSpaceInput, _data->worldSpaceInput) < 0.01f)
-        _data->worldSpaceInput = GLM_VEC3_ZERO_INIT;
+        _data->worldSpaceInput[0] = _data->worldSpaceInput[1] = _data->worldSpaceInput[2] = 0.0f;
     else
-        _data->worldSpaceInput = physutil::clampVector(_data->worldSpaceInput, 0.0f, 1.0f);
+    {
+        _data->worldSpaceInput[0] = glm_clamp_zo(_data->worldSpaceInput[0]);
+        _data->worldSpaceInput[1] = glm_clamp_zo(_data->worldSpaceInput[1]);
+        _data->worldSpaceInput[2] = glm_clamp_zo(_data->worldSpaceInput[2]);
+    }
 
 
     //
@@ -198,28 +203,34 @@ void Player::update(const float_t& deltaTime)
     //
     // Calculate render object transform
     //
-    glm::vec2 input(0.0f);  // @COPYPASTA
-    input[0] += input::keyLeftPressed  ? -1.0f : 0.0f;
-    input[0] += input::keyRightPressed ?  1.0f : 0.0f;
-    input[1] += input::keyUpPressed    ?  1.0f : 0.0f;
-    input[1] += input::keyDownPressed  ? -1.0f : 0.0f;
+    vec2 input = GLM_VEC2_ZERO_INIT;  // @COPYPASTA
+    input[0] += input::keyLeftPressed ? -1.0f : 0.0f;
+    input[0] += input::keyRightPressed ? 1.0f : 0.0f;
+    input[1] += input::keyUpPressed ? 1.0f : 0.0f;
+    input[1] += input::keyDownPressed ? -1.0f : 0.0f;
 
     if (_data->camera->freeCamMode.enabled || ImGui::GetIO().WantTextInput)  // @DEBUG: for the level editor
     {
-        input = glm::vec2(0.0f);
+        input[0] = input[1] = 0.0f;
     }
 
-    vec3 flatCameraFacingDirection = _data->camera->sceneCamera.facingDirection;
-    flatCameraFacingDirection[1] = 0.0f;
-    flatCameraFacingDirection = glm::normalize(flatCameraFacingDirection);
+    vec3 flatCameraFacingDirection = {
+        _data->camera->sceneCamera.facingDirection[0],
+        0.0f,
+        _data->camera->sceneCamera.facingDirection[2]
+    };
+    glm_normalize(flatCameraFacingDirection);
 
-    _data->worldSpaceInput =
-        input[1] * flatCameraFacingDirection +
-        input[0] * glm::normalize(glm::cross(flatCameraFacingDirection, GLM_YUP));
+    glm_vec3_scale(flatCameraFacingDirection, input[1], _data->worldSpaceInput);
+    vec3 up = { 0.0f, 1.0f, 0.0f };
+    vec3 flatCamRight;
+    glm_vec3_cross(flatCameraFacingDirection, up, flatCamRight);
+    glm_normalize(flatCamRight);
+    glm_vec3_muladds(flatCamRight, input[0], _data->worldSpaceInput);
 
     // Update render transform
     if (glm_vec3_dot(_data->worldSpaceInput, _data->worldSpaceInput) > 0.01f)
-        _data->facingDirection = glm::atan(_data->worldSpaceInput[0], _data->worldSpaceInput.z);
+        _data->facingDirection = atan2f(_data->worldSpaceInput[0], _data->worldSpaceInput[2]);
 
     //
     // Update mask for animation
@@ -233,13 +244,17 @@ void Player::update(const float_t& deltaTime)
     //
     // @DEBUG: @TEST: try doing some voxel collision
     //
-    vec3 velocity = GLM_VEC3_ZERO_INIT;
-    velocity += _data->worldSpaceInput;
-    velocity += vec3(0, input::keyWorldUpPressed ? 1.0f : 0.0f, 0);
-    velocity += vec3(0, input::keyWorldDownPressed ? -1.0f : 0.0f, 0);
-    velocity *= 0.1f;
+    vec3 velocity;
+    glm_vec3_copy(_data->worldSpaceInput, velocity);
+    vec3 verticalMovement = {
+        0.0f,
+        (input::keyWorldUpPressed ? 1.0f : 0.0f) + input::keyWorldDownPressed ? -1.0f : 0.0f,
+        0.0f,
+    };
+    glm_vec3_add(velocity, verticalMovement, velocity);
+    glm_vec3_scale(velocity, 0.1f, velocity);
     physengine::moveCapsuleAccountingForCollision(*_data->cpd, velocity);
-    _data->position = _data->cpd->basePosition;
+    glm_vec3_copy(_data->cpd->basePosition, _data->position);
 }
 
 void Player::lateUpdate(const float_t& deltaTime)
@@ -247,12 +262,23 @@ void Player::lateUpdate(const float_t& deltaTime)
     //
     // Update position of character and weapon
     //
-    vec3 interpPos                        = _data->position;  //physutil::getPosition(_physicsObj->interpolatedTransform);
-    _data->characterRenderObj->transformMatrix = glm::translate(GLM_MAT4_IDENTITY_INIT, interpPos) * glm::toMat4(glm::quat(vec3(0, _data->facingDirection, 0))) * glm::scale(GLM_MAT4_IDENTITY_INIT, vec3(_data->modelSize));
+    vec3 interpPos;
+    glm_vec3_copy(_data->position, interpPos);  //physutil::getPosition(_physicsObj->interpolatedTransform);
+    vec3 eulerAngles = { 0.0f, _data->facingDirection, 0.0f };
+    mat4 rotation;
+    glm_euler(eulerAngles, rotation);
+    vec3 scale = { _data->modelSize, _data->modelSize, _data->modelSize };
 
-    mat4 attachmentJointMat               = _data->characterRenderObj->animator->getJointMatrix(_data->weaponAttachmentJointName);
-    _data->weaponRenderObj->transformMatrix    = _data->characterRenderObj->transformMatrix * attachmentJointMat;
-    _data->handleRenderObj->transformMatrix    = _data->weaponRenderObj->transformMatrix;
+    mat4 transform = GLM_MAT4_IDENTITY_INIT;
+    glm_scale(transform, scale);
+    glm_mat4_mul(transform, rotation, transform);
+    glm_translate(transform, interpPos);
+    glm_mat4_copy(transform, _data->characterRenderObj->transformMatrix);
+
+    mat4 attachmentJointMat;
+    _data->characterRenderObj->animator->getJointMatrix(_data->weaponAttachmentJointName, attachmentJointMat);
+    glm_mat4_mul(_data->characterRenderObj->transformMatrix, attachmentJointMat, _data->weaponRenderObj->transformMatrix);
+    glm_mat4_copy(_data->weaponRenderObj->transformMatrix, _data->handleRenderObj->transformMatrix);
 }
 
 void Player::dump(DataSerializer& ds)
@@ -276,7 +302,11 @@ bool Player::processMessage(DataSerialized& message)
 
 void Player::reportMoved(void* matrixMoved)
 {
-    _data->position = physutil::getPosition(*(mat4*)matrixMoved);
+    vec4 pos;
+    mat4 rot;
+    vec3 sca;
+    glm_decompose((mat4)(float_t*)matrixMoved, pos, rot, sca);  // @TODO: instead of passing void pointers, pass float_t*
+    glm_vec3_copy(pos, _data->position);
 }
 
 void Player::renderImGui()

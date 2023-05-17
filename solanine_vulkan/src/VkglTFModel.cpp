@@ -2355,7 +2355,7 @@ namespace vkglTF
 		}
 	}
 
-	mat4 Animator::getJointMatrix(const std::string& jointName)
+	bool Animator::getJointMatrix(const std::string& jointName, mat4& out)
 	{
 		// Find the joint with this name
 		// @IMPROVE: don't have this, instead have a jointindex param you put into this function instead of having to do a long string search
@@ -2366,14 +2366,15 @@ namespace vkglTF
 				auto& joint = skins->joints[i];
 				if (joint->name == jointName)
 				{
-					return joint->getMatrix();
+					glm_mat4_copy(joint->getMatrix(), out);
+					return true;
 				}
 			}
 		}
 
 		std::cerr << "[GET JOINT MATRIX]" << std::endl
 			<< "WARNING: joint matrix \"" << jointName << "\" not found. Returning identity matrix" << std::endl;
-		return GLM_MAT4_IDENTITY_INIT;
+		return false;
 	}
 
 	Animator::UniformBuffer& Animator::getUniformBuffer(size_t index)
