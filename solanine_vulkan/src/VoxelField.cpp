@@ -80,17 +80,23 @@ void VoxelField::dump(DataSerializer& ds)
 void VoxelField::load(DataSerialized& ds)
 {
     Entity::load(ds);
-    mat4 load_transform = ds.loadMat4();
-    vec3 load_size      = ds.loadVec3();
+    mat4 load_transform;
+    ds.loadMat4(load_transform);
+    vec3 load_size;
+    ds.loadVec3(load_size);
 
-    size_t    totalSize      = (size_t)load_size.x * (size_t)load_size.y * (size_t)load_size.z;
+    size_t    totalSize      = (size_t)load_size[0] * (size_t)load_size[1] * (size_t)load_size[2];
     uint8_t*  load_voxelData = new uint8_t[totalSize];
     for (size_t i = 0; i < totalSize; i++)
-        load_voxelData[i] = (uint8_t)ds.loadFloat();
+    {
+        float_t lf;
+        ds.loadFloat(lf);
+        load_voxelData[i] = (uint8_t)lf;
+    }
 
     // Create Voxel Field Physics Data
-    _data->vfpd = physengine::createVoxelField(load_size.x, load_size.y, load_size.z, load_voxelData);
-    _data->vfpd->transform = load_transform;
+    _data->vfpd = physengine::createVoxelField(load_size[0], load_size[1], load_size[2], load_voxelData);
+    glm_mat4_copy(load_transform, _data->vfpd->transform);
 }
 
 void VoxelField::reportMoved(void* matrixMoved)

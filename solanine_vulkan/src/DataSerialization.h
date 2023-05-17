@@ -6,13 +6,13 @@
 class DataSerialized
 {
 public:
-    std::string loadString();
-    float_t     loadFloat();
-    glm::vec2   loadVec2();
-    vec3   loadVec3();
-    glm::quat   loadQuat();
-    mat4   loadMat4();
-    size_t      getSerializedValuesCount();
+    void loadString(std::string& out);
+    void loadFloat(float_t& out);
+    void loadVec2(vec2& out);
+    void loadVec3(vec3& out);
+    void loadQuat(versor& out);
+    void loadMat4(mat4& out);
+    size_t getSerializedValuesCount();
 
 private:
     DataSerialized() = default;
@@ -28,9 +28,9 @@ public:
     DataSerializer() = default;
     void           dumpString(const std::string& val);
     void           dumpFloat(const float_t& val);
-    void           dumpVec2(const glm::vec2& val);
+    void           dumpVec2(const vec2& val);
     void           dumpVec3(const vec3& val);
-    void           dumpQuat(const glm::quat& val);
+    void           dumpQuat(const versor& val);
     void           dumpMat4(const mat4& val);
     DataSerialized getSerializedData();
 

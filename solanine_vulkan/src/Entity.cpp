@@ -26,7 +26,7 @@ void Entity::dump(DataSerializer& ds)
 
 void Entity::load(DataSerialized& ds)
 {
-	_guid = ds.loadString();
+	ds.loadString(_guid);
 
     if (_em->INTERNALcheckGUIDCollision(this))
 	{

@@ -175,7 +175,11 @@ namespace scene
             DataSerialized dsd = ds.getSerializedData();
             size_t count = dsd.getSerializedValuesCount();
             for (size_t i = 0; i < count; i++)
-                outfile << dsd.loadString() << '\n';
+            {
+                std::string s;
+                dsd.loadString(s);
+                outfile << s << '\n';
+            }
 
             outfile << '\n';  // Extra newline for readability
         }

@@ -25,7 +25,7 @@ struct RenderObject
 {
 	vkglTF::Model* model       = nullptr;
 	vkglTF::Animator* animator = nullptr;
-	mat4 transformMatrix  = GLM_MAT4_IDENTITY_INIT;
+	mat4 transformMatrix       = GLM_MAT4_IDENTITY_INIT;
 	RenderLayer renderLayer    = RenderLayer::VISIBLE;
 	std::string attachedEntityGuid;  // @NOTE: this is just for @DEBUG purposes for the imgui property panel
 };

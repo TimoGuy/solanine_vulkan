@@ -113,10 +113,10 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
         _data->rom->registerRenderObject({
             .model = characterModel,
             .animator = new vkglTF::Animator(characterModel, animatorCallbacks),
-            .transformMatrix = glm::translate(GLM_MAT4_IDENTITY_INIT, _data->position) * glm::toMat4(glm::quat(vec3(0, _data->facingDirection, 0))) * glm::scale(GLM_MAT4_IDENTITY_INIT, vec3(_data->modelSize)),
             .renderLayer = RenderLayer::VISIBLE,
             .attachedEntityGuid = getGUID(),
             });
+    // transformMatrix = glm::translate(GLM_MAT4_IDENTITY_INIT, _data->position) * glm::toMat4(glm::quat(vec3(0, _data->facingDirection, 0))) * glm::scale(GLM_MAT4_IDENTITY_INIT, vec3(_data->modelSize)),
 
     vkglTF::Model* handleModel = _data->rom->getModel("Handle", this, [](){});
     _data->handleRenderObj =
@@ -157,24 +157,29 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     //
     // Calculate input
     //
-    glm::vec2 input(0.0f);
-    input.x += input::keyLeftPressed  ? -1.0f : 0.0f;
-    input.x += input::keyRightPressed ?  1.0f : 0.0f;
-    input.y += input::keyUpPressed    ?  1.0f : 0.0f;
-    input.y += input::keyDownPressed  ? -1.0f : 0.0f;
+    vec2 input = GLM_VEC2_ZERO_INIT;
+    input[0] += input::keyLeftPressed  ? -1.0f : 0.0f;
+    input[0] += input::keyRightPressed ?  1.0f : 0.0f;
+    input[1] += input::keyUpPressed    ?  1.0f : 0.0f;
+    input[1] += input::keyDownPressed  ? -1.0f : 0.0f;
 
     if (_data->camera->freeCamMode.enabled || ImGui::GetIO().WantTextInput)  // @DEBUG: for the level editor
     {
-        input = glm::vec2(0.0f);
+        input[0] = input[1] = 0.0f;
     }
 
-    vec3 flatCameraFacingDirection = _data->camera->sceneCamera.facingDirection;
-    flatCameraFacingDirection.y = 0.0f;
-    flatCameraFacingDirection = glm::normalize(flatCameraFacingDirection);
+    vec3 flatCameraFacingDirection = {
+        _data->camera->sceneCamera.facingDirection[0],
+        0.0f,
+        _data->camera->sceneCamera.facingDirection[2]
+    };
+    glm_normalize(flatCameraFacingDirection);
+
+    glm_vec3_scale(flatCameraFacingDirection, input[1], _data->worldSpaceInput);
 
     _data->worldSpaceInput =
-        input.y * flatCameraFacingDirection +
-        input.x * glm::normalize(glm::cross(flatCameraFacingDirection, GLM_YUP));
+        input[1] * flatCameraFacingDirection +
+        input[0] * glm::normalize(glm::cross(flatCameraFacingDirection, GLM_YUP));
 
     if (glm_vec3_dot(_data->worldSpaceInput, _data->worldSpaceInput) < 0.01f)
         _data->worldSpaceInput = GLM_VEC3_ZERO_INIT;
@@ -194,10 +199,10 @@ void Player::update(const float_t& deltaTime)
     // Calculate render object transform
     //
     glm::vec2 input(0.0f);  // @COPYPASTA
-    input.x += input::keyLeftPressed  ? -1.0f : 0.0f;
-    input.x += input::keyRightPressed ?  1.0f : 0.0f;
-    input.y += input::keyUpPressed    ?  1.0f : 0.0f;
-    input.y += input::keyDownPressed  ? -1.0f : 0.0f;
+    input[0] += input::keyLeftPressed  ? -1.0f : 0.0f;
+    input[0] += input::keyRightPressed ?  1.0f : 0.0f;
+    input[1] += input::keyUpPressed    ?  1.0f : 0.0f;
+    input[1] += input::keyDownPressed  ? -1.0f : 0.0f;
 
     if (_data->camera->freeCamMode.enabled || ImGui::GetIO().WantTextInput)  // @DEBUG: for the level editor
     {
@@ -205,16 +210,16 @@ void Player::update(const float_t& deltaTime)
     }
 
     vec3 flatCameraFacingDirection = _data->camera->sceneCamera.facingDirection;
-    flatCameraFacingDirection.y = 0.0f;
+    flatCameraFacingDirection[1] = 0.0f;
     flatCameraFacingDirection = glm::normalize(flatCameraFacingDirection);
 
     _data->worldSpaceInput =
-        input.y * flatCameraFacingDirection +
-        input.x * glm::normalize(glm::cross(flatCameraFacingDirection, GLM_YUP));
+        input[1] * flatCameraFacingDirection +
+        input[0] * glm::normalize(glm::cross(flatCameraFacingDirection, GLM_YUP));
 
     // Update render transform
     if (glm_vec3_dot(_data->worldSpaceInput, _data->worldSpaceInput) > 0.01f)
-        _data->facingDirection = glm::atan(_data->worldSpaceInput.x, _data->worldSpaceInput.z);
+        _data->facingDirection = glm::atan(_data->worldSpaceInput[0], _data->worldSpaceInput.z);
 
     //
     // Update mask for animation
@@ -260,8 +265,8 @@ void Player::dump(DataSerializer& ds)
 void Player::load(DataSerialized& ds)
 {
     Entity::load(ds);
-    _data->position         = ds.loadVec3();
-    _data->facingDirection       = ds.loadFloat();
+    ds.loadVec3(_data->position);
+    ds.loadFloat(_data->facingDirection);
 }
 
 bool Player::processMessage(DataSerialized& message)

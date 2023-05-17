@@ -16,10 +16,10 @@ NoteTaker::NoteTaker(EntityManager* em, RenderObjectManager* rom, DataSerialized
     _renderObj =
         _rom->registerRenderObject({
             .model = model,
-            .transformMatrix = _load_transform,
             .renderLayer = RenderLayer::BUILDER,
             .attachedEntityGuid = getGUID(),
         });
+    glm_mat4_copy(_load_transform, _renderObj->transformMatrix);
 }
 
 NoteTaker::~NoteTaker()
@@ -43,14 +43,16 @@ void NoteTaker::load(DataSerialized& ds)
 {
     Entity::load(ds);
     
-    _load_transform = ds.loadMat4();
+    ds.loadMat4(_load_transform);
 
     size_t numLines = ds.getSerializedValuesCount();
     for (size_t i = 0; i < numLines; i++)
     {
         if (i > 0)
             _notes += "\n";
-        _notes += ds.loadString();
+        std::string s;
+        ds.loadString(s);
+        _notes += s;
     }
     replaceAll(_notes, "\\n", "\n");
 }

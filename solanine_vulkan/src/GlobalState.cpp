@@ -11,11 +11,11 @@ namespace globalState
     // Default values
     std::string savedActiveScene                = "sample_scene_simplified.ssdat";
 
-    vec3   savedPlayerPosition        = vec3(0);    // Currently unused. @TODO
-    float_t     savedPlayerFacingDirection = 0.0f;            // Currently unused. @TODO
+    vec3    savedPlayerPosition        = GLM_VEC3_ZERO_INIT;    // Currently unused. @TODO
+    float_t savedPlayerFacingDirection = 0.0f;                  // Currently unused. @TODO
 
-    int32_t     savedPlayerHealth               = 100;
-    int32_t     savedPlayerMaxHealth            = 100;
+    int32_t savedPlayerHealth          = 100;
+    int32_t savedPlayerMaxHealth       = 100;
 
     SceneCamera* sceneCameraRef = nullptr;
 
@@ -50,14 +50,18 @@ namespace globalState
         }
 
         DataSerialized dsd = ds.getSerializedData();
-        savedActiveScene                                  = dsd.loadString();
-        sceneCameraRef->gpuCameraData.cameraPosition = dsd.loadVec3();
-        sceneCameraRef->facingDirection              = dsd.loadVec3();
-        sceneCameraRef->fov                          = dsd.loadFloat();
-        savedPlayerPosition                          = dsd.loadVec3();
-        savedPlayerFacingDirection                   = dsd.loadFloat();
-        savedPlayerHealth                                 = dsd.loadFloat();
-        savedPlayerMaxHealth                              = dsd.loadFloat();
+        dsd.loadString(savedActiveScene);
+        dsd.loadVec3(sceneCameraRef->gpuCameraData.cameraPosition);
+        dsd.loadVec3(sceneCameraRef->facingDirection);
+        dsd.loadFloat(sceneCameraRef->fov);
+        dsd.loadVec3(savedPlayerPosition);
+        dsd.loadFloat(savedPlayerFacingDirection);
+
+        float_t lf1, lf2;
+        dsd.loadFloat(lf1);
+        dsd.loadFloat(lf2);
+        savedPlayerHealth = (int32_t)lf1;
+        savedPlayerMaxHealth = (int32_t)lf2;
 
         debug::pushDebugMessage({
             .message = "Successfully read state from \"" + gsFname + "\"",
@@ -90,7 +94,11 @@ namespace globalState
         DataSerialized dsd = ds.getSerializedData();
         size_t count = dsd.getSerializedValuesCount();
         for (size_t i = 0; i < count; i++)
-            outfile << dsd.loadString() << '\n';
+        {
+            std::string s;
+            dsd.loadString(s);
+            outfile << s << '\n';
+        }
 
         debug::pushDebugMessage({
             .message = "Successfully wrote state to \"" + gsFname + "\"",
