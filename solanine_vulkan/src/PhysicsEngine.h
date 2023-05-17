@@ -55,8 +55,6 @@ namespace physengine
     CapsulePhysicsData* createCapsule(const float_t& radius, const float_t& height);
     bool destroyCapsule(CapsulePhysicsData* cpd);
 
-    bool debugCheckPointColliding(const vec3& point);
-    bool debugCheckCapsuleColliding(const CapsulePhysicsData& cpd, vec3& collisionNormal, float_t& penetrationDepth);
     void moveCapsuleAccountingForCollision(CapsulePhysicsData& cpd, vec3 deltaPosition, float_t ccdDistance = 0.25f);  // @NOTE: `ccdDistance` is fine as long as it's below the capsule radius (or the radius of the voxels, whichever is smaller)
 
     void setPhysicsObjectInterpolation(const float_t& physicsAlpha);
