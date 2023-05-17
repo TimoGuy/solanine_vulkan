@@ -20,12 +20,12 @@ struct CascadeIndexPushConstBlock
 
 struct GPUPBRShadingProps
 {
-	glm::vec4 lightDir;
+	vec4 lightDir;
 	float_t exposure = 4.5f;
 	float_t gamma = 2.2f;
 	float_t prefilteredCubemapMipLevels;
 	float_t scaleIBLAmbient = 1.0f;
-	glm::vec4 cascadeSplits;
+	vec4 cascadeSplits;
 	mat4 cascadeViewProjMats[SHADOWMAP_CASCADES];
 	float_t zFarShadowZFarRatio;
 	float_t debugViewInputs = 0;
@@ -45,7 +45,7 @@ struct GPUPickingSelectedIdData
 
 struct ColorPushConstBlock
 {
-	glm::vec4 color;
+	vec4 color;
 };
 
 struct FrameData
@@ -291,10 +291,10 @@ public:
 
 	struct PBRMaterialPushConstBlock
 	{
-		glm::vec4 baseColorFactor;
-		glm::vec4 emissiveFactor;
-		glm::vec4 diffuseFactor;
-		glm::vec4 specularFactor;
+		vec4 baseColorFactor;
+		vec4 emissiveFactor;
+		vec4 diffuseFactor;
+		vec4 specularFactor;
 		float workflow;
 		int colorTextureSet;
 		int PhysicalDescriptorTextureSet;

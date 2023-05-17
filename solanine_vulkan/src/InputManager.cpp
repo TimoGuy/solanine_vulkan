@@ -15,8 +15,8 @@ extern bool input::onRMBPress = false;
 extern bool input::onRMBRelease = false;
 extern bool input::RMBPressed = false;
 
-extern glm::ivec2 input::mouseDelta = glm::ivec2(0);
-extern glm::ivec2 input::mouseScrollDelta = glm::ivec2(0);
+extern ivec2 input::mouseDelta = { 0, 0 };
+extern ivec2 input::mouseScrollDelta = { 0, 0 };
 
 extern bool input::keyUpPressed = false;
 extern bool input::keyDownPressed = false;
@@ -54,8 +54,8 @@ void input::processInput(bool* isRunning, bool* isWindowMinimized)
 	input::onKeyLSBPress = false;
 	input::onKeyRSBPress = false;
 	input::onKeyF1Press = false;
-	input::mouseDelta = { 0, 0 };
-	input::mouseScrollDelta = { 0, 0 };
+	input::mouseDelta[0] = input::mouseDelta[1] = 0;
+	input::mouseScrollDelta[0] = input::mouseScrollDelta[1] = 0;
 
 	SDL_Event e;
 	while (SDL_PollEvent(&e) != 0)
@@ -73,15 +73,15 @@ void input::processInput(bool* isRunning, bool* isWindowMinimized)
 
 		case SDL_MOUSEMOTION:
 		{
-			input::mouseDelta.x += e.motion.xrel;
-			input::mouseDelta.y += e.motion.yrel;
+			input::mouseDelta[0] += e.motion.xrel;
+			input::mouseDelta[1] += e.motion.yrel;
 			break;
 		}
 
 		case SDL_MOUSEWHEEL:
 		{
-			input::mouseScrollDelta.x += e.wheel.x;
-			input::mouseScrollDelta.y += e.wheel.y;
+			input::mouseScrollDelta[0] += e.wheel.x;
+			input::mouseScrollDelta[1] += e.wheel.y;
 			break;
 		}
 
