@@ -29,7 +29,7 @@ public:
     void           dumpString(const std::string& val);
     void           dumpFloat(const float_t& val);
     void           dumpVec2(const vec2& val);
-    void           dumpVec3(const vec3& val);
+    void           dumpVec3(vec3 val);
     void           dumpQuat(const versor& val);
     void           dumpMat4(const mat4& val);
     DataSerialized getSerializedData();

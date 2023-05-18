@@ -90,7 +90,7 @@ void DataSerializer::dumpVec2(const vec2& val)
     _dataSerialized._serializedValues.push_back(ss.str());
 }
 
-void DataSerializer::dumpVec3(const vec3& val)
+void DataSerializer::dumpVec3(vec3 val)
 {
     std::stringstream ss;
     ss << std::to_string(val[0]) << " "

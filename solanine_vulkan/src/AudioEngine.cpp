@@ -2,7 +2,6 @@
 
 #include <fmod_errors.h>
 #include <iostream>
-#include "ImportGLM.h"
 
 
 #define ERRCHECK(_result) errorCheck(_result, __FILE__, __LINE__)
@@ -64,7 +63,8 @@ void AudioEngine::unloadSound(const std::string& fname)
 
 int AudioEngine::playSound(const std::string& fname, bool looping)
 {
-    return playSound(fname, looping, GLM_VEC3_ZERO_INIT);
+    vec3 defaultPos = GLM_VEC3_ZERO_INIT;
+    return playSound(fname, looping, defaultPos);
 }
 
 int AudioEngine::playSoundFromList(const std::vector<std::string>& fnames)
@@ -73,7 +73,7 @@ int AudioEngine::playSoundFromList(const std::vector<std::string>& fnames)
     return playSound(fnames[index]);
 }
 
-int AudioEngine::playSound(const std::string& fname, bool looping, const vec3& position, float db)
+int AudioEngine::playSound(const std::string& fname, bool looping, vec3 position, float db)
 {
     int channelId = audioAdapter->nextChannelId++;
     auto sound = audioAdapter->sounds.find(fname);
@@ -105,7 +105,7 @@ int AudioEngine::playSound(const std::string& fname, bool looping, const vec3& p
     {
         if (mode & FMOD_3D)
         {
-            FMOD_VECTOR fPosition = { position.x, position.y, position.z };
+            FMOD_VECTOR fPosition = { position[0], position[1], position[2] };
             ERRCHECK(channel->set3DAttributes(&fPosition, nullptr));       // @NOTE: I guess putting in velocity in the future should be useful and good eh!  -Timo
         }
         ERRCHECK(channel->setVolume(dbToVolume(db)));
@@ -117,13 +117,13 @@ int AudioEngine::playSound(const std::string& fname, bool looping, const vec3& p
     return -1;      // New channel didn't get created. Show failure.
 }
 
-void AudioEngine::setChannel3dPosition(int channelId, const vec3& position)
+void AudioEngine::setChannel3dPosition(int channelId, vec3 position)
 {
     auto channel = audioAdapter->channels.find(channelId);
     if (channel == audioAdapter->channels.end())
         return;
 
-    FMOD_VECTOR fPosition = { position.x, position.y, position.z };
+    FMOD_VECTOR fPosition = { position[0], position[1], position[2] };
     ERRCHECK(channel->second->set3DAttributes(&fPosition, nullptr));
 }
 
@@ -231,12 +231,12 @@ void AudioEngine::getEventParameter(const std::string& eventName, const std::str
     ERRCHECK(event->second->getParameterByName(parameterName.c_str(), outValue));
 }
 
-void AudioEngine::set3dListenerTransform(const vec3& position, const vec3& forward)
+void AudioEngine::set3dListenerTransform(vec3 position, vec3 forward)
 {
     FMOD_3D_ATTRIBUTES attributes = { { 0.0f } };
-    attributes.position = { position.x, position.y, position.z };
-    attributes.forward = { forward.x, forward.y, forward.z };
-    attributes.up.y = 1.0f;
+    attributes.position = { position[0], position[1], position[2] };
+    attributes.forward = { forward[0], forward[1], forward[2] };
+    attributes.up = { 0.0f, 1.0f, 0.0f };
     ERRCHECK(audioAdapter->fmodStudioSystem->setListenerAttributes(0, &attributes));
 }
 

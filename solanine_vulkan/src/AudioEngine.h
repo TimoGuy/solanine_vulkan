@@ -7,6 +7,7 @@
 #include <string>
 #include <map>
 #include <vector>
+#include "ImportGLM.h"
 
 struct AudioAdapter_FMOD;
 
@@ -24,9 +25,9 @@ public:
     void unloadSound(const std::string& fname);
     int playSound(const std::string& fname, bool looping = false);
     int playSoundFromList(const std::vector<std::string>& fnames);
-    int playSound(const std::string& fname, bool looping, const vec3& position, float db = 0.0f);
+    int playSound(const std::string& fname, bool looping, vec3 position, float db = 0.0f);
 
-    void setChannel3dPosition(int channelId, const vec3& position);
+    void setChannel3dPosition(int channelId, vec3 position);
     void setChannelVolume(int channelId, float db);
     void setChannelLowpassGain(int channelId, float gain);
 
@@ -39,7 +40,7 @@ public:
     void setEventParameter(const std::string& eventName, const std::string& parameterName, float value);
     void getEventParameter(const std::string& eventName, const std::string& parameterName, float* outValue);
 
-    void set3dListenerTransform(const vec3& position, const vec3& forward);
+    void set3dListenerTransform(vec3 position, vec3 forward);
 
     void stopChannel(int channelId);
     void stopAllChannels();
