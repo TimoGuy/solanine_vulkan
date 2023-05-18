@@ -266,7 +266,7 @@ void Player::lateUpdate(const float_t& deltaTime)
     glm_vec3_copy(_data->position, interpPos);  //physutil::getPosition(_physicsObj->interpolatedTransform);
     vec3 eulerAngles = { 0.0f, _data->facingDirection, 0.0f };
     mat4 rotation;
-    glm_euler(eulerAngles, rotation);
+    glm_euler_zyx(eulerAngles, rotation);
     vec3 scale = { _data->modelSize, _data->modelSize, _data->modelSize };
 
     mat4 transform = GLM_MAT4_IDENTITY_INIT;

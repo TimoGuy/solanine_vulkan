@@ -142,9 +142,9 @@ namespace vkglTF
 		Mesh* mesh;
 		Skin* skin;
 		int32_t skinIndex = -1;
-		vec3 translation{};
-		vec3 scale{ 1.0f };
-		versor rotation{};
+		vec3 translation = GLM_VEC3_ZERO_INIT;
+		vec3 scale = GLM_VEC3_ONE_INIT;
+		versor rotation = { 0.0f, 0.0f, 0.0f, 1.0f };
 		BoundingBox bvh;
 		BoundingBox aabb;
 

@@ -204,7 +204,7 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 		// Calculate orbit angles from the delta angle to focus position
 		vec3 fd;
 		glm_vec3_copy(sceneCamera.facingDirection, fd);
-		vec2 fd_xz = { fd[0], fd[2] };		
+		vec2 fd_xz = { fd[0], fd[2] };
 		mainCamMode.orbitAngles[0] = -atan2f(fd[1], glm_vec2_norm(fd_xz));
 		mainCamMode.orbitAngles[1] = atan2f(fd[0], fd[2]);
 
@@ -283,9 +283,9 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 		0.0f,
 	};
 	mat4 lookRotation;
-	glm_euler(lookRotationEuler, lookRotation);
+	glm_euler_zyx(lookRotationEuler, lookRotation);  // @NOTE: apparently these angles are extrinsic which is what is causing issues
 	vec3 forward = { 0.0f, 0.0f, 1.0f };
-	glm_mat4_mulv3(lookRotation, forward, 0.0f, mainCamMode.calculatedLookDirection);
+	glm_mat4_mulv3(lookRotation, forward, 1.0f, mainCamMode.calculatedLookDirection);
 
 	vec3 focusPositionCooked;
 	glm_vec3_add(mainCamMode.focusPosition, mainCamMode.focusPositionOffset, focusPositionCooked);

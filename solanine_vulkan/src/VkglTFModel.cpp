@@ -309,7 +309,7 @@ namespace vkglTF
 		glm_mat4_identity(newNode->matrix);
 
 		// Generate local node matrix
-		vec3 translation = GLM_VEC3_ZERO_INIT;
+		//vec3 translation = GLM_VEC3_ZERO_INIT;
 		if (node.translation.size() == 3)
 		{
 			const double_t* data = node.translation.data();
@@ -318,16 +318,16 @@ namespace vkglTF
 			};
 			glm_vec3_copy(translation, newNode->translation);
 		}
-		mat4 rotation = GLM_MAT4_IDENTITY_INIT;
+		//versor rotation = { 0.0f, 0.0f, 0.0f, 1.0f };
 		if (node.rotation.size() == 4)
 		{
 			const double_t* data = node.rotation.data();
 			versor rotation = {
 				data[0], data[1], data[2], data[3],
 			};
-			glm_vec3_copy(rotation, newNode->rotation);
+			glm_vec4_copy(rotation, newNode->rotation);
 		}
-		vec3 scale = GLM_VEC3_ONE_INIT;
+		//vec3 scale = GLM_VEC3_ONE_INIT;
 		if (node.scale.size() == 3)
 		{
 			const double_t* data = node.scale.data();

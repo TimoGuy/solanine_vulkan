@@ -196,9 +196,8 @@ void VulkanEngine::run()
 
 
 		perfs[5] = SDL_GetPerformanceCounter();
-		if (input::keyCtrlPressed)
-			// Update animators
-			_roManager->updateAnimators(scaledDeltaTime);
+		// Update animators
+		_roManager->updateAnimators(scaledDeltaTime);
 		perfs[5] = SDL_GetPerformanceCounter() - perfs[5];
 
 
@@ -263,14 +262,17 @@ void VulkanEngine::run()
 		//
 		// Calculate performance
 		//
-		uint64_t totalPerf = 0;
-		for (size_t i = 0; i < numPerfs; i++)
-			totalPerf += perfs[i];
+		if (input::keyCtrlPressed)
+		{
+			uint64_t totalPerf = 0;
+			for (size_t i = 0; i < numPerfs; i++)
+				totalPerf += perfs[i];
 
-		std::cout << "Performance:";
-		for (size_t i = 0; i < numPerfs; i++)
-			std::cout << "\t" << (perfs[i] * 100 / totalPerf) << "% (" << perfs[i] << ")";
-		std::cout << std::endl;
+			std::cout << "Performance:";
+			for (size_t i = 0; i < numPerfs; i++)
+				std::cout << "\t" << (perfs[i] * 100 / totalPerf) << "% (" << perfs[i] << ")";
+			std::cout << std::endl;
+		}
 	}
 }
 
