@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <string>
+#include <cglm/types.h>
 class EntityManager;
 class DataSerializer;
 class DataSerialized;
@@ -21,7 +22,7 @@ public:
     virtual std::string getTypeName() = 0;
     std::string& getGUID() { return _guid; }
 
-    virtual void reportMoved(void* matrixMoved) { }
+    virtual void reportMoved(mat4* matrixMoved) { }
     virtual void renderImGui() { }
 
     // @NOTE: you need to manually enable these!

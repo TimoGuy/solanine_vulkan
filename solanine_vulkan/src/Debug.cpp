@@ -38,7 +38,7 @@ void debug::renderImguiDebugMessages(const float_t& windowWidth, const float_t& 
 				textColor = ImVec4(1, 0, 0, 1);
 				break;
 			}
-			textColor.w = glm::clamp(dm.timeUntilDeletion / 0.35f, 0.0f, 1.0f);
+			textColor.w = glm_clamp_zo(dm.timeUntilDeletion / 0.35f);
 
 			ImGui::TextColored(textColor, dm.message.c_str());
 			dm.timeUntilDeletion -= deltaTime;

@@ -24,7 +24,7 @@ public:
     void load(DataSerialized& ds);
     bool processMessage(DataSerialized& message);
 
-    void reportMoved(void* matrixMoved);
+    void reportMoved(mat4* matrixMoved);
     void renderImGui();
 
 private:

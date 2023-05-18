@@ -73,38 +73,6 @@ void VulkanEngine::init()
 	_entityManager = new EntityManager();
 	_camera = new Camera(this);
 
-	//
-	// glm vs cglm performance test!!!
-	//
-	uint64_t s = SDL_GetPerformanceCounter();
-	mat4 m1 = GLM_MAT4_IDENTITY_INIT;
-	mat4 m2 = GLM_MAT4_IDENTITY_INIT;
-	for (size_t i = 0; i < 1000000; i++)
-		m2 = m1 * m2;
-	uint64_t delta1 = SDL_GetPerformanceCounter() - s;
-
-
-	uint64_t s2 = SDL_GetPerformanceCounter();
-	mat4 cm1 = {
-		1.0f, 0.0f, 0.0f, 0.0f,
-		0.0f, 1.0f, 0.0f, 0.0f,
-		0.0f, 0.0f, 1.0f, 0.0f,
-		0.0f, 0.0f, 0.0f, 1.0f,
-	};
-	mat4 cm2 = {
-		1.0f, 0.0f, 0.0f, 0.0f,
-		0.0f, 1.0f, 0.0f, 0.0f,
-		0.0f, 0.0f, 1.0f, 0.0f,
-		0.0f, 0.0f, 0.0f, 1.0f,
-	};
-	for (size_t i = 0; i < 1000000; i++)
-		glm_mat4_mul(cm1, cm2, cm2);
-	uint64_t delta2 = SDL_GetPerformanceCounter() - s2;
-
-	std::cout << "GLM timing: " << delta1 << "\tCGLM timing: " << delta2 << std::endl;
-	std::cout << "GLM result: " << m2[0][0] << "\tCGLM result: " << cm2[0] << std::endl;
-
-
 #ifdef _DEVELOP
 	hotswapres::buildResourceList();
 #endif
@@ -147,14 +115,14 @@ void VulkanEngine::run()
 	// Initialize Scene Camera
 	//
 	_camera->sceneCamera.aspect = (float_t)_windowExtent.width / (float_t)_windowExtent.height;
-	_camera->sceneCamera.boxCastExtents = {
-		_camera->sceneCamera.zNear * glm::tan(_camera->sceneCamera.fov * 0.5f) * _camera->sceneCamera.aspect,
-		_camera->sceneCamera.zNear * glm::tan(_camera->sceneCamera.fov * 0.5f),
-		_camera->sceneCamera.zNear * 0.5f,
-	};
+	_camera->sceneCamera.boxCastExtents[0] = _camera->sceneCamera.zNear * std::tan(_camera->sceneCamera.fov * 0.5f) * _camera->sceneCamera.aspect;
+	_camera->sceneCamera.boxCastExtents[1] = _camera->sceneCamera.zNear* std::tan(_camera->sceneCamera.fov * 0.5f);
+	_camera->sceneCamera.boxCastExtents[2] = _camera->sceneCamera.zNear * 0.5f;
 	
 	// @HARDCODED: Set the initial light direction
-	_pbrRendering.gpuSceneShadingProps.lightDir = glm::normalize(glm::vec4(0.432f, 0.864f, 0.259f, 0.0f));
+	vec4 lightDir = { 0.432f, 0.864f, 0.259f, 0.0f };
+	glm_vec4_normalize(lightDir);
+	glm_vec4_copy(lightDir, _pbrRendering.gpuSceneShadingProps.lightDir);
 
 	_camera->sceneCamera.recalculateSceneCamera(_pbrRendering.gpuSceneShadingProps);
 
@@ -3031,14 +2999,29 @@ void VulkanEngine::generatePBRCubemaps()
 		renderPassBeginInfo.clearValueCount = 1;
 		renderPassBeginInfo.pClearValues = clearValues;
 
-		std::vector<mat4> matrices = {
-			glm::rotate(glm::rotate(GLM_MAT4_IDENTITY_INIT, glm::radians(90.0f), vec3(0.0f, 1.0f, 0.0f)), glm::radians(180.0f), vec3(1.0f, 0.0f, 0.0f)),
-			glm::rotate(glm::rotate(GLM_MAT4_IDENTITY_INIT, glm::radians(-90.0f), vec3(0.0f, 1.0f, 0.0f)), glm::radians(180.0f), vec3(1.0f, 0.0f, 0.0f)),
-			glm::rotate(GLM_MAT4_IDENTITY_INIT, glm::radians(-90.0f), vec3(1.0f, 0.0f, 0.0f)),
-			glm::rotate(GLM_MAT4_IDENTITY_INIT, glm::radians(90.0f), vec3(1.0f, 0.0f, 0.0f)),
-			glm::rotate(GLM_MAT4_IDENTITY_INIT, glm::radians(180.0f), vec3(1.0f, 0.0f, 0.0f)),
-			glm::rotate(GLM_MAT4_IDENTITY_INIT, glm::radians(180.0f), vec3(0.0f, 0.0f, 1.0f)),
+		mat4 matrices[] = {
+			GLM_MAT4_IDENTITY_INIT,
+			GLM_MAT4_IDENTITY_INIT,
+			GLM_MAT4_IDENTITY_INIT,
+			GLM_MAT4_IDENTITY_INIT,
+			GLM_MAT4_IDENTITY_INIT,
+			GLM_MAT4_IDENTITY_INIT,
 		};
+
+		vec3 up      = { 0.0f, 1.0f, 0.0f };
+		vec3 right   = { 1.0f, 0.0f, 0.0f };
+		vec3 forward = { 0.0f, 0.0f, 1.0f };
+
+		glm_rotate(matrices[0], glm_rad(90.0f), up);
+		glm_rotate(matrices[0], glm_rad(180.0f), right);
+
+		glm_rotate(matrices[1], glm_rad(-90.0f), up);
+		glm_rotate(matrices[1], glm_rad(180.0f), right);
+		
+		glm_rotate(matrices[2], glm_rad(-90.0f), right);
+		glm_rotate(matrices[3], glm_rad(90.0f), right);
+		glm_rotate(matrices[4], glm_rad(180.0f), right);
+		glm_rotate(matrices[5], glm_rad(180.0f), forward);
 
 		VkViewport viewport{};
 		viewport.width = (float_t)dim;
@@ -3084,16 +3067,19 @@ void VulkanEngine::generatePBRCubemaps()
 					vkCmdBeginRenderPass(cmd, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
 					// Pass parameters for current pass using a push constant block
-					switch (target) {
-					case IRRADIANCE:
-						pushBlockIrradiance.mvp = glm::perspective((float_t)(M_PI / 2.0), 1.0f, 0.1f, 512.0f) * matrices[f];
-						vkCmdPushConstants(cmd, pipelinelayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushBlockIrradiance), &pushBlockIrradiance);
-						break;
-					case PREFILTEREDENV:
-						pushBlockPrefilterEnv.mvp = glm::perspective((float_t)(M_PI / 2.0), 1.0f, 0.1f, 512.0f) * matrices[f];
-						pushBlockPrefilterEnv.roughness = (float_t)m / (float_t)(numMips - 1);
-						vkCmdPushConstants(cmd, pipelinelayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushBlockPrefilterEnv), &pushBlockPrefilterEnv);
-						break;
+					mat4 perspective;
+					glm_perspective((float_t)(M_PI / 2.0), 1.0f, 0.1f, 512.0f, perspective);
+					switch (target)
+					{
+						case IRRADIANCE:
+							glm_mat4_mul(perspective, matrices[f], pushBlockIrradiance.mvp);
+							vkCmdPushConstants(cmd, pipelinelayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushBlockIrradiance), &pushBlockIrradiance);
+							break;
+						case PREFILTEREDENV:
+							glm_mat4_mul(perspective, matrices[f], pushBlockPrefilterEnv.mvp);
+							pushBlockPrefilterEnv.roughness = (float_t)m / (float_t)(numMips - 1);
+							vkCmdPushConstants(cmd, pipelinelayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushBlockPrefilterEnv), &pushBlockPrefilterEnv);
+							break;
 					};
 
 					vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
@@ -3620,11 +3606,9 @@ void VulkanEngine::recreateSwapchain()
 	_windowExtent.width = w;
 	_windowExtent.height = h;
 	_camera->sceneCamera.aspect = (float_t)w / (float_t)h;
-	_camera->sceneCamera.boxCastExtents = {
-		_camera->sceneCamera.zNear * glm::tan(_camera->sceneCamera.fov * 0.5f) * _camera->sceneCamera.aspect,
-		_camera->sceneCamera.zNear * glm::tan(_camera->sceneCamera.fov * 0.5f),
-		_camera->sceneCamera.zNear * 0.5f,
-	};
+	_camera->sceneCamera.boxCastExtents[0] = _camera->sceneCamera.zNear * std::tan(_camera->sceneCamera.fov * 0.5f) * _camera->sceneCamera.aspect;
+	_camera->sceneCamera.boxCastExtents[1] = _camera->sceneCamera.zNear * std::tan(_camera->sceneCamera.fov * 0.5f);
+	_camera->sceneCamera.boxCastExtents[2] = _camera->sceneCamera.zNear * 0.5f;
 
 	_swapchainDependentDeletionQueue.flush();
 
@@ -3761,7 +3745,7 @@ void VulkanEngine::uploadCurrentFrameToGPU(const FrameData& currentFrame)
 	for (size_t poolIndex : _roManager->_renderObjectsIndices)  // @NOTE: bc of the pool system these indices will be scattered, but that should work just fine
 	{
 		RenderObject& object = _roManager->_renderObjectPool[poolIndex];
-		objectSSBO[poolIndex].modelMatrix = object.transformMatrix;		// Another evil pointer trick I love... call me Dmitri the Evil
+		glm_mat4_copy(object.transformMatrix, objectSSBO[poolIndex].modelMatrix);		// Another evil pointer trick I love... call me Dmitri the Evil
 	}
 
 	vmaUnmapMemory(_allocator, currentFrame.objectBuffer._allocation);
@@ -3850,7 +3834,7 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 					// PBR Material push constant data
 					//
 					PBRMaterialPushConstBlock pc = {};
-					pc.emissiveFactor = pbr.emissiveFactor;
+					glm_vec4_copy(pbr.emissiveFactor, pc.emissiveFactor);
 					// To save push constant space, availabilty and texture coordinates set are combined
 					// -1 = texture not used for this material, >= 0 texture used and index of texture coordinate set
 					pc.colorTextureSet = pbr.baseColorTexture != nullptr ? pbr.texCoordSets.baseColor : -1;
@@ -3866,7 +3850,7 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 					{
 						// Metallic roughness workflow
 						pc.workflow = static_cast<float>(PBR_WORKFLOW_METALLIC_ROUGHNESS);
-						pc.baseColorFactor = pbr.baseColorFactor;
+						glm_vec4_copy(pbr.baseColorFactor, pc.baseColorFactor);
 						pc.metallicFactor = pbr.metallicFactor;
 						pc.roughnessFactor = pbr.roughnessFactor;
 						pc.PhysicalDescriptorTextureSet = pbr.metallicRoughnessTexture != nullptr ? pbr.texCoordSets.metallicRoughness : -1;
@@ -3879,8 +3863,8 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 						pc.workflow = static_cast<float>(PBR_WORKFLOW_SPECULAR_GLOSSINESS);
 						pc.PhysicalDescriptorTextureSet = pbr.extension.specularGlossinessTexture != nullptr ? pbr.texCoordSets.specularGlossiness : -1;
 						pc.colorTextureSet = pbr.extension.diffuseTexture != nullptr ? pbr.texCoordSets.baseColor : -1;
-						pc.diffuseFactor = pbr.extension.diffuseFactor;
-						pc.specularFactor = glm::vec4(pbr.extension.specularFactor, 1.0f);
+						glm_vec4_copy(pbr.extension.diffuseFactor, pc.diffuseFactor);
+						glm_vec4(pbr.extension.specularFactor, 1.0f, pc.specularFactor);
 					}
 			
 					vkCmdPushConstants(cmd, defaultMaterial.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PBRMaterialPushConstBlock), &pc);
@@ -3942,9 +3926,9 @@ void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& curr
 		"wireframeColorMaterial",
 		"wireframeColorBehindMaterial"
 	};
-	glm::vec4 materialColors[numRenders] = {
-		glm::vec4(1, 0.25, 1, 1),
-		glm::vec4(0.535, 0.13, 0.535, 1),
+	vec4 materialColors[numRenders] = {
+		{ 1, 0.25, 1, 1 },
+		{ 0.535, 0.13, 0.535, 1 },
 	};
 
 	for (size_t i = 0; i < numRenders; i++)
@@ -3960,9 +3944,8 @@ void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& curr
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, material.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
 
 		// Push constants
-		ColorPushConstBlock pc = {
-			.color = materialColors[i],
-		};	
+		ColorPushConstBlock pc = {};
+		glm_vec4_copy(materialColors[i], pc.color);
 		vkCmdPushConstants(cmd, material.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ColorPushConstBlock), &pc);
 
 		renderRenderObjects(cmd, currentFrame, pickedROIndex, 1, false, true, &material.pipelineLayout, false);
@@ -4157,8 +4140,8 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 	ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight + windowOffsetY), ImGuiCond_Always);
 	ImGui::Begin("PBR Shading Properties", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
 	{
-		if (ImGui::DragFloat3("Light Direction", glm::value_ptr(_pbrRendering.gpuSceneShadingProps.lightDir)))
-			_pbrRendering.gpuSceneShadingProps.lightDir = glm::normalize(_pbrRendering.gpuSceneShadingProps.lightDir);
+		if (ImGui::DragFloat3("Light Direction", _pbrRendering.gpuSceneShadingProps.lightDir))
+			glm_normalize(_pbrRendering.gpuSceneShadingProps.lightDir);		
 
 		ImGui::DragFloat("Exposure", &_pbrRendering.gpuSceneShadingProps.exposure, 0.1f, 0.1f, 10.0f);
 		ImGui::DragFloat("Gamma", &_pbrRendering.gpuSceneShadingProps.gamma, 0.1f, 0.1f, 4.0f);
@@ -4259,7 +4242,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 		}
 
 		accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
-		maxWindowWidth = glm::max(maxWindowWidth, ImGui::GetWindowWidth());
+		maxWindowWidth = std::max(maxWindowWidth, ImGui::GetWindowWidth());
 	}
 	ImGui::End();
 
@@ -4282,11 +4265,11 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 			ImGui::DragFloat("focusRadiusXZ", &_camera->mainCamMode.focusRadiusXZ, 1.0f, 0.0f);
 			ImGui::DragFloat("focusRadiusY", &_camera->mainCamMode.focusRadiusY, 1.0f, 0.0f);
 			ImGui::SliderFloat("focusCentering", &_camera->mainCamMode.focusCentering, 0.0f, 1.0f);
-			ImGui::DragFloat3("focusPositionOffset", &_camera->mainCamMode.focusPositionOffset.x);
+			ImGui::DragFloat3("focusPositionOffset", _camera->mainCamMode.focusPositionOffset);
 		}
 
 		accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
-		maxWindowWidth = glm::max(maxWindowWidth, ImGui::GetWindowWidth());
+		maxWindowWidth = std::max(maxWindowWidth, ImGui::GetWindowWidth());
 	}
 	ImGui::End();
 
@@ -4382,7 +4365,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 
 
 		accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
-		maxWindowWidth = glm::max(maxWindowWidth, ImGui::GetWindowWidth());
+		maxWindowWidth = std::max(maxWindowWidth, ImGui::GetWindowWidth());
 	}
 	ImGui::End();
 
@@ -4394,7 +4377,8 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 		//
 		// Move the matrix via ImGuizmo
 		//
-		mat4 projection = _camera->sceneCamera.gpuCameraData.projection;
+		mat4 projection;
+		glm_mat4_copy(_camera->sceneCamera.gpuCameraData.projection, projection);
 		projection[1][1] *= -1.0f;
 
 		static ImGuizmo::OPERATION manipulateOperation = ImGuizmo::OPERATION::TRANSLATE;
@@ -4403,19 +4387,19 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 		vec3 snapValues(0.0f);
 		if (input::keyCtrlPressed)
 			if (manipulateOperation == ImGuizmo::OPERATION::ROTATE)
-				snapValues = vec3(45.0f);
+				snapValues[0] = snapValues[1] = snapValues[2] = 45.0f;
 			else
-				snapValues = vec3(0.5f);
+				snapValues[0] = snapValues[1] = snapValues[2] = 0.5f;
 
 		bool matrixToMoveMoved =
 			ImGuizmo::Manipulate(
-				glm::value_ptr(_camera->sceneCamera.gpuCameraData.view),
-				glm::value_ptr(projection),
+				(const float_t*)_camera->sceneCamera.gpuCameraData.view,
+				(const float_t*)projection,
 				manipulateOperation,
 				manipulateMode,
-				glm::value_ptr(*_movingMatrix.matrixToMove),
+				(float_t*)*_movingMatrix.matrixToMove,
 				nullptr,
-				glm::value_ptr(snapValues)
+				(const float_t*)snapValues
 			);
 
 		//
@@ -4428,16 +4412,16 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 			{
 				vec3 position, eulerAngles, scale;
 				ImGuizmo::DecomposeMatrixToComponents(
-					glm::value_ptr(*_movingMatrix.matrixToMove),
-					glm::value_ptr(position),
-					glm::value_ptr(eulerAngles),
-					glm::value_ptr(scale)
+					(const float_t*)* _movingMatrix.matrixToMove,
+					position,
+					eulerAngles,
+					scale
 				);
 
 				bool changed = false;
-				changed |= ImGui::DragFloat3("Pos##ASDFASDFASDFJAKSDFKASDHF", glm::value_ptr(position));
-				changed |= ImGui::DragFloat3("Rot##ASDFASDFASDFJAKSDFKASDHF", glm::value_ptr(eulerAngles));
-				changed |= ImGui::DragFloat3("Sca##ASDFASDFASDFJAKSDFKASDHF", glm::value_ptr(scale));
+				changed |= ImGui::DragFloat3("Pos##ASDFASDFASDFJAKSDFKASDHF", position);
+				changed |= ImGui::DragFloat3("Rot##ASDFASDFASDFJAKSDFKASDHF", eulerAngles);
+				changed |= ImGui::DragFloat3("Sca##ASDFASDFASDFJAKSDFKASDHF", scale);
 
 				if (changed)
 				{
@@ -4445,10 +4429,10 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 					// @TODO: Figure out when to invalidate the cache bc the euler angles will reset!
 					//        Or... maybe invalidating the cache isn't necessary for this window????
 					ImGuizmo::RecomposeMatrixFromComponents(
-						glm::value_ptr(position),
-						glm::value_ptr(eulerAngles),
-						glm::value_ptr(scale),
-						glm::value_ptr(*_movingMatrix.matrixToMove)
+						position,
+						eulerAngles,
+						scale,
+						(float_t*)*_movingMatrix.matrixToMove
 					);
 
 					matrixToMoveMoved = true;
@@ -4587,7 +4571,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 			}
 
 			accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
-			maxWindowWidth = glm::max(maxWindowWidth, ImGui::GetWindowWidth());
+			maxWindowWidth = std::max(maxWindowWidth, ImGui::GetWindowWidth());
 		}
 		ImGui::End();
 	}
@@ -4598,7 +4582,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 	// Scroll the left pane
 	//
 	if (ImGui::GetIO().MousePos.x <= maxWindowWidth)
-		windowOffsetY += input::mouseScrollDelta.y * scrollSpeed;
+		windowOffsetY += input::mouseScrollDelta[1] * scrollSpeed;
 }
 
 VkPipeline PipelineBuilder::buildPipeline(VkDevice device, VkRenderPass pass)

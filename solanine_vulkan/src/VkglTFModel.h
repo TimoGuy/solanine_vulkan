@@ -61,8 +61,8 @@ namespace vkglTF
 		float alphaCutoff = 1.0f;
 		float metallicFactor = 1.0f;
 		float roughnessFactor = 1.0f;
-		glm::vec4 baseColorFactor = glm::vec4(1.0f);
-		glm::vec4 emissiveFactor = glm::vec4(1.0f);
+		vec4 baseColorFactor = GLM_VEC4_ONE_INIT;
+		vec4 emissiveFactor = GLM_VEC4_ONE_INIT;
 		Texture* baseColorTexture;
 		Texture* metallicRoughnessTexture;
 		Texture* normalTexture;
@@ -84,7 +84,7 @@ namespace vkglTF
 		{
 			Texture* specularGlossinessTexture;
 			Texture* diffuseTexture;
-			glm::vec4 diffuseFactor = glm::vec4(1.0f);
+			vec4 diffuseFactor = GLM_VEC4_ONE_INIT;
 			vec3 specularFactor = GLM_VEC3_ZERO_INIT;
 		} extension;
 	
@@ -126,7 +126,7 @@ namespace vkglTF
 	{
 		std::string name;
 		Node* skeletonRoot = nullptr;
-		std::vector<mat4> inverseBindMatrices;
+		std::vector<mat4s> inverseBindMatrices;  // @NOCHECKIN
 		std::vector<Node*> joints;
 	};
 
@@ -144,13 +144,13 @@ namespace vkglTF
 		int32_t skinIndex = -1;
 		vec3 translation{};
 		vec3 scale{ 1.0f };
-		glm::quat rotation{};
+		versor rotation{};
 		BoundingBox bvh;
 		BoundingBox aabb;
 
 		void generateCalculateJointMatrixTaskflow(Animator* animator, tf::Taskflow& taskflow, tf::Task* taskPrerequisite);
-		mat4 localMatrix();
-		mat4 getMatrix();
+		void localMatrix(mat4& out);
+		void getMatrix(mat4& out);
 		void update(Animator* animator);
 		~Node();
 	};
@@ -168,7 +168,7 @@ namespace vkglTF
 		enum InterpolationType { LINEAR, STEP, CUBICSPLINE };
 		InterpolationType interpolation;
 		std::vector<float> inputs;
-		std::vector<glm::vec4> outputsVec4;
+		std::vector<vec4s> outputsVec4;  // @NOCHECKIN
 	};
 
 	struct Animation
@@ -258,9 +258,9 @@ namespace vkglTF
 			bool     loop;
 
 			// Temp data holders:
-			bool      animEndedThisFrame;
-			float_t   animDuration;
-			glm::vec2 timeRange;
+			bool     animEndedThisFrame;
+			float_t  animDuration;
+			vec2     timeRange;
 		};
 
 		bool                          loaded = false;
@@ -276,11 +276,11 @@ namespace vkglTF
 		{
 			vec3 pos;
 			vec3 normal;
-			glm::vec2 uv0;
-			glm::vec2 uv1;
-			glm::vec4 joint0;
-			glm::vec4 weight0;
-			glm::vec4 color;
+			vec2 uv0;
+			vec2 uv1;
+			vec4 joint0;
+			vec4 weight0;
+			vec4 color;
 			static VertexInputDescription getVertexDescription();
 		};
 
@@ -312,8 +312,8 @@ namespace vkglTF
 
 		struct Dimensions
 		{
-			vec3 min = vec3(FLT_MAX);
-			vec3 max = vec3(-FLT_MAX);
+			vec3 min = { FLT_MAX, FLT_MAX, FLT_MAX };
+			vec3 max = { -FLT_MAX, -FLT_MAX , -FLT_MAX };
 		} dimensions;
 
 		struct LoaderInfo

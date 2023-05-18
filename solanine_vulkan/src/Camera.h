@@ -29,7 +29,7 @@ struct GPUCascadeViewProjsData
 struct SceneCamera
 {
 	vec3 facingDirection = { -0.570508420, -0.390730739, 0.722388268 };
-	float_t   fov             = glm::radians(70.0f);
+	float_t   fov             = glm_rad(70.0f);
 	float_t   aspect;
 	float_t   zNear           = 1.0f;
 	float_t   zFar            = 1500.0f;  // @TODO: I wanna change this to 100,000 but I don't really know how feasible that'd be. Esp. for overworld scenes I want this super far render distance!
@@ -51,18 +51,18 @@ enum class CameraModeChangeEvent { NONE, ENTER, EXIT };
 struct MainCamMode
 {
 	RenderObject* targetObject = nullptr;
-	vec3 focusPosition = vec3(0);
-	glm::vec2 sensitivity = glm::vec2(0.1f, 0.1f);
-	glm::vec2 orbitAngles = glm::vec2(glm::radians(45.0f), 0.0f);
-	vec3 calculatedCameraPosition = vec3(0);
-	vec3 calculatedLookDirection = vec3(0, -0.707106781, 0.707106781);
+	vec3 focusPosition = GLM_VEC3_ZERO_INIT;
+	vec2 sensitivity = { 0.1f, 0.1f };
+	vec2 orbitAngles = { glm_rad(45.0f), 0.0f };
+	vec3 calculatedCameraPosition = GLM_VEC3_ZERO_INIT;
+	vec3 calculatedLookDirection = { 0, -0.707106781, 0.707106781 };
 
 	// Tweak variables
 	float_t   lookDistance        = 5.0f;
 	float_t   focusRadiusXZ       = 1.0f;
 	float_t   focusRadiusY        = 2.333333f;
 	float_t   focusCentering      = 0.75f;
-	vec3 focusPositionOffset = vec3(0, 2.333333f, 0);
+	vec3      focusPositionOffset = { 0, 2.333333f, 0 };
 
 	void setMainCamTargetObject(RenderObject* targetObject);
 };
@@ -75,7 +75,7 @@ struct MainCamMode
 struct FreeCamMode
 {
 	bool enabled = false;
-	glm::ivec2 savedMousePosition;
+	ivec2 savedMousePosition;
 	float_t sensitivity = 0.1f;
 };
 #endif

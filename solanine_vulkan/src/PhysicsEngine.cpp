@@ -469,9 +469,9 @@ namespace physengine
                 glm_vec3_lerp(prevScale, scale, physicsAlpha, interpolSca);
 
                 mat4 transform = GLM_MAT4_IDENTITY_INIT;
-                glm_scale(transform, interpolSca);
-                glm_quat_rotate(transform, interpolRot, transform);
                 glm_translate(transform, interpolPos);
+                glm_quat_rotate(transform, interpolRot, transform);
+                glm_scale(transform, interpolSca);
                 glm_mat4_copy(transform, vfpd.interpolTransform);
             }
         }

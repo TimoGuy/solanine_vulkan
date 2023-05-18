@@ -13,7 +13,7 @@ struct VoxelField_XData
     RenderObjectManager* rom;
     vkglTF::Model* voxelModel;
     std::vector<RenderObject*> voxelRenderObjs;
-    std::vector<vec3> voxelOffsets;
+    std::vector<vec3s> voxelOffsets;  // @NOCHECKIN
 
     physengine::VoxelFieldPhysicsData* vfpd = nullptr;
 };
@@ -70,7 +70,8 @@ void VoxelField::dump(DataSerializer& ds)
 {
     Entity::dump(ds);
     ds.dumpMat4(_data->vfpd->transform);
-    ds.dumpVec3(vec3(_data->vfpd->sizeX, _data->vfpd->sizeY, _data->vfpd->sizeZ));
+    vec3 sizeXYZ = { _data->vfpd->sizeX, _data->vfpd->sizeY, _data->vfpd->sizeZ };
+    ds.dumpVec3(sizeXYZ);
 
     size_t totalSize = _data->vfpd->sizeX * _data->vfpd->sizeY * _data->vfpd->sizeZ;
     for (size_t i = 0; i < totalSize; i++)
@@ -99,22 +100,26 @@ void VoxelField::load(DataSerialized& ds)
     glm_mat4_copy(load_transform, _data->vfpd->transform);
 }
 
-void VoxelField::reportMoved(void* matrixMoved)
+void VoxelField::reportMoved(mat4* matrixMoved)
 {
     // Search for which block was moved
     size_t i = 0;
     for (; i < _data->voxelRenderObjs.size(); i++)
-        if (&_data->voxelRenderObjs[i]->transformMatrix == matrixMoved)
+        if (matrixMoved == &_data->voxelRenderObjs[i]->transformMatrix)
             break;
     
-    _data->vfpd->transform = glm::translate(*(mat4*)matrixMoved, -_data->voxelOffsets[i]);
+    glm_mat4_copy(*matrixMoved, _data->vfpd->transform);
+    vec3 negVoxelOffsets;
+    glm_vec3_negate_to(_data->voxelOffsets[i].raw, negVoxelOffsets);
+    glm_translate(_data->vfpd->transform, negVoxelOffsets);
 
     // Move all blocks according to the transform
     for (size_t i2 = 0; i2 < _data->voxelOffsets.size(); i2++)
     {
         if (i2 == i)
             continue;
-        _data->voxelRenderObjs[i2]->transformMatrix = glm::translate(_data->vfpd->transform, _data->voxelOffsets[i2]);
+        glm_mat4_copy(_data->vfpd->transform, _data->voxelRenderObjs[i2]->transformMatrix);
+        glm_translate(_data->voxelRenderObjs[i2]->transformMatrix, _data->voxelOffsets[i2].raw);
     }
 }
 
@@ -154,16 +159,18 @@ inline void assembleVoxelRenderObjects(VoxelField_XData& data, const std::string
                 !physengine::getVoxelDataAtPosition(*data.vfpd, i, j, k + 1) ||
                 !physengine::getVoxelDataAtPosition(*data.vfpd, i, j, k - 1))
             {
-                vec3 offset = vec3(i, j, k) + vec3(0.5f, 0.5f, 0.5f);
+                vec3s ijk_0_5 = { i + 0.5f, j + 0.5f, k + 0.5f };
                 RenderObject* newRO =
                     data.rom->registerRenderObject({
                         .model = data.voxelModel,
-                        .transformMatrix = glm::translate(data.vfpd->transform, offset),
                         .renderLayer = RenderLayer::VISIBLE,
                         .attachedEntityGuid = attachedEntityGuid,
                     });
+                glm_mat4_copy(data.vfpd->transform, newRO->transformMatrix);
+                glm_translate(newRO->transformMatrix, ijk_0_5.raw);
+
                 data.voxelRenderObjs.push_back(newRO);
-                data.voxelOffsets.push_back(offset);
+                data.voxelOffsets.push_back(ijk_0_5);  // @NOCHECKIN: error with adding vec3's
             }
         }
     }

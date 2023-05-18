@@ -22,7 +22,7 @@ public:
     void dump(DataSerializer& ds);
     void load(DataSerialized& ds);
 
-    void reportMoved(void* matrixMoved);
+    void reportMoved(mat4* matrixMoved);
     void renderImGui();
 
 private:

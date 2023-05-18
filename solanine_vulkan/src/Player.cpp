@@ -248,7 +248,7 @@ void Player::update(const float_t& deltaTime)
     glm_vec3_copy(_data->worldSpaceInput, velocity);
     vec3 verticalMovement = {
         0.0f,
-        (input::keyWorldUpPressed ? 1.0f : 0.0f) + input::keyWorldDownPressed ? -1.0f : 0.0f,
+        (input::keyWorldUpPressed ? 1.0f : 0.0f) + (input::keyWorldDownPressed ? -1.0f : 0.0f),
         0.0f,
     };
     glm_vec3_add(velocity, verticalMovement, velocity);
@@ -270,9 +270,9 @@ void Player::lateUpdate(const float_t& deltaTime)
     vec3 scale = { _data->modelSize, _data->modelSize, _data->modelSize };
 
     mat4 transform = GLM_MAT4_IDENTITY_INIT;
-    glm_scale(transform, scale);
-    glm_mat4_mul(transform, rotation, transform);
     glm_translate(transform, interpPos);
+    glm_mat4_mul(transform, rotation, transform);
+    glm_scale(transform, scale);
     glm_mat4_copy(transform, _data->characterRenderObj->transformMatrix);
 
     mat4 attachmentJointMat;
@@ -300,12 +300,12 @@ bool Player::processMessage(DataSerialized& message)
     return false;
 }
 
-void Player::reportMoved(void* matrixMoved)
+void Player::reportMoved(mat4* matrixMoved)
 {
     vec4 pos;
     mat4 rot;
     vec3 sca;
-    glm_decompose((mat4)(float_t*)matrixMoved, pos, rot, sca);  // @TODO: instead of passing void pointers, pass float_t*
+    glm_decompose(*matrixMoved, pos, rot, sca);
     glm_vec3_copy(pos, _data->position);
 }
 

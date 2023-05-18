@@ -21,31 +21,40 @@ namespace vkglTF
 	// Bounding box
 	//
 	BoundingBox::BoundingBox() { };
-	BoundingBox::BoundingBox(vec3 min, vec3 max) : min(min), max(max) { };
+	BoundingBox::BoundingBox(vec3 min, vec3 max)
+	{
+		glm_vec3_copy(min, this->min);
+		glm_vec3_copy(max, this->max);
+	}
 
 	BoundingBox BoundingBox::getAABB(mat4 m)
 	{
-		vec3 min = vec3(m[3]);
-		vec3 max = min;
+		vec3 min;
+		glm_vec3_copy(m[3], min);
+		vec3 max;
+		glm_vec3_copy(min, max);
 		vec3 v0, v1;
 
-		vec3 right = vec3(m[0]);
-		v0 = right * this->min.x;
-		v1 = right * this->max.x;
-		min += glm::min(v0, v1);
-		max += glm::max(v0, v1);
+		vec3 right;
+		glm_vec3_copy(m[0], right);
+		glm_vec3_scale(right, this->min[0], v0);
+		glm_vec3_scale(right, this->max[0], v1);
+		glm_vec3_minadd(v0, v1, min);
+		glm_vec3_maxadd(v0, v1, max);
 
-		vec3 up = vec3(m[1]);
-		v0 = up * this->min.y;
-		v1 = up * this->max.y;
-		min += glm::min(v0, v1);
-		max += glm::max(v0, v1);
+		vec3 up;
+		glm_vec3_copy(m[1], up);
+		glm_vec3_scale(up, this->min[1], v0);
+		glm_vec3_scale(up, this->max[1], v1);
+		glm_vec3_minadd(v0, v1, min);
+		glm_vec3_maxadd(v0, v1, max);
 
-		vec3 back = vec3(m[2]);
-		v0 = back * this->min.z;
-		v1 = back * this->max.z;
-		min += glm::min(v0, v1);
-		max += glm::max(v0, v1);
+		vec3 back;
+		glm_vec3_copy(m[2], back);
+		glm_vec3_scale(back, this->min[2], v0);
+		glm_vec3_scale(back, this->max[2], v1);
+		glm_vec3_minadd(v0, v1, min);
+		glm_vec3_maxadd(v0, v1, max);
 
 		return BoundingBox(min, max);
 	}
@@ -60,8 +69,8 @@ namespace vkglTF
 
 	void Primitive::setBoundingBox(vec3 min, vec3 max)
 	{
-		bb.min = min;
-		bb.max = max;
+		glm_vec3_copy(min, bb.min);
+		glm_vec3_copy(max, bb.max);
 		bb.valid = true;
 	}
 
@@ -80,8 +89,8 @@ namespace vkglTF
 
 	void Mesh::setBoundingBox(vec3 min, vec3 max)
 	{
-		bb.min = min;
-		bb.max = max;
+		glm_vec3_copy(min, bb.min);
+		glm_vec3_copy(max, bb.max);
 		bb.valid = true;
 	}
 
@@ -108,14 +117,21 @@ namespace vkglTF
 		}
 	}
 
-	mat4 Node::localMatrix()
+	void Node::localMatrix(mat4& out)
 	{
+		glm_mat4_identity(out);
+		glm_translate(out, translation);
+		glm_quat_rotate(out, rotation, out);
+		glm_scale(out, scale);
+		return;
+
+
 		// @NOTE: the fast transform baking is only really effective on debug builds. It seems to not
 		//        really make a difference on release, or at least this isn't the bottleneck anymore
 		//        for release builds.
 		// @TODO: figure out whether this makes a difference on Tristan's computer (release builds)!
 		//          -Timo 2022/12/27
-#define USE_FAST_TRANSFORM_BAKING 1
+/*#define USE_FAST_TRANSFORM_BAKING 1
 #if     USE_FAST_TRANSFORM_BAKING
 		mat4 transform = glm::toMat4(rotation);
 
@@ -140,24 +156,26 @@ namespace vkglTF
 			glm::toMat4(rotation) *
 			glm::scale(GLM_MAT4_IDENTITY_INIT, scale) *
 			matrix;
-#endif
+#endif*/
 	}
 
-	mat4 Node::getMatrix()
+	void Node::getMatrix(mat4& out)
 	{
-		mat4 m = localMatrix();
+		localMatrix(out);
 		vkglTF::Node* p = parent;
 		while (p)
 		{
-			m = p->localMatrix() * m;
+			mat4 lm;
+			p->localMatrix(lm);
+			glm_mat4_mul(lm, out, out);
 			p = p->parent;
 		}
-		return m;
 	}
 
 	void Node::update(Animator* animator)
 	{
-		mat4 m = getMatrix();
+		mat4 m;
+		getMatrix(m);
 		animator->updateJointMatrices(mesh->animatorMeshId, skin, m);
 	}
 
@@ -288,30 +306,46 @@ namespace vkglTF
 		newNode->parent = parent;
 		newNode->name = node.name;
 		newNode->skinIndex = node.skin;
-		newNode->matrix = GLM_MAT4_IDENTITY_INIT;
+		glm_mat4_identity(newNode->matrix);
 
 		// Generate local node matrix
 		vec3 translation = GLM_VEC3_ZERO_INIT;
 		if (node.translation.size() == 3)
 		{
-			translation = glm::make_vec3(node.translation.data());
-			newNode->translation = translation;
+			const double_t* data = node.translation.data();
+			vec3 translation = {
+				data[0], data[1], data[2],
+			};
+			glm_vec3_copy(translation, newNode->translation);
 		}
 		mat4 rotation = GLM_MAT4_IDENTITY_INIT;
 		if (node.rotation.size() == 4)
 		{
-			glm::quat q = glm::make_quat(node.rotation.data());
-			newNode->rotation = mat4(q);
+			const double_t* data = node.rotation.data();
+			versor rotation = {
+				data[0], data[1], data[2], data[3],
+			};
+			glm_vec3_copy(rotation, newNode->rotation);
 		}
-		vec3 scale = vec3(1.0f);
+		vec3 scale = GLM_VEC3_ONE_INIT;
 		if (node.scale.size() == 3)
 		{
-			scale = glm::make_vec3(node.scale.data());
-			newNode->scale = scale;
+			const double_t* data = node.scale.data();
+			vec3 scale = {
+				data[0], data[1], data[2],
+			};
+			glm_vec3_copy(scale, newNode->scale);
 		}
 		if (node.matrix.size() == 16)
 		{
-			newNode->matrix = glm::make_mat4x4(node.matrix.data());
+			const double_t* data = node.matrix.data();
+			mat4 matrix = {
+				 data[0],  data[1],  data[2],  data[3],
+				 data[4],  data[5],  data[6],  data[7],
+				 data[8],  data[9], data[10], data[11],
+				data[12], data[13], data[14], data[15],
+			};
+			glm_mat4_copy(matrix, newNode->matrix);
 		};
 
 		// Node with children
@@ -365,8 +399,10 @@ namespace vkglTF
 					const tinygltf::Accessor& posAccessor = model.accessors[primitive.attributes.find("POSITION")->second];
 					const tinygltf::BufferView& posView = model.bufferViews[posAccessor.bufferView];
 					bufferPos = reinterpret_cast<const float*>(&(model.buffers[posView.buffer].data[posAccessor.byteOffset + posView.byteOffset]));
-					posMin = vec3(posAccessor.minValues[0], posAccessor.minValues[1], posAccessor.minValues[2]);
-					posMax = vec3(posAccessor.maxValues[0], posAccessor.maxValues[1], posAccessor.maxValues[2]);
+					vec3 posMin_ = { posAccessor.minValues[0], posAccessor.minValues[1], posAccessor.minValues[2] };
+					glm_vec3_copy(posMin_, posMin);
+					vec3 posMax_ = { posAccessor.maxValues[0], posAccessor.maxValues[1], posAccessor.maxValues[2] };
+					glm_vec3_copy(posMax_, posMax);
 					vertexCount = static_cast<uint32_t>(posAccessor.count);
 					posByteStride = posAccessor.ByteStride(posView) ? (posAccessor.ByteStride(posView) / sizeof(float)) : tinygltf::GetNumComponentsInType(TINYGLTF_TYPE_VEC3);
 
@@ -427,11 +463,47 @@ namespace vkglTF
 					for (size_t v = 0; v < posAccessor.count; v++)
 					{
 						Vertex& vert = loaderInfo.vertexBuffer[loaderInfo.vertexPos];
-						vert.pos = glm::vec4(glm::make_vec3(&bufferPos[v * posByteStride]), 1.0f);
-						vert.normal = glm::normalize(vec3(bufferNormals ? glm::make_vec3(&bufferNormals[v * normByteStride]) : GLM_VEC3_ZERO_INIT));
-						vert.uv0 = bufferTexCoordSet0 ? glm::make_vec2(&bufferTexCoordSet0[v * uv0ByteStride]) : GLM_VEC3_ZERO_INIT;
-						vert.uv1 = bufferTexCoordSet1 ? glm::make_vec2(&bufferTexCoordSet1[v * uv1ByteStride]) : GLM_VEC3_ZERO_INIT;
-						vert.color = bufferColorSet0 ? glm::make_vec4(&bufferColorSet0[v * color0ByteStride]) : glm::vec4(1.0f);
+
+						const float_t* bp = &bufferPos[v * posByteStride];
+						vec3 pos = { bp[0], bp[1], bp[2] };
+						glm_vec3_copy(pos, vert.pos);
+
+						if (bufferNormals)
+						{
+							const float_t* bn = &bufferNormals[v * normByteStride];
+							vec3 normal = { bn[0], bn[1], bn[2] };
+							glm_normalize(normal);
+							glm_vec3_copy(normal, vert.normal);
+						}
+						else
+							glm_vec3_zero(vert.normal);
+
+						if (bufferTexCoordSet0)
+						{
+							const float_t* btcs0 = &bufferTexCoordSet0[v * uv0ByteStride];
+							vec2 uv0 = { btcs0[0], btcs0[1] };
+							glm_vec2_copy(uv0, vert.uv0);
+						}
+						else
+							glm_vec2_zero(vert.uv0);
+
+						if (bufferTexCoordSet1)
+						{
+							const float_t* btcs1 = &bufferTexCoordSet1[v * uv1ByteStride];
+							vec2 uv1 = { btcs1[0], btcs1[1] };
+							glm_vec2_copy(uv1, vert.uv1);
+						}
+						else
+							glm_vec2_zero(vert.uv1);
+
+						if (bufferColorSet0)
+						{
+							const float_t* bcs0 = &bufferColorSet0[v * color0ByteStride];
+							vec4 color = { bcs0[0], bcs0[1], bcs0[2], bcs0[3] };
+							glm_vec4_copy(color, vert.color);
+						}
+						else
+							glm_vec4_one(vert.color);
 
 						if (hasSkin)
 						{
@@ -440,13 +512,21 @@ namespace vkglTF
 							case TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT:
 							{
 								const uint16_t* buf = static_cast<const uint16_t*>(bufferJoints);
-								vert.joint0 = glm::vec4(glm::make_vec4(&buf[v * jointByteStride]));
+								const uint16_t* b = &buf[v * jointByteStride];
+								vec4 joint0 = {
+									b[0], b[1], b[2], b[3],
+								};
+								glm_vec4_copy(joint0, vert.joint0);
 								break;
 							}
 							case TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE:
 							{
 								const uint8_t* buf = static_cast<const uint8_t*>(bufferJoints);
-								vert.joint0 = glm::vec4(glm::make_vec4(&buf[v * jointByteStride]));
+								const uint8_t* b = &buf[v * jointByteStride];
+								vec4 joint0 = {
+									b[0], b[1], b[2], b[3],
+								};
+								glm_vec4_copy(joint0, vert.joint0);
 								break;
 							}
 							default:
@@ -457,13 +537,29 @@ namespace vkglTF
 						}
 						else
 						{
-							vert.joint0 = glm::vec4(0.0f);
+							glm_vec4_zero(vert.joint0);
 						}
-						vert.weight0 = hasSkin ? glm::make_vec4(&bufferWeights[v * weightByteStride]) : glm::vec4(0.0f);
-						// Fix for all zero weights
-						if (glm::length(vert.weight0) == 0.0f)
+
+						// Add skin weight
+						if (hasSkin)
 						{
-							vert.weight0 = glm::vec4(1.0f, 0.0f, 0.0f, 0.0f);
+							const float_t* bw = &bufferWeights[v * weightByteStride];
+							vec4 bufferWeightsV4 = {
+								bw[0],
+								bw[1],
+								bw[2],
+								bw[3],
+							};
+							glm_vec4_copy(bufferWeightsV4, vert.weight0);
+						}
+						else
+							glm_vec4_zero(vert.weight0);
+
+						// Fix for all zero weights
+						if (glm_vec3_norm(vert.weight0) == 0.0f)  // @TODO: may wanna use `_norm2` instead
+						{
+							vec4 x1 = { 1.0f, 0.0f, 0.0f, 0.0f };
+							glm_vec4_copy(x1, vert.weight0);
 						}
 						loaderInfo.vertexPos++;
 					}
@@ -527,8 +623,8 @@ namespace vkglTF
 					newMesh->bb = p->bb;
 					newMesh->bb.valid = true;
 				}
-				newMesh->bb.min = glm::min(newMesh->bb.min, p->bb.min);
-				newMesh->bb.max = glm::max(newMesh->bb.max, p->bb.max);
+				glm_vec3_minv(newMesh->bb.min, p->bb.min, newMesh->bb.min);
+				glm_vec3_maxv(newMesh->bb.max, p->bb.max, newMesh->bb.max);
 			}
 			newNode->mesh = newMesh;
 		}
@@ -596,7 +692,7 @@ namespace vkglTF
 				const tinygltf::Accessor& accessor = gltfModel.accessors[source.inverseBindMatrices];
 				const tinygltf::BufferView& bufferView = gltfModel.bufferViews[accessor.bufferView];
 				const tinygltf::Buffer& buffer = gltfModel.buffers[bufferView.buffer];
-				newSkin->inverseBindMatrices.resize(accessor.count);
+				newSkin->inverseBindMatrices.resize(accessor.count);  // @NOCHECKIN
 				memcpy(newSkin->inverseBindMatrices.data(), &buffer.data[accessor.byteOffset + bufferView.byteOffset], accessor.count * sizeof(mat4));
 			}
 
@@ -801,7 +897,14 @@ namespace vkglTF
 
 			if (mat.values.find("baseColorFactor") != mat.values.end())
 			{
-				material.baseColorFactor = glm::make_vec4(mat.values["baseColorFactor"].ColorFactor().data());
+				double_t* data = mat.values["baseColorFactor"].ColorFactor().data();
+				vec4 baseColorFactor = {
+					data[0],
+					data[1],
+					data[2],
+					data[3],
+				};
+				glm_vec4_copy(baseColorFactor, material.baseColorFactor);
 			}
 
 			if (mat.additionalValues.find("normalTexture") != mat.additionalValues.end())
@@ -843,7 +946,14 @@ namespace vkglTF
 
 			if (mat.additionalValues.find("emissiveFactor") != mat.additionalValues.end())
 			{
-				material.emissiveFactor = glm::vec4(glm::make_vec3(mat.additionalValues["emissiveFactor"].ColorFactor().data()), 1.0);
+				double_t* data = mat.additionalValues["emissiveFactor"].ColorFactor().data();
+				vec4 emissiveFactor = {
+					data[0],
+					data[1],
+					data[2],
+					1.0f,
+				};
+				glm_vec4_copy(emissiveFactor, material.emissiveFactor);
 			}
 
 			// Extensions
@@ -1032,16 +1142,28 @@ namespace vkglTF
 						const vec3* buf = static_cast<const vec3*>(dataPtr);
 						for (size_t index = 0; index < accessor.count; index++)
 						{
-							sampler.outputsVec4.push_back(glm::vec4(buf[index], 0.0f));
+							vec4s bufAsV4 = {
+								buf[index][0],
+								buf[index][1],
+								buf[index][2],
+								0.0f,
+							};
+							sampler.outputsVec4.push_back(bufAsV4);  // @NOCHECKIN
 						}
 						break;
 					}
 					case TINYGLTF_TYPE_VEC4:
 					{
-						const glm::vec4* buf = static_cast<const glm::vec4*>(dataPtr);
+						const vec4* buf = static_cast<const vec4*>(dataPtr);
 						for (size_t index = 0; index < accessor.count; index++)
 						{
-							sampler.outputsVec4.push_back(buf[index]);
+							vec4s bufCopy = {
+								buf[index][0],
+								buf[index][1],
+								buf[index][2],
+								buf[index][3],
+							};
+							sampler.outputsVec4.push_back(bufCopy);  // @NOCHECKIN
 						}
 						break;
 					}
@@ -1722,18 +1844,20 @@ namespace vkglTF
 		{
 			if (node->mesh->bb.valid)
 			{
-				node->aabb = node->mesh->bb.getAABB(node->getMatrix());
+				mat4 m;
+				node->getMatrix(m);
+				node->aabb = node->mesh->bb.getAABB(m);
 				if (node->children.size() == 0)
 				{
-					node->bvh.min = node->aabb.min;
-					node->bvh.max = node->aabb.max;
+					glm_vec3_copy(node->aabb.min, node->bvh.min);
+					glm_vec3_copy(node->aabb.max, node->bvh.max);
 					node->bvh.valid = true;
 				}
 			}
 		}
 
-		parentBvh.min = glm::min(parentBvh.min, node->bvh.min);
-		parentBvh.max = glm::min(parentBvh.max, node->bvh.max);
+		glm_vec3_minv(parentBvh.min, node->bvh.min, parentBvh.min);
+		glm_vec3_minv(parentBvh.max, node->bvh.max, parentBvh.max);
 
 		for (auto& child : node->children)
 		{
@@ -1749,20 +1873,23 @@ namespace vkglTF
 			calculateBoundingBox(node, nullptr);
 		}
 
-		dimensions.min = vec3(FLT_MAX);
-		dimensions.max = vec3(-FLT_MAX);
+		dimensions.min[0] = dimensions.min[1] = dimensions.min[2] = FLT_MAX;
+		dimensions.max[0] = dimensions.max[1] = dimensions.max[2] = -FLT_MAX;
 
 		for (auto node : linearNodes)
 		{
 			if (node->bvh.valid)
 			{
-				dimensions.min = glm::min(dimensions.min, node->bvh.min);
-				dimensions.max = glm::max(dimensions.max, node->bvh.max);
+				glm_vec3_minv(dimensions.min, node->bvh.min, dimensions.min);
+				glm_vec3_maxv(dimensions.max, node->bvh.max, dimensions.max);
 			}
 		}
 
 		// Calculate scene aabb
-		aabb = glm::scale(GLM_MAT4_IDENTITY_INIT, vec3(dimensions.max[0] - dimensions.min[0], dimensions.max[1] - dimensions.min[1], dimensions.max[2] - dimensions.min[2]));
+		vec3 scale;
+		glm_vec3_sub(dimensions.max, dimensions.min, scale);
+		glm_mat4_identity(aabb);
+		glm_scale(aabb, scale);
 		aabb[3][0] = dimensions.min[0];
 		aabb[3][1] = dimensions.min[1];
 		aabb[3][2] = dimensions.min[2];
@@ -1837,7 +1964,7 @@ namespace vkglTF
 			node->mesh->animatorMeshId = meshId++;
 
 			UniformBlock uBlock = {};
-			uBlock.matrix = node->getMatrix();
+			node->getMatrix(uBlock.matrix);
 
 			UniformBuffer uBuffer = {};
 			uBuffer.descriptorBuffer =
@@ -1924,7 +2051,7 @@ namespace vkglTF
 		// @SPECIAL: create an empty animator and don't update the animation
 		//
 		UniformBlock uBlock = {};
-		uBlock.matrix = GLM_MAT4_IDENTITY_INIT;
+		glm_mat4_identity(uBlock.matrix);
 
 		UniformBuffer uBuffer = {};
 		uBuffer.descriptorBuffer =
@@ -2000,9 +2127,9 @@ namespace vkglTF
 	{
 		for (auto& mp : animStateMachineCopy.maskPlayers)
 		{
-			mp.timeRange = { mp.time, 0.0f };
+			mp.timeRange[0] = mp.time;
 			mp.time += deltaTime;
-			mp.timeRange.y = mp.time;  // @NOTE: this has to be pre-clamped/pre-repeat because the 2nd time is exclusive in the check
+			mp.timeRange[1] = mp.time;  // @NOTE: this has to be pre-clamped/pre-repeat because the 2nd time is exclusive in the check
 
 			mp.animEndedThisFrame = false;
 			mp.animDuration = model->animations[mp.animationIndex].end;
@@ -2038,10 +2165,10 @@ namespace vkglTF
 				auto& mp   = animStateMachineCopy.maskPlayers[i];
 
 				auto& currentState = mask.states[mask.asmStateIndex];
-				mp.timeRange = mp.timeRange / glm::vec2(mp.animDuration);
+				glm_vec2_scale(mp.timeRange, 1.0f / mp.animDuration, mp.timeRange);
 				for (auto& event : currentState.events)
 				{
-					if (mp.timeRange.x <= event.eventCallAt && event.eventCallAt < mp.timeRange.y)
+					if (mp.timeRange[0] <= event.eventCallAt && event.eventCallAt < mp.timeRange[1])
 					{
 						std::cout << "CALLING " << event.eventName << " @ " << event.eventCallAt << std::endl;
 						if (event.eventIndex >= eventCallbacks.size())
@@ -2281,42 +2408,25 @@ namespace vkglTF
 						{
 							switch (channel.path)
 							{
-							case vkglTF::AnimationChannel::PathType::TRANSLATION:
-							{
-								glm::vec4 translation = glm::mix(sampler.outputsVec4[i], sampler.outputsVec4[i + 1], u);
-								channel.node->translation = vec3(translation);
-								break;
-							}
-							case vkglTF::AnimationChannel::PathType::SCALE:
-							{
-								glm::vec4 scale = glm::mix(sampler.outputsVec4[i], sampler.outputsVec4[i + 1], u);
-								channel.node->scale = vec3(scale);
-								break;
-							}
-							case vkglTF::AnimationChannel::PathType::ROTATION:
-							{
-								glm::quat q1;
-								q1.x = sampler.outputsVec4[i].x;
-								q1.y = sampler.outputsVec4[i].y;
-								q1.z = sampler.outputsVec4[i].z;
-								q1.w = sampler.outputsVec4[i].w;
-								glm::quat q2;
-								q2.x = sampler.outputsVec4[i + 1].x;
-								q2.y = sampler.outputsVec4[i + 1].y;
-								q2.z = sampler.outputsVec4[i + 1].z;
-								q2.w = sampler.outputsVec4[i + 1].w;
-
-								float_t omu = 1.0f - u;  // One Minus U
-
-								// Super simple neighboring... might be glitchy
-								if (glm::dot(q1, q2) < 0.0f)
-									omu = -omu;
-
-								// @TODO: there's a better quaternion neighboring scheme than what's written here... use that one instead (i.e. https://youtu.be/vmAY5kP-tpU?t=1301)
-								channel.node->rotation = glm::normalize(omu * q1 + u * q2);    // @NOTE: by using slerp instead of nlerp, you eat tenth's of a millisecond. So take from it what you will. This is more expensive, HOWEVER, I don't know how to implement nlerp correctly atm so that's something to possibly change in the future bc there's a way to do it that I don't really understand  -Timo
-								// channel.node->rotation = glm::normalize(glm::slerp(q1, q2, u));
-								break;
-							}
+								case vkglTF::AnimationChannel::PathType::TRANSLATION:
+								{
+									vec4 translation;
+									glm_vec4_lerp(sampler.outputsVec4[i].raw, sampler.outputsVec4[i + 1].raw, u, translation);
+									glm_vec4_copy3(translation, channel.node->translation);
+									break;
+								}
+								case vkglTF::AnimationChannel::PathType::SCALE:
+								{
+									vec4 scale;
+									glm_vec4_lerp(sampler.outputsVec4[i].raw, sampler.outputsVec4[i + 1].raw, u, scale);
+									glm_vec4_copy3(scale, channel.node->scale);
+									break;
+								}
+								case vkglTF::AnimationChannel::PathType::ROTATION:
+								{
+									glm_quat_nlerp(sampler.outputsVec4[i].raw, sampler.outputsVec4[i + 1].raw, u, channel.node->rotation);
+									break;
+								}
 							}
 							updated = true;
 						}
@@ -2335,23 +2445,26 @@ namespace vkglTF
 		if (skin)
 		{
 			auto& uniformBlock = uniformBlocks[animatorMeshId];
-			uniformBlock.matrix = m;
+			glm_mat4_copy(m, uniformBlock.matrix);
 			// Update join matrices
-			mat4 inverseTransform = glm::inverse(m);
+			mat4 inverseTransform;
+			glm_mat4_inv(m, inverseTransform);
 			size_t numJoints = std::min((uint32_t)skin->joints.size(), MAX_NUM_JOINTS);
 			for (size_t i = 0; i < numJoints; i++)  // @TODO: make this multithreaded with a multithreaded for loop
 			{
 				vkglTF::Node* jointNode = skin->joints[i];
-				mat4 jointMat = jointNode->getMatrix() * skin->inverseBindMatrices[i];
-				jointMat = inverseTransform * jointMat;
-				uniformBlock.jointMatrix[i] = jointMat;
+				mat4 jointMat;
+				jointNode->getMatrix(jointMat);
+				glm_mat4_mul(jointMat, skin->inverseBindMatrices[i].raw, jointMat);
+				glm_mat4_mul(inverseTransform, jointMat, jointMat);
+				glm_mat4_copy(jointMat, uniformBlock.jointMatrix[i]);
 			}
 			uniformBlock.jointcount = (float)numJoints;
 			memcpy(uniformBuffers[animatorMeshId].mapped, &uniformBlock, sizeof(uniformBlock));
 		}
 		else
 		{
-			memcpy(uniformBuffers[animatorMeshId].mapped, &m, sizeof(mat4));
+			memcpy(uniformBuffers[animatorMeshId].mapped, &m, sizeof(mat4));  // @TODO: Idk if this would work! (doing `&m` if it's a mat4 datatype instead)  @FIXME: @CHECK: @NOCHECKIN
 		}
 	}
 
@@ -2366,7 +2479,7 @@ namespace vkglTF
 				auto& joint = skins->joints[i];
 				if (joint->name == jointName)
 				{
-					glm_mat4_copy(joint->getMatrix(), out);
+					joint->getMatrix(out);
 					return true;
 				}
 			}
