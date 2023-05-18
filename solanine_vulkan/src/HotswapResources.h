@@ -8,6 +8,7 @@ namespace hotswapres
 {
 	void buildResourceList();
 	std::mutex* startResourceChecker(VulkanEngine* engine, bool* recreateSwapchain, RenderObjectManager* roManager);
-	void shutdownAndTeardownResourceList();
+	void flagStopRunning();
+	void waitForShutdownAndTeardownResourceList();
 }
 #endif

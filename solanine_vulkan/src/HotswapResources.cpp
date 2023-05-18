@@ -140,12 +140,17 @@ namespace hotswapres
         }
     }
 
-	void shutdownAndTeardownResourceList()
+    void flagStopRunning()
+    {
+        isAsyncRunnerRunning = false;
+    }
+
+	void waitForShutdownAndTeardownResourceList()
     {
         //
         // Shutdown the thread
         //
-        isAsyncRunnerRunning = false;
+        isAsyncRunnerRunning = false;  // Redundant just in case
         asyncRunner->join();
         delete asyncRunner;
 

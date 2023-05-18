@@ -279,7 +279,7 @@ void VulkanEngine::run()
 void VulkanEngine::cleanup()
 {
 #ifdef _DEVELOP
-	hotswapres::shutdownAndTeardownResourceList();
+	hotswapres::flagStopRunning();
 #endif
 
 	if (_isInitialized)
@@ -307,6 +307,9 @@ void VulkanEngine::cleanup()
 
 		SDL_DestroyWindow(_window);
 
+#ifdef _DEVELOP
+		hotswapres::waitForShutdownAndTeardownResourceList();
+#endif
 	}
 }
 
