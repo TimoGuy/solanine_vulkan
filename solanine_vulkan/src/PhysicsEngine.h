@@ -9,6 +9,7 @@ namespace physengine
     void initialize(EntityManager* em);
     void cleanup();
 
+    void setTimeScale(const float_t& timeScale);
     float_t getPhysicsAlpha();
 
     struct VoxelFieldPhysicsData
@@ -55,7 +56,7 @@ namespace physengine
     CapsulePhysicsData* createCapsule(const float_t& radius, const float_t& height);
     bool destroyCapsule(CapsulePhysicsData* cpd);
 
-    void moveCapsuleAccountingForCollision(CapsulePhysicsData& cpd, vec3 deltaPosition, vec3& outNormal, float_t ccdDistance = 0.25f);  // @NOTE: `ccdDistance` is fine as long as it's below the capsule radius (or the radius of the voxels, whichever is smaller)
+    void moveCapsuleAccountingForCollision(CapsulePhysicsData& cpd, vec3 deltaPosition, bool stickToGround, vec3& outNormal, float_t ccdDistance = 0.25f);  // @NOTE: `ccdDistance` is fine as long as it's below the capsule radius (or the radius of the voxels, whichever is smaller)
 
     void setPhysicsObjectInterpolation(const float_t& physicsAlpha);
 }

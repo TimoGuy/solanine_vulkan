@@ -28,6 +28,9 @@ struct Player_XData
 
     vec3 worldSpaceInput = GLM_VEC3_ZERO_INIT;
     float_t gravityForce = 0.0f;
+    bool    inputFlagJump = false;
+    bool    prevIsGrounded = false;
+    vec3    prevGroundNormal = GLM_VEC3_ZERO_INIT;
 
     // Tweak Props
     vec3 position;
@@ -201,24 +204,44 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     //
     // @DEBUG: @TEST: try doing some voxel collision
     //
-    constexpr float_t gravity = -0.98f;
+    constexpr float_t gravity = -0.98f / 0.025f;  // @TODO: put physicsengine constexpr of `physicsDeltaTime` into the header file and rename it to `constantPhysicsDeltaTime` and replace the 0.025f with it.
     constexpr float_t jumpHeight = 2.0f;
     _data->gravityForce += gravity * physicsDeltaTime;
-    if (input::onKeyJumpPress)
-        _data->gravityForce = std::sqrtf(jumpHeight * 2.0f * std::abs(gravity * physicsDeltaTime));
+    if (_data->prevIsGrounded && _data->inputFlagJump)
+    {
+        _data->gravityForce = std::sqrtf(jumpHeight * 2.0f * std::abs(gravity));
+        _data->prevIsGrounded = false;
+        _data->inputFlagJump = false;
+    }
 
     vec3 velocity;
-    glm_vec3_scale(_data->worldSpaceInput, 0.25f, velocity);
-    glm_vec3_add(velocity, vec3{ 0.0f, _data->gravityForce, 0.0f }, velocity);
-    vec3 normal;
-    physengine::moveCapsuleAccountingForCollision(*_data->cpd, velocity, normal);
-    if (normal[1] >= 0.707106781187)  // >=45 degrees
-        _data->gravityForce = 0.0f;
+    glm_vec3_scale(_data->worldSpaceInput, 10.0f * physicsDeltaTime, velocity);
+
+    if (_data->prevIsGrounded && _data->prevGroundNormal[1] < 0.999f)
+    {
+        versor groundNormalRotation;
+        glm_quat_from_vecs(vec3{ 0.0f, 1.0f, 0.0f }, _data->prevGroundNormal, groundNormalRotation);
+        mat3 groundNormalRotationM3;
+        glm_quat_mat3(groundNormalRotation, groundNormalRotationM3);
+        glm_mat3_mulv(groundNormalRotationM3, velocity, velocity);
+    }
+
+    glm_vec3_add(velocity, vec3{ 0.0f, _data->gravityForce * physicsDeltaTime, 0.0f }, velocity);
+    physengine::moveCapsuleAccountingForCollision(*_data->cpd, velocity, _data->prevIsGrounded, _data->prevGroundNormal);
     glm_vec3_copy(_data->cpd->basePosition, _data->position);
+
+    _data->prevIsGrounded = (_data->prevGroundNormal[1] >= 0.707106781187);  // >=45 degrees
+    static size_t jt = 0;
+    if (_data->prevIsGrounded)
+        _data->gravityForce = 0.0f;
+    else
+        std::cout << "GROUNDED: " << (jt++) << std::endl;
 }
 
 void Player::update(const float_t& deltaTime)
 {
+    _data->inputFlagJump |= input::onKeyJumpPress;
+
     //
     // Update mask for animation
     // @TODO: there is popping for some reason. Could be how the transitions/triggers work in the animator controller or could be a different underlying issue. Figure it out pls!  -Timo

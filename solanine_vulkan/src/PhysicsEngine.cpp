@@ -16,6 +16,7 @@ namespace physengine
     //
     constexpr float_t physicsDeltaTime = 0.025f;    // 40fps. This seemed to be the sweet spot. 25/30fps would be inconsistent for getting smaller platform jumps with the dash move. 50fps felt like too many physics calculations all at once. 40fps seems right, striking a balance.  -Timo 2023/01/26
     constexpr float_t oneOverPhysicsDeltaTimeInMS = 1.0f / (physicsDeltaTime * 1000.0f);
+    float_t timeScale = 1.0f;
 
     void runPhysicsEngineAsync();
     EntityManager* entityManager;
@@ -37,6 +38,11 @@ namespace physengine
         delete asyncRunner;
     }
 
+    void setTimeScale(const float_t& timeScale)
+    {
+        physengine::timeScale = timeScale;
+    }
+
     float_t getPhysicsAlpha()
     {
         return (SDL_GetTicks64() - lastTick) * oneOverPhysicsDeltaTimeInMS;
@@ -52,15 +58,18 @@ namespace physengine
         {
             lastTick = SDL_GetTicks64();
             
+            // @NOTE: this is the only place where `timeScale` is used. That's
+            //        because this system is designed to be running at 40fps constantly
+            //        in real time, so it doesn't slow down or speed up with time scale.
             tick();
-            entityManager->INTERNALphysicsUpdate(physicsDeltaTime);
+            entityManager->INTERNALphysicsUpdate(physicsDeltaTime * timeScale);
 
             // Wait for remaining time
             uint64_t endingTime = SDL_GetTicks64();
             uint64_t timeDiff = endingTime - lastTick;
             if (timeDiff > physicsDeltaTimeInMS)
             {
-                std::cerr << "ERROR: physics engine is running too slow. (" << (timeDiff - physicsDeltaTimeInMS) << "ns behind)" << std::endl;
+                std::cerr << "ERROR: physics engine is running too slowly. (" << (timeDiff - physicsDeltaTimeInMS) << "ns behind)" << std::endl;
             }
             else
             {
@@ -394,51 +403,61 @@ namespace physengine
         return false;
     }
 
-    void moveCapsuleAccountingForCollision(CapsulePhysicsData& cpd, vec3 deltaPosition, vec3& outNormal, float_t ccdDistance)
+    void moveCapsuleAccountingForCollision(CapsulePhysicsData& cpd, vec3 deltaPosition, bool stickToGround, vec3& outNormal, float_t ccdDistance)
     {
+        glm_vec3_zero(outNormal);  // In case if no collision happens, normal is zero'd!
+
         do
         {
-            if (glm_vec3_norm2(deltaPosition) > ccdDistance * ccdDistance)
-            {
-                // Move at a max of the ccdDistance
-                vec3 m;
-                glm_vec3_normalize_to(deltaPosition, m);
-                glm_vec3_scale(m, ccdDistance, m);
-                glm_vec3_add(cpd.basePosition, m, cpd.basePosition);
-                glm_vec3_sub(deltaPosition, m, deltaPosition);
-            }
-            else
-            {
-                // Move the rest of the way
-                glm_vec3_add(cpd.basePosition, deltaPosition, cpd.basePosition);
-                deltaPosition[0] = deltaPosition[1] = deltaPosition[2] = 0.0f;
-            }
+            vec3 deltaPositionCCD;
+            glm_vec3_copy(deltaPosition, deltaPositionCCD);
+            if (glm_vec3_norm2(deltaPosition) > ccdDistance * ccdDistance) // Move at a max of the ccdDistance
+                glm_vec3_scale_as(deltaPosition, ccdDistance, deltaPositionCCD);
+            glm_vec3_sub(deltaPosition, deltaPositionCCD, deltaPosition);
 
-            // Check for collision
+            // Move and check for collision
             glm_vec3_zero(outNormal);
             float_t numNormals = 0.0f;
+
+            glm_vec3_add(cpd.basePosition, deltaPositionCCD, cpd.basePosition);
 
             for (size_t iterations = 0; iterations < 6; iterations++)
             {
                 vec3 normal;
                 float_t penetrationDepth;
-                if (physengine::debugCheckCapsuleColliding(cpd, normal, penetrationDepth))
+                bool collided = physengine::debugCheckCapsuleColliding(cpd, normal, penetrationDepth);
+
+                // Subsequent iterations of collision are just to resolve until sitting in empty space,
+                // so only double check 1st iteration if expecting to stick to the ground.
+                if (iterations == 0 && !collided && stickToGround)
                 {
-                    glm_vec3_add(outNormal, normal, outNormal);
-                    penetrationDepth += 0.0001f;
-                    if (normal[1] >= 0.707106781187)  // >=45 degrees
-                    {
-                        // Stick to the ground
-                        cpd.basePosition[1] += penetrationDepth / normal[1];
-                    }
-                    else
-                    {
-                        vec3 penetrationDepthV3 = { penetrationDepth, penetrationDepth, penetrationDepth };
-                        glm_vec3_muladd(normal, penetrationDepthV3, cpd.basePosition);
-                    }
+                    vec3 oldPosition;
+                    glm_vec3_copy(cpd.basePosition, oldPosition);
+
+                    cpd.basePosition[1] += -ccdDistance;  // Just push straight down maximum amount to see if collides
+                    collided = physengine::debugCheckCapsuleColliding(cpd, normal, penetrationDepth);
+                    if (!collided)
+                        glm_vec3_copy(oldPosition, cpd.basePosition);  // I guess this empty space was where the capsule was supposed to go to after all!
+                }
+                
+                // Resolved into empty space.
+                // Do not proceed to do collision resolution.
+                if (!collided)
+                    break;
+
+                // Collided!
+                glm_vec3_add(outNormal, normal, outNormal);
+                penetrationDepth += 0.0001f;
+                if (normal[1] >= 0.707106781187)  // >=45 degrees
+                {
+                    // Don't slide on "level-enough" ground
+                    cpd.basePosition[1] += penetrationDepth / normal[1];
                 }
                 else
-                    break;
+                {
+                    vec3 penetrationDepthV3 = { penetrationDepth, penetrationDepth, penetrationDepth };
+                    glm_vec3_muladd(normal, penetrationDepthV3, cpd.basePosition);
+                }
             }
 
             if (numNormals != 0.0f)

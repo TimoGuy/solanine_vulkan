@@ -29,14 +29,6 @@
 
 constexpr uint64_t TIMEOUT_1_SEC = 1000000000;
 
-constexpr std::array<uint32_t, 5> BLOOM_BUFFER_HEIGHTS = {
-	512,
-	256,
-	128,
-	64,
-	32,
-};
-
 
 void VulkanEngine::init()
 {
@@ -161,6 +153,7 @@ void VulkanEngine::run()
 				.message = "Set timescale to " + std::to_string(timeScale),
 			});
 		}
+		physengine::setTimeScale(timeScale);
 		perfs[1] = SDL_GetPerformanceCounter() - perfs[1];
 
 
@@ -1583,10 +1576,11 @@ void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is 
 	//
 	// Create bloom image
 	//
-	uint32_t numBloomMips = static_cast<uint32_t>(BLOOM_BUFFER_HEIGHTS.size());
+	uint32_t numBloomMips = 5;
+	uint32_t startingBloomBufferHeight = _windowExtent.height / 2;
 	_bloomPostprocessImageExtent = {
-		.width = (uint32_t)((float_t)BLOOM_BUFFER_HEIGHTS[0] * (float_t)_windowExtent.width / (float_t)_windowExtent.height),
-		.height = BLOOM_BUFFER_HEIGHTS[0],
+		.width = (uint32_t)((float_t)startingBloomBufferHeight * (float_t)_windowExtent.width / (float_t)_windowExtent.height),
+		.height = startingBloomBufferHeight,
 	};
 	VkExtent3D bloomImgExtent = { _bloomPostprocessImageExtent.width, _bloomPostprocessImageExtent.height, 1 };
 	VkImageCreateInfo bloomImgInfo = vkinit::imageCreateInfo(VK_FORMAT_R16G16B16A16_SFLOAT, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, bloomImgExtent, numBloomMips);
