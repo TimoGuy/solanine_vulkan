@@ -182,20 +182,27 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     glm_normalize(flatCamRight);
     glm_vec3_muladds(flatCamRight, input[0], _data->worldSpaceInput);
 
-    if (glm_vec3_dot(_data->worldSpaceInput, _data->worldSpaceInput) < 0.01f)
-        _data->worldSpaceInput[0] = _data->worldSpaceInput[1] = _data->worldSpaceInput[2] = 0.0f;
+    if (glm_vec3_norm2(_data->worldSpaceInput) < 0.01f)
+        glm_vec3_zero(_data->worldSpaceInput);
     else
     {
-        _data->worldSpaceInput[0] = glm_clamp_zo(_data->worldSpaceInput[0]);
-        _data->worldSpaceInput[1] = glm_clamp_zo(_data->worldSpaceInput[1]);
-        _data->worldSpaceInput[2] = glm_clamp_zo(_data->worldSpaceInput[2]);
+        float_t magnitude = glm_clamp_zo(glm_vec3_norm(_data->worldSpaceInput));
+        glm_vec3_scale_as(_data->worldSpaceInput, magnitude, _data->worldSpaceInput);
     }
 
 
     //
     // Update state
     //
-    ;;;;;;;;;;;;;;;;;;;;;;;
+
+    //
+    // @DEBUG: @TEST: try doing some voxel collision
+    //
+    vec3 velocity;
+    glm_vec3_copy(_data->worldSpaceInput, velocity);
+    glm_vec3_scale(velocity, 0.5f, velocity);
+    physengine::moveCapsuleAccountingForCollision(*_data->cpd, velocity);
+    glm_vec3_copy(_data->cpd->basePosition, _data->position);
 }
 
 void Player::update(const float_t& deltaTime)
@@ -240,21 +247,6 @@ void Player::update(const float_t& deltaTime)
         "MaskCombatMode",
         false
     );
-
-    //
-    // @DEBUG: @TEST: try doing some voxel collision
-    //
-    vec3 velocity;
-    glm_vec3_copy(_data->worldSpaceInput, velocity);
-    vec3 verticalMovement = {
-        0.0f,
-        (input::keyWorldUpPressed ? 1.0f : 0.0f) + (input::keyWorldDownPressed ? -1.0f : 0.0f),
-        0.0f,
-    };
-    glm_vec3_add(velocity, verticalMovement, velocity);
-    glm_vec3_scale(velocity, 0.1f, velocity);
-    physengine::moveCapsuleAccountingForCollision(*_data->cpd, velocity);
-    glm_vec3_copy(_data->cpd->basePosition, _data->position);
 }
 
 void Player::lateUpdate(const float_t& deltaTime)
@@ -262,15 +254,13 @@ void Player::lateUpdate(const float_t& deltaTime)
     //
     // Update position of character and weapon
     //
-    vec3 interpPos;
-    glm_vec3_copy(_data->position, interpPos);  //physutil::getPosition(_physicsObj->interpolatedTransform);
     vec3 eulerAngles = { 0.0f, _data->facingDirection, 0.0f };
     mat4 rotation;
     glm_euler_zyx(eulerAngles, rotation);
     vec3 scale = { _data->modelSize, _data->modelSize, _data->modelSize };
 
     mat4 transform = GLM_MAT4_IDENTITY_INIT;
-    glm_translate(transform, interpPos);
+    glm_translate(transform, _data->cpd->interpolBasePosition);
     glm_mat4_mul(transform, rotation, transform);
     glm_scale(transform, scale);
     glm_mat4_copy(transform, _data->characterRenderObj->transformMatrix);

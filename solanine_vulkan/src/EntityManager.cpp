@@ -23,7 +23,7 @@ void EntityManager::INTERNALphysicsUpdate(const float_t& deltaTime)
 	{
 		Entity* ent = *it;
 		if (ent->_enablePhysicsUpdate)
-			ent->update(deltaTime);
+			ent->physicsUpdate(deltaTime);
 	}
 }
 
