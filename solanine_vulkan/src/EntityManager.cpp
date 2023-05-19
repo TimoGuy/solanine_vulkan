@@ -14,7 +14,7 @@ EntityManager::~EntityManager()
 		delete _entities[i];
 }
 
-void EntityManager::INTERNALphysicsUpdate(const float_t& deltaTime)
+void EntityManager::INTERNALphysicsUpdate(const float_t& physicsDeltaTime)
 {
 	std::lock_guard<std::mutex> lg(_entityCollectionMutex);
 
@@ -23,7 +23,7 @@ void EntityManager::INTERNALphysicsUpdate(const float_t& deltaTime)
 	{
 		Entity* ent = *it;
 		if (ent->_enablePhysicsUpdate)
-			ent->physicsUpdate(deltaTime);
+			ent->physicsUpdate(physicsDeltaTime);
 	}
 }
 

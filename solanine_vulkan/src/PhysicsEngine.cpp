@@ -352,7 +352,7 @@ namespace physengine
 
                         vec3 deltaPoint;
                         glm_vec3_sub(betterPoint, boundedPoint, deltaPoint);
-                        float_t dpSqrDist = glm_vec3_dot(deltaPoint, deltaPoint);
+                        float_t dpSqrDist = glm_vec3_norm2(deltaPoint);
                         if (dpSqrDist < cpd.radius * cpd.radius && dpSqrDist < lowestDpSqrDist)
                         {
                             // Collision successful
@@ -394,11 +394,11 @@ namespace physengine
         return false;
     }
 
-    void moveCapsuleAccountingForCollision(CapsulePhysicsData& cpd, vec3 deltaPosition, float_t ccdDistance)
+    void moveCapsuleAccountingForCollision(CapsulePhysicsData& cpd, vec3 deltaPosition, vec3& outNormal, float_t ccdDistance)
     {
         do
         {
-            if (glm_vec3_dot(deltaPosition, deltaPosition) > ccdDistance * ccdDistance)
+            if (glm_vec3_norm2(deltaPosition) > ccdDistance * ccdDistance)
             {
                 // Move at a max of the ccdDistance
                 vec3 m;
@@ -415,12 +415,16 @@ namespace physengine
             }
 
             // Check for collision
+            glm_vec3_zero(outNormal);
+            float_t numNormals = 0.0f;
+
             for (size_t iterations = 0; iterations < 6; iterations++)
             {
                 vec3 normal;
                 float_t penetrationDepth;
                 if (physengine::debugCheckCapsuleColliding(cpd, normal, penetrationDepth))
                 {
+                    glm_vec3_add(outNormal, normal, outNormal);
                     penetrationDepth += 0.0001f;
                     if (normal[1] >= 0.707106781187)  // >=45 degrees
                     {
@@ -436,7 +440,10 @@ namespace physengine
                 else
                     break;
             }
-        } while (glm_vec3_dot(deltaPosition, deltaPosition) > 0.000001f);
+
+            if (numNormals != 0.0f)
+                glm_vec3_scale(outNormal, 1.0f / numNormals, outNormal);
+        } while (glm_vec3_norm2(deltaPosition) > 0.000001f);
     }
 
     void setPhysicsObjectInterpolation(const float_t& physicsAlpha)

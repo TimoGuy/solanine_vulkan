@@ -27,6 +27,7 @@ struct Player_XData
     physengine::CapsulePhysicsData* cpd;
 
     vec3 worldSpaceInput = GLM_VEC3_ZERO_INIT;
+    float_t gravityForce = 0.0f;
 
     // Tweak Props
     vec3 position;
@@ -137,6 +138,7 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
     _data->camera->mainCamMode.setMainCamTargetObject(_data->characterRenderObj);  // @NOTE: I believe that there should be some kind of main camera system that targets the player by default but when entering different volumes etc. the target changes depending.... essentially the system needs to be more built out imo
 
     _data->cpd = physengine::createCapsule(0.5f, 1.0f);  // Total height is 2, but r*2 is subtracted to get the capsule height (i.e. the line segment length that the capsule rides along)
+    glm_vec3_copy(_data->position, _data->cpd->basePosition);
 }
 
 Player::~Player()
@@ -188,6 +190,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     {
         float_t magnitude = glm_clamp_zo(glm_vec3_norm(_data->worldSpaceInput));
         glm_vec3_scale_as(_data->worldSpaceInput, magnitude, _data->worldSpaceInput);
+        _data->facingDirection = atan2f(_data->worldSpaceInput[0], _data->worldSpaceInput[2]);
     }
 
 
@@ -198,47 +201,24 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     //
     // @DEBUG: @TEST: try doing some voxel collision
     //
+    constexpr float_t gravity = -0.98f;
+    constexpr float_t jumpHeight = 2.0f;
+    _data->gravityForce += gravity * physicsDeltaTime;
+    if (input::onKeyJumpPress)
+        _data->gravityForce = std::sqrtf(jumpHeight * 2.0f * std::abs(gravity * physicsDeltaTime));
+
     vec3 velocity;
-    glm_vec3_copy(_data->worldSpaceInput, velocity);
-    glm_vec3_scale(velocity, 0.5f, velocity);
-    physengine::moveCapsuleAccountingForCollision(*_data->cpd, velocity);
+    glm_vec3_scale(_data->worldSpaceInput, 0.25f, velocity);
+    glm_vec3_add(velocity, vec3{ 0.0f, _data->gravityForce, 0.0f }, velocity);
+    vec3 normal;
+    physengine::moveCapsuleAccountingForCollision(*_data->cpd, velocity, normal);
+    if (normal[1] >= 0.707106781187)  // >=45 degrees
+        _data->gravityForce = 0.0f;
     glm_vec3_copy(_data->cpd->basePosition, _data->position);
 }
 
 void Player::update(const float_t& deltaTime)
 {
-    //
-    // Calculate render object transform
-    //
-    vec2 input = GLM_VEC2_ZERO_INIT;  // @COPYPASTA
-    input[0] += input::keyLeftPressed ? -1.0f : 0.0f;
-    input[0] += input::keyRightPressed ? 1.0f : 0.0f;
-    input[1] += input::keyUpPressed ? 1.0f : 0.0f;
-    input[1] += input::keyDownPressed ? -1.0f : 0.0f;
-
-    if (_data->camera->freeCamMode.enabled || ImGui::GetIO().WantTextInput)  // @DEBUG: for the level editor
-    {
-        input[0] = input[1] = 0.0f;
-    }
-
-    vec3 flatCameraFacingDirection = {
-        _data->camera->sceneCamera.facingDirection[0],
-        0.0f,
-        _data->camera->sceneCamera.facingDirection[2]
-    };
-    glm_normalize(flatCameraFacingDirection);
-
-    glm_vec3_scale(flatCameraFacingDirection, input[1], _data->worldSpaceInput);
-    vec3 up = { 0.0f, 1.0f, 0.0f };
-    vec3 flatCamRight;
-    glm_vec3_cross(flatCameraFacingDirection, up, flatCamRight);
-    glm_normalize(flatCamRight);
-    glm_vec3_muladds(flatCamRight, input[0], _data->worldSpaceInput);
-
-    // Update render transform
-    if (glm_vec3_dot(_data->worldSpaceInput, _data->worldSpaceInput) > 0.01f)
-        _data->facingDirection = atan2f(_data->worldSpaceInput[0], _data->worldSpaceInput[2]);
-
     //
     // Update mask for animation
     // @TODO: there is popping for some reason. Could be how the transitions/triggers work in the animator controller or could be a different underlying issue. Figure it out pls!  -Timo
@@ -297,6 +277,7 @@ void Player::reportMoved(mat4* matrixMoved)
     vec3 sca;
     glm_decompose(*matrixMoved, pos, rot, sca);
     glm_vec3_copy(pos, _data->position);
+    glm_vec3_copy(_data->position, _data->cpd->basePosition);
 }
 
 void Player::renderImGui()
