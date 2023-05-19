@@ -2399,37 +2399,34 @@ namespace vkglTF
 					continue;
 				}
 
-				for (size_t i = 0; i < sampler.inputs.size() - 1; i++)
+				for (size_t i = 0, inputsSizeSub1 = sampler.inputs.size() - 1; i < inputsSizeSub1; i++)
 				{
 					if (mp.time >= sampler.inputs[i] && mp.time <= sampler.inputs[i + 1])
 					{
-						float u = std::max(0.0f, mp.time - sampler.inputs[i]) / (sampler.inputs[i + 1] - sampler.inputs[i]);
-						if (u <= 1.0f)
+						float_t u = std::max(0.0f, mp.time - sampler.inputs[i]) / (sampler.inputs[i + 1] - sampler.inputs[i]);
+						switch (channel.path)
 						{
-							switch (channel.path)
+							case vkglTF::AnimationChannel::PathType::TRANSLATION:
 							{
-								case vkglTF::AnimationChannel::PathType::TRANSLATION:
-								{
-									vec4 translation;
-									glm_vec4_lerp(sampler.outputsVec4[i].raw, sampler.outputsVec4[i + 1].raw, u, translation);
-									glm_vec4_copy3(translation, channel.node->translation);
-									break;
-								}
-								case vkglTF::AnimationChannel::PathType::SCALE:
-								{
-									vec4 scale;
-									glm_vec4_lerp(sampler.outputsVec4[i].raw, sampler.outputsVec4[i + 1].raw, u, scale);
-									glm_vec4_copy3(scale, channel.node->scale);
-									break;
-								}
-								case vkglTF::AnimationChannel::PathType::ROTATION:
-								{
-									glm_quat_nlerp(sampler.outputsVec4[i].raw, sampler.outputsVec4[i + 1].raw, u, channel.node->rotation);
-									break;
-								}
+								vec4 translation;
+								glm_vec4_lerp(sampler.outputsVec4[i].raw, sampler.outputsVec4[i + 1].raw, u, translation);
+								glm_vec4_copy3(translation, channel.node->translation);
+								break;
 							}
-							updated = true;
+							case vkglTF::AnimationChannel::PathType::SCALE:
+							{
+								vec4 scale;
+								glm_vec4_lerp(sampler.outputsVec4[i].raw, sampler.outputsVec4[i + 1].raw, u, scale);
+								glm_vec4_copy3(scale, channel.node->scale);
+								break;
+							}
+							case vkglTF::AnimationChannel::PathType::ROTATION:
+							{
+								glm_quat_nlerp(sampler.outputsVec4[i].raw, sampler.outputsVec4[i + 1].raw, u, channel.node->rotation);
+								break;
+							}
 						}
+						updated = true;
 					}
 				}
 			}
