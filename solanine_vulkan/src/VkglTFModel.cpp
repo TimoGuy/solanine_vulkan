@@ -1946,7 +1946,7 @@ namespace vkglTF
 	Animator::UniformBuffer Animator::emptyUBuffer;
 	Animator::UniformBlock  Animator::emptyUBlock;
 
-	Animator::Animator(vkglTF::Model* model, std::vector<AnimatorCallback>& eventCallbacks) : model(model), eventCallbacks(eventCallbacks)
+	Animator::Animator(vkglTF::Model* model, std::vector<AnimatorCallback>& eventCallbacks) : model(model), eventCallbacks(eventCallbacks), twitchAngle(0.0f)
 	{
 		if (model == nullptr)
 			return;  // @NOTE: emptyAnimator does this on purpose
@@ -2363,6 +2363,11 @@ namespace vkglTF
 			<< "WARNING: mask name \"" << maskName << "\" not found. Nothing was changed." << std::endl;
 	}
 
+	void Animator::setTwitchAngle(float_t radians)
+	{
+		twitchAngle = radians;
+	}
+
 	void Animator::updateAnimation()
 	{
 		bool updated = false;
@@ -2422,7 +2427,12 @@ namespace vkglTF
 							}
 							case vkglTF::AnimationChannel::PathType::ROTATION:
 							{
-								glm_quat_nlerp(sampler.outputsVec4[i].raw, sampler.outputsVec4[i + 1].raw, u, channel.node->rotation);
+								versor r0, r1;
+								glm_quat_copy(sampler.outputsVec4[i].raw, r0);
+								glm_quat_copy(sampler.outputsVec4[i + 1].raw, r1);
+								r0[3] += twitchAngle;
+								r1[3] += twitchAngle;
+								glm_quat_nlerp(r0, r1, u, channel.node->rotation);
 								break;
 							}
 						}

@@ -4111,17 +4111,9 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 	//
 	static float_t gamestateInfoWindowHeight = 0.0f;
 	ImGui::SetNextWindowPos(ImVec2(_windowExtent.width * 0.5f + windowPadding, _windowExtent.height - gamestateInfoWindowHeight), ImGuiCond_Always);		// @NOTE: the ImGuiCond_Always means that this line will execute always, when set to once, this line will be ignored after the first time it's called
-	ImGui::Begin("##GameState Info", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs);
+	ImGui::Begin("##GameState Info", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
 	{
 		ImGui::Text(("Health: " + std::to_string(globalState::savedPlayerHealth) + " / " + std::to_string(globalState::savedPlayerMaxHealth)).c_str());
-
-		/*
-		ImGui::Text((std::format("{:.2f}", _debugStats.renderTimesMS[_debugStats.renderTimesMSHeadIndex]) + "ms").c_str());
-		ImGui::Text(("Frame : " + std::to_string(_frameNumber)).c_str());
-
-		ImGui::Text(("Render Times :     [0, " + std::format("{:.2f}", _debugStats.highestRenderTime) + "]").c_str());
-		ImGui::PlotHistogram("##Render Times Histogram", _debugStats.renderTimesMS, (int32_t)_debugStats.renderTimesMSCount, (int32_t)_debugStats.renderTimesMSHeadIndex, "", 0.0f, _debugStats.highestRenderTime, ImVec2(256, 24.0f));
-		*/
 
 		gamestateInfoWindowHeight = ImGui::GetWindowHeight();
 	}

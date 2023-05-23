@@ -1,5 +1,6 @@
 #include "Player.h"
 
+#include <cstdlib>
 #include "Imports.h"
 #include "PhysUtil.h"
 #include "PhysicsEngine.h"
@@ -29,6 +30,9 @@ struct Player_XData
     vec3 worldSpaceInput = GLM_VEC3_ZERO_INIT;
     float_t gravityForce = 0.0f;
     bool    inputFlagJump = false;
+    bool    inputFlagAttack = false;
+    float_t attackTwitchAngle = 0.0f;
+    float_t attackTwitchAngleReturnSpeed = 3.0f;
     bool    prevIsGrounded = false;
     vec3    prevGroundNormal = GLM_VEC3_ZERO_INIT;
 
@@ -199,11 +203,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
 
 
     //
-    // Update state
-    //
-
-    //
-    // @DEBUG: @TEST: try doing some voxel collision
+    // Update movement and collision
     //
     constexpr float_t gravity = -0.98f / 0.025f;  // @TODO: put physicsengine constexpr of `physicsDeltaTime` into the header file and rename it to `constantPhysicsDeltaTime` and replace the 0.025f with it.
     constexpr float_t jumpHeight = 2.0f;
@@ -237,11 +237,21 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         _data->gravityForce = 0.0f;
     else
         std::cout << "GROUNDED: " << (jt++) << std::endl;
+
+    //
+    // Update Attack
+    //
+    if (_data->inputFlagAttack)
+    {
+        _data->attackTwitchAngle = (float_t)std::rand() / (RAND_MAX / 2.0f) > 0.5f ? glm_rad(2.0f) : glm_rad(-2.0f);
+        _data->inputFlagAttack = false;
+    }
 }
 
 void Player::update(const float_t& deltaTime)
 {
     _data->inputFlagJump |= input::onKeyJumpPress;
+    _data->inputFlagAttack |= input::onLMBPress;
 
     //
     // Update mask for animation
@@ -251,6 +261,9 @@ void Player::update(const float_t& deltaTime)
         "MaskCombatMode",
         false
     );
+    
+    _data->characterRenderObj->animator->setTwitchAngle(_data->attackTwitchAngle);
+    _data->attackTwitchAngle = glm_lerp(_data->attackTwitchAngle, 0.0f, std::abs(_data->attackTwitchAngle) * _data->attackTwitchAngleReturnSpeed * 60.0f * deltaTime);
 }
 
 void Player::lateUpdate(const float_t& deltaTime)
@@ -307,4 +320,5 @@ void Player::reportMoved(mat4* matrixMoved)
 void Player::renderImGui()
 {
     ImGui::DragFloat("modelSize", &_data->modelSize);
+    ImGui::DragFloat("attackTwitchAngleReturnSpeed", &_data->attackTwitchAngleReturnSpeed);
 }

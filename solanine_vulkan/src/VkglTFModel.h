@@ -383,12 +383,14 @@ namespace vkglTF
 		void runEvent(const std::string& eventName);  // @NOTE: this is really naive btw
 		void setTrigger(const std::string& triggerName);
 		void setMask(const std::string& maskName, bool enabled);
+		void setTwitchAngle(float_t radians);
 
 	private:
 		vkglTF::Model*                model;
 		VulkanEngine*                 engine;
 		StateMachine                  animStateMachineCopy;
 		std::vector<AnimatorCallback> eventCallbacks;
+		float_t                       twitchAngle;
 
 		void updateAnimation();
 		void updateJointMatrices(uint32_t animatorMeshId, vkglTF::Skin* skin, mat4& m);
