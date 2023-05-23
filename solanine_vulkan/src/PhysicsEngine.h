@@ -17,7 +17,7 @@ namespace physengine
         //
         // @NOTE: VOXEL DATA GUIDE
         //
-        // Will implement:
+        // Currently implemented:
         //        0: empty space
         //        1: filled space
         //

@@ -409,6 +409,10 @@ namespace physengine
 
         do
         {
+            // // @NOTE: keep this code here. It works sometimes (if the edge capsule walked up to is flat) and is useful for reference.
+            // vec3 originalPosition;
+            // glm_vec3_copy(cpd.basePosition, originalPosition);
+
             vec3 deltaPositionCCD;
             glm_vec3_copy(deltaPosition, deltaPositionCCD);
             if (glm_vec3_norm2(deltaPosition) > ccdDistance * ccdDistance) // Move at a max of the ccdDistance
@@ -462,6 +466,39 @@ namespace physengine
 
             if (numNormals != 0.0f)
                 glm_vec3_scale(outNormal, 1.0f / numNormals, outNormal);
+
+            // // Keep capsule from falling off the edge!
+            // // @NOTE: keep this code here. It works sometimes (if the edge capsule walked up to is flat) and is useful for reference.
+            // if (stickToGround && (glm_vec3_norm2(outNormal) < 0.000001f || outNormal[1] < 0.707106781187))
+            // {
+            //     if (glm_vec3_norm2(outNormal) > 0.000001f && glm_vec3_norm2(deltaPosition) > 0.000001f)
+            //     {
+            //         // Redirect rest of ccd movement along the cross of up and the bad normal
+            //         vec3 upXBadNormal;
+            //         glm_cross(vec3{ 0.0f, 1.0f, 0.0f }, outNormal, upXBadNormal);
+            //         glm_normalize(upXBadNormal);
+
+            //         vec3 deltaPositionFlat = {
+            //             deltaPosition[0] + deltaPositionCCD[0],
+            //             0.0f,
+            //             deltaPosition[2] + deltaPositionCCD[2],
+            //         };
+            //         float_t deltaPositionY = deltaPosition[1] + deltaPositionCCD[1];
+            //         float_t deltaPositionFlatLength = glm_vec3_norm(deltaPositionFlat);
+            //         glm_normalize(deltaPositionFlat);
+
+            //         float_t slideSca = glm_dot(upXBadNormal, deltaPositionFlat);
+            //         glm_vec3_scale(upXBadNormal, slideSca * deltaPositionFlatLength, deltaPosition);
+            //         deltaPosition[1] = deltaPositionY;
+            //     }
+
+
+            //     std::cout << "DONT JUMP!\tX: " << outNormal[0] << "\tY: " << outNormal[1] << "\tZ: " << outNormal[2] << std::endl;
+            //     outNormal[0] = outNormal[2] = 0.0f;
+            //     outNormal[1] = 1.0f;
+
+            //     glm_vec3_copy(originalPosition, cpd.basePosition);
+            // }
         } while (glm_vec3_norm2(deltaPosition) > 0.000001f);
     }
 

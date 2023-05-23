@@ -171,6 +171,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     if (_data->camera->freeCamMode.enabled || ImGui::GetIO().WantTextInput)  // @DEBUG: for the level editor
     {
         input[0] = input[1] = 0.0f;
+        _data->inputFlagJump = false;
     }
 
     vec3 flatCameraFacingDirection = {
