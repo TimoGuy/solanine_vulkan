@@ -76,9 +76,14 @@ void SceneCamera::recalculateCascadeViewProjs(GPUPBRShadingProps& pbrShadingProp
 			{ -1.0f, -1.0f,  1.0f },
 		};
 
-		// Project frustum corners into world space
+		// Recreate inverse projectionview matrix with shadow zFar instead
 		mat4 invCam;
-		glm_mat4_inv(gpuCameraData.projectionView, invCam);
+		glm_perspective(fov, aspect, zNear, zFarShadow, invCam);
+		invCam[1][1] *= -1.0f;
+		glm_mat4_mul(invCam, gpuCameraData.view, invCam);
+		glm_mat4_inv(invCam, invCam);
+
+		// Project frustum corners into world space
 		for (uint32_t i = 0; i < 8; i++)
 		{
 			vec4 frustumCornerV4 = {
@@ -142,9 +147,6 @@ void SceneCamera::recalculateCascadeViewProjs(GPUPBRShadingProps& pbrShadingProp
 
 		lastSplitDist = cascadeSplits[i];
 	}
-
-	// Update far plane ratio
-	pbrShadingProps.zFarShadowZFarRatio = zFarShadow / zFar;
 }
 
 //

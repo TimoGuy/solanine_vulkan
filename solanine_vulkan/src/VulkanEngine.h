@@ -27,7 +27,6 @@ struct GPUPBRShadingProps
 	float_t scaleIBLAmbient = 1.0f;
 	vec4 cascadeSplits;
 	mat4 cascadeViewProjMats[SHADOWMAP_CASCADES];
-	float_t zFarShadowZFarRatio;
 	float_t debugViewInputs = 0;
 	float_t debugViewEquation = 0;
 };
