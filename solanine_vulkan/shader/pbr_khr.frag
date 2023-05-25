@@ -4,9 +4,6 @@
 
 #version 460
 
-// @TODO: add in this value as specialized constant... eh or not @MAYBE
-#define SHADOW_MAP_CASCADE_COUNT 4
-
 layout (location = 0) in vec3 inWorldPos;
 layout (location = 1) in vec3 inViewPos;
 layout (location = 2) in vec3 inNormal;
@@ -27,6 +24,7 @@ layout(set = 0, binding = 0) uniform CameraBuffer
 	vec3 cameraPosition;
 } cameraData;
 
+#define SHADOW_MAP_CASCADE_COUNT 4
 layout (set = 0, binding = 1) uniform UBOParams
 {
 	vec4 lightDir;
@@ -40,37 +38,47 @@ layout (set = 0, binding = 1) uniform UBOParams
 	float debugViewEquation;
 } uboParams;
 
-layout (set = 0, binding = 2) uniform samplerCube samplerIrradiance;
-layout (set = 0, binding = 3) uniform samplerCube prefilteredMap;
-layout (set = 0, binding = 4) uniform sampler2D samplerBRDFLUT;
+layout (set = 0, binding = 2) uniform samplerCube    samplerIrradiance;
+layout (set = 0, binding = 3) uniform samplerCube    prefilteredMap;
+layout (set = 0, binding = 4) uniform sampler2D      samplerBRDFLUT;
 layout (set = 0, binding = 5) uniform sampler2DArray shadowMap;
 
 //
 // Material bindings
 //
-layout (set = 3, binding = 0) uniform sampler2D colorMap;
-layout (set = 3, binding = 1) uniform sampler2D physicalDescriptorMap;
-layout (set = 3, binding = 2) uniform sampler2D normalMap;
-layout (set = 3, binding = 3) uniform sampler2D aoMap;
-layout (set = 3, binding = 4) uniform sampler2D emissiveMap;
+#define MAX_NUM_MAPS 128
+layout (set = 3, binding = 0) uniform sampler2D colorMaps[MAX_NUM_MAPS];
+layout (set = 3, binding = 1) uniform sampler2D physicalDescriptorMaps[MAX_NUM_MAPS];
+layout (set = 3, binding = 2) uniform sampler2D normalMaps[MAX_NUM_MAPS];
+layout (set = 3, binding = 3) uniform sampler2D aoMaps[MAX_NUM_MAPS];
+layout (set = 3, binding = 4) uniform sampler2D emissiveMaps[MAX_NUM_MAPS];
 
-layout (push_constant) uniform Material
+#define MAX_NUM_MATERIALS 256
+layout (set = 3, binding = 5) uniform Material
 {
-	vec4 baseColorFactor;
-	vec4 emissiveFactor;
-	vec4 diffuseFactor;
-	vec4 specularFactor;
+	// Texture map references
+	uint colorMapIndex;
+	uint physicalDescriptorMapIndex;
+	uint normalMapIndex;
+	uint aoMapIndex;
+	uint emissiveMapIndex;
+
+	// Material properties
+	vec4  baseColorFactor;
+	vec4  emissiveFactor;
+	vec4  diffuseFactor;
+	vec4  specularFactor;
 	float workflow;
-	int baseColorTextureSet;
-	int physicalDescriptorTextureSet;
-	int normalTextureSet;
-	int occlusionTextureSet;
-	int emissiveTextureSet;
+	int   baseColorTextureSet;
+	int   physicalDescriptorTextureSet;
+	int   normalTextureSet;
+	int   occlusionTextureSet;
+	int   emissiveTextureSet;
 	float metallicFactor;
 	float roughnessFactor;
 	float alphaMask;
 	float alphaMaskCutoff;
-} material;
+} materials[MAX_NUM_MATERIALS];
 
 // Encapsulate the various inputs used by the various functions in the shading equation
 // We store values in this struct to simplify the integration of alternative implementations
@@ -84,11 +92,11 @@ struct PBRInfo
 	float VdotH;                  // cos angle between view direction and half vector
 	float perceptualRoughness;    // roughness value, as authored by the model creator (input to shader)
 	float metalness;              // metallic value at the surface
-	vec3 reflectance0;            // full reflectance color (normal incidence angle)
-	vec3 reflectance90;           // reflectance color at grazing angle
+	vec3  reflectance0;            // full reflectance color (normal incidence angle)
+	vec3  reflectance90;           // reflectance color at grazing angle
 	float alphaRoughness;         // roughness mapped to a more linear change in the roughness (proposed by [2])
-	vec3 diffuseColor;            // color contribution from diffuse lighting
-	vec3 specularColor;           // color contribution from specular lighting
+	vec3  diffuseColor;            // color contribution from diffuse lighting
+	vec3  specularColor;           // color contribution from specular lighting
 };
 
 const float M_PI = 3.141592653589793;

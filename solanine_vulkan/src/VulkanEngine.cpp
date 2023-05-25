@@ -1145,21 +1145,25 @@ void VulkanEngine::initVulkan()
 	// Spit out phsyical device properties
 	//
 	std::cout << "[Chosen Physical Device Properties]" << std::endl;
-	std::cout << "API_VERSION                 " << VK_API_VERSION_MAJOR(_gpuProperties.apiVersion) << "." << VK_API_VERSION_MINOR(_gpuProperties.apiVersion) << "." << VK_API_VERSION_PATCH(_gpuProperties.apiVersion) << "." << VK_API_VERSION_VARIANT(_gpuProperties.apiVersion) << std::endl;
-	std::cout << "DRIVER_VERSION              " << _gpuProperties.driverVersion << std::endl;
-	std::cout << "VENDOR_ID                   " << _gpuProperties.vendorID << std::endl;
-	std::cout << "DEVICE_ID                   " << _gpuProperties.deviceID << std::endl;
-	std::cout << "DEVICE_TYPE                 " << _gpuProperties.deviceType << std::endl;
-	std::cout << "DEVICE_NAME                 " << _gpuProperties.deviceName << std::endl;
-	std::cout << "MAX_IMAGE_DIMENSION_1D      " << _gpuProperties.limits.maxImageDimension1D << std::endl;
-	std::cout << "MAX_IMAGE_DIMENSION_2D      " << _gpuProperties.limits.maxImageDimension2D << std::endl;
-	std::cout << "MAX_IMAGE_DIMENSION_3D      " << _gpuProperties.limits.maxImageDimension3D << std::endl;
-	std::cout << "MAX_IMAGE_DIMENSION_CUBE    " << _gpuProperties.limits.maxImageDimensionCube << std::endl;
-	std::cout << "MAX_IMAGE_ARRAY_LAYERS      " << _gpuProperties.limits.maxImageArrayLayers << std::endl;
-	std::cout << "MAX_SAMPLER_ANISOTROPY      " << _gpuProperties.limits.maxSamplerAnisotropy << std::endl;
-	std::cout << "MAX_BOUND_DESCRIPTOR_SETS   " << _gpuProperties.limits.maxBoundDescriptorSets << std::endl;
-	std::cout << "MINIMUM_BUFFER_ALIGNMENT    " << _gpuProperties.limits.minUniformBufferOffsetAlignment << std::endl;
-	std::cout << "MAX_COLOR_ATTACHMENTS       " << _gpuProperties.limits.maxColorAttachments << std::endl;
+	std::cout << "API_VERSION                          " << VK_API_VERSION_MAJOR(_gpuProperties.apiVersion) << "." << VK_API_VERSION_MINOR(_gpuProperties.apiVersion) << "." << VK_API_VERSION_PATCH(_gpuProperties.apiVersion) << "." << VK_API_VERSION_VARIANT(_gpuProperties.apiVersion) << std::endl;
+	std::cout << "DRIVER_VERSION                       " << _gpuProperties.driverVersion << std::endl;
+	std::cout << "VENDOR_ID                            " << _gpuProperties.vendorID << std::endl;
+	std::cout << "DEVICE_ID                            " << _gpuProperties.deviceID << std::endl;
+	std::cout << "DEVICE_TYPE                          " << _gpuProperties.deviceType << std::endl;
+	std::cout << "DEVICE_NAME                          " << _gpuProperties.deviceName << std::endl;
+	std::cout << "MAX_IMAGE_DIMENSION_1D               " << _gpuProperties.limits.maxImageDimension1D << std::endl;
+	std::cout << "MAX_IMAGE_DIMENSION_2D               " << _gpuProperties.limits.maxImageDimension2D << std::endl;
+	std::cout << "MAX_IMAGE_DIMENSION_3D               " << _gpuProperties.limits.maxImageDimension3D << std::endl;
+	std::cout << "MAX_IMAGE_DIMENSION_CUBE             " << _gpuProperties.limits.maxImageDimensionCube << std::endl;
+	std::cout << "MAX_IMAGE_ARRAY_LAYERS               " << _gpuProperties.limits.maxImageArrayLayers << std::endl;
+	std::cout << "MAX_SAMPLER_ANISOTROPY               " << _gpuProperties.limits.maxSamplerAnisotropy << std::endl;
+	std::cout << "MAX_BOUND_DESCRIPTOR_SETS            " << _gpuProperties.limits.maxBoundDescriptorSets << std::endl;
+	std::cout << "MINIMUM_BUFFER_ALIGNMENT             " << _gpuProperties.limits.minUniformBufferOffsetAlignment << std::endl;
+	std::cout << "MAX_COLOR_ATTACHMENTS                " << _gpuProperties.limits.maxColorAttachments << std::endl;
+	std::cout << "MAX_DRAW_INDIRECT_COUNT              " << _gpuProperties.limits.maxDrawIndirectCount << std::endl;
+	std::cout << "MAX_DESCRIPTOR_SET_SAMPLED_IMAGES    " << _gpuProperties.limits.maxDescriptorSetSampledImages << std::endl;
+	std::cout << "MAX_DESCRIPTOR_SET_SAMPLERS          " << _gpuProperties.limits.maxDescriptorSetSamplers << std::endl;
+	std::cout << "MAX_SAMPLER_ALLOCATION_COUNT         " << _gpuProperties.limits.maxSamplerAllocationCount << std::endl;
 	std::cout << std::endl;
 
 	vkinit::_maxSamplerAnisotropy = _gpuProperties.limits.maxSamplerAnisotropy;
@@ -1170,7 +1174,7 @@ void VulkanEngine::initSwapchain()
 	vkb::SwapchainBuilder swapchainBuilder{ _chosenGPU, _device, _surface };
 	vkb::Swapchain vkbSwapchain = swapchainBuilder
 		.use_default_format_selection()
-		.set_desired_present_mode(VK_PRESENT_MODE_MAILBOX_KHR)		// @NOTE: this is "soft" v-sync, where it won't go above the monitor hertz, but it won't immediately go down to 1/2 the framerate if dips below.
+		.set_desired_present_mode(VK_PRESENT_MODE_IMMEDIATE_KHR)		// @NOTE: this is "soft" v-sync, where it won't go above the monitor hertz, but it won't immediately go down to 1/2 the framerate if dips below.
 		.set_desired_extent(_windowExtent.width, _windowExtent.height)
 		.build()
 		.value();
