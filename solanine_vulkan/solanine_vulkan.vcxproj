@@ -183,6 +183,7 @@ copy $(SolutionDir)libs\cglm\cglm.dll $(OutDirfullPath)cglm.dll</Command>
     <ClInclude Include="src\VoxelField.h" />
     <ClInclude Include="src\PhysicsEngine.h" />
     <ClInclude Include="src\HotswapResources.h" />
+    <ClInclude Include="src\VkDescriptorBuilderUtil.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\AudioEngine.cpp" />
@@ -225,6 +226,7 @@ copy $(SolutionDir)libs\cglm\cglm.dll $(OutDirfullPath)cglm.dll</Command>
     <ClCompile Include="src\VoxelField.cpp" />
     <ClCompile Include="src\PhysicsEngine.cpp" />
     <ClCompile Include="src\HotswapResources.cpp" />
+    <ClCompile Include="src\VkDescriptorBuilderUtil.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\core\core.vcxproj">

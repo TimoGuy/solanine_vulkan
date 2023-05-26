@@ -34,9 +34,23 @@ layout(std140, set = 1, binding = 0) readonly buffer ObjectBuffer
 } objectBuffer;
 
 
+// Instance ID Pointers
+// @COPYPASTA
+struct InstancePointer
+{
+	uint objectID;
+	uint materialID;
+};
+
+layout(std140, set = 2, binding = 0) readonly buffer InstancePtrBuffer
+{
+	InstancePointer pointers[];
+} instancePtrBuffer;
+
+
 // Skeletal Animation/Skinning
 #define MAX_NUM_JOINTS 128
-layout (set = 2, binding = 0) uniform SkeletonAnimationNode
+layout (set = 4, binding = 0) uniform SkeletonAnimationNode
 {
 	mat4 matrix;
 	mat4 jointMatrix[MAX_NUM_JOINTS];

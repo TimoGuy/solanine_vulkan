@@ -27,13 +27,13 @@ layout(set = 0, binding = 0) uniform CameraBuffer
 #define SHADOW_MAP_CASCADE_COUNT 4
 layout (set = 0, binding = 1) uniform UBOParams
 {
-	vec4 lightDir;
+	vec4  lightDir;
 	float exposure;
 	float gamma;
 	float prefilteredCubemapMipLevels;
 	float scaleIBLAmbient;
-	vec4 cascadeSplits;
-	mat4 cascadeViewProjMat[SHADOW_MAP_CASCADE_COUNT];
+	vec4  cascadeSplits;
+	mat4  cascadeViewProjMat[SHADOW_MAP_CASCADE_COUNT];
 	float debugViewInputs;
 	float debugViewEquation;
 } uboParams;
@@ -42,6 +42,21 @@ layout (set = 0, binding = 2) uniform samplerCube    samplerIrradiance;
 layout (set = 0, binding = 3) uniform samplerCube    prefilteredMap;
 layout (set = 0, binding = 4) uniform sampler2D      samplerBRDFLUT;
 layout (set = 0, binding = 5) uniform sampler2DArray shadowMap;
+
+
+// Instance ID Pointers
+// @COPYPASTA
+struct InstancePointer
+{
+	uint objectID;
+	uint materialID;
+};
+
+layout(std140, set = 2, binding = 0) readonly buffer InstancePtrBuffer
+{
+	InstancePointer pointers[];
+} instancePtrBuffer;
+
 
 //
 // Material bindings
@@ -85,10 +100,6 @@ layout (set = 3, binding = 5) uniform Material
 	MaterialParam params[MAX_NUM_MATERIALS];
 } materialCollection;
 
-// @TODO: Idk if this will be final, but something like this would be great. Just the ability to use gl_BaseInstanceID to translate into a material index.
-#define RENDER_OBJECTS_MAX_CAPACITY 10000
-layout (set = 3, binding = 6) uniform uint instanceIDToMaterialIndex[RENDER_OBJECTS_MAX_CAPACITY];
-
 // Encapsulate the various inputs used by the various functions in the shading equation
 // We store values in this struct to simplify the integration of alternative implementations
 // of the shading terms, outlined in the Readme.MD Appendix.
@@ -121,12 +132,12 @@ vec4 SRGBtoLINEAR(vec4 srgbIn)
 {
 	#ifdef MANUAL_SRGB
 	#ifdef SRGB_FAST_APPROXIMATION
-	vec3 linOut = pow(srgbIn.xyz,vec3(2.2));
+	vec3 linOut = pow(srgbIn.xyz, vec3(2.2));
 	#else //SRGB_FAST_APPROXIMATION
-	vec3 bLess = step(vec3(0.04045),srgbIn.xyz);
-	vec3 linOut = mix( srgbIn.xyz/vec3(12.92), pow((srgbIn.xyz+vec3(0.055))/vec3(1.055),vec3(2.4)), bLess );
+	vec3 bLess = step(vec3(0.04045), srgbIn.xyz);
+	vec3 linOut = mix(srgbIn.xyz / vec3(12.92), pow((srgbIn.xyz + vec3(0.055)) / vec3(1.055), vec3(2.4)), bLess);
 	#endif //SRGB_FAST_APPROXIMATION
-	return vec4(linOut,srgbIn.w);
+	return vec4(linOut, srgbIn.w);
 	#else //MANUAL_SRGB
 	return srgbIn;
 	#endif //MANUAL_SRGB
@@ -137,7 +148,7 @@ vec4 SRGBtoLINEAR(vec4 srgbIn)
 vec3 getNormal()
 {
 	// @COPYPASTA
-	MaterialParam material = materialCollection.params[instanceIDToMaterialIndex[gl_BaseInstance]];  // @TODO: figure out how to use the different material things. 
+	MaterialParam material = materialCollection.params[instancePtrBuffer.pointers[gl_BaseInstance].materialID];  // @TODO: figure out how to use the different material things. 
 
 	// Perturb normal, see http://www.thetenthplanet.de/archives/1180
 	vec3 tangentNormal = texture(normalMaps[material.normalMapIndex], material.normalTextureSet == 0 ? inUV0 : inUV1).xyz * 2.0 - 1.0;
@@ -260,7 +271,7 @@ float textureProj(vec4 shadowCoord, vec2 offset, uint cascadeIndex)
 
 void main()
 {
-	MaterialParam material = materialCollection.params[instanceIDToMaterialIndex[gl_BaseInstance]];  // @TODO: figure out how to use the different material things. 
+	MaterialParam material = materialCollection.params[instancePtrBuffer.pointers[gl_BaseInstance].materialID];  // @TODO: figure out how to use the different material things. 
 
 	float perceptualRoughness;
 	float metallic;
