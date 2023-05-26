@@ -887,12 +887,12 @@ namespace vkglTF
 
 			if (mat.values.find("roughnessFactor") != mat.values.end())
 			{
-				material.roughnessFactor = static_cast<float>(mat.values["roughnessFactor"].Factor());
+				material.roughnessFactor = static_cast<float_t>(mat.values["roughnessFactor"].Factor());
 			}
 
 			if (mat.values.find("metallicFactor") != mat.values.end())
 			{
-				material.metallicFactor = static_cast<float>(mat.values["metallicFactor"].Factor());
+				material.metallicFactor = static_cast<float_t>(mat.values["metallicFactor"].Factor());
 			}
 
 			if (mat.values.find("baseColorFactor") != mat.values.end())
@@ -941,7 +941,7 @@ namespace vkglTF
 
 			if (mat.additionalValues.find("alphaCutoff") != mat.additionalValues.end())
 			{
-				material.alphaCutoff = static_cast<float>(mat.additionalValues["alphaCutoff"].Factor());
+				material.alphaCutoff = static_cast<float_t>(mat.additionalValues["alphaCutoff"].Factor());
 			}
 
 			if (mat.additionalValues.find("emissiveFactor") != mat.additionalValues.end())
@@ -980,7 +980,7 @@ namespace vkglTF
 					for (uint32_t i = 0; i < factor.ArrayLen(); i++)
 					{
 						auto val = factor.Get(i);
-						material.extension.diffuseFactor[i] = val.IsNumber() ? (float)val.Get<double>() : (float)val.Get<int>();
+						material.extension.diffuseFactor[i] = val.IsNumber() ? (float_t)val.Get<double>() : (float_t)val.Get<int>();
 					}
 				}
 				if (ext->second.Has("specularFactor"))
@@ -989,15 +989,32 @@ namespace vkglTF
 					for (uint32_t i = 0; i < factor.ArrayLen(); i++)
 					{
 						auto val = factor.Get(i);
-						material.extension.specularFactor[i] = val.IsNumber() ? (float)val.Get<double>() : (float)val.Get<int>();
+						material.extension.specularFactor[i] = val.IsNumber() ? (float_t)val.Get<double>() : (float_t)val.Get<int>();
 					}
 				}
 			}
 
 			materials.push_back(material);
 		}
+
 		// Push a default material at the end of the list for meshes with no material assigned
 		materials.push_back(PBRMaterial());
+
+		// Load in empty textures for initial index of each texture map
+		{
+			static std::mutex emptyTextureMapMutex;
+			std::lock_guard<std::mutex> lg(emptyTextureMapMutex);
+			
+			if (pbrTextureCollection.colorMaps.empty())
+			{
+				// Add initial textures into PBR texture collection (i.e. empty texture)
+				pbrTextureCollection.colorMaps.push_back(&engine->_loadedTextures["empty"]);
+				pbrTextureCollection.physicalDescriptorMaps.push_back(&engine->_loadedTextures["empty"]);
+				pbrTextureCollection.normalMaps.push_back(&engine->_loadedTextures["empty"]);
+				pbrTextureCollection.aoMaps.push_back(&engine->_loadedTextures["empty"]);
+				pbrTextureCollection.emissiveMaps.push_back(&engine->_loadedTextures["empty"]);
+			}
+		}
 
 		//
 		// Create descriptorsets per material
@@ -1009,62 +1026,116 @@ namespace vkglTF
 		//
 		for (PBRMaterial& material : materials)
 		{
-			// Allocate descriptor set for holding pbr texture info
-			VkDescriptorSetAllocateInfo descriptorSetAllocInfo = {
-				.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-				.descriptorPool = engine->_descriptorPool,    // @TODO: @NOTE: since in the future there will be separate descriptor pools, there might need to be a different system and not directly refer to these descriptor pools
-				.descriptorSetCount = 1,
-				.pSetLayouts = &engine->_pbrTexturesSetLayout,
-			};
-			VK_CHECK(vkAllocateDescriptorSets(engine->_device, &descriptorSetAllocInfo, &material.calculatedMaterial.textureSet));    // @TODO: @NOTE: this could fail, fyi. So that's why having that abstraction would be really great.  -Timo
+			static std::mutex colorMapMutex;
+			static std::mutex physicalDescriptorMapMutex;
+			static std::mutex normalMapMutex;
+			static std::mutex aoMapMutex;
+			static std::mutex emissiveMapMutex;
 
 			//
-			// Write image descriptors
+			// Load pbr material textures (@NOTE: assume that every new texture is a unique texture.  @TODO: check for non-unique textures and combine.)
 			//
-			std::array<Texture*, 5> pbrTextures = {
-				&engine->_loadedTextures["empty"],
-				&engine->_loadedTextures["empty"],
-				material.normalTexture    ? material.normalTexture    : &engine->_loadedTextures["empty"],
-				material.occlusionTexture ? material.occlusionTexture : &engine->_loadedTextures["empty"],
-				material.emissiveTexture  ? material.emissiveTexture  : &engine->_loadedTextures["empty"],
-			};
+			material.colorMapIndex = 0;
+			material.physicalDescriptorMapIndex = 0;
+			material.normalMapIndex = 0;
+			material.aoMapIndex = 0;
+			material.emissiveMapIndex = 0;
 
 			// TODO: glTF specs states that metallic roughness should be preferred, even if specular glossiness is present
-
 			if (material.pbrWorkflows.metallicRoughness)
 			{
 				if (material.baseColorTexture)
-					pbrTextures[0] = material.baseColorTexture;
+				{
+					std::lock_guard<std::mutex> lg(colorMapMutex);
+					material.colorMapIndex = pbrTextureCollection.colorMaps.size();
+					pbrTextureCollection.colorMaps.push_back(material.baseColorTexture);
+				}
 				if (material.metallicRoughnessTexture)
-					pbrTextures[1] = material.metallicRoughnessTexture;
+				{
+					std::lock_guard<std::mutex> lg(physicalDescriptorMapMutex);
+					material.physicalDescriptorMapIndex = pbrTextureCollection.physicalDescriptorMaps.size();
+					pbrTextureCollection.physicalDescriptorMaps.push_back(material.metallicRoughnessTexture);
+				}
 			}
 
 			if (material.pbrWorkflows.specularGlossiness)
 			{
 				if (material.extension.diffuseTexture)
-					pbrTextures[0] = material.extension.diffuseTexture;
+				{
+					std::lock_guard<std::mutex> lg(colorMapMutex);
+					material.colorMapIndex = pbrTextureCollection.colorMaps.size();
+					pbrTextureCollection.colorMaps.push_back(material.extension.diffuseTexture);
+				}
 				if (material.extension.specularGlossinessTexture)
-					pbrTextures[1] = material.extension.specularGlossinessTexture;
+				{
+					std::lock_guard<std::mutex> lg(physicalDescriptorMapMutex);
+					material.physicalDescriptorMapIndex = pbrTextureCollection.physicalDescriptorMaps.size();
+					pbrTextureCollection.physicalDescriptorMaps.push_back(material.extension.specularGlossinessTexture);
+				}
 			}
 
-			// Convert to VkDescriptorImageInfo
-			std::array<VkDescriptorImageInfo, 5> imageDescriptors{};
-			for (size_t i = 0; i < pbrTextures.size(); i++)
-				imageDescriptors[i] =
-					vkinit::textureToDescriptorImageInfo(pbrTextures[i]);
+			if (material.normalTexture)
+			{
+				std::lock_guard<std::mutex> lg(normalMapMutex);
+				material.normalMapIndex = pbrTextureCollection.normalMaps.size();
+				pbrTextureCollection.normalMaps.push_back(material.normalTexture);
+			}
 
-			// Convert to VkWriteDescriptorSet
-			std::array<VkWriteDescriptorSet, 5> writeDescriptorSets{};
-			for (size_t i = 0; i < imageDescriptors.size(); i++)
-				writeDescriptorSets[i] =
-					vkinit::writeDescriptorImage(
-						VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-						material.calculatedMaterial.textureSet,
-						&imageDescriptors[i],
-						static_cast<uint32_t>(i)
-					);
+			if (material.occlusionTexture)
+			{
+				std::lock_guard<std::mutex> lg(aoMapMutex);
+				material.aoMapIndex = pbrTextureCollection.aoMaps.size();
+				pbrTextureCollection.aoMaps.push_back(material.occlusionTexture);
+			}
 
-			vkUpdateDescriptorSets(engine->_device, static_cast<uint32_t>(writeDescriptorSets.size()), writeDescriptorSets.data(), 0, nullptr);
+			if (material.emissiveTexture)
+			{
+				std::lock_guard<std::mutex> lg(emissiveMapMutex);
+				material.emissiveMapIndex = pbrTextureCollection.emissiveMaps.size();
+				pbrTextureCollection.emissiveMaps.push_back(material.emissiveTexture);
+			}
+
+
+			// // Allocate descriptor set for holding pbr texture info
+			// VkDescriptorSetAllocateInfo descriptorSetAllocInfo = {
+			// 	.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+			// 	.descriptorPool = engine->_descriptorPool,    // @TODO: @NOTE: since in the future there will be separate descriptor pools, there might need to be a different system and not directly refer to these descriptor pools
+			// 	.descriptorSetCount = 1,
+			// 	.pSetLayouts = &engine->_pbrTexturesSetLayout,
+			// };
+			// VK_CHECK(vkAllocateDescriptorSets(engine->_device, &descriptorSetAllocInfo, &material.calculatedMaterial.textureSet));    // @TODO: @NOTE: this could fail, fyi. So that's why having that abstraction would be really great.  -Timo
+
+			// //
+			// // Write image descriptors
+			// //
+			// std::array<Texture*, 5> pbrTextures = {
+			// 	&engine->_loadedTextures["empty"],
+			// 	&engine->_loadedTextures["empty"],
+			// 	material.normalTexture    ? material.normalTexture    : &engine->_loadedTextures["empty"],
+			// 	material.occlusionTexture ? material.occlusionTexture : &engine->_loadedTextures["empty"],
+			// 	material.emissiveTexture  ? material.emissiveTexture  : &engine->_loadedTextures["empty"],
+			// };
+
+			
+
+			// // Convert to VkDescriptorImageInfo
+			// std::array<VkDescriptorImageInfo, 5> imageDescriptors{};
+			// for (size_t i = 0; i < pbrTextures.size(); i++)
+			// 	imageDescriptors[i] =
+			// 		vkinit::textureToDescriptorImageInfo(pbrTextures[i]);
+
+			// // Convert to VkWriteDescriptorSet
+			// std::array<VkWriteDescriptorSet, 5> writeDescriptorSets{};
+			// for (size_t i = 0; i < imageDescriptors.size(); i++)
+			// 	writeDescriptorSets[i] =
+			// 		vkinit::writeDescriptorImage(
+			// 			VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+			// 			material.calculatedMaterial.textureSet,
+			// 			&imageDescriptors[i],
+			// 			static_cast<uint32_t>(i)
+			// 		);
+
+			// vkUpdateDescriptorSets(engine->_device, static_cast<uint32_t>(writeDescriptorSets.size()), writeDescriptorSets.data(), 0, nullptr);
 		}
 	}
 

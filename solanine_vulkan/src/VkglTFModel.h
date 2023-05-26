@@ -69,6 +69,13 @@ namespace vkglTF
 		Texture* occlusionTexture;
 		Texture* emissiveTexture;
 		bool doubleSided = false;
+
+		// @TODO: figure out hwere to put this! @NOCHECKIN
+		uint32_t colorMapIndex;
+		uint32_t physicalDescriptorMapIndex;
+		uint32_t normalMapIndex;
+		uint32_t aoMapIndex;
+		uint32_t emissiveMapIndex;
 	
 		struct TexCoordSets
 		{
@@ -358,6 +365,15 @@ namespace vkglTF
 	private:
 		VulkanEngine* engine;
 		StateMachine  animStateMachine;
+
+		struct PBRTextureCollection
+		{
+			std::vector<Texture*> colorMaps;
+			std::vector<Texture*> physicalDescriptorMaps;
+			std::vector<Texture*> normalMaps;
+			std::vector<Texture*> aoMaps;
+			std::vector<Texture*> emissiveMaps;
+		} pbrTextureCollection;
 
 		friend struct Animator;
 	};

@@ -5,6 +5,7 @@
 #include <vma/vk_mem_alloc.h>
 #include "VkBootstrap.h"
 #include "VkInitializers.h"
+#include "VkDescriptorBuilderUtil.h"
 #include "VkTextures.h"
 #include "VkglTFModel.h"
 #include "AudioEngine.h"
@@ -279,12 +280,11 @@ void VulkanEngine::cleanup()
 	{
 		vkDeviceWaitIdle(_device);
 
-		delete _entityManager;  // @NOTE: all entities must be deleted before the physicsengine can shut down
-
 		globalState::cleanupGlobalState();
 		physengine::cleanup();
 		AudioEngine::getInstance().cleanup();
 
+		delete _entityManager;
 		delete _roManager;
 
 		vkglTF::Animator::destroyEmpty(this);
@@ -1142,6 +1142,11 @@ void VulkanEngine::initVulkan()
 	vmaCreateAllocator(&allocatorInfo, &_allocator);
 
 	//
+	// Set variables
+	//
+	vkinit::_maxSamplerAnisotropy = _gpuProperties.limits.maxSamplerAnisotropy;
+
+	//
 	// Spit out phsyical device properties
 	//
 	std::cout << "[Chosen Physical Device Properties]" << std::endl;
@@ -1165,8 +1170,6 @@ void VulkanEngine::initVulkan()
 	std::cout << "MAX_DESCRIPTOR_SET_SAMPLERS          " << _gpuProperties.limits.maxDescriptorSetSamplers << std::endl;
 	std::cout << "MAX_SAMPLER_ALLOCATION_COUNT         " << _gpuProperties.limits.maxSamplerAllocationCount << std::endl;
 	std::cout << std::endl;
-
-	vkinit::_maxSamplerAnisotropy = _gpuProperties.limits.maxSamplerAnisotropy;
 }
 
 void VulkanEngine::initSwapchain()
@@ -1861,27 +1864,84 @@ void VulkanEngine::initSyncStructures()
 
 void VulkanEngine::initDescriptors()    // @TODO: don't destroy and then recreate descriptors when recreating the swapchain. Only pipelines (not even pipelinelayouts), framebuffers, and the corresponding image/imageviews/samplers need to get recreated.  -Timo
 {
-	//
-	// Create Descriptor Pool
-	//
-	std::vector<VkDescriptorPoolSize> sizes = {
-		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 10000 },
-		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 10000 },
-		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 10000 },
-		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 10000 },
-	};
-	VkDescriptorPoolCreateInfo poolInfo = {
-		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-		.flags = 0,
-		.maxSets = 10000,										// @NOTE: for the new/better descriptorpool, there NEEDS to be one for all of the information that will be recreated when the window is resized and then one that's different that will be just for shader inputs etc. bc afaik removing those descriptors isn't necessary.   @NOTE: I need a better descriptorpool allocator... @TODO: @FIXME: crate teh one that's in the vkguide extra chapter
-		.poolSizeCount = (uint32_t)sizes.size(),				//        @REPLY: and... I think only the pipelines (specifically the rasterizers in the pipelines which have the viewport & scissors fields) are the only things that need to get recreated upon resizing (and of course the textures that are backing up those pipelines), so perhaps a deallocation of the descriptorsets is needed only and then reallocate the necessary descriptorsets (maybe it means that the descriptorset needs to be destroyed too... Idk... I guess it all depends on what the vulkan spec requires eh!)
-		.pPoolSizes = sizes.data(),
-	};
-	vkCreateDescriptorPool(_device, &poolInfo, nullptr, &_descriptorPool);
+	vkutil::descriptorallocator::init(_device);
+	vkutil::descriptorlayoutcache::init(_device);
 
 	//
-	// Create Descriptor Set Layout for camera buffers
+	// Create Descriptor Sets
 	//
+	for (size_t i = 0; i < FRAME_OVERLAP; i++)
+	{
+		//
+		// Global
+		//
+		_frames[i].cameraBuffer = createBuffer(sizeof(GPUCameraData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+		VkDescriptorBufferInfo cameraInfo = {
+			.buffer = _frames[i].cameraBuffer._buffer,
+			.offset = 0,
+			.range = sizeof(GPUCameraData),
+		};
+
+		_frames[i].pbrShadingPropsBuffer = createBuffer(sizeof(GPUPBRShadingProps), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+		VkDescriptorBufferInfo pbrShadingPropsInfo = {
+			.buffer = _frames[i].pbrShadingPropsBuffer._buffer,
+			.offset = 0,
+			.range = sizeof(GPUPBRShadingProps),
+		};
+
+		vkutil::DescriptorBuilder::begin()
+			.bindBuffer(0, &cameraInfo, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT)
+			.bindBuffer(1, &pbrShadingPropsInfo, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT)
+			.bindImage(2, asdf, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+			.bindImage(3, asdf, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+			.bindImage(4, asdf, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+			.bindImage(5, asdf, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+			.build(_frames[i].globalDescriptor, _globalSetLayout);
+
+		//
+		// Cascade Shadow View Projections
+		//
+		_frames[i].cascadeViewProjsBuffer = createBuffer(sizeof(GPUCascadeViewProjsData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+		VkDescriptorBufferInfo cascadeViewProjsBufferInfo = {
+			.buffer = _frames[i].cascadeViewProjsBuffer._buffer,
+			.offset = 0,
+			.range = sizeof(GPUCascadeViewProjsData),
+		};
+
+		vkutil::DescriptorBuilder::begin()
+			.bindBuffer(0, &cascadeViewProjsBufferInfo, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT)
+			.build(_frames[i].cascadeViewProjsDescriptor, _cascadeViewProjsSetLayout);
+
+		//
+		// Object Information
+		//
+		_frames[i].objectBuffer = createBuffer(sizeof(GPUObjectData) * RENDER_OBJECTS_MAX_CAPACITY, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+		VkDescriptorBufferInfo objectBufferInfo = {
+			.buffer = _frames[i].objectBuffer._buffer,
+			.offset = 0,
+			.range = sizeof(GPUObjectData) * RENDER_OBJECTS_MAX_CAPACITY,
+		};
+		
+
+		vkutil::DescriptorBuilder::begin()
+			.bindBuffer(0, &objectBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_VERTEX_BIT)
+			.build(_frames[i].objectDescriptor, _objectSetLayout);
+
+		//
+		// Picking ID Capture
+		//
+		_frames[i].pickingSelectedIdBuffer = createBuffer(sizeof(GPUPickingSelectedIdData), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_TO_CPU);    // @NOTE: primary focus is to read from gpu, so gpu_to_cpu
+		VkDescriptorBufferInfo pickingSelectedIdBufferInfo = {
+			.buffer = _frames[i].pickingSelectedIdBuffer._buffer,
+			.offset = 0,
+			.range = sizeof(GPUPickingSelectedIdData),
+		};
+
+		vkutil::DescriptorBuilder::begin()
+			.bindBuffer(0, &pickingSelectedIdBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT)
+			.build(_frames[i].pickingReturnValueDescriptor, _pickingReturnValueSetLayout);
+	}
+
 	VkDescriptorSetLayoutBinding cameraBufferBinding          = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0);
 	VkDescriptorSetLayoutBinding shadingPropsBufferBinding    = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT, 1);
 	VkDescriptorSetLayoutBinding pbrIrradianceTextureBinding  = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 2);
@@ -2130,7 +2190,8 @@ void VulkanEngine::initDescriptors()    // @TODO: don't destroy and then recreat
 		vkDestroyDescriptorSetLayout(_device, _pickingReturnValueSetLayout, nullptr);
 		vkDestroyDescriptorSetLayout(_device, _skeletalAnimationSetLayout, nullptr);
 		vkDestroyDescriptorSetLayout(_device, _postprocessSetLayout, nullptr);
-		vkDestroyDescriptorPool(_device, _descriptorPool, nullptr);          // This deletes all of the descriptor sets
+		vkutil::descriptorlayoutcache::cleanup();
+		vkutil::descriptorallocator::cleanup();
 
 		for (uint32_t i = 0; i < FRAME_OVERLAP; i++)
 		{
@@ -2140,7 +2201,7 @@ void VulkanEngine::initDescriptors()    // @TODO: don't destroy and then recreat
 			vmaDestroyBuffer(_allocator, _frames[i].objectBuffer._buffer, _frames[i].objectBuffer._allocation);
 			vmaDestroyBuffer(_allocator, _frames[i].pickingSelectedIdBuffer._buffer, _frames[i].pickingSelectedIdBuffer._allocation);
 		}
-		});
+	});
 }
 
 void VulkanEngine::initPipelines()
@@ -3719,6 +3780,8 @@ void VulkanEngine::loadMeshes()
 
 	for (auto& pair : modelNameAndModels)
 		_roManager->createModel(pair.second, pair.first);
+
+	// HERE
 }
 
 void VulkanEngine::uploadCurrentFrameToGPU(const FrameData& currentFrame)
@@ -3771,6 +3834,8 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 		skybox->bind(cmd);
 		skybox->draw(cmd);
 	}
+
+	//vkCmdDrawIndirectCount()  @NOCHECKIN
 
 	//
 	// Render all the renderobjects
@@ -3887,11 +3952,11 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 					vkglTF::Animator::getEmptyJointDescriptorSet();
 				if (lastJointDescriptor != jointDescriptor)
 				{
-					// Joint Descriptor (set = 2) (i.e. skeletal animations)
+					// Joint Descriptor (set = 4) (i.e. skeletal animations)
 					// 
 					// @NOTE: this doesn't have to be bound every primitive. Every mesh will
 					// have a single joint descriptor, hence having its own binding flag.
-					vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, (materialOverride) ? *overrideLayout : defaultMaterial.pipelineLayout, 2, 1, jointDescriptor, 0, nullptr);
+					vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, (materialOverride) ? *overrideLayout : defaultMaterial.pipelineLayout, 4, 1, jointDescriptor, 0, nullptr);
 					lastJointDescriptor = jointDescriptor;
 				}
 			}

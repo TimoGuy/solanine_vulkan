@@ -37,12 +37,12 @@ namespace vkutil
 
         DescriptorBuilder& bindBuffer(uint32_t binding, VkDescriptorBufferInfo* bufferInfo, VkDescriptorType type, VkShaderStageFlags stageFlags);
         DescriptorBuilder& bindImage(uint32_t binding, VkDescriptorImageInfo* imageInfo, VkDescriptorType type, VkShaderStageFlags stageFlags);
+        DescriptorBuilder& bindImageArray(uint32_t binding, uint32_t imageCount, VkDescriptorImageInfo* imageInfos, VkDescriptorType type, VkShaderStageFlags stageFlags);
 
         bool build(VkDescriptorSet& set, VkDescriptorSetLayout& layout);
         bool build(VkDescriptorSet& set);
     private:
         DescriptorBuilder() { }
-        ~DescriptorBuilder() { }
 
         std::vector<VkWriteDescriptorSet> writes;
         std::vector<VkDescriptorSetLayoutBinding> bindings;

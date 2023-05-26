@@ -304,6 +304,33 @@ namespace vkutil
 		return *this;
     }
 
+    DescriptorBuilder& DescriptorBuilder::bindImageArray(uint32_t binding, uint32_t imageCount, VkDescriptorImageInfo* imageInfos, VkDescriptorType type, VkShaderStageFlags stageFlags)
+    {
+        // See for how to use this: http://kylehalladay.com/blog/tutorial/vulkan/2018/01/28/Textue-Arrays-Vulkan.html
+
+        VkDescriptorSetLayoutBinding newBinding = {
+            .binding = binding,
+            .descriptorType = type,
+            .descriptorCount = imageCount,
+            .stageFlags = stageFlags,
+            .pImmutableSamplers = nullptr,
+        };
+
+		bindings.push_back(newBinding);
+
+		VkWriteDescriptorSet newWrite = {
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .pNext = nullptr,
+            .dstBinding = binding,
+            .descriptorCount = imageCount,
+            .descriptorType = type,
+            .pImageInfo = imageInfos,
+        };
+
+		writes.push_back(newWrite);
+		return *this;
+    }
+
     bool DescriptorBuilder::build(VkDescriptorSet& set, VkDescriptorSetLayout& layout)
     {
         // Build layout first
