@@ -7,6 +7,10 @@
 RenderObject* RenderObjectManager::registerRenderObject(RenderObject renderObjectData)
 {
     // @NOTE: using a pool system bc of pointers losing information when stuff gets deleted.  -Timo 2022/11/06
+	// @NOTE: I think past me is talking about when a std::vector gets to a certain capacity, it
+	//        has to recreate a new array and insert all of the information into the array. Since
+	//        the array contains information that exists on the stack, it has to get moved, breaking
+	//        pointers and breaking my heart along the way.  -Timo 2023/05/27
 	if (_renderObjectsIndices.size() >= RENDER_OBJECTS_MAX_CAPACITY)
 	{
 		std::cerr << "[REGISTER RENDER OBJECT]" << std::endl

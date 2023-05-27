@@ -391,6 +391,7 @@ void VulkanEngine::render()
 			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
 			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 3, 1, &getMaterial("pbrMaterial")->textureSet, 0, nullptr);
 			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(), 0, nullptr);
+
 			CascadeIndexPushConstBlock pc = { i };
 			vkCmdPushConstants(cmd, shadowDepthPassMaterial.pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(CascadeIndexPushConstBlock), &pc);
 
