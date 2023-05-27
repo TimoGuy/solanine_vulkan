@@ -54,7 +54,7 @@ namespace vkglTF
 		VkSamplerAddressMode addressModeW;
 	};
 
-	struct PBRMaterial    // @NOTE: this uses the vulkan engine's _pbrTexturesSetLayout as the base pipeline
+	struct PBRMaterial
 	{
 		enum AlphaMode { ALPHAMODE_OPAQUE, ALPHAMODE_MASK, ALPHAMODE_BLEND };
 		AlphaMode alphaMode = ALPHAMODE_OPAQUE;
@@ -69,13 +69,6 @@ namespace vkglTF
 		Texture* occlusionTexture;
 		Texture* emissiveTexture;
 		bool doubleSided = false;
-
-		// @TODO: figure out hwere to put this! @NOCHECKIN
-		uint32_t colorMapIndex;
-		uint32_t physicalDescriptorMapIndex;
-		uint32_t normalMapIndex;
-		uint32_t aoMapIndex;
-		uint32_t emissiveMapIndex;
 	
 		struct TexCoordSets
 		{
@@ -100,7 +93,17 @@ namespace vkglTF
 			bool metallicRoughness = true;
 			bool specularGlossiness = false;
 		} pbrWorkflows;
+
+		struct TexturePtr
+		{
+			uint32_t colorMapIndex = 0;
+			uint32_t physicalDescriptorMapIndex = 0;
+			uint32_t normalMapIndex = 0;
+			uint32_t aoMapIndex = 0;
+			uint32_t emissiveMapIndex = 0;
+		} texturePtr;
 	
+		// @NOCHECKIN: remove `calculatedMaterial` bc not being used anymore.
 		Material calculatedMaterial;    // @NOTE: this will contain the pbr pipeline, the pbr pipeline layout, and the texture descriptorset for this pbrmaterial instance
 	};
 
@@ -109,10 +112,10 @@ namespace vkglTF
 		uint32_t firstIndex;
 		uint32_t indexCount;
 		uint32_t vertexCount;
-		PBRMaterial& material;
+		uint32_t materialID;
 		bool hasIndices;
 		BoundingBox bb;
-		Primitive(uint32_t firstIndex, uint32_t indexCount, uint32_t vertexCount, PBRMaterial& material);
+		Primitive(uint32_t firstIndex, uint32_t indexCount, uint32_t vertexCount, uint32_t materialID);
 		void setBoundingBox(vec3 min, vec3 max);
 	};
 
@@ -279,6 +282,20 @@ namespace vkglTF
 
 	struct Model
 	{
+		struct PBRTextureCollection
+		{
+			std::vector<Texture*> colorMaps;
+			std::vector<Texture*> physicalDescriptorMaps;
+			std::vector<Texture*> normalMaps;
+			std::vector<Texture*> aoMaps;
+			std::vector<Texture*> emissiveMaps;
+		} static pbrTextureCollection;
+
+		struct PBRMaterialCollection
+		{
+			std::vector<PBRMaterial*> materials;
+		} static pbrMaterialCollection;
+
 		struct Vertex
 		{
 			vec3 pos;
@@ -350,12 +367,13 @@ namespace vkglTF
 		void loadFromFile(VulkanEngine* engine, std::string filename, float scale = 1.0f);
 		void bind(VkCommandBuffer commandBuffer);
 		void draw(VkCommandBuffer commandBuffer);
-		void draw(VkCommandBuffer commandBuffer, uint32_t transformID, std::function<void(Primitive* primitive, Node* node)>&& perPrimitiveFunction);    // You know, I wonder about the overhead of including a lambda per primitive
+		void draw(VkCommandBuffer commandBuffer, uint32_t& inOutInstanceID);
 	private:
-		void drawNode(Node* node, VkCommandBuffer commandBuffer, uint32_t transformID, std::function<void(Primitive* primitive, Node* node)>&& perPrimitiveFunction);
+		void drawNode(Node* node, VkCommandBuffer commandBuffer, uint32_t& inOutInstanceID);
 		void calculateBoundingBox(Node* node, Node* parent);
 	public:
 		void getSceneDimensions();
+		std::vector<Primitive*> getAllPrimitivesInOrder();
 	private:
 		Node* findNode(Node* parent, uint32_t index);
 		Node* nodeFromIndex(uint32_t index);
@@ -366,14 +384,6 @@ namespace vkglTF
 		VulkanEngine* engine;
 		StateMachine  animStateMachine;
 
-		struct PBRTextureCollection
-		{
-			std::vector<Texture*> colorMaps;
-			std::vector<Texture*> physicalDescriptorMaps;
-			std::vector<Texture*> normalMaps;
-			std::vector<Texture*> aoMaps;
-			std::vector<Texture*> emissiveMaps;
-		} pbrTextureCollection;
 
 		friend struct Animator;
 	};

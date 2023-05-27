@@ -35,6 +35,16 @@ RenderObject* RenderObjectManager::registerRenderObject(RenderObject renderObjec
 
 	recalculateAnimatorIndices();
 
+	// Calculate instance pointers
+	renderObjectData.calculatedModelInstances.clear();
+	auto primitives = renderObjectData.model->getAllPrimitivesInOrder();
+	for (auto& primitive : primitives)
+		renderObjectData.calculatedModelInstances.push_back({
+			.objectID = (uint32_t)registerIndex,
+			.materialID = primitive->materialID,
+			.animatorNodeID = 0,  // @TODO: figure out how to get the animator node id into here... for now just do no animator and empty joint descriptor.
+		});
+
 	return &_renderObjectPool[registerIndex];
 }
 

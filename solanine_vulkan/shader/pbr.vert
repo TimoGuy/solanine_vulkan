@@ -14,6 +14,7 @@ layout (location = 2) out vec3 outNormal;
 layout (location = 3) out vec2 outUV0;
 layout (location = 4) out vec2 outUV1;
 layout (location = 5) out vec4 outColor0;
+layout (location = 6) out uint baseInstanceID;
 
 
 // Camera Props
@@ -43,6 +44,7 @@ struct InstancePointer
 {
 	uint objectID;
 	uint materialID;
+	uint animatorNodeID;
 };
 
 layout(std140, set = 2, binding = 0) readonly buffer InstancePtrBuffer
@@ -66,7 +68,7 @@ void main()
 	//
 	// Skin mesh
 	//
-	mat4 modelMatrix = objectBuffer.objects[gl_BaseInstance].modelMatrix;
+	mat4 modelMatrix = objectBuffer.objects[instancePtrBuffer.pointers[gl_BaseInstance].objectID].modelMatrix;
 	vec4 locPos;
 	if (node.jointCount > 0.0)
 	{
@@ -92,5 +94,6 @@ void main()
 	outUV1 = inUV1;
 	outColor0 = inColor0;
 	outViewPos = (cameraData.view * vec4(outWorldPos, 1.0)).xyz;
+	baseInstanceID = gl_BaseInstance;
 	gl_Position =  cameraData.projectionView * vec4(outWorldPos, 1.0);
 }

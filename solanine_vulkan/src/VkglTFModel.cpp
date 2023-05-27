@@ -8,6 +8,7 @@
 
 #include "Imports.h"
 #include "VkglTFModel.h"
+#include "VkDescriptorBuilderUtil.h"
 #include "VulkanEngine.h"
 #include "PhysicsEngine.h"
 #include "VkTextures.h"
@@ -62,7 +63,7 @@ namespace vkglTF
 	//
 	// Primitive
 	//
-	Primitive::Primitive(uint32_t firstIndex, uint32_t indexCount, uint32_t vertexCount, PBRMaterial& material) : firstIndex(firstIndex), indexCount(indexCount), vertexCount(vertexCount), material(material)
+	Primitive::Primitive(uint32_t firstIndex, uint32_t indexCount, uint32_t vertexCount, uint32_t materialID) : firstIndex(firstIndex), indexCount(indexCount), vertexCount(vertexCount), materialID(materialID)
 	{
 		hasIndices = indexCount > 0;
 	}
@@ -123,40 +124,6 @@ namespace vkglTF
 		glm_translate(out, translation);
 		glm_quat_rotate(out, rotation, out);
 		glm_scale(out, scale);
-		return;
-
-
-		// @NOTE: the fast transform baking is only really effective on debug builds. It seems to not
-		//        really make a difference on release, or at least this isn't the bottleneck anymore
-		//        for release builds.
-		// @TODO: figure out whether this makes a difference on Tristan's computer (release builds)!
-		//          -Timo 2022/12/27
-/*#define USE_FAST_TRANSFORM_BAKING 1
-#if     USE_FAST_TRANSFORM_BAKING
-		mat4 transform = glm::toMat4(rotation);
-
-		transform[3][0] = translation.x;
-		transform[3][1] = translation.y;
-		transform[3][2] = translation.z;
-
-		transform[0][0] *= scale.x;
-		transform[0][1] *= scale.x;
-		transform[0][2] *= scale.x;
-		transform[1][0] *= scale.y;
-		transform[1][1] *= scale.y;
-		transform[1][2] *= scale.y;
-		transform[2][0] *= scale.z;
-		transform[2][1] *= scale.z;
-		transform[2][2] *= scale.z;
-
-		return transform * matrix;
-#else
-		return
-			glm::translate(GLM_MAT4_IDENTITY_INIT, translation) *
-			glm::toMat4(rotation) *
-			glm::scale(GLM_MAT4_IDENTITY_INIT, scale) *
-			matrix;
-#endif*/
 	}
 
 	void Node::getMatrix(mat4& out)
@@ -267,6 +234,9 @@ namespace vkglTF
 	//
 	// Model
 	//
+	Model::PBRTextureCollection Model::pbrTextureCollection;
+	Model::PBRMaterialCollection Model::pbrMaterialCollection;
+
 	void Model::destroy(VmaAllocator allocator)
 	{
 		if (vertices.buffer != VK_NULL_HANDLE)
@@ -611,7 +581,20 @@ namespace vkglTF
 						return;
 					}
 				}
-				Primitive* newPrimitive = new Primitive(indexStart, indexCount, vertexCount, primitive.material > -1 ? materials[primitive.material] : materials.back());
+				
+				uint32_t materialID = 0;  // Default material
+				if (primitive.material >= 0)
+				{
+					// Find index of the material in the global material collection
+					auto& v = pbrMaterialCollection.materials;
+					for (size_t i = 0; i < v.size(); i++)
+						if (v[i] == &materials[primitive.material])
+						{
+							materialID = i;
+							break;
+						}
+				}
+				Primitive* newPrimitive = new Primitive(indexStart, indexCount, vertexCount, materialID);
 				newPrimitive->setBoundingBox(posMin, posMax);
 				newMesh->primitives.push_back(newPrimitive);
 			}
@@ -855,21 +838,13 @@ namespace vkglTF
 
 	void Model::loadMaterials(tinygltf::Model& gltfModel)
 	{
-		Material* baseMaterial = engine->getMaterial("pbrMaterial");
-
 		//
 		// Create PBRMaterials with the properties
 		// of the pbr workflow in the gltf model's materials
 		//
 		for (tinygltf::Material& mat : gltfModel.materials)
 		{
-			// Create new material based off defaultMaterial
-			vkglTF::PBRMaterial material = {
-				.calculatedMaterial = {
-					.pipeline = baseMaterial->pipeline,
-					.pipelineLayout = baseMaterial->pipelineLayout,
-				}
-			};
+			vkglTF::PBRMaterial material = {};
 
 			material.doubleSided = mat.doubleSided;
 
@@ -997,10 +972,9 @@ namespace vkglTF
 			materials.push_back(material);
 		}
 
-		// Push a default material at the end of the list for meshes with no material assigned
-		materials.push_back(PBRMaterial());
-
+		//
 		// Load in empty textures for initial index of each texture map
+		//
 		{
 			static std::mutex emptyTextureMapMutex;
 			std::lock_guard<std::mutex> lg(emptyTextureMapMutex);
@@ -1017,8 +991,18 @@ namespace vkglTF
 		}
 
 		//
+		// Create default material for meshes with no material assigned
+		//
+		{
+			static std::mutex emptyMaterialCollectionMutex;
+			std::lock_guard<std::mutex> lg(emptyMaterialCollectionMutex);
+			
+			if (pbrMaterialCollection.materials.empty())
+				pbrMaterialCollection.materials.push_back(new PBRMaterial());  // @TODO: @NOCHECKIN: delete this somewhere!
+		}
+
+		//
 		// Create descriptorsets per material
-		// (NOTE: the materials are the created PBRMaterials, not the gltf materials)
 		// 
 		// @TODO: This is a @FEATURE for the future, however, it'd be really
 		//        nice for there to be a way to create and override materials
@@ -1032,28 +1016,19 @@ namespace vkglTF
 			static std::mutex aoMapMutex;
 			static std::mutex emissiveMapMutex;
 
-			//
-			// Load pbr material textures (@NOTE: assume that every new texture is a unique texture.  @TODO: check for non-unique textures and combine.)
-			//
-			material.colorMapIndex = 0;
-			material.physicalDescriptorMapIndex = 0;
-			material.normalMapIndex = 0;
-			material.aoMapIndex = 0;
-			material.emissiveMapIndex = 0;
-
 			// TODO: glTF specs states that metallic roughness should be preferred, even if specular glossiness is present
 			if (material.pbrWorkflows.metallicRoughness)
 			{
 				if (material.baseColorTexture)
 				{
 					std::lock_guard<std::mutex> lg(colorMapMutex);
-					material.colorMapIndex = pbrTextureCollection.colorMaps.size();
+					material.texturePtr.colorMapIndex = pbrTextureCollection.colorMaps.size();
 					pbrTextureCollection.colorMaps.push_back(material.baseColorTexture);
 				}
 				if (material.metallicRoughnessTexture)
 				{
 					std::lock_guard<std::mutex> lg(physicalDescriptorMapMutex);
-					material.physicalDescriptorMapIndex = pbrTextureCollection.physicalDescriptorMaps.size();
+					material.texturePtr.physicalDescriptorMapIndex = pbrTextureCollection.physicalDescriptorMaps.size();
 					pbrTextureCollection.physicalDescriptorMaps.push_back(material.metallicRoughnessTexture);
 				}
 			}
@@ -1063,13 +1038,13 @@ namespace vkglTF
 				if (material.extension.diffuseTexture)
 				{
 					std::lock_guard<std::mutex> lg(colorMapMutex);
-					material.colorMapIndex = pbrTextureCollection.colorMaps.size();
+					material.texturePtr.colorMapIndex = pbrTextureCollection.colorMaps.size();
 					pbrTextureCollection.colorMaps.push_back(material.extension.diffuseTexture);
 				}
 				if (material.extension.specularGlossinessTexture)
 				{
 					std::lock_guard<std::mutex> lg(physicalDescriptorMapMutex);
-					material.physicalDescriptorMapIndex = pbrTextureCollection.physicalDescriptorMaps.size();
+					material.texturePtr.physicalDescriptorMapIndex = pbrTextureCollection.physicalDescriptorMaps.size();
 					pbrTextureCollection.physicalDescriptorMaps.push_back(material.extension.specularGlossinessTexture);
 				}
 			}
@@ -1077,23 +1052,28 @@ namespace vkglTF
 			if (material.normalTexture)
 			{
 				std::lock_guard<std::mutex> lg(normalMapMutex);
-				material.normalMapIndex = pbrTextureCollection.normalMaps.size();
+				material.texturePtr.normalMapIndex = pbrTextureCollection.normalMaps.size();
 				pbrTextureCollection.normalMaps.push_back(material.normalTexture);
 			}
 
 			if (material.occlusionTexture)
 			{
 				std::lock_guard<std::mutex> lg(aoMapMutex);
-				material.aoMapIndex = pbrTextureCollection.aoMaps.size();
+				material.texturePtr.aoMapIndex = pbrTextureCollection.aoMaps.size();
 				pbrTextureCollection.aoMaps.push_back(material.occlusionTexture);
 			}
 
 			if (material.emissiveTexture)
 			{
 				std::lock_guard<std::mutex> lg(emissiveMapMutex);
-				material.emissiveMapIndex = pbrTextureCollection.emissiveMaps.size();
+				material.texturePtr.emissiveMapIndex = pbrTextureCollection.emissiveMaps.size();
 				pbrTextureCollection.emissiveMaps.push_back(material.emissiveTexture);
 			}
+
+			// Load in the material into the material collection
+			static std::mutex materialCollectionMutex;
+			std::lock_guard<std::mutex> lg(materialCollectionMutex);
+			pbrMaterialCollection.materials.push_back(&material);
 
 
 			// // Allocate descriptor set for holding pbr texture info
@@ -1859,6 +1839,9 @@ namespace vkglTF
 		// Report time it took to load
 		auto tEnd = std::chrono::high_resolution_clock::now();
 		auto tDiff = std::chrono::duration<double, std::milli>(tEnd - tStart).count();
+
+		static std::mutex reportModelMutex;
+		std::lock_guard<std::mutex> lg(reportModelMutex);
 		std::cout << "[LOAD glTF MODEL FROM FILE]" << std::endl
 			<< "filename:           " << filename << std::endl
 			<< "meshes:             " << gltfModel.meshes.size() << std::endl
@@ -1880,30 +1863,30 @@ namespace vkglTF
 	void Model::draw(VkCommandBuffer commandBuffer)
 	{
 		// Just an overload that fills out all the garbage for you :)
-		draw(commandBuffer, 0, [](vkglTF::Primitive*, vkglTF::Node*) {});
+		uint32_t _;
+		draw(commandBuffer, _);
 	}
 
-	void Model::draw(VkCommandBuffer commandBuffer, uint32_t transformID, std::function<void(Primitive* primitive, Node* node)>&& perPrimitiveFunction)
+	void Model::draw(VkCommandBuffer commandBuffer, uint32_t& inOutInstanceID)
 	{
 		for (auto& node : nodes)
 		{
-			drawNode(node, commandBuffer, transformID, std::move(perPrimitiveFunction));
+			drawNode(node, commandBuffer, inOutInstanceID);
 		}
 	}
 
-	void Model::drawNode(Node* node, VkCommandBuffer commandBuffer, uint32_t transformID, std::function<void(Primitive* primitive, Node* node)>&& perPrimitiveFunction)
+	void Model::drawNode(Node* node, VkCommandBuffer commandBuffer, uint32_t& inOutInstanceID)
 	{
 		if (node->mesh)
 		{
 			for (Primitive* primitive : node->mesh->primitives)
 			{
-				perPrimitiveFunction(primitive, node);
-				vkCmdDrawIndexed(commandBuffer, primitive->indexCount, 1, primitive->firstIndex, 0, transformID);
+				vkCmdDrawIndexed(commandBuffer, primitive->indexCount, 1, primitive->firstIndex, 0, inOutInstanceID++);
 			}
 		}
 		for (auto& child : node->children)
 		{
-			drawNode(child, commandBuffer, transformID, std::move(perPrimitiveFunction));
+			drawNode(child, commandBuffer, inOutInstanceID);
 		}
 	}
 
@@ -1964,6 +1947,26 @@ namespace vkglTF
 		aabb[3][0] = dimensions.min[0];
 		aabb[3][1] = dimensions.min[1];
 		aabb[3][2] = dimensions.min[2];
+	}
+
+	void recurseFetchAllPrimitivesInOrderInNode(std::vector<Primitive*>& collection, Node* node)
+	{
+		if (node->mesh)
+			for (Primitive* primitive : node->mesh->primitives)
+				collection.push_back(primitive);
+
+		for (auto& child : node->children)
+			recurseFetchAllPrimitivesInOrderInNode(collection, child);
+	}
+
+	std::vector<Primitive*> Model::getAllPrimitivesInOrder()
+	{
+		std::vector<Primitive*> allPrimitives;
+
+		for (auto& node : nodes)  // @COPYPASTA: from `drawNode()`
+			recurseFetchAllPrimitivesInOrderInNode(allPrimitives, node);
+
+		return allPrimitives;
 	}
 
 	Node* Model::findNode(Node* parent, uint32_t index)
@@ -2038,30 +2041,18 @@ namespace vkglTF
 			node->getMatrix(uBlock.matrix);
 
 			UniformBuffer uBuffer = {};
-			uBuffer.descriptorBuffer =
-				engine->createBuffer(
-					sizeof(uBlock),
-					VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-					VMA_MEMORY_USAGE_CPU_TO_GPU
-				);
+			uBuffer.descriptorBuffer = engine->createBuffer(sizeof(uBlock), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 			vmaMapMemory(engine->_allocator, uBuffer.descriptorBuffer._allocation, &uBuffer.mapped);    // So we can just grab a pointer and hit memcpy() tons of times per frame!
 
-			VkDescriptorSetAllocateInfo skeletalAnimationSetAllocInfo = {
-				.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-				.pNext = nullptr,
-				.descriptorPool = engine->_descriptorPool,
-				.descriptorSetCount = 1,
-				.pSetLayouts = &engine->_skeletalAnimationSetLayout,
-			};
-			vkAllocateDescriptorSets(engine->_device, &skeletalAnimationSetAllocInfo, &uBuffer.descriptorSet);
-
-			VkDescriptorBufferInfo bufferInfo = {
+			VkDescriptorBufferInfo uBufferInfo = {
 				.buffer = uBuffer.descriptorBuffer._buffer,
 				.offset = 0,
 				.range = sizeof(uBlock),
 			};
-			VkWriteDescriptorSet writeDescriptorSet = vkinit::writeDescriptorBuffer(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, uBuffer.descriptorSet, &bufferInfo, 0);
-			vkUpdateDescriptorSets(engine->_device, 1, &writeDescriptorSet, 0, nullptr);
+
+			vkutil::DescriptorBuilder::begin()
+				.bindBuffer(0, &uBufferInfo, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT)
+				.build(uBuffer.descriptorSet, engine->_skeletalAnimationSetLayout);
 
 			uniformBlocks.push_back(uBlock);
 			uniformBuffers.push_back(uBuffer);
@@ -2120,34 +2111,23 @@ namespace vkglTF
 	{
 		//
 		// @SPECIAL: create an empty animator and don't update the animation
+		// @TODO: @NOCHECKIN: @COPYPASTA make this moot; use an if statement in the shader to see if the vertices should not be skinned (if 0 ... and subract all indices from the transformation by 1 in the shader)
 		//
 		UniformBlock uBlock = {};
 		glm_mat4_identity(uBlock.matrix);
 
 		UniformBuffer uBuffer = {};
-		uBuffer.descriptorBuffer =
-			engine->createBuffer(
-				sizeof(uBlock),
-				VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-				VMA_MEMORY_USAGE_CPU_TO_GPU
-			);
+		uBuffer.descriptorBuffer = engine->createBuffer(sizeof(uBlock), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
-		VkDescriptorSetAllocateInfo skeletalAnimationSetAllocInfo = {
-			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-			.pNext = nullptr,
-			.descriptorPool = engine->_descriptorPool,
-			.descriptorSetCount = 1,
-			.pSetLayouts = &engine->_skeletalAnimationSetLayout,
-		};
-		vkAllocateDescriptorSets(engine->_device, &skeletalAnimationSetAllocInfo, &uBuffer.descriptorSet);
-
-		VkDescriptorBufferInfo bufferInfo = {
+		VkDescriptorBufferInfo uBufferInfo = {
 			.buffer = uBuffer.descriptorBuffer._buffer,
 			.offset = 0,
 			.range = sizeof(uBlock),
 		};
-		VkWriteDescriptorSet writeDescriptorSet = vkinit::writeDescriptorBuffer(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, uBuffer.descriptorSet, &bufferInfo, 0);
-		vkUpdateDescriptorSets(engine->_device, 1, &writeDescriptorSet, 0, nullptr);
+
+		vkutil::DescriptorBuilder::begin()
+			.bindBuffer(0, &uBufferInfo, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT)
+			.build(uBuffer.descriptorSet, engine->_skeletalAnimationSetLayout);
 
 		emptyUBlock  = uBlock;
 		emptyUBuffer = uBuffer;

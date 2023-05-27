@@ -16,6 +16,13 @@ class VulkanEngine;
 #endif
 
 
+struct GPUInstancePointer
+{
+	uint32_t objectID;
+	uint32_t materialID;
+	uint32_t animatorNodeID;
+};
+
 enum class RenderLayer
 {
 	VISIBLE, INVISIBLE, BUILDER
@@ -28,6 +35,7 @@ struct RenderObject
 	mat4 transformMatrix       = GLM_MAT4_IDENTITY_INIT;
 	RenderLayer renderLayer    = RenderLayer::VISIBLE;
 	std::string attachedEntityGuid;  // @NOTE: this is just for @DEBUG purposes for the imgui property panel
+	std::vector<GPUInstancePointer> calculatedModelInstances;
 };
 
 class RenderObjectManager

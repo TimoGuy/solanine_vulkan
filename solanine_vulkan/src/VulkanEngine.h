@@ -66,6 +66,9 @@ struct FrameData
 	AllocatedBuffer objectBuffer;
 	VkDescriptorSet objectDescriptor;
 
+	AllocatedBuffer instancePtrBuffer;
+	VkDescriptorSet instancePtrDescriptor;
+
 	AllocatedBuffer pickingSelectedIdBuffer;
 	VkDescriptorSet pickingReturnValueDescriptor;
 };
@@ -199,7 +202,8 @@ public:
 	RenderObjectManager* _roManager;
 
 	std::unordered_map<std::string, Material> _materials;
-	Material* createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name);
+	Material* attachPipelineToMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name);
+	Material* attachTextureSetToMaterial(VkDescriptorSet textureSet, const std::string& name);
 	Material* getMaterial(const std::string& name);
 
 	struct PBRSceneTextureSet    // @NOTE: these are the textures that are needed for any type of pbr scene (i.e. the irradiance, prefilter, and brdf maps)
@@ -216,6 +220,7 @@ public:
 	VkDescriptorSetLayout _globalSetLayout;
 	VkDescriptorSetLayout _cascadeViewProjsSetLayout;
 	VkDescriptorSetLayout _objectSetLayout;
+	VkDescriptorSetLayout _instancePtrSetLayout;
 	VkDescriptorSetLayout _singleTextureSetLayout;
 	VkDescriptorSetLayout _pbrTexturesSetLayout;
 	VkDescriptorSetLayout _pickingReturnValueSetLayout;
@@ -242,10 +247,8 @@ private:
 	void initSyncStructures();
 	void initDescriptors();
 	void initPipelines();
-	void initScene();
 	void generatePBRCubemaps();
 	void generateBRDFLUT();
-	void attachPBRDescriptors();
 	void initImgui();
 
 	void recreateSwapchain();
@@ -258,7 +261,7 @@ private:
 	void loadMeshes();
 
 	void uploadCurrentFrameToGPU(const FrameData& currentFrame);
-	void renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, size_t offset, size_t count, bool renderSkybox, bool materialOverride, VkPipelineLayout* overrideLayout, bool injectColorMapIntoMaterialOverride);
+	void renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, size_t offset, size_t count, bool materialOverride, VkPipelineLayout* overrideLayout, bool injectColorMapIntoMaterialOverride);
 	void renderPickedObject(VkCommandBuffer cmd, const FrameData& currentFrame);
 
 	//

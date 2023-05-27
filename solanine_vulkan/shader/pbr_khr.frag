@@ -10,6 +10,7 @@ layout (location = 2) in vec3 inNormal;
 layout (location = 3) in vec2 inUV0;
 layout (location = 4) in vec2 inUV1;
 layout (location = 5) in vec4 inColor0;
+layout (location = 6) flat in uint baseInstanceID;
 
 layout (location = 0) out vec4 outFragColor;
 
@@ -50,6 +51,7 @@ struct InstancePointer
 {
 	uint objectID;
 	uint materialID;
+	uint animatorNodeID;
 };
 
 layout(std140, set = 2, binding = 0) readonly buffer InstancePtrBuffer
@@ -148,7 +150,7 @@ vec4 SRGBtoLINEAR(vec4 srgbIn)
 vec3 getNormal()
 {
 	// @COPYPASTA
-	MaterialParam material = materialCollection.params[instancePtrBuffer.pointers[gl_BaseInstance].materialID];  // @TODO: figure out how to use the different material things. 
+	MaterialParam material = materialCollection.params[instancePtrBuffer.pointers[baseInstanceID].materialID];  // @TODO: figure out how to use the different material things. 
 
 	// Perturb normal, see http://www.thetenthplanet.de/archives/1180
 	vec3 tangentNormal = texture(normalMaps[material.normalMapIndex], material.normalTextureSet == 0 ? inUV0 : inUV1).xyz * 2.0 - 1.0;
@@ -271,7 +273,7 @@ float textureProj(vec4 shadowCoord, vec2 offset, uint cascadeIndex)
 
 void main()
 {
-	MaterialParam material = materialCollection.params[instancePtrBuffer.pointers[gl_BaseInstance].materialID];  // @TODO: figure out how to use the different material things. 
+	MaterialParam material = materialCollection.params[instancePtrBuffer.pointers[baseInstanceID].materialID];  // @TODO: figure out how to use the different material things. 
 
 	float perceptualRoughness;
 	float metallic;

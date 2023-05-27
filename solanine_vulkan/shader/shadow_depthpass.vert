@@ -40,6 +40,7 @@ struct InstancePointer
 {
 	uint objectID;
 	uint materialID;
+	uint animatorNodeID;
 };
 
 layout(std140, set = 2, binding = 0) readonly buffer InstancePtrBuffer
