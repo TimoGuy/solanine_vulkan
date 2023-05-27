@@ -249,7 +249,7 @@ float convertMetallic(vec3 diffuse, vec3 specular, float maxSpecular)
 }
 
 // Shadow map sampling
-const mat4 BIAS_MAT = mat4( 
+const mat4 BIAS_MAT = mat4(
 	0.5, 0.0, 0.0, 0.0,
 	0.0, 0.5, 0.0, 0.0,
 	0.0, 0.0, 1.0, 0.0,
@@ -268,7 +268,6 @@ float textureProj(vec4 shadowCoord, vec2 offset, uint cascadeIndex)
 			shadow = 0.0;
 	}
 	return shadow;
-
 }
 
 
