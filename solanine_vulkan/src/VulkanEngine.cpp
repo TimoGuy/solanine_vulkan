@@ -352,50 +352,51 @@ void VulkanEngine::render()
 	//
 	uploadCurrentFrameToGPU(currentFrame);
 
-	// //
-	// // Shadow Render Pass
-	// //
-	// {
-	// 	VkClearValue depthClear;
-	// 	depthClear.depthStencil = { 1.0f, 0 };
+	//
+	// Shadow Render Pass
+	//
+	{
+		VkClearValue depthClear;
+		depthClear.depthStencil = { 1.0f, 0 };
 
-	// 	VkRenderPassBeginInfo renderpassInfo = {
-	// 		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-	// 		.pNext = nullptr,
+		VkRenderPassBeginInfo renderpassInfo = {
+			.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+			.pNext = nullptr,
 
-	// 		.renderPass = _shadowRenderPass,
-	// 		.renderArea = {
-	// 			.offset = VkOffset2D{ 0, 0 },
-	// 			.extent = VkExtent2D{ SHADOWMAP_DIMENSION, SHADOWMAP_DIMENSION },
-	// 		},
+			.renderPass = _shadowRenderPass,
+			.renderArea = {
+				.offset = VkOffset2D{ 0, 0 },
+				.extent = VkExtent2D{ SHADOWMAP_DIMENSION, SHADOWMAP_DIMENSION },
+			},
 
-	// 		.clearValueCount = 1,
-	// 		.pClearValues = &depthClear,
-	// 	};
+			.clearValueCount = 1,
+			.pClearValues = &depthClear,
+		};
 
-	// 	// Upload shadow cascades to GPU
-	// 	void* data;
-	// 	vmaMapMemory(_allocator, currentFrame.cascadeViewProjsBuffer._allocation, &data);
-	// 	memcpy(data, &_camera->sceneCamera.gpuCascadeViewProjsData, sizeof(GPUCascadeViewProjsData));
-	// 	vmaUnmapMemory(_allocator, currentFrame.cascadeViewProjsBuffer._allocation);
+		// Upload shadow cascades to GPU
+		void* data;
+		vmaMapMemory(_allocator, currentFrame.cascadeViewProjsBuffer._allocation, &data);
+		memcpy(data, &_camera->sceneCamera.gpuCascadeViewProjsData, sizeof(GPUCascadeViewProjsData));
+		vmaUnmapMemory(_allocator, currentFrame.cascadeViewProjsBuffer._allocation);
 
-	// 	Material* shadowDepthPassMaterial = getMaterial("shadowDepthPassMaterial");  // @TODO: @IMPLEMENT this material so we can use the correct shaders
-	// 	for (uint32_t i = 0; i < SHADOWMAP_CASCADES; i++)
-	// 	{
-	// 		renderpassInfo.framebuffer = _shadowCascades[i].framebuffer;
-	// 		vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
+		Material* shadowDepthPassMaterial = getMaterial("shadowDepthPassMaterial");  // @TODO: @IMPLEMENT this material so we can use the correct shaders
+		for (uint32_t i = 0; i < SHADOWMAP_CASCADES; i++)
+		{
+			renderpassInfo.framebuffer = _shadowCascades[i].framebuffer;
+			vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-	// 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial->pipeline);
-	// 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial->pipelineLayout, 0, 1, &currentFrame.cascadeViewProjsDescriptor, 0, nullptr);
-	// 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial->pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
-	// 		CascadeIndexPushConstBlock pc = { i };
-	// 		vkCmdPushConstants(cmd, shadowDepthPassMaterial->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(CascadeIndexPushConstBlock), &pc);
+			vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial->pipeline);
+			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial->pipelineLayout, 0, 1, &currentFrame.cascadeViewProjsDescriptor, 0, nullptr);
+			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial->pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
+			CascadeIndexPushConstBlock pc = { i };
+			vkCmdPushConstants(cmd, shadowDepthPassMaterial->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(CascadeIndexPushConstBlock), &pc);
 
-	// 		renderRenderObjects(cmd, currentFrame, 0, _roManager->_renderObjectsIndices.size(), true, &shadowDepthPassMaterial->pipelineLayout, true);
+			// @TODO: @INCOMPLETE: figure out rendering the render objects for shadows
+			// renderRenderObjects(cmd, currentFrame, 0, _roManager->_renderObjectsIndices.size(), true, &shadowDepthPassMaterial->pipelineLayout, true);
 			
-	// 		vkCmdEndRenderPass(cmd);
-	// 	}
-	// }
+			vkCmdEndRenderPass(cmd);
+		}
+	}
 
 	//
 	// Main Render Pass
@@ -1216,7 +1217,7 @@ void VulkanEngine::initSwapchain()
 	vkb::SwapchainBuilder swapchainBuilder{ _chosenGPU, _device, _surface };
 	vkb::Swapchain vkbSwapchain = swapchainBuilder
 		.use_default_format_selection()
-		.set_desired_present_mode(VK_PRESENT_MODE_IMMEDIATE_KHR)		// @NOTE: this is "soft" v-sync, where it won't go above the monitor hertz, but it won't immediately go down to 1/2 the framerate if dips below.
+		.set_desired_present_mode(VK_PRESENT_MODE_MAILBOX_KHR)		// @NOTE: this is "soft" v-sync, where it won't go above the monitor hertz, but it won't immediately go down to 1/2 the framerate if dips below.
 		.set_desired_extent(_windowExtent.width, _windowExtent.height)
 		.build()
 		.value();
@@ -3672,6 +3673,7 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 	Material* lastMaterial = nullptr;
 	VkDescriptorSet* lastJointDescriptor = nullptr;
 	uint32_t instanceID = 0;
+	bool first = true;
 
 	for (size_t i = offset; i < offset + count; i++)
 	{
@@ -3679,22 +3681,19 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 		RenderObject& object = _roManager->_renderObjectPool[poolIndex];
 
 		if (!_roManager->_renderObjectLayersEnabled[(size_t)object.renderLayer])
+		{
+			instanceID += object.calculatedModelInstances.size();
 			continue;    // Ignore layers that are disabled
+		}
 
 		if (!object.model)	// @NOTE: Subdue a warning that a possible nullptr could be dereferenced
 		{
 			std::cerr << "ERROR: object model is NULL" << std::endl;
+			instanceID += object.calculatedModelInstances.size();
 			continue;
 		}
 
-		if (object.model != lastModel)
-		{
-			// Bind the new mesh
-			object.model->bind(cmd);
-			lastModel = object.model;
-		}
-
-		if (instanceID == 0)
+		if (first)
 		{
 			// Bind material
 			vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipeline);
@@ -3703,6 +3702,15 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
 			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 3, 1, &defaultMaterial.textureSet, 0, nullptr);
 			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getEmptyJointDescriptorSet(), 0, nullptr);  // @TODO: actually put in the proper joint descriptor set or stuff it all into a single buffer!
+
+			first = false;
+		}
+
+		if (object.model != lastModel)
+		{
+			// Bind the new mesh
+			object.model->bind(cmd);
+			lastModel = object.model;
 		}
 
 		// Render it out
