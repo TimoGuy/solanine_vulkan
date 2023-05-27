@@ -78,7 +78,7 @@ namespace vkglTF
 	//
 	// Mesh
 	//
-	Mesh::Mesh() : animatorMeshId((uint32_t)-1)
+	Mesh::Mesh() : animatorNodeReservedIndex(0)
 	{
 	}
 
@@ -143,7 +143,7 @@ namespace vkglTF
 	{
 		mat4 m;
 		getMatrix(m);
-		animator->updateJointMatrices(mesh->animatorMeshId, skin, m);
+		animator->updateJointMatrices(mesh->animatorNodeReservedIndex, skin, m);
 	}
 
 	Node::~Node()
@@ -1946,7 +1946,11 @@ namespace vkglTF
 	{
 		if (node->mesh)
 			for (Primitive* primitive : node->mesh->primitives)
+			{
+				// @NOTE: Propagate a copy of the index for render object manager to use
+				primitive->animatorNodeReservedIndexPropagatedCopy = node->mesh->animatorNodeReservedIndex;
 				collection.push_back(primitive);
+			}
 
 		for (auto& child : node->children)
 			recurseFetchAllPrimitivesInOrderInNode(collection, child);
@@ -2010,8 +2014,9 @@ namespace vkglTF
 	//
 	// Animator
 	//
-	Animator::UniformBuffer Animator::emptyUBuffer;
-	Animator::UniformBlock  Animator::emptyUBlock;
+	Animator::GPUAnimatorNode Animator::uniformBlocks[RENDER_OBJECTS_MAX_CAPACITY];
+	Animator::AnimatorNodeCollectionBuffer Animator::nodeCollectionBuffer;
+	std::vector<size_t> Animator::reservedNodeCollectionIndices;
 
 	Animator::Animator(vkglTF::Model* model, std::vector<AnimatorCallback>& eventCallbacks) : model(model), eventCallbacks(eventCallbacks), twitchAngle(0.0f)
 	{
@@ -2028,27 +2033,33 @@ namespace vkglTF
 			if (!node->mesh)
 				continue;
 
-			node->mesh->animatorMeshId = meshId++;
 
-			UniformBlock uBlock = {};
-			node->getMatrix(uBlock.matrix);
+			GPUAnimatorNode newAnimatorNode = {};
+			node->getMatrix(newAnimatorNode.matrix);
 
-			UniformBuffer uBuffer = {};
-			uBuffer.descriptorBuffer = engine->createBuffer(sizeof(uBlock), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
-			vmaMapMemory(engine->_allocator, uBuffer.descriptorBuffer._allocation, &uBuffer.mapped);    // So we can just grab a pointer and hit memcpy() tons of times per frame!
+			// Reserve new node index
+			size_t reserveIndexCandidate = (reservedNodeCollectionIndices.back() + 1) % RENDER_OBJECTS_MAX_CAPACITY;
+			while (true)
+			{
+				bool unreserved = true;
+				for (auto index : reservedNodeCollectionIndices)
+					if (reserveIndexCandidate == index)
+					{
+						unreserved = false;
+						reserveIndexCandidate = (reserveIndexCandidate + 1) % RENDER_OBJECTS_MAX_CAPACITY;
+						break;
+					}
 
-			VkDescriptorBufferInfo uBufferInfo = {
-				.buffer = uBuffer.descriptorBuffer._buffer,
-				.offset = 0,
-				.range = sizeof(uBlock),
-			};
+				if (unreserved)
+					break;  // Success! Found an empty node index
+			}
 
-			vkutil::DescriptorBuilder::begin()
-				.bindBuffer(0, &uBufferInfo, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT)
-				.build(uBuffer.descriptorSet, engine->_skeletalAnimationSetLayout);
+			reservedNodeCollectionIndices.push_back(reserveIndexCandidate);
+			myReservedNodeCollectionIndices.push_back(reserveIndexCandidate);
+			node->mesh->animatorNodeReservedIndex = reserveIndexCandidate;
+			uniformBlocks[reserveIndexCandidate] = newAnimatorNode;
 
-			uniformBlocks.push_back(uBlock);
-			uniformBuffers.push_back(uBuffer);
+			memcpy(nodeCollectionBuffer.mapped + reserveIndexCandidate, &newAnimatorNode, sizeof(GPUAnimatorNode));
 		}
 
 		// Build animation joint matrices calculation taskflow
@@ -2093,53 +2104,56 @@ namespace vkglTF
 
 	Animator::~Animator()
 	{
-		for (auto& uniformBuffer : uniformBuffers)
+		// Unreserve all reserved collection indices
+		for (auto index : myReservedNodeCollectionIndices)
 		{
-			vmaUnmapMemory(engine->_allocator, uniformBuffer.descriptorBuffer._allocation);
-			vmaDestroyBuffer(engine->_allocator, uniformBuffer.descriptorBuffer._buffer, uniformBuffer.descriptorBuffer._allocation);
+			for (int32_t i = (int32_t)reservedNodeCollectionIndices.size() - 1; i >= 0; i--)
+				if (reservedNodeCollectionIndices[i] == index)
+				{
+					reservedNodeCollectionIndices.erase(reservedNodeCollectionIndices.begin() + i);
+					break;
+				}
 		}
 	}
 
-	void Animator::initializeEmpty(VulkanEngine* engine)
+	void Animator::initializeEmpty(VulkanEngine* engine)  // @TODO: rename this to "initialize animator descriptor set/buffer"
 	{
 		//
 		// @SPECIAL: create an empty animator and don't update the animation
-		// @TODO: @NOCHECKIN: @COPYPASTA make this moot; use an if statement in the shader to see if the vertices should not be skinned (if 0 ... and subract all indices from the transformation by 1 in the shader)
 		//
-		UniformBlock uBlock = {};
-		glm_mat4_identity(uBlock.matrix);
+		nodeCollectionBuffer.buffer = engine->createBuffer(sizeof(GPUAnimatorNode) * RENDER_OBJECTS_MAX_CAPACITY, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
-		UniformBuffer uBuffer = {};
-		uBuffer.descriptorBuffer = engine->createBuffer(sizeof(uBlock), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
-
-		VkDescriptorBufferInfo uBufferInfo = {
-			.buffer = uBuffer.descriptorBuffer._buffer,
+		VkDescriptorBufferInfo nodeCollectionBufferInfo = {
+			.buffer = nodeCollectionBuffer.buffer._buffer,
 			.offset = 0,
-			.range = sizeof(uBlock),
+			.range = sizeof(GPUAnimatorNode) * RENDER_OBJECTS_MAX_CAPACITY,
 		};
 
 		vkutil::DescriptorBuilder::begin()
-			.bindBuffer(0, &uBufferInfo, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT)
-			.build(uBuffer.descriptorSet, engine->_skeletalAnimationSetLayout);
+			.bindBuffer(0, &nodeCollectionBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_VERTEX_BIT)
+			.build(nodeCollectionBuffer.descriptorSet, engine->_skeletalAnimationSetLayout);
 
-		emptyUBlock  = uBlock;
-		emptyUBuffer = uBuffer;
+		// Copy non-skinned default animator
+		GPUAnimatorNode defaultAnimatorNode = {};
+		glm_mat4_identity(defaultAnimatorNode.matrix);
 
-		// Copy non-skinned override uniform block
-		vmaMapMemory(engine->_allocator, emptyUBuffer.descriptorBuffer._allocation, &emptyUBuffer.mapped);
-		memcpy(emptyUBuffer.mapped, &emptyUBlock, sizeof(emptyUBlock));
-		vmaUnmapMemory(engine->_allocator, emptyUBuffer.descriptorBuffer._allocation);
+		reservedNodeCollectionIndices.push_back(0);
+
+		void* mappedMem;
+		vmaMapMemory(engine->_allocator, nodeCollectionBuffer.buffer._allocation, &mappedMem);
+		nodeCollectionBuffer.mapped = (GPUAnimatorNode*)mappedMem;
+		memcpy(nodeCollectionBuffer.mapped, &defaultAnimatorNode, sizeof(GPUAnimatorNode));
 	}
 
 	void Animator::destroyEmpty(VulkanEngine* engine)
 	{
-		// @SPECIAL: destroy created descriptor set
-		vmaDestroyBuffer(engine->_allocator, emptyUBuffer.descriptorBuffer._buffer, emptyUBuffer.descriptorBuffer._allocation);
+		vmaUnmapMemory(engine->_allocator, nodeCollectionBuffer.buffer._allocation);
+		vmaDestroyBuffer(engine->_allocator, nodeCollectionBuffer.buffer._buffer, nodeCollectionBuffer.buffer._allocation);
 	}
 
-	VkDescriptorSet* Animator::getEmptyJointDescriptorSet()
+	VkDescriptorSet* Animator::getGlobalAnimatorNodeCollectionDescriptorSet()
 	{
-		return &emptyUBuffer.descriptorSet;
+		return &nodeCollectionBuffer.descriptorSet;
 	}
 
 	void Animator::playAnimation(size_t maskIndex, uint32_t animationIndex, bool loop, float_t time)
@@ -2491,11 +2505,11 @@ namespace vkglTF
 		}
 	}
 
-	void Animator::updateJointMatrices(uint32_t animatorMeshId, vkglTF::Skin* skin, mat4& m)
+	void Animator::updateJointMatrices(size_t animatorNodeReservedIndex, vkglTF::Skin* skin, mat4& m)
 	{
 		if (skin)
 		{
-			auto& uniformBlock = uniformBlocks[animatorMeshId];
+			auto& uniformBlock = uniformBlocks[animatorNodeReservedIndex];
 			glm_mat4_copy(m, uniformBlock.matrix);
 			// Update join matrices
 			mat4 inverseTransform;
@@ -2511,11 +2525,11 @@ namespace vkglTF
 				glm_mat4_copy(jointMat, uniformBlock.jointMatrix[i]);
 			}
 			uniformBlock.jointcount = (float)numJoints;
-			memcpy(uniformBuffers[animatorMeshId].mapped, &uniformBlock, sizeof(uniformBlock));
+			memcpy(nodeCollectionBuffer.mapped + animatorNodeReservedIndex, &uniformBlock, sizeof(GPUAnimatorNode));
 		}
 		else
 		{
-			memcpy(uniformBuffers[animatorMeshId].mapped, &m, sizeof(mat4));  // @TODO: Idk if this would work! (doing `&m` if it's a mat4 datatype instead)  @FIXME: @CHECK: @NOCHECKIN
+			memcpy(nodeCollectionBuffer.mapped + animatorNodeReservedIndex, &m, sizeof(mat4));
 		}
 	}
 
@@ -2539,10 +2553,5 @@ namespace vkglTF
 		std::cerr << "[GET JOINT MATRIX]" << std::endl
 			<< "WARNING: joint matrix \"" << jointName << "\" not found. Returning identity matrix" << std::endl;
 		return false;
-	}
-
-	Animator::UniformBuffer& Animator::getUniformBuffer(size_t index)
-	{
-		return uniformBuffers[index];
 	}
 }

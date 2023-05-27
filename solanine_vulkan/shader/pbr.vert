@@ -56,12 +56,17 @@ layout(std140, set = 2, binding = 0) readonly buffer InstancePtrBuffer
 
 // Skeletal Animation/Skinning
 #define MAX_NUM_JOINTS 128
-layout (set = 4, binding = 0) uniform SkeletonAnimationNode
+struct SkeletonAnimationNode
 {
 	mat4 matrix;
 	mat4 jointMatrix[MAX_NUM_JOINTS];
 	float jointCount;
-} node;
+};
+
+layout (std140, set = 4, binding = 0) readonly buffer SkeletonAnimationNodeCollection
+{
+	SkeletonAnimationNode nodes[];
+} nodeCollection;
 
 
 void main()
@@ -70,6 +75,7 @@ void main()
 	// Skin mesh
 	//
 	mat4 modelMatrix = objectBuffer.objects[instancePtrBuffer.pointers[gl_BaseInstance].objectID].modelMatrix;
+	SkeletonAnimationNode node = nodeCollection.nodes[instancePtrBuffer.pointers[gl_BaseInstance].animatorNodeID];
 	vec4 locPos;
 	if (node.jointCount > 0.0)
 	{

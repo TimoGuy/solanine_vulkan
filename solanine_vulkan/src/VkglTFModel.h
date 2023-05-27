@@ -112,9 +112,10 @@ namespace vkglTF
 		uint32_t firstIndex;
 		uint32_t indexCount;
 		uint32_t vertexCount;
-		uint32_t materialID;
 		bool hasIndices;
 		BoundingBox bb;
+		uint32_t materialID;
+		size_t   animatorNodeReservedIndexPropagatedCopy;
 		Primitive(uint32_t firstIndex, uint32_t indexCount, uint32_t vertexCount, uint32_t materialID);
 		void setBoundingBox(vec3 min, vec3 max);
 	};
@@ -125,7 +126,7 @@ namespace vkglTF
 		BoundingBox bb;
 		BoundingBox aabb;
 
-		uint32_t animatorMeshId;
+		size_t animatorNodeReservedIndex;
 
 		Mesh();
 		~Mesh();
@@ -397,7 +398,7 @@ namespace vkglTF
 
 		static void initializeEmpty(VulkanEngine* engine);
 		static void destroyEmpty(VulkanEngine* engine);
-		static VkDescriptorSet* getEmptyJointDescriptorSet();  // For binding to represent a non-skinned mesh
+		static VkDescriptorSet* getGlobalAnimatorNodeCollectionDescriptorSet();  // For binding to represent a non-skinned mesh
 
 		void playAnimation(size_t maskIndex, uint32_t animationIndex, bool loop, float_t time = 0.0f);  // This is for direct control of the animation index
 		void update(const float_t& deltaTime);
@@ -415,36 +416,34 @@ namespace vkglTF
 		float_t                       twitchAngle;
 
 		void updateAnimation();
-		void updateJointMatrices(uint32_t animatorMeshId, vkglTF::Skin* skin, mat4& m);
+		void updateJointMatrices(size_t animatorNodeReservedIndex, vkglTF::Skin* skin, mat4& m);
 	public:
 		bool getJointMatrix(const std::string& jointName, mat4& out);
 	private:
 
-		struct UniformBuffer
-		{
-			AllocatedBuffer descriptorBuffer;
-			VkDescriptorSet descriptorSet;
-			void* mapped;
-		};
-		std::vector<UniformBuffer> uniformBuffers;
-
-		struct UniformBlock
+		struct GPUAnimatorNode
 		{
 			mat4 matrix;
 			mat4 jointMatrix[MAX_NUM_JOINTS]{};
 			float_t jointcount{ 0 };
 		};
-		std::vector<UniformBlock> uniformBlocks;
+		static GPUAnimatorNode uniformBlocks[];
+
+		struct AnimatorNodeCollectionBuffer
+		{
+			AllocatedBuffer buffer;
+			VkDescriptorSet descriptorSet;
+			GPUAnimatorNode* mapped;
+		};
+		static AnimatorNodeCollectionBuffer nodeCollectionBuffer;
+		static std::vector<size_t> reservedNodeCollectionIndices;
+
+		std::vector<size_t> myReservedNodeCollectionIndices;
 
 		tf::Taskflow calculateJointMatricesTaskflow;
 		tf::Executor taskflowExecutor;
 
-		// @SPECIAL: empty animator for empty joint descriptor sets
-		static UniformBuffer emptyUBuffer;
-		static UniformBlock  emptyUBlock;
 	public:
-		UniformBuffer& getUniformBuffer(size_t index);
-
 		friend struct Node;
 	};
 }
