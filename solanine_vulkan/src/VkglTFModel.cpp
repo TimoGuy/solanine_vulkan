@@ -998,7 +998,7 @@ namespace vkglTF
 			std::lock_guard<std::mutex> lg(emptyMaterialCollectionMutex);
 			
 			if (pbrMaterialCollection.materials.empty())
-				pbrMaterialCollection.materials.push_back(new PBRMaterial());  // @TODO: @NOCHECKIN: delete this somewhere!
+				pbrMaterialCollection.materials.push_back(new PBRMaterial());  // @TODO: @NOCHECKIN: delete the heap object somewhere upon shutdown!
 		}
 
 		//

@@ -28,13 +28,6 @@ RenderObject* RenderObjectManager::registerRenderObject(RenderObject renderObjec
 		}
 	}
 
-	// Register object
-	_renderObjectPool[registerIndex] = renderObjectData;
-	_renderObjectsIsRegistered[registerIndex] = true;
-	_renderObjectsIndices.push_back(registerIndex);
-
-	recalculateAnimatorIndices();
-
 	// Calculate instance pointers
 	renderObjectData.calculatedModelInstances.clear();
 	auto primitives = renderObjectData.model->getAllPrimitivesInOrder();
@@ -44,6 +37,14 @@ RenderObject* RenderObjectManager::registerRenderObject(RenderObject renderObjec
 			.materialID = primitive->materialID,
 			.animatorNodeID = 0,  // @TODO: figure out how to get the animator node id into here... for now just do no animator and empty joint descriptor.
 		});
+
+	// Register object
+	_renderObjectPool[registerIndex] = renderObjectData;
+	_renderObjectsIsRegistered[registerIndex] = true;
+	_renderObjectsIndices.push_back(registerIndex);
+
+	// Recalculate what indices animated render objects are at
+	recalculateAnimatorIndices();
 
 	return &_renderObjectPool[registerIndex];
 }
@@ -61,6 +62,7 @@ void RenderObjectManager::unregisterRenderObject(RenderObject* objRegistration)
 			_renderObjectsIsRegistered[poolIndex] = false;
 			_renderObjectsIndices.erase(_renderObjectsIndices.begin() + indicesIndex);
 
+			// Recalculate what indices animated render objects are at
 			recalculateAnimatorIndices();
 
 			return;

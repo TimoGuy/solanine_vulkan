@@ -288,22 +288,30 @@ public:
 
 	enum PBRWorkflows { PBR_WORKFLOW_METALLIC_ROUGHNESS = 0, PBR_WORKFLOW_SPECULAR_GLOSSINESS = 1 };
 
-	struct PBRMaterialPushConstBlock
+	struct PBRMaterialParam
 	{
-		vec4 baseColorFactor;
-		vec4 emissiveFactor;
-		vec4 diffuseFactor;
-		vec4 specularFactor;
-		float workflow;
-		int colorTextureSet;
-		int PhysicalDescriptorTextureSet;
-		int normalTextureSet;
-		int occlusionTextureSet;
-		int emissiveTextureSet;
-		float metallicFactor;
-		float roughnessFactor;
-		float alphaMask;
-		float alphaMaskCutoff;
+		// Texture map references
+		uint32_t colorMapIndex;
+		uint32_t physicalDescriptorMapIndex;
+		uint32_t normalMapIndex;
+		uint32_t aoMapIndex;
+		uint32_t emissiveMapIndex;
+
+		// Material properties
+		vec4    baseColorFactor;
+		vec4    emissiveFactor;
+		vec4    diffuseFactor;
+		vec4    specularFactor;
+		float_t workflow;
+		int32_t colorTextureSet;
+		int32_t PhysicalDescriptorTextureSet;
+		int32_t normalTextureSet;
+		int32_t occlusionTextureSet;
+		int32_t emissiveTextureSet;
+		float_t metallicFactor;
+		float_t roughnessFactor;
+		float_t alphaMask;
+		float_t alphaMaskCutoff;
 	};
 
 private:

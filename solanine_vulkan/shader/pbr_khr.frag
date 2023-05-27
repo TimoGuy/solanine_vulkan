@@ -52,6 +52,7 @@ struct InstancePointer
 	uint objectID;
 	uint materialID;
 	uint animatorNodeID;
+	uint pad;
 };
 
 layout(std140, set = 2, binding = 0) readonly buffer InstancePtrBuffer
@@ -97,7 +98,7 @@ struct MaterialParam
 };
 
 #define MAX_NUM_MATERIALS 256
-layout (set = 3, binding = 5) uniform Material
+layout (std140, set = 3, binding = 5) readonly buffer MaterialCollection
 {
 	MaterialParam params[MAX_NUM_MATERIALS];
 } materialCollection;

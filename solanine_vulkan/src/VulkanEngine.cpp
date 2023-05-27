@@ -2064,57 +2064,131 @@ void VulkanEngine::initDescriptors()    // @TODO: don't destroy and then recreat
 	//
 	// All PBR Textures
 	//
-	// @NOCHECKIN: add the rest of the information for this.
+	AllocatedBuffer materialParamsBuffer = createBuffer(sizeof(PBRMaterialParam) * MAX_NUM_MATERIALS, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
 	VkDescriptorImageInfo* colorMapImageInfos = new VkDescriptorImageInfo[MAX_NUM_MAPS];
 	for (size_t i = 0; i < MAX_NUM_MAPS; i++)
 		colorMapImageInfos[i] =
 			(i < vkglTF::Model::pbrTextureCollection.colorMaps.size()) ?
 			vkinit::textureToDescriptorImageInfo(vkglTF::Model::pbrTextureCollection.colorMaps[i]) :
-			VkDescriptorImageInfo{};
+			vkinit::textureToDescriptorImageInfo(vkglTF::Model::pbrTextureCollection.colorMaps[0]);
 
 	VkDescriptorImageInfo* physicalDescriptorMapImageInfos = new VkDescriptorImageInfo[MAX_NUM_MAPS];
 	for (size_t i = 0; i < MAX_NUM_MAPS; i++)
 		physicalDescriptorMapImageInfos[i] =
 			(i < vkglTF::Model::pbrTextureCollection.physicalDescriptorMaps.size()) ?
 			vkinit::textureToDescriptorImageInfo(vkglTF::Model::pbrTextureCollection.physicalDescriptorMaps[i]) :
-			VkDescriptorImageInfo{};
+			vkinit::textureToDescriptorImageInfo(vkglTF::Model::pbrTextureCollection.physicalDescriptorMaps[0]);
 
 	VkDescriptorImageInfo* normalMapImageInfos = new VkDescriptorImageInfo[MAX_NUM_MAPS];
 	for (size_t i = 0; i < MAX_NUM_MAPS; i++)
 		normalMapImageInfos[i] =
 			(i < vkglTF::Model::pbrTextureCollection.normalMaps.size()) ?
 			vkinit::textureToDescriptorImageInfo(vkglTF::Model::pbrTextureCollection.normalMaps[i]) :
-			VkDescriptorImageInfo{};
+			vkinit::textureToDescriptorImageInfo(vkglTF::Model::pbrTextureCollection.normalMaps[0]);
 
 	VkDescriptorImageInfo* aoMapImageInfos = new VkDescriptorImageInfo[MAX_NUM_MAPS];
 	for (size_t i = 0; i < MAX_NUM_MAPS; i++)
 		aoMapImageInfos[i] =
 			(i < vkglTF::Model::pbrTextureCollection.aoMaps.size()) ?
 			vkinit::textureToDescriptorImageInfo(vkglTF::Model::pbrTextureCollection.aoMaps[i]) :
-			VkDescriptorImageInfo{};
+			vkinit::textureToDescriptorImageInfo(vkglTF::Model::pbrTextureCollection.aoMaps[0]);
 
 	VkDescriptorImageInfo* emissiveMapImageInfos = new VkDescriptorImageInfo[MAX_NUM_MAPS];
 	for (size_t i = 0; i < MAX_NUM_MAPS; i++)
 		emissiveMapImageInfos[i] =
 			(i < vkglTF::Model::pbrTextureCollection.emissiveMaps.size()) ?
 			vkinit::textureToDescriptorImageInfo(vkglTF::Model::pbrTextureCollection.emissiveMaps[i]) :
-			VkDescriptorImageInfo{};
+			vkinit::textureToDescriptorImageInfo(vkglTF::Model::pbrTextureCollection.emissiveMaps[0]);
 
-	VkDescriptorSet allPBRTexturesTextureSet;
+	VkDescriptorBufferInfo materialParamsBufferInfo = {
+		.buffer = materialParamsBuffer._buffer,
+		.offset = 0,
+		.range = sizeof(PBRMaterialParam) * MAX_NUM_MATERIALS,
+	};
+
+	VkDescriptorSet allPBRTexturesDescriptorSet;
 	vkutil::DescriptorBuilder::begin()
 		.bindImageArray(0, MAX_NUM_MAPS, colorMapImageInfos,              VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
 		.bindImageArray(1, MAX_NUM_MAPS, physicalDescriptorMapImageInfos, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
 		.bindImageArray(2, MAX_NUM_MAPS, normalMapImageInfos,             VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
 		.bindImageArray(3, MAX_NUM_MAPS, aoMapImageInfos,                 VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
 		.bindImageArray(4, MAX_NUM_MAPS, emissiveMapImageInfos,           VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
-		.build(allPBRTexturesTextureSet, _pbrTexturesSetLayout);
-	attachTextureSetToMaterial(allPBRTexturesTextureSet, "pbrMaterial");
+		.bindBuffer(5, &materialParamsBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT)
+		.build(allPBRTexturesDescriptorSet, _pbrTexturesSetLayout);
+	attachTextureSetToMaterial(allPBRTexturesDescriptorSet, "pbrMaterial");
+
+	//
+	// Copy over material information
+	//
+	void* materialParamsData;
+	vmaMapMemory(_allocator, materialParamsBuffer._allocation, &materialParamsData);
+	PBRMaterialParam* materialParamsSSBO = (PBRMaterialParam*)materialParamsData;
+	for (size_t i = 0; i < MAX_NUM_MATERIALS; i++)
+	{
+		size_t index = i;
+		if (index >= vkglTF::Model::pbrMaterialCollection.materials.size())
+			index = 0;
+
+		vkglTF::PBRMaterial* mat = vkglTF::Model::pbrMaterialCollection.materials[index];
+
+		PBRMaterialParam p = {
+			.colorMapIndex              = mat->texturePtr.colorMapIndex,
+			.physicalDescriptorMapIndex = mat->texturePtr.physicalDescriptorMapIndex,
+			.normalMapIndex             = mat->texturePtr.normalMapIndex,
+			.aoMapIndex                 = mat->texturePtr.aoMapIndex,
+			.emissiveMapIndex           = mat->texturePtr.emissiveMapIndex,
+		};
+
+		glm_vec4_copy(mat->emissiveFactor, p.emissiveFactor);
+		// To save space, availabilty and texture coordinates set are combined
+		// -1 = texture not used for this material, >= 0 texture used and index of texture coordinate set
+		p.colorTextureSet = mat->baseColorTexture != nullptr ? mat->texCoordSets.baseColor : -1;
+		p.normalTextureSet = mat->normalTexture != nullptr ? mat->texCoordSets.normal : -1;
+		p.occlusionTextureSet = mat->occlusionTexture != nullptr ? mat->texCoordSets.occlusion : -1;
+		p.emissiveTextureSet = mat->emissiveTexture != nullptr ? mat->texCoordSets.emissive : -1;
+		p.alphaMask = static_cast<float>(mat->alphaMode == vkglTF::PBRMaterial::ALPHAMODE_MASK);
+		p.alphaMaskCutoff = mat->alphaCutoff;
+
+		// TODO: glTF specs states that metallic roughness should be preferred, even if specular glossiness is present
+
+		if (mat->pbrWorkflows.metallicRoughness)
+		{
+			// Metallic roughness workflow
+			p.workflow = static_cast<float>(PBR_WORKFLOW_METALLIC_ROUGHNESS);
+			glm_vec4_copy(mat->baseColorFactor, p.baseColorFactor);
+			p.metallicFactor = mat->metallicFactor;
+			p.roughnessFactor = mat->roughnessFactor;
+			p.PhysicalDescriptorTextureSet = mat->metallicRoughnessTexture != nullptr ? mat->texCoordSets.metallicRoughness : -1;
+			p.colorTextureSet = mat->baseColorTexture != nullptr ? mat->texCoordSets.baseColor : -1;
+		}
+
+		if (mat->pbrWorkflows.specularGlossiness)
+		{
+			// Specular glossiness workflow
+			p.workflow = static_cast<float>(PBR_WORKFLOW_SPECULAR_GLOSSINESS);
+			p.PhysicalDescriptorTextureSet = mat->extension.specularGlossinessTexture != nullptr ? mat->texCoordSets.specularGlossiness : -1;
+			p.colorTextureSet = mat->extension.diffuseTexture != nullptr ? mat->texCoordSets.baseColor : -1;
+			glm_vec4_copy(mat->extension.diffuseFactor, p.diffuseFactor);
+			glm_vec4(mat->extension.specularFactor, 1.0f, p.specularFactor);
+		}
+
+		*materialParamsSSBO = p;
+
+		// Increment along, sir!
+		materialParamsSSBO++;
+	}
+	vmaUnmapMemory(_allocator, materialParamsBuffer._allocation);
 
 	//
 	// Joint Descriptor
 	//
 	vkglTF::Animator::initializeEmpty(this);
+
+	// Add cleanup procedure
+	_mainDeletionQueue.pushFunction([=]() {
+		vmaDestroyBuffer(_allocator, materialParamsBuffer._buffer, materialParamsBuffer._allocation);
+	});
 }
 
 void VulkanEngine::initPipelines()  // @TODO: this is a big, scary, hairy mess!
@@ -2162,13 +2236,8 @@ void VulkanEngine::initPipelines()  // @TODO: this is a big, scary, hairy mess!
 	//
 	VkPipelineLayoutCreateInfo meshPipelineLayoutInfo = vkinit::pipelineLayoutCreateInfo();
 
-	VkPushConstantRange pushConstant = {
-		.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-		.offset = 0,
-		.size = sizeof(PBRMaterialPushConstBlock)
-	};
-	meshPipelineLayoutInfo.pPushConstantRanges = &pushConstant;
-	meshPipelineLayoutInfo.pushConstantRangeCount = 1;
+	meshPipelineLayoutInfo.pPushConstantRanges = nullptr;
+	meshPipelineLayoutInfo.pushConstantRangeCount = 0;
 
 	VkDescriptorSetLayout setLayouts[] = { _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _pbrTexturesSetLayout, _skeletalAnimationSetLayout };
 	meshPipelineLayoutInfo.pSetLayouts = setLayouts;
@@ -2294,7 +2363,7 @@ void VulkanEngine::initPipelines()  // @TODO: this is a big, scary, hairy mess!
 	//
 	VkPipelineLayoutCreateInfo wireframeColorPipelineLayoutInfo = pickingPipelineLayoutInfo;
 
-	pushConstant = {
+	VkPushConstantRange pushConstant = {
 		.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
 		.offset = 0,
 		.size = sizeof(ColorPushConstBlock)
