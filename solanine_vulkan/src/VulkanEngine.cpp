@@ -2067,40 +2067,12 @@ void VulkanEngine::initDescriptors()    // @TODO: don't destroy and then recreat
 	//
 	AllocatedBuffer materialParamsBuffer = createBuffer(sizeof(PBRMaterialParam) * MAX_NUM_MATERIALS, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
-	VkDescriptorImageInfo* colorMapImageInfos = new VkDescriptorImageInfo[MAX_NUM_MAPS];
+	VkDescriptorImageInfo* textureImageInfos = new VkDescriptorImageInfo[MAX_NUM_MAPS];
 	for (size_t i = 0; i < MAX_NUM_MAPS; i++)
-		colorMapImageInfos[i] =
-			(i < vkglTF::Model::pbrTextureCollection.colorMaps.size()) ?
-			vkinit::textureToDescriptorImageInfo(vkglTF::Model::pbrTextureCollection.colorMaps[i]) :
-			vkinit::textureToDescriptorImageInfo(vkglTF::Model::pbrTextureCollection.colorMaps[0]);
-
-	VkDescriptorImageInfo* physicalDescriptorMapImageInfos = new VkDescriptorImageInfo[MAX_NUM_MAPS];
-	for (size_t i = 0; i < MAX_NUM_MAPS; i++)
-		physicalDescriptorMapImageInfos[i] =
-			(i < vkglTF::Model::pbrTextureCollection.physicalDescriptorMaps.size()) ?
-			vkinit::textureToDescriptorImageInfo(vkglTF::Model::pbrTextureCollection.physicalDescriptorMaps[i]) :
-			vkinit::textureToDescriptorImageInfo(vkglTF::Model::pbrTextureCollection.physicalDescriptorMaps[0]);
-
-	VkDescriptorImageInfo* normalMapImageInfos = new VkDescriptorImageInfo[MAX_NUM_MAPS];
-	for (size_t i = 0; i < MAX_NUM_MAPS; i++)
-		normalMapImageInfos[i] =
-			(i < vkglTF::Model::pbrTextureCollection.normalMaps.size()) ?
-			vkinit::textureToDescriptorImageInfo(vkglTF::Model::pbrTextureCollection.normalMaps[i]) :
-			vkinit::textureToDescriptorImageInfo(vkglTF::Model::pbrTextureCollection.normalMaps[0]);
-
-	VkDescriptorImageInfo* aoMapImageInfos = new VkDescriptorImageInfo[MAX_NUM_MAPS];
-	for (size_t i = 0; i < MAX_NUM_MAPS; i++)
-		aoMapImageInfos[i] =
-			(i < vkglTF::Model::pbrTextureCollection.aoMaps.size()) ?
-			vkinit::textureToDescriptorImageInfo(vkglTF::Model::pbrTextureCollection.aoMaps[i]) :
-			vkinit::textureToDescriptorImageInfo(vkglTF::Model::pbrTextureCollection.aoMaps[0]);
-
-	VkDescriptorImageInfo* emissiveMapImageInfos = new VkDescriptorImageInfo[MAX_NUM_MAPS];
-	for (size_t i = 0; i < MAX_NUM_MAPS; i++)
-		emissiveMapImageInfos[i] =
-			(i < vkglTF::Model::pbrTextureCollection.emissiveMaps.size()) ?
-			vkinit::textureToDescriptorImageInfo(vkglTF::Model::pbrTextureCollection.emissiveMaps[i]) :
-			vkinit::textureToDescriptorImageInfo(vkglTF::Model::pbrTextureCollection.emissiveMaps[0]);
+		textureImageInfos[i] =
+			(i < vkglTF::Model::pbrTextureCollection.textures.size()) ?
+			vkinit::textureToDescriptorImageInfo(vkglTF::Model::pbrTextureCollection.textures[i]) :
+			vkinit::textureToDescriptorImageInfo(vkglTF::Model::pbrTextureCollection.textures[0]);
 
 	VkDescriptorBufferInfo materialParamsBufferInfo = {
 		.buffer = materialParamsBuffer._buffer,
@@ -2110,12 +2082,8 @@ void VulkanEngine::initDescriptors()    // @TODO: don't destroy and then recreat
 
 	VkDescriptorSet allPBRTexturesDescriptorSet;
 	vkutil::DescriptorBuilder::begin()
-		.bindImageArray(0, MAX_NUM_MAPS, colorMapImageInfos,              VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
-		.bindImageArray(1, MAX_NUM_MAPS, physicalDescriptorMapImageInfos, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
-		.bindImageArray(2, MAX_NUM_MAPS, normalMapImageInfos,             VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
-		.bindImageArray(3, MAX_NUM_MAPS, aoMapImageInfos,                 VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
-		.bindImageArray(4, MAX_NUM_MAPS, emissiveMapImageInfos,           VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
-		.bindBuffer(5, &materialParamsBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT)
+		.bindImageArray(0, MAX_NUM_MAPS, textureImageInfos, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+		.bindBuffer(1, &materialParamsBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT)
 		.build(allPBRTexturesDescriptorSet, _pbrTexturesSetLayout);
 	attachTextureSetToMaterial(allPBRTexturesDescriptorSet, "pbrMaterial");
 

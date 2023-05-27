@@ -284,11 +284,7 @@ namespace vkglTF
 	{
 		struct PBRTextureCollection
 		{
-			std::vector<Texture*> colorMaps;
-			std::vector<Texture*> physicalDescriptorMaps;
-			std::vector<Texture*> normalMaps;
-			std::vector<Texture*> aoMaps;
-			std::vector<Texture*> emissiveMaps;
+			std::vector<Texture*> textures;
 		} static pbrTextureCollection;
 
 		struct PBRMaterialCollection

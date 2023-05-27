@@ -979,15 +979,8 @@ namespace vkglTF
 			static std::mutex emptyTextureMapMutex;
 			std::lock_guard<std::mutex> lg(emptyTextureMapMutex);
 			
-			if (pbrTextureCollection.colorMaps.empty())
-			{
-				// Add initial textures into PBR texture collection (i.e. empty texture)
-				pbrTextureCollection.colorMaps.push_back(&engine->_loadedTextures["empty"]);
-				pbrTextureCollection.physicalDescriptorMaps.push_back(&engine->_loadedTextures["empty"]);
-				pbrTextureCollection.normalMaps.push_back(&engine->_loadedTextures["empty"]);
-				pbrTextureCollection.aoMaps.push_back(&engine->_loadedTextures["empty"]);
-				pbrTextureCollection.emissiveMaps.push_back(&engine->_loadedTextures["empty"]);
-			}
+			if (pbrTextureCollection.textures.empty())
+				pbrTextureCollection.textures.push_back(&engine->_loadedTextures["empty"]);
 		}
 
 		//
@@ -1022,14 +1015,14 @@ namespace vkglTF
 				if (material.baseColorTexture)
 				{
 					std::lock_guard<std::mutex> lg(colorMapMutex);
-					material.texturePtr.colorMapIndex = pbrTextureCollection.colorMaps.size();
-					pbrTextureCollection.colorMaps.push_back(material.baseColorTexture);
+					material.texturePtr.colorMapIndex = pbrTextureCollection.textures.size();
+					pbrTextureCollection.textures.push_back(material.baseColorTexture);
 				}
 				if (material.metallicRoughnessTexture)
 				{
 					std::lock_guard<std::mutex> lg(physicalDescriptorMapMutex);
-					material.texturePtr.physicalDescriptorMapIndex = pbrTextureCollection.physicalDescriptorMaps.size();
-					pbrTextureCollection.physicalDescriptorMaps.push_back(material.metallicRoughnessTexture);
+					material.texturePtr.physicalDescriptorMapIndex = pbrTextureCollection.textures.size();
+					pbrTextureCollection.textures.push_back(material.metallicRoughnessTexture);
 				}
 			}
 
@@ -1038,36 +1031,36 @@ namespace vkglTF
 				if (material.extension.diffuseTexture)
 				{
 					std::lock_guard<std::mutex> lg(colorMapMutex);
-					material.texturePtr.colorMapIndex = pbrTextureCollection.colorMaps.size();
-					pbrTextureCollection.colorMaps.push_back(material.extension.diffuseTexture);
+					material.texturePtr.colorMapIndex = pbrTextureCollection.textures.size();
+					pbrTextureCollection.textures.push_back(material.extension.diffuseTexture);
 				}
 				if (material.extension.specularGlossinessTexture)
 				{
 					std::lock_guard<std::mutex> lg(physicalDescriptorMapMutex);
-					material.texturePtr.physicalDescriptorMapIndex = pbrTextureCollection.physicalDescriptorMaps.size();
-					pbrTextureCollection.physicalDescriptorMaps.push_back(material.extension.specularGlossinessTexture);
+					material.texturePtr.physicalDescriptorMapIndex = pbrTextureCollection.textures.size();
+					pbrTextureCollection.textures.push_back(material.extension.specularGlossinessTexture);
 				}
 			}
 
 			if (material.normalTexture)
 			{
 				std::lock_guard<std::mutex> lg(normalMapMutex);
-				material.texturePtr.normalMapIndex = pbrTextureCollection.normalMaps.size();
-				pbrTextureCollection.normalMaps.push_back(material.normalTexture);
+				material.texturePtr.normalMapIndex = pbrTextureCollection.textures.size();
+				pbrTextureCollection.textures.push_back(material.normalTexture);
 			}
 
 			if (material.occlusionTexture)
 			{
 				std::lock_guard<std::mutex> lg(aoMapMutex);
-				material.texturePtr.aoMapIndex = pbrTextureCollection.aoMaps.size();
-				pbrTextureCollection.aoMaps.push_back(material.occlusionTexture);
+				material.texturePtr.aoMapIndex = pbrTextureCollection.textures.size();
+				pbrTextureCollection.textures.push_back(material.occlusionTexture);
 			}
 
 			if (material.emissiveTexture)
 			{
 				std::lock_guard<std::mutex> lg(emissiveMapMutex);
-				material.texturePtr.emissiveMapIndex = pbrTextureCollection.emissiveMaps.size();
-				pbrTextureCollection.emissiveMaps.push_back(material.emissiveTexture);
+				material.texturePtr.emissiveMapIndex = pbrTextureCollection.textures.size();
+				pbrTextureCollection.textures.push_back(material.emissiveTexture);
 			}
 
 			// Load in the material into the material collection
