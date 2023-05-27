@@ -379,20 +379,22 @@ void VulkanEngine::render()
 		memcpy(data, &_camera->sceneCamera.gpuCascadeViewProjsData, sizeof(GPUCascadeViewProjsData));
 		vmaUnmapMemory(_allocator, currentFrame.cascadeViewProjsBuffer._allocation);
 
-		Material* shadowDepthPassMaterial = getMaterial("shadowDepthPassMaterial");  // @TODO: @IMPLEMENT this material so we can use the correct shaders
+		Material& shadowDepthPassMaterial = *getMaterial("shadowDepthPassMaterial");
 		for (uint32_t i = 0; i < SHADOWMAP_CASCADES; i++)
 		{
 			renderpassInfo.framebuffer = _shadowCascades[i].framebuffer;
 			vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-			vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial->pipeline);
-			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial->pipelineLayout, 0, 1, &currentFrame.cascadeViewProjsDescriptor, 0, nullptr);
-			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial->pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
+			vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipeline);
+			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 0, 1, &currentFrame.cascadeViewProjsDescriptor, 0, nullptr);
+			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
+			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
+			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 3, 1, &getMaterial("pbrMaterial")->textureSet, 0, nullptr);
+			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(), 0, nullptr);
 			CascadeIndexPushConstBlock pc = { i };
-			vkCmdPushConstants(cmd, shadowDepthPassMaterial->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(CascadeIndexPushConstBlock), &pc);
+			vkCmdPushConstants(cmd, shadowDepthPassMaterial.pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(CascadeIndexPushConstBlock), &pc);
 
-			// @TODO: @INCOMPLETE: figure out rendering the render objects for shadows
-			// renderRenderObjects(cmd, currentFrame, 0, _roManager->_renderObjectsIndices.size(), true, &shadowDepthPassMaterial->pipelineLayout, true);
+			renderRenderObjects(cmd, currentFrame, 0, _roManager->_renderObjectsIndices.size(), true, &shadowDepthPassMaterial.pipelineLayout);
 			
 			vkCmdEndRenderPass(cmd);
 		}
@@ -440,7 +442,7 @@ void VulkanEngine::render()
 		skybox->draw(cmd);
 		///////////////////
 
-		renderRenderObjects(cmd, currentFrame, 0, _roManager->_renderObjectsIndices.size(), false, nullptr, false);
+		renderRenderObjects(cmd, currentFrame, 0, _roManager->_renderObjectsIndices.size(), false, nullptr);
 		renderPickedObject(cmd, currentFrame);
 
 		// End renderpass
@@ -769,7 +771,7 @@ void VulkanEngine::render()
 		std::cout << "[PICKING]" << std::endl
 			<< "set picking scissor to: x=" << scissor.offset.x << "  y=" << scissor.offset.y << "  w=" << scissor.extent.width << "  h=" << scissor.extent.height << std::endl;
 
-		renderRenderObjects(cmd, currentFrame, 0, _roManager->_renderObjectsIndices.size(), true, &pickingMaterial.pipelineLayout, false);    // @NOTE: the joint descriptorset will still be bound in here   @HACK: it's using the wrong pipelinelayout but.... it should be fine? Bc the slot is still set=3 for the joints on the picking pipelinelayout too??
+		renderRenderObjects(cmd, currentFrame, 0, _roManager->_renderObjectsIndices.size(), true, &pickingMaterial.pipelineLayout);    // @NOTE: the joint descriptorset will still be bound in here   @HACK: it's using the wrong pipelinelayout but.... it should be fine? Bc the slot is still set=3 for the joints on the picking pipelinelayout too??
 
 		// End renderpass
 		vkCmdEndRenderPass(cmd);
@@ -2387,9 +2389,9 @@ void VulkanEngine::initPipelines()  // @TODO: this is a big, scary, hairy mess!
 	shadowDepthPassPipelineLayoutInfo.pPushConstantRanges = &pushConstant;
 	shadowDepthPassPipelineLayoutInfo.pushConstantRangeCount = 1;
 
-	VkDescriptorSetLayout setLayouts6[] = { _cascadeViewProjsSetLayout, _objectSetLayout, _skeletalAnimationSetLayout, _pbrTexturesSetLayout };
+	VkDescriptorSetLayout setLayouts6[] = { _cascadeViewProjsSetLayout, _objectSetLayout, _instancePtrSetLayout, _pbrTexturesSetLayout, _skeletalAnimationSetLayout };
 	shadowDepthPassPipelineLayoutInfo.pSetLayouts = setLayouts6;
-	shadowDepthPassPipelineLayoutInfo.setLayoutCount = 4;
+	shadowDepthPassPipelineLayoutInfo.setLayoutCount = 5;
 
 	VkPipelineLayout _shadowDepthPassPipelineLayout;
 	VK_CHECK(vkCreatePipelineLayout(_device, &shadowDepthPassPipelineLayoutInfo, nullptr, &_shadowDepthPassPipelineLayout));
@@ -3614,7 +3616,6 @@ void VulkanEngine::uploadCurrentFrameToGPU(const FrameData& currentFrame)
 
 	//
 	// Fill in instance level data
-	// @TODO: @NOCHECKIN
 	//
 	void* instancePtrData;
 	vmaMapMemory(_allocator, currentFrame.instancePtrBuffer._allocation, &instancePtrData);
@@ -3631,7 +3632,7 @@ void VulkanEngine::uploadCurrentFrameToGPU(const FrameData& currentFrame)
 	vmaUnmapMemory(_allocator, currentFrame.instancePtrBuffer._allocation);
 }
 
-void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, size_t offset, size_t count, bool materialOverride, VkPipelineLayout* overrideLayout, bool injectColorMapIntoMaterialOverride)
+void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, size_t offset, size_t count, bool materialOverride, VkPipelineLayout* overrideLayout)
 {
 	//
 	// Render all the renderobjects
@@ -3641,7 +3642,7 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 	Material* lastMaterial = nullptr;
 	VkDescriptorSet* lastJointDescriptor = nullptr;
 	uint32_t instanceID = 0;
-	bool first = true;
+	bool materialBinded = false || materialOverride;
 
 	for (size_t i = offset; i < offset + count; i++)
 	{
@@ -3661,7 +3662,7 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 			continue;
 		}
 
-		if (first)
+		if (!materialBinded)
 		{
 			// Bind material
 			vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipeline);
@@ -3671,7 +3672,7 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 3, 1, &defaultMaterial.textureSet, 0, nullptr);
 			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(), 0, nullptr);
 
-			first = false;
+			materialBinded = true;
 		}
 
 		if (object.model != lastModel)
@@ -3738,7 +3739,7 @@ void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& curr
 		glm_vec4_copy(materialColors[i], pc.color);
 		vkCmdPushConstants(cmd, material.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ColorPushConstBlock), &pc);
 
-		renderRenderObjects(cmd, currentFrame, pickedROIndex, 1, true, &material.pipelineLayout, false);
+		renderRenderObjects(cmd, currentFrame, pickedROIndex, 1, true, &material.pipelineLayout);
 	}
 }
 
