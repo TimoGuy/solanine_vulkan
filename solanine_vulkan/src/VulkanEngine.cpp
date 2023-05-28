@@ -752,15 +752,11 @@ void VulkanEngine::render()
 		// Bind picking material
 		Material& pickingMaterial = *getMaterial("pickingMaterial");
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipeline);
-
-		// Global data descriptor             (set = 0)
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
-
-		// Object data descriptor             (set = 1)
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
-
-		// Picking Return value id descriptor (set = 3)
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 3, 1, &currentFrame.pickingReturnValueDescriptor, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(), 0, nullptr);
 
 		// Set dynamic scissor
 		VkRect2D scissor = {};
@@ -2185,7 +2181,7 @@ void VulkanEngine::initPipelines()  // @TODO: this is a big, scary, hairy mess!
 
 	VkShaderModule wireframeColorVertShader,
 					wireframeColorFragShader;
-	loadShaderModule("shader/pbr.vert.spv", &wireframeColorVertShader);
+	loadShaderModule("shader/wireframe_color.vert.spv", &wireframeColorVertShader);
 	loadShaderModule("shader/color.frag.spv", &wireframeColorFragShader);
 
 	VkShaderModule debugPhysicsObjectVertShader,
@@ -2299,9 +2295,9 @@ void VulkanEngine::initPipelines()  // @TODO: this is a big, scary, hairy mess!
 	pickingPipelineLayoutInfo.pPushConstantRanges = nullptr;
 	pickingPipelineLayoutInfo.pushConstantRangeCount = 0;
 
-	VkDescriptorSetLayout setLayouts3[] = { _globalSetLayout, _objectSetLayout, _skeletalAnimationSetLayout, _pickingReturnValueSetLayout };
+	VkDescriptorSetLayout setLayouts3[] = { _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _pickingReturnValueSetLayout, _skeletalAnimationSetLayout };
 	pickingPipelineLayoutInfo.pSetLayouts = setLayouts3;
-	pickingPipelineLayoutInfo.setLayoutCount = 4;
+	pickingPipelineLayoutInfo.setLayoutCount = 5;
 
 	VkPipelineLayout _pickingPipelineLayout;
 	VK_CHECK(vkCreatePipelineLayout(_device, &pickingPipelineLayoutInfo, nullptr, &_pickingPipelineLayout));
@@ -2342,10 +2338,9 @@ void VulkanEngine::initPipelines()  // @TODO: this is a big, scary, hairy mess!
 	};
 	wireframeColorPipelineLayoutInfo.pPushConstantRanges = &pushConstant;
 	wireframeColorPipelineLayoutInfo.pushConstantRangeCount = 1;
-
-	VkDescriptorSetLayout setLayouts4[] = { _globalSetLayout, _objectSetLayout, _skeletalAnimationSetLayout };
+	VkDescriptorSetLayout setLayouts4[] = { _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _skeletalAnimationSetLayout };
 	wireframeColorPipelineLayoutInfo.pSetLayouts = setLayouts4;
-	wireframeColorPipelineLayoutInfo.setLayoutCount = 3;
+	wireframeColorPipelineLayoutInfo.setLayoutCount = 4;
 
 	VkPipelineLayout _wireframeColorPipelineLayout;
 	VK_CHECK(vkCreatePipelineLayout(_device, &wireframeColorPipelineLayoutInfo, nullptr, &_wireframeColorPipelineLayout));
@@ -3633,6 +3628,41 @@ void VulkanEngine::uploadCurrentFrameToGPU(const FrameData& currentFrame)
 	vmaUnmapMemory(_allocator, currentFrame.instancePtrBuffer._allocation);
 }
 
+// struct IndirectBatch
+// {
+// 	vkglTF::Model* model;
+// 	uint32_t first;
+// 	uint32_t count;
+// };
+
+// std::vector<IndirectBatch> compactDraws(RenderObjectManager* rom, size_t count)
+// {
+// 	std::vector<IndirectBatch> draws;
+// 	draws.push_back({
+// 		.model = ros[0].model,
+// 		.first = 0,
+// 		.count = 1,
+// 	});
+
+// 	for (size_t i = 1; i < count; i++)
+// 	{
+// 		if (ros[i].model == draws.back().model)
+// 		{
+// 			draws.back().count++;
+// 		}
+// 		else
+// 		{
+// 			draws.push_back({
+// 				.model = ros[i].model,
+// 				.first = i,
+// 				.count = 1,
+// 			});
+// 		}
+// 	}
+
+// 	return draws;
+// }
+
 void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, size_t offset, size_t count, bool materialOverride, VkPipelineLayout* overrideLayout)
 {
 	//
@@ -3640,10 +3670,10 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 	//
 	Material& defaultMaterial = *getMaterial("pbrMaterial");    // @HACK: @TODO: currently, the way that the pipeline is getting used is by just hardcode using it in the draw commands for models... however, each model should get its pipeline set to this material instead (or whatever material its using... that's why we can't hardcode stuff!!!)   @TODO: create some kind of way to propagate the newly created pipeline to the primMat (calculated material in the gltf model) instead of using defaultMaterial directly.  -Timo
 	vkglTF::Model* lastModel = nullptr;
-	Material* lastMaterial = nullptr;
-	VkDescriptorSet* lastJointDescriptor = nullptr;
 	uint32_t instanceID = 0;
 	bool materialBinded = false || materialOverride;
+
+	// std::vector<IndirectBatch> draws = compactDraws(_roManager, count);  // @NOCHECKIN: @INCOMPLETE: some batching for indirect rendering in the future.
 
 	for (size_t i = offset; i < offset + count; i++)
 	{
@@ -3728,12 +3758,10 @@ void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& curr
 		Material& material = *getMaterial(materialNames[i]);
 
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, material.pipeline);
-
-		// Global data descriptor             (set = 0)
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, material.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
-
-		// Object data descriptor             (set = 1)
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, material.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, material.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, material.pipelineLayout, 3, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(), 0, nullptr);
 
 		// Push constants
 		ColorPushConstBlock pc = {};

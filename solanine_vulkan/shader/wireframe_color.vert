@@ -8,7 +8,13 @@ layout (location = 4) in vec4 inJoint0;
 layout (location = 5) in vec4 inWeight0;
 layout (location = 6) in vec4 inColor0;
 
-layout (location = 0) out uint outID;
+layout (location = 0) out vec3 outWorldPos;
+layout (location = 1) out vec3 outViewPos;
+layout (location = 2) out vec3 outNormal;
+layout (location = 3) out vec2 outUV0;
+layout (location = 4) out vec2 outUV1;
+layout (location = 5) out vec4 outColor0;
+layout (location = 6) out uint baseInstanceID;
 
 
 // Camera Props
@@ -57,7 +63,7 @@ struct SkeletonAnimationNode
 	float jointCount;
 };
 
-layout (std140, set = 4, binding = 0) readonly buffer SkeletonAnimationNodeCollection
+layout (std140, set = 3, binding = 0) readonly buffer SkeletonAnimationNodeCollection
 {
 	SkeletonAnimationNode nodes[];
 } nodeCollection;
@@ -66,7 +72,7 @@ layout (std140, set = 4, binding = 0) readonly buffer SkeletonAnimationNodeColle
 void main()
 {
 	//
-	// Skin mesh @COPYPASTA
+	// Skin mesh
 	//
 	mat4 modelMatrix = objectBuffer.objects[instancePtrBuffer.pointers[gl_BaseInstance].objectID].modelMatrix;
 	SkeletonAnimationNode node = nodeCollection.nodes[instancePtrBuffer.pointers[gl_BaseInstance].animatorNodeID];
@@ -81,13 +87,20 @@ void main()
 			inWeight0.w * node.jointMatrix[int(inJoint0.w)];
 
 		locPos = modelMatrix * node.matrix * skinMat * vec4(inPos, 1.0);
+		outNormal = normalize(transpose(inverse(mat3(modelMatrix * node.matrix * skinMat))) * inNormal);
 	}
 	else
 	{
 		// Not skinned
 		locPos = modelMatrix * node.matrix * vec4(inPos, 1.0);
+		outNormal = normalize(transpose(inverse(mat3(modelMatrix * node.matrix))) * inNormal);
 	}
 
-	outID = uint(instancePtrBuffer.pointers[gl_BaseInstance].objectID);
-	gl_Position =  cameraData.projectionView * vec4(locPos.xyz / locPos.w, 1.0);
+	outWorldPos = locPos.xyz / locPos.w;
+	outUV0 = inUV0;
+	outUV1 = inUV1;
+	outColor0 = inColor0;
+	outViewPos = (cameraData.view * vec4(outWorldPos, 1.0)).xyz;
+	baseInstanceID = gl_BaseInstance;
+	gl_Position =  cameraData.projectionView * vec4(outWorldPos, 1.0);
 }
