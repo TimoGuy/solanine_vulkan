@@ -47,6 +47,15 @@ RenderObject* RenderObjectManager::registerRenderObject(RenderObject renderObjec
 	_renderObjectsIsRegistered[registerIndex] = true;
 	_renderObjectsIndices.push_back(registerIndex);
 
+	// Sort pool indices so that models are next to each other
+	std::sort(
+		_renderObjectsIndices.begin(),
+		_renderObjectsIndices.end(),
+		[&](size_t a, size_t b) {
+			return _renderObjectPool[a].model < _renderObjectPool[b].model;
+		}
+	);
+
 	// Recalculate what indices animated render objects are at
 	recalculateAnimatorIndices();
 

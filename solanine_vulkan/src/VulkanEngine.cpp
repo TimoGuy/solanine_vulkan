@@ -352,6 +352,7 @@ void VulkanEngine::render()
 	//
 	uploadCurrentFrameToGPU(currentFrame);
 	compactRenderObjectsIntoDraws();
+	uploadInstancePtrDataToGPU(currentFrame);
 
 	//
 	// Shadow Render Pass
@@ -3610,7 +3611,10 @@ void VulkanEngine::uploadCurrentFrameToGPU(const FrameData& currentFrame)
 			objectSSBO[poolIndex].modelMatrix
 		);		// Another evil pointer trick I love... call me Dmitri the Evil
 	vmaUnmapMemory(_allocator, currentFrame.objectBuffer._allocation);
+}
 
+void VulkanEngine::uploadInstancePtrDataToGPU(const FrameData& currentFrame)
+{
 	//
 	// Fill in instance level data
 	//
@@ -3631,6 +3635,9 @@ void VulkanEngine::uploadCurrentFrameToGPU(const FrameData& currentFrame)
 
 void VulkanEngine::compactRenderObjectsIntoDraws()
 {
+	// @TODO: get the render object's model's draw calls (i.e. indexed base index and count for each primitive).
+	//        Then, for every time the model is seen (models should be sorted bc of the render object manager), increase the primitives' draw call count by 1. This should collate the draw calls.
+	//        Then, upload the instance ptr data such that the primitives' data is all collated too. It should be as simple as getting X being the number of models drawn, and blah blah... Ahh, you should be able to just iterate thru all the models, insert the meshes' corresponding instance ptr info with a giant stride that's the size of X (number of times model will get drawn), multiplied by the index of the primitive within the model. After recording everything about the models' draw calls, though, you'll have to set the data pointer to the end of all of that data getting slipped in.
 	size_t roIdx = 0;
 	size_t count = _roManager->_renderObjectsIndices.size();
 	size_t nextInstanceID = 0;
