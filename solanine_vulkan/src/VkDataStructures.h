@@ -42,3 +42,19 @@ struct Material
 	VkPipeline pipeline;                            // @NOTE: in the case of PBR MATERIAL, there is going to be one pipeline, one pipelinelayout and many many texture set descriptorsets for the PBR Material  -Timo
 	VkPipelineLayout pipelineLayout;
 };
+
+struct IndirectBatch
+{
+	vkglTF::Model* model;
+	uint32_t meshIndexCount;
+	uint32_t meshFirstIndex;
+	uint32_t first;
+	uint32_t count;
+
+	struct InstanceInfo
+	{
+		size_t instanceID;
+		size_t objectID;
+	};
+	std::vector<InstanceInfo> instanceInfos;
+};

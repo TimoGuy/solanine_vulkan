@@ -1868,6 +1868,14 @@ namespace vkglTF
 		}
 	}
 
+	void Model::appendPrimitiveDraws(std::vector<IndirectBatch>& draws, uint32_t& appendedCount)
+	{
+		for (auto& node : nodes)
+		{
+			appendPrimitiveDrawNode(node, draws, appendedCount);
+		}
+	}
+
 	void Model::drawNode(Node* node, VkCommandBuffer commandBuffer, uint32_t& inOutInstanceID)
 	{
 		if (node->mesh)
@@ -1880,6 +1888,26 @@ namespace vkglTF
 		for (auto& child : node->children)
 		{
 			drawNode(child, commandBuffer, inOutInstanceID);
+		}
+	}
+
+	void Model::appendPrimitiveDrawNode(Node* node, std::vector<IndirectBatch>& draws, uint32_t& appendedCount)
+	{
+		if (node->mesh)
+		{
+			for (Primitive* primitive : node->mesh->primitives)
+			{
+				draws.push_back({
+					.model = this,
+					.meshIndexCount = primitive->indexCount,
+					.meshFirstIndex = primitive->firstIndex,
+				});
+				appendedCount++;
+			}
+		}
+		for (auto& child : node->children)
+		{
+			appendPrimitiveDrawNode(child, draws, appendedCount);
 		}
 	}
 

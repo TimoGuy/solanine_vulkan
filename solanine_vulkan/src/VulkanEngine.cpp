@@ -3635,6 +3635,95 @@ void VulkanEngine::uploadInstancePtrDataToGPU(const FrameData& currentFrame)
 
 void VulkanEngine::compactRenderObjectsIntoDraws()
 {
+	//
+	// Gather the number of times a model is drawn
+	//
+	struct ModelDrawCount
+	{
+		vkglTF::Model* model;
+		size_t drawCount;
+	};
+	std::vector<ModelDrawCount> mdcs;
+
+	size_t roIdx = 0;
+	RenderObject& ro = _roManager->_renderObjectPool[_roManager->_renderObjectsIndices[roIdx]];
+	mdcs.push_back({
+		.model = ro.model,
+		.drawCount = 1,
+	});
+
+	for (roIdx = 1; roIdx < _roManager->_renderObjectsIndices.size(); roIdx++)
+	{
+		RenderObject& ro = _roManager->_renderObjectPool[_roManager->_renderObjectsIndices[roIdx]];
+		if (ro.model == mdcs.back().model)
+		{
+			mdcs.back().drawCount++;
+		}
+		else
+		{
+			mdcs.push_back({
+				.model = ro.model,
+				.drawCount = 1,
+			});
+		}
+	}
+
+	//
+	// Gather each model's meshes and collate them into their own draw commands
+	//
+	std::vector<IndirectBatch> draws;  // @TODO: this should be a different data type. `IndirectBatch` should be once per model, not once per mesh.
+	for (ModelDrawCount& mdc : mdcs)
+	{
+		uint32_t numMeshes;
+		mdc.model->appendPrimitiveDraws(draws, numMeshes);
+
+		for (size_t i = 0; i < numMeshes; i++)
+			draws[draws.size() - numMeshes + i].count = mdc.drawCount;
+	}
+
+	//
+	// Write indirect commands
+	//
+	std::vector<VkDrawIndexedIndirectCommand> drawCommands; // @POC: @INCOMPLETE: very temporary. Should write to a buffer instead of this vector.
+	size_t instanceID = 0;
+	for (IndirectBatch& ib : draws)
+	{
+		for (size_t i = 0; i < ib.count; i++)
+			drawCommands.push_back({
+				.indexCount = ib.meshIndexCount,
+				.instanceCount = 1,
+				.firstIndex = ib.meshFirstIndex,
+				.vertexOffset = 0,
+				.firstInstance = (uint32_t)instanceID++,
+			});
+	}
+
+	//
+	// Write indirect batches
+	//
+	std::vector<IndirectBatch> draws;  // @TODO: turn the previous indirect batch's into some other data type, bc right here we're not using the meshindex stuff
+	vkglTF::Model* lastModel = nullptr;
+	for (IndirectBatch& ib : draws)
+	{
+		if (lastModel == ib.model)
+		{
+			draws.back().count += ib.count;
+		}
+		else
+		{
+			draws.push_back(
+				{
+					vkglTF::Model* model;
+					uint32_t first;
+					uint32_t count;
+				}
+			);
+			lastModel = ib.model;
+		}
+	}
+
+
+
 	// @TODO: get the render object's model's primitive draw calls (i.e. indexed base index and count for each primitive).
 	//        Then, for every time the model is seen (models should be sorted bc of the render object manager), increase the primitives' draw call count by 1. This should collate the draw calls.
 	//        Then, upload the instance ptr data such that the primitives' data is all collated too. It should be as simple as getting X being the number of models drawn, and blah blah... Ahh, you should be able to just iterate thru all the models, insert the meshes' corresponding instance ptr info with a giant stride that's the size of X (number of times model will get drawn), multiplied by the index of the primitive within the model. After recording everything about the models' draw calls, though, you'll have to set the data pointer to the end of all of that data getting slipped in.

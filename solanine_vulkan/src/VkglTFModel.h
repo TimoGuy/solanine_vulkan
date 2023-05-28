@@ -365,8 +365,10 @@ namespace vkglTF
 		void bind(VkCommandBuffer commandBuffer);
 		void draw(VkCommandBuffer commandBuffer);
 		void draw(VkCommandBuffer commandBuffer, uint32_t& inOutInstanceID);
+		void appendPrimitiveDraws(std::vector<IndirectBatch>& draws, uint32_t& appendedCount);
 	private:
 		void drawNode(Node* node, VkCommandBuffer commandBuffer, uint32_t& inOutInstanceID);
+		void appendPrimitiveDrawNode(Node* node, std::vector<IndirectBatch>& draws, uint32_t& appendedCount);
 		void calculateBoundingBox(Node* node, Node* parent);
 	public:
 		void getSceneDimensions();
