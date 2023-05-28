@@ -348,9 +348,10 @@ void VulkanEngine::render()
 	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 
 	//
-	// Upload current frame to GPU
+	// Upload current frame to GPU and compact into draw calls
 	//
 	uploadCurrentFrameToGPU(currentFrame);
+	compactRenderObjectsIntoDraws();
 
 	//
 	// Shadow Render Pass
@@ -3628,93 +3629,97 @@ void VulkanEngine::uploadCurrentFrameToGPU(const FrameData& currentFrame)
 	vmaUnmapMemory(_allocator, currentFrame.instancePtrBuffer._allocation);
 }
 
-// struct IndirectBatch
-// {
-// 	vkglTF::Model* model;
-// 	uint32_t first;
-// 	uint32_t count;
-// };
+void VulkanEngine::compactRenderObjectsIntoDraws()
+{
+	size_t roIdx = 0;
+	size_t count = _roManager->_renderObjectsIndices.size();
+	size_t nextInstanceID = 0;
 
-// std::vector<IndirectBatch> compactDraws(RenderObjectManager* rom, size_t count)
-// {
-// 	std::vector<IndirectBatch> draws;
-// 	draws.push_back({
-// 		.model = ros[0].model,
-// 		.first = 0,
-// 		.count = 1,
-// 	});
+	RenderObject& ro = _roManager->_renderObjectPool[_roManager->_renderObjectsIndices[roIdx]];
 
-// 	for (size_t i = 1; i < count; i++)
-// 	{
-// 		if (ros[i].model == draws.back().model)
-// 		{
-// 			draws.back().count++;
-// 		}
-// 		else
-// 		{
-// 			draws.push_back({
-// 				.model = ros[i].model,
-// 				.first = i,
-// 				.count = 1,
-// 			});
-// 		}
-// 	}
+	std::vector<IndirectBatch> draws;
+	draws.push_back({
+		.model = ro.model,
+		.first = (uint32_t)roIdx,
+		.count = 1,
+		});
 
-// 	return draws;
-// }
+	draws.back().instanceIDs.push_back(nextInstanceID);
+	nextInstanceID += ro.calculatedModelInstances.size();
+
+	for (roIdx = 1; roIdx < count; roIdx++)
+	{
+		RenderObject& ro = _roManager->_renderObjectPool[_roManager->_renderObjectsIndices[roIdx]];
+		if (!ro.model)
+		{
+			nextInstanceID += ro.calculatedModelInstances.size();
+			continue;  // Ignore objects that have no model
+		}
+		if (!_roManager->_renderObjectLayersEnabled[(size_t)ro.renderLayer])
+		{
+			nextInstanceID += ro.calculatedModelInstances.size();
+			continue;  // Ignore layers that are disabled
+		}
+
+		if (ro.model == draws.back().model)
+		{
+			draws.back().count++;
+		}
+		else
+		{
+			draws.push_back({
+				.model = ro.model,
+				.first = (uint32_t)roIdx,
+				.count = 1,
+			});
+		}
+
+		draws.back().instanceIDs.push_back(nextInstanceID);
+		nextInstanceID += ro.calculatedModelInstances.size();
+	}
+
+	indirectBatches = draws;
+}
 
 void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, size_t offset, size_t count, bool materialOverride, VkPipelineLayout* overrideLayout)
 {
-	//
-	// Render all the renderobjects
-	//
-	Material& defaultMaterial = *getMaterial("pbrMaterial");    // @HACK: @TODO: currently, the way that the pipeline is getting used is by just hardcode using it in the draw commands for models... however, each model should get its pipeline set to this material instead (or whatever material its using... that's why we can't hardcode stuff!!!)   @TODO: create some kind of way to propagate the newly created pipeline to the primMat (calculated material in the gltf model) instead of using defaultMaterial directly.  -Timo
-	vkglTF::Model* lastModel = nullptr;
-	uint32_t instanceID = 0;
-	bool materialBinded = false || materialOverride;
-
-	// std::vector<IndirectBatch> draws = compactDraws(_roManager, count);  // @NOCHECKIN: @INCOMPLETE: some batching for indirect rendering in the future.
-
-	for (size_t i = offset; i < offset + count; i++)
+	if (!materialOverride)
 	{
-		size_t poolIndex = _roManager->_renderObjectsIndices[i];
-		RenderObject& object = _roManager->_renderObjectPool[poolIndex];
+		// Bind material
+		Material& defaultMaterial = *getMaterial("pbrMaterial");    // @HACK: @TODO: currently, the way that the pipeline is getting used is by just hardcode using it in the draw commands for models... however, each model should get its pipeline set to this material instead (or whatever material its using... that's why we can't hardcode stuff!!!)   @TODO: create some kind of way to propagate the newly created pipeline to the primMat (calculated material in the gltf model) instead of using defaultMaterial directly.  -Timo
+		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipeline);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 3, 1, &defaultMaterial.textureSet, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(), 0, nullptr);
+	}
 
-		if (!_roManager->_renderObjectLayersEnabled[(size_t)object.renderLayer])
+	// Get the starting batch ID
+	size_t batchID = 0;
+	while (offset >= indirectBatches[batchID].count)
+	{
+		offset -= indirectBatches[batchID].count;
+		batchID++;
+	}
+
+	// Iterate thru all the desired batches
+	while (count > 0)
+	{
+		IndirectBatch& batch = indirectBatches[batchID];  // @TODO: @NOCHECKIN: make `renderrenderobjects()` just render all of the objects. Then, there should be a `renderrenderobjectswithobjectid()` which will just render all objects that are in a certain list. OR, just do single object id for now.... Idk. But either way, this should be good enough to do picking. *shrug*
+
+		// Bind model
+		batch.model->bind(cmd);
+
+		// Draw it with correct instance ID
+		for (size_t i = 0; i < std::min(batch.count - offset, count); i++)
 		{
-			instanceID += object.calculatedModelInstances.size();
-			continue;    // Ignore layers that are disabled
+			uint32_t instanceID = (uint32_t)batch.instanceIDs[i + offset];
+			batch.model->draw(cmd, instanceID);
 		}
-
-		if (!object.model)	// @NOTE: Subdue a warning that a possible nullptr could be dereferenced
-		{
-			std::cerr << "ERROR: object model is NULL" << std::endl;
-			instanceID += object.calculatedModelInstances.size();
-			continue;
-		}
-
-		if (!materialBinded)
-		{
-			// Bind material
-			vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipeline);
-			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
-			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
-			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
-			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 3, 1, &defaultMaterial.textureSet, 0, nullptr);
-			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(), 0, nullptr);
-
-			materialBinded = true;
-		}
-
-		if (object.model != lastModel)
-		{
-			// Bind the new mesh
-			object.model->bind(cmd);
-			lastModel = object.model;
-		}
-
-		// Render it out
-		object.model->draw(cmd, instanceID);
+		count -= batch.count - offset;
+		offset = 0;
+		batchID++;
 	}
 }
 

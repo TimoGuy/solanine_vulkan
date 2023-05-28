@@ -12,6 +12,7 @@ class RenderObjectManager;
 class Entity;
 class EntityManager;
 struct Camera;
+namespace vkglTF { struct Model; }
 
 struct CascadeIndexPushConstBlock
 {
@@ -261,6 +262,17 @@ private:
 	void loadMeshes();
 
 	void uploadCurrentFrameToGPU(const FrameData& currentFrame);
+	
+	struct IndirectBatch
+	{
+		vkglTF::Model* model;
+		uint32_t first;
+		uint32_t count;
+		std::vector<size_t> instanceIDs;
+	};
+	std::vector<IndirectBatch> indirectBatches;
+
+	void compactRenderObjectsIntoDraws();
 	void renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, size_t offset, size_t count, bool materialOverride, VkPipelineLayout* overrideLayout);
 	void renderPickedObject(VkCommandBuffer cmd, const FrameData& currentFrame);
 
