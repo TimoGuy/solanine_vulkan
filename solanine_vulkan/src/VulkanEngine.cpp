@@ -2185,10 +2185,10 @@ void VulkanEngine::initPipelines()  // @TODO: this is a big, scary, hairy mess!
 	loadShaderModule("shader/wireframe_color.vert.spv", &wireframeColorVertShader);
 	loadShaderModule("shader/color.frag.spv", &wireframeColorFragShader);
 
-	VkShaderModule debugPhysicsObjectVertShader,
+	/*VkShaderModule debugPhysicsObjectVertShader,
 					debugPhysicsObjectFragShader;
 	loadShaderModule("shader/debug_physics_object.vert.spv", &debugPhysicsObjectVertShader);
-	loadShaderModule("shader/debug_physics_object.frag.spv", &debugPhysicsObjectFragShader);
+	loadShaderModule("shader/debug_physics_object.frag.spv", &debugPhysicsObjectFragShader);*/
 
 	VkShaderModule shadowDepthPassVertShader,
 					shadowDepthPassFragShader;
@@ -3635,7 +3635,8 @@ void VulkanEngine::compactRenderObjectsIntoDraws()
 	size_t count = _roManager->_renderObjectsIndices.size();
 	size_t nextInstanceID = 0;
 
-	RenderObject& ro = _roManager->_renderObjectPool[_roManager->_renderObjectsIndices[roIdx]];
+	size_t poolIndex = _roManager->_renderObjectsIndices[roIdx];
+	RenderObject& ro = _roManager->_renderObjectPool[poolIndex];
 
 	std::vector<IndirectBatch> draws;
 	draws.push_back({
@@ -3644,12 +3645,16 @@ void VulkanEngine::compactRenderObjectsIntoDraws()
 		.count = 1,
 		});
 
-	draws.back().instanceIDs.push_back(nextInstanceID);
+	draws.back().instanceInfos.push_back({
+		.instanceID = nextInstanceID,
+		.objectID = poolIndex,
+	});
 	nextInstanceID += ro.calculatedModelInstances.size();
 
 	for (roIdx = 1; roIdx < count; roIdx++)
 	{
-		RenderObject& ro = _roManager->_renderObjectPool[_roManager->_renderObjectsIndices[roIdx]];
+		size_t poolIndex = _roManager->_renderObjectsIndices[roIdx];
+		RenderObject& ro = _roManager->_renderObjectPool[poolIndex];
 		if (!ro.model)
 		{
 			nextInstanceID += ro.calculatedModelInstances.size();
@@ -3674,14 +3679,17 @@ void VulkanEngine::compactRenderObjectsIntoDraws()
 			});
 		}
 
-		draws.back().instanceIDs.push_back(nextInstanceID);
+		draws.back().instanceInfos.push_back({
+			.instanceID = nextInstanceID,
+			.objectID = poolIndex,
+		});
 		nextInstanceID += ro.calculatedModelInstances.size();
 	}
 
 	indirectBatches = draws;
 }
 
-void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, size_t offset, size_t count, bool materialOverride, VkPipelineLayout* overrideLayout)
+void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, size_t _, size_t _2, bool materialOverride, VkPipelineLayout* overrideLayout)
 {
 	if (!materialOverride)
 	{
@@ -3695,31 +3703,18 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(), 0, nullptr);
 	}
 
-	// Get the starting batch ID
-	size_t batchID = 0;
-	while (offset >= indirectBatches[batchID].count)
+	// Iterate thru all the batches
+	for (IndirectBatch& batch : indirectBatches)
 	{
-		offset -= indirectBatches[batchID].count;
-		batchID++;
-	}
-
-	// Iterate thru all the desired batches
-	while (count > 0)
-	{
-		IndirectBatch& batch = indirectBatches[batchID];  // @TODO: @NOCHECKIN: make `renderrenderobjects()` just render all of the objects. Then, there should be a `renderrenderobjectswithobjectid()` which will just render all objects that are in a certain list. OR, just do single object id for now.... Idk. But either way, this should be good enough to do picking. *shrug*
-
 		// Bind model
 		batch.model->bind(cmd);
 
-		// Draw it with correct instance ID
-		for (size_t i = 0; i < std::min(batch.count - offset, count); i++)
+		// Draw with the correct instance ID
+		for (size_t i = 0; i < batch.count; i++)
 		{
-			uint32_t instanceID = (uint32_t)batch.instanceIDs[i + offset];
+			uint32_t instanceID = (uint32_t)batch.instanceInfos[i].instanceID;
 			batch.model->draw(cmd, instanceID);
 		}
-		count -= batch.count - offset;
-		offset = 0;
-		batchID++;
 	}
 }
 
@@ -3729,7 +3724,7 @@ void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& curr
 	// Try to find the picked object
 	//
 	bool found = false;
-	size_t pickedROIndex = 0;
+	size_t pickedPoolIndex = 0;
 
 	for (size_t i = 0; i < _roManager->_renderObjectsIndices.size(); i++)
 	{
@@ -3737,7 +3732,7 @@ void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& curr
 		if (_movingMatrix.matrixToMove == &_roManager->_renderObjectPool[poolIndex].transformMatrix)
 		{
 			found = true;
-			pickedROIndex = i;  // @NOTE: this is not the pool index, but rather the index of the pool
+			pickedPoolIndex = poolIndex;
 			break;
 		}
 	}
@@ -3773,7 +3768,20 @@ void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& curr
 		glm_vec4_copy(materialColors[i], pc.color);
 		vkCmdPushConstants(cmd, material.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ColorPushConstBlock), &pc);
 
-		renderRenderObjects(cmd, currentFrame, pickedROIndex, 1, true, &material.pipelineLayout);
+		// Iterate thru all the batches
+		for (IndirectBatch& batch : indirectBatches)
+		{
+			// Draw with the correct instance ID
+			for (size_t i = 0; i < batch.count; i++)
+			{
+				if (batch.instanceInfos[i].objectID != pickedPoolIndex)
+					continue;
+
+				uint32_t instanceID = (uint32_t)batch.instanceInfos[i].instanceID;
+				batch.model->bind(cmd);
+				batch.model->draw(cmd, instanceID);
+			}
+		}
 	}
 }
 

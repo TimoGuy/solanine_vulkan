@@ -268,7 +268,13 @@ private:
 		vkglTF::Model* model;
 		uint32_t first;
 		uint32_t count;
-		std::vector<size_t> instanceIDs;
+
+		struct InstanceInfo
+		{
+			size_t instanceID;
+			size_t objectID;
+		};
+		std::vector<InstanceInfo> instanceInfos;
 	};
 	std::vector<IndirectBatch> indirectBatches;
 
