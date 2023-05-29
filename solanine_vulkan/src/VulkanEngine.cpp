@@ -351,7 +351,7 @@ void VulkanEngine::render()
 	// Upload current frame to GPU and compact into draw calls
 	//
 	uploadCurrentFrameToGPU(currentFrame);
-	compactRenderObjectsIntoDraws(currentFrame);
+	compactRenderObjectsIntoDraws(currentFrame, {});
 
 	//
 	// Shadow Render Pass
@@ -396,7 +396,7 @@ void VulkanEngine::render()
 			CascadeIndexPushConstBlock pc = { i };
 			vkCmdPushConstants(cmd, shadowDepthPassMaterial.pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(CascadeIndexPushConstBlock), &pc);
 
-			renderRenderObjects(cmd, currentFrame, true, &shadowDepthPassMaterial.pipelineLayout);
+			renderRenderObjects(cmd, currentFrame, true);
 			
 			vkCmdEndRenderPass(cmd);
 		}
@@ -444,7 +444,7 @@ void VulkanEngine::render()
 		skybox->draw(cmd);
 		///////////////////
 
-		renderRenderObjects(cmd, currentFrame, false, nullptr);
+		renderRenderObjects(cmd, currentFrame, false);
 		renderPickedObject(cmd, currentFrame);
 
 		// End renderpass
@@ -770,7 +770,7 @@ void VulkanEngine::render()
 		std::cout << "[PICKING]" << std::endl
 			<< "set picking scissor to: x=" << scissor.offset.x << "  y=" << scissor.offset.y << "  w=" << scissor.extent.width << "  h=" << scissor.extent.height << std::endl;
 
-		renderRenderObjects(cmd, currentFrame, true, &pickingMaterial.pipelineLayout);    // @NOTE: the joint descriptorset will still be bound in here   @HACK: it's using the wrong pipelinelayout but.... it should be fine? Bc the slot is still set=3 for the joints on the picking pipelinelayout too??
+		renderRenderObjects(cmd, currentFrame, true);
 
 		// End renderpass
 		vkCmdEndRenderPass(cmd);
@@ -3618,8 +3618,41 @@ void VulkanEngine::uploadCurrentFrameToGPU(const FrameData& currentFrame)
 	vmaUnmapMemory(_allocator, currentFrame.objectBuffer._allocation);
 }
 
-void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame)
+void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, std::vector<size_t> onlyPoolIndices)
 {
+	//
+	// Cull out render object indices that are not marked as visible
+	//
+	std::vector<size_t> visibleIndices;
+	for (size_t i = 0; i < _roManager->_renderObjectsIndices.size(); i++)
+	{
+		size_t poolIndex = _roManager->_renderObjectsIndices[i];
+		RenderObject& object = _roManager->_renderObjectPool[poolIndex];
+
+		// See if render object itself is visible
+		if (!_roManager->_renderObjectLayersEnabled[(size_t)object.renderLayer])
+			continue;
+		if (object.model == nullptr)
+			continue;
+
+		// Check to see if pool index is in wanted pool indices
+		if (!onlyPoolIndices.empty())
+		{
+			bool found = false;
+			for (size_t index : onlyPoolIndices)
+				if (index == poolIndex)
+				{
+					found = true;
+					break;
+				}
+			if (!found)
+				continue;  // Skip indices that are not part of the wanted "only render these pool indices"
+		}
+
+		// It's visible!!!!
+		visibleIndices.push_back(poolIndex);
+	}
+
 	//
 	// Gather the number of times a model is drawn
 	//
@@ -3632,9 +3665,9 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame)
 	std::vector<ModelDrawCount> mdcs;
 
 	vkglTF::Model* lastModel = nullptr;
-	for (size_t roIdx = 0; roIdx < _roManager->_renderObjectsIndices.size(); roIdx++)
+	for (size_t roIdx = 0; roIdx < visibleIndices.size(); roIdx++)
 	{
-		RenderObject& ro = _roManager->_renderObjectPool[_roManager->_renderObjectsIndices[roIdx]];
+		RenderObject& ro = _roManager->_renderObjectPool[visibleIndices[roIdx]];
 		if (ro.model == lastModel)
 		{
 			mdcs.back().drawCount++;
@@ -3645,7 +3678,7 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame)
 				.model = ro.model,
 				.drawCount = 1,
 				.baseModelRenderObjectIndex = roIdx,
-			});
+				});
 			lastModel = ro.model;
 		}
 	}
@@ -3720,7 +3753,7 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame)
 			};
 			indirectDrawCommands++;
 
-			*instancePtrSSBO = _roManager->_renderObjectPool[_roManager->_renderObjectsIndices[baseModelRenderObjectIndex + modelIndex]].calculatedModelInstances[meshIndex];
+			*instancePtrSSBO = _roManager->_renderObjectPool[visibleIndices[baseModelRenderObjectIndex + modelIndex]].calculatedModelInstances[meshIndex];
 			instancePtrSSBO++;
 		}
 
@@ -3734,7 +3767,7 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame)
 	indirectBatches = batches;
 }
 
-void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, bool materialOverride, VkPipelineLayout* overrideLayout)
+void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, bool materialOverride)
 {
 	if (!materialOverride)
 	{
@@ -3783,6 +3816,8 @@ void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& curr
 	//
 	// Render it with the wireframe color pipeline
 	//
+	compactRenderObjectsIntoDraws(currentFrame, { pickedPoolIndex });
+
 	constexpr size_t numRenders = 2;
 	std::string materialNames[numRenders] = {
 		"wireframeColorMaterial",
@@ -3808,20 +3843,7 @@ void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& curr
 		glm_vec4_copy(materialColors[i], pc.color);
 		vkCmdPushConstants(cmd, material.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ColorPushConstBlock), &pc);
 
-		// Iterate thru all the batches
-		/*for (IndirectBatch& batch : indirectBatches)
-		{
-			// Draw with the correct instance ID
-			for (size_t i = 0; i < batch.count; i++)
-			{
-				if (batch.instanceInfos[i].objectID != pickedPoolIndex)
-					continue;
-
-				uint32_t instanceID = (uint32_t)batch.instanceInfos[i].instanceID;
-				batch.model->bind(cmd);
-				batch.model->draw(cmd, instanceID);
-			}
-		}*/
+		renderRenderObjects(cmd, currentFrame, true);
 	}
 }
 
