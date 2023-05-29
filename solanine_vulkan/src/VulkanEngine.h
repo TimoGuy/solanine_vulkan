@@ -266,7 +266,7 @@ private:
 	
 	std::vector<IndirectBatch> indirectBatches;
 
-	void compactRenderObjectsIntoDraws();
+	void compactRenderObjectsIntoDraws(const FrameData& currentFrame);
 	void renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, size_t offset, size_t count, bool materialOverride, VkPipelineLayout* overrideLayout);
 	void renderPickedObject(VkCommandBuffer cmd, const FrameData& currentFrame);
 

@@ -48,6 +48,7 @@ struct IndirectBatch
 	vkglTF::Model* model;
 	uint32_t meshIndexCount;
 	uint32_t meshFirstIndex;
+	uint32_t baseModelRenderObjectIndex;
 	uint32_t first;
 	uint32_t count;
 

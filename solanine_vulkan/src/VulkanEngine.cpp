@@ -351,7 +351,7 @@ void VulkanEngine::render()
 	// Upload current frame to GPU and compact into draw calls
 	//
 	uploadCurrentFrameToGPU(currentFrame);
-	compactRenderObjectsIntoDraws();
+	compactRenderObjectsIntoDraws(currentFrame);
 	uploadInstancePtrDataToGPU(currentFrame);
 
 	//
@@ -3615,25 +3615,25 @@ void VulkanEngine::uploadCurrentFrameToGPU(const FrameData& currentFrame)
 
 void VulkanEngine::uploadInstancePtrDataToGPU(const FrameData& currentFrame)
 {
-	//
-	// Fill in instance level data
-	//
-	void* instancePtrData;
-	vmaMapMemory(_allocator, currentFrame.instancePtrBuffer._allocation, &instancePtrData);
-	GPUInstancePointer* instancePtrSSBO = (GPUInstancePointer*)instancePtrData;
-	for (size_t poolIndex : _roManager->_renderObjectsIndices)
-	{
-		RenderObject& object = _roManager->_renderObjectPool[poolIndex];
-		for (auto& instance : object.calculatedModelInstances)
-		{
-			*instancePtrSSBO = instance;
-			instancePtrSSBO++;  // Increment along until all instance data is gathered
-		}
-	}
-	vmaUnmapMemory(_allocator, currentFrame.instancePtrBuffer._allocation);
+	// //
+	// // Fill in instance level data
+	// //
+	// void* instancePtrData;
+	// vmaMapMemory(_allocator, currentFrame.instancePtrBuffer._allocation, &instancePtrData);
+	// GPUInstancePointer* instancePtrSSBO = (GPUInstancePointer*)instancePtrData;
+	// for (size_t poolIndex : _roManager->_renderObjectsIndices)
+	// {
+	// 	RenderObject& object = _roManager->_renderObjectPool[poolIndex];
+	// 	for (auto& instance : object.calculatedModelInstances)
+	// 	{
+	// 		*instancePtrSSBO = instance;
+	// 		instancePtrSSBO++;  // Increment along until all instance data is gathered
+	// 	}
+	// }
+	// vmaUnmapMemory(_allocator, currentFrame.instancePtrBuffer._allocation);
 }
 
-void VulkanEngine::compactRenderObjectsIntoDraws()
+void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame)
 {
 	//
 	// Gather the number of times a model is drawn
@@ -3642,20 +3642,15 @@ void VulkanEngine::compactRenderObjectsIntoDraws()
 	{
 		vkglTF::Model* model;
 		size_t drawCount;
+		size_t baseModelRenderObjectIndex;
 	};
 	std::vector<ModelDrawCount> mdcs;
 
-	size_t roIdx = 0;
-	RenderObject& ro = _roManager->_renderObjectPool[_roManager->_renderObjectsIndices[roIdx]];
-	mdcs.push_back({
-		.model = ro.model,
-		.drawCount = 1,
-	});
-
-	for (roIdx = 1; roIdx < _roManager->_renderObjectsIndices.size(); roIdx++)
+	vkglTF::Model* lastModel = nullptr;
+	for (size_t roIdx = 0; roIdx < _roManager->_renderObjectsIndices.size(); roIdx++)
 	{
 		RenderObject& ro = _roManager->_renderObjectPool[_roManager->_renderObjectsIndices[roIdx]];
-		if (ro.model == mdcs.back().model)
+		if (ro.model == lastModel)
 		{
 			mdcs.back().drawCount++;
 		}
@@ -3664,63 +3659,97 @@ void VulkanEngine::compactRenderObjectsIntoDraws()
 			mdcs.push_back({
 				.model = ro.model,
 				.drawCount = 1,
+				.baseModelRenderObjectIndex = roIdx,
 			});
+			lastModel = ro.model;
 		}
 	}
 
 	//
 	// Gather each model's meshes and collate them into their own draw commands
 	//
-	std::vector<IndirectBatch> draws;  // @TODO: this should be a different data type. `IndirectBatch` should be once per model, not once per mesh.
+	std::vector<IndirectBatch> meshDraws;  // @TODO: this should be a different data type. `IndirectBatch` should be once per model, not once per mesh.
 	for (ModelDrawCount& mdc : mdcs)
 	{
 		uint32_t numMeshes;
-		mdc.model->appendPrimitiveDraws(draws, numMeshes);
+		mdc.model->appendPrimitiveDraws(meshDraws, numMeshes);
 
 		for (size_t i = 0; i < numMeshes; i++)
-			draws[draws.size() - numMeshes + i].count = mdc.drawCount;
+		{
+			// Tell each mesh to draw as many times as the model exists, thus
+			// collating the mesh draws inside the model drawing window.
+			meshDraws[meshDraws.size() - numMeshes + i].count = mdc.drawCount;
+			meshDraws[meshDraws.size() - numMeshes + i].baseModelRenderObjectIndex = numMeshes;
+		}
 	}
+
+	//
+	// Open up memory map for instance level data
+	//
+	void* instancePtrData;
+	vmaMapMemory(_allocator, currentFrame.instancePtrBuffer._allocation, &instancePtrData);
+	GPUInstancePointer* instancePtrSSBO = (GPUInstancePointer*)instancePtrData;
 
 	//
 	// Write indirect commands
 	//
 	std::vector<VkDrawIndexedIndirectCommand> drawCommands; // @POC: @INCOMPLETE: very temporary. Should write to a buffer instead of this vector.
+	std::vector<IndirectBatch> batches;  // @TODO: turn the previous indirect batch's into some other data type, bc right here we're not using the meshindex stuff
+	lastModel = nullptr;
 	size_t instanceID = 0;
-	for (IndirectBatch& ib : draws)
+	size_t modelMeshID = 0;
+	size_t baseModelRenderObjectIndex = 0;
+	for (IndirectBatch& ib : meshDraws)
 	{
+		// Combine the mesh-level draw commands into model-level draw commands.
+		if (lastModel == ib.model)
+		{
+			batches.back().count += ib.count;
+		}
+		else
+		{
+			batches.push_back({
+				.model = ib.model,
+				.first = (uint32_t)instanceID,
+				.count = ib.count,
+			});
+
+			lastModel = ib.model;
+			modelMeshID = 0;  // New model, so reset mesh ID counter too.
+			baseModelRenderObjectIndex = ib.baseModelRenderObjectIndex;
+		}
+
+		// Create draw command for each mesh instance.
 		for (size_t i = 0; i < ib.count; i++)
+		{
 			drawCommands.push_back({
 				.indexCount = ib.meshIndexCount,
 				.instanceCount = 1,
 				.firstIndex = ib.meshFirstIndex,
 				.vertexOffset = 0,
-				.firstInstance = (uint32_t)instanceID++,
+				.firstInstance = (uint32_t)instanceID,
 			});
+			*instancePtrSSBO = _roManager->_renderObjectPool[_roManager->_renderObjectsIndices[baseModelRenderObjectIndex + i]].calculatedModelInstances[modelMeshID];
+			instanceID++;
+		}
+		modelMeshID++;
 	}
 
-	//
-	// Write indirect batches
-	//
-	std::vector<IndirectBatch> draws;  // @TODO: turn the previous indirect batch's into some other data type, bc right here we're not using the meshindex stuff
-	vkglTF::Model* lastModel = nullptr;
-	for (IndirectBatch& ib : draws)
-	{
-		if (lastModel == ib.model)
-		{
-			draws.back().count += ib.count;
-		}
-		else
-		{
-			draws.push_back(
-				{
-					vkglTF::Model* model;
-					uint32_t first;
-					uint32_t count;
-				}
-			);
-			lastModel = ib.model;
-		}
-	}
+	// Cleanup and return
+	vmaUnmapMemory(_allocator, currentFrame.instancePtrBuffer._allocation);
+	indirectBatches = batches;
+	return;
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -3800,17 +3829,12 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 	}
 
 	// Iterate thru all the batches
+	uint32_t drawStride = sizeof(VkDrawIndexedIndirectCommand);
 	for (IndirectBatch& batch : indirectBatches)
 	{
-		// Bind model
+		VkDeviceSize indirectOffset = batch.first * drawStride;
 		batch.model->bind(cmd);
-
-		// Draw with the correct instance ID
-		for (size_t i = 0; i < batch.count; i++)
-		{
-			uint32_t instanceID = (uint32_t)batch.instanceInfos[i].instanceID;
-			batch.model->draw(cmd, instanceID);
-		}
+		vkCmdDrawIndexedIndirect(cmd, currentFrame.indirectCommandBuffer, indirectOffset, batch.count, drawStride);
 	}
 }
 
