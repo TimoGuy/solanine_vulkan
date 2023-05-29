@@ -56,6 +56,9 @@ RenderObject* RenderObjectManager::registerRenderObject(RenderObject renderObjec
 		}
 	);
 
+	for (bool* sendFlag : _sendInstancePtrDataToGPU_refs)
+		*sendFlag = true;
+
 	// Recalculate what indices animated render objects are at
 	recalculateAnimatorIndices();
 
@@ -74,6 +77,9 @@ void RenderObjectManager::unregisterRenderObject(RenderObject* objRegistration)
 			// Unregister object
 			_renderObjectsIsRegistered[poolIndex] = false;
 			_renderObjectsIndices.erase(_renderObjectsIndices.begin() + indicesIndex);
+
+			for (bool* sendFlag : _sendInstancePtrDataToGPU_refs)
+				*sendFlag = true;
 
 			// Recalculate what indices animated render objects are at
 			recalculateAnimatorIndices();
@@ -149,7 +155,7 @@ void RenderObjectManager::reloadModelAndTriggerCallbacks(VulkanEngine* engine, c
 }
 #endif
 
-RenderObjectManager::RenderObjectManager(VmaAllocator& allocator) : _allocator(allocator)
+RenderObjectManager::RenderObjectManager(VmaAllocator& allocator, std::vector<bool*> sendInstancePtrDataToGPU) : _allocator(allocator), _sendInstancePtrDataToGPU_refs(sendInstancePtrDataToGPU)
 {
 }
 

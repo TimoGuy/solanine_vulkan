@@ -54,8 +54,10 @@ public:
 #endif
 
 private:
-	RenderObjectManager(VmaAllocator& allocator);
+	RenderObjectManager(VmaAllocator& allocator, std::vector<bool*> sendInstancePtrDataToGPU);
 	~RenderObjectManager();
+
+	std::vector<bool*> _sendInstancePtrDataToGPU_refs;
 
 	std::vector<size_t> _renderObjectsWithAnimatorIndices;
 	void recalculateAnimatorIndices();

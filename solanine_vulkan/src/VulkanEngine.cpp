@@ -62,7 +62,10 @@ void VulkanEngine::init()
 		window_flags
 	);
 
-	_roManager = new RenderObjectManager(_allocator);
+	std::vector<bool*> sendInstancePtrDataToGPUFlagRefs;
+	for (FrameData& frame : _frames)
+		sendInstancePtrDataToGPUFlagRefs.push_back(&frame.sendInstancePtrDataToGPU);
+	_roManager = new RenderObjectManager(_allocator, sendInstancePtrDataToGPUFlagRefs);
 	_entityManager = new EntityManager();
 	_camera = new Camera(this);
 
@@ -351,7 +354,11 @@ void VulkanEngine::render()
 	// Upload current frame to GPU and compact into draw calls
 	//
 	uploadCurrentFrameToGPU(currentFrame);
-	compactRenderObjectsIntoDraws(currentFrame, {});
+	if (currentFrame.sendInstancePtrDataToGPU)
+	{
+		compactRenderObjectsIntoDraws(currentFrame, {});
+		getCurrentFrame().sendInstancePtrDataToGPU = false;
+	}
 
 	//
 	// Shadow Render Pass
@@ -3820,7 +3827,7 @@ void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& curr
 	//
 	// Render it with the wireframe color pipeline
 	//
-	compactRenderObjectsIntoDraws(currentFrame, { pickedPoolIndex });
+	/*compactRenderObjectsIntoDraws(currentFrame, {pickedPoolIndex});
 
 	constexpr size_t numRenders = 2;
 	std::string materialNames[numRenders] = {
@@ -3848,7 +3855,7 @@ void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& curr
 		vkCmdPushConstants(cmd, material.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ColorPushConstBlock), &pc);
 
 		renderRenderObjects(cmd, currentFrame, true);
-	}
+	}*/
 }
 
 #ifdef _DEVELOP
