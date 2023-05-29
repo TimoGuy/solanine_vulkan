@@ -695,6 +695,7 @@ void VulkanEngine::render()
 	submit.pCommandBuffers = &cmd;
 
 	result = vkQueueSubmit(_graphicsQueue, 1, &submit, currentFrame.renderFence);		// Submit work to gpu
+
 	if (result == VK_ERROR_DEVICE_LOST)
 		return;
 
@@ -1145,7 +1146,8 @@ void VulkanEngine::initVulkan()
 		.set_surface(_surface)
 		.set_required_features({
 			// @NOTE: @FEATURES: Enable required features right here
-			.depthClamp = VK_TRUE,				// @NOTE: for shadow maps, this is really nice
+			.multiDrawIndirect = VK_TRUE,           // @NOTE: this is so that vkCmdDrawIndexedIndirect() can be called with a >1 drawCount
+			.depthClamp = VK_TRUE,				    // @NOTE: for shadow maps, this is really nice
 			.fillModeNonSolid = VK_TRUE,            // @NOTE: well, I guess this is necessary to render wireframes
 			.samplerAnisotropy = VK_TRUE,
 			.fragmentStoresAndAtomics = VK_TRUE,    // @NOTE: this is only necessary for the picking buffer! If a release build then you can just disable this feature (@NOTE: it allows for me to write into an ssbo in the fragment shader. The picking buffer shader would have to be readonly if this were disabled)  -Timo 2022/10/21
@@ -1276,9 +1278,13 @@ void VulkanEngine::initCommands()
 		// Create picking command buffer  @NOTE: commandbufferallocateinfo just says we're gonna allocate 1 commandbuffer from the pool
 		VK_CHECK(vkAllocateCommandBuffers(_device, &cmdAllocInfo, &_frames[i].pickingCommandBuffer));
 
+		// Create indirect draw command buffer
+		_frames[i].indirectDrawCommandBuffer = createBuffer(sizeof(VkDrawIndexedIndirectCommand) * INSTANCE_PTR_MAX_CAPACITY, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+
 		// Add destroy command for cleanup
 		_mainDeletionQueue.pushFunction([=]() {
 			vkDestroyCommandPool(_device, _frames[i].commandPool, nullptr);
+			vmaDestroyBuffer(_allocator, _frames[i].indirectDrawCommandBuffer._buffer, _frames[i].indirectDrawCommandBuffer._allocation);
 			});
 	}
 
@@ -3669,17 +3675,20 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame)
 	// Gather each model's meshes and collate them into their own draw commands
 	//
 	std::vector<IndirectBatch> meshDraws;  // @TODO: this should be a different data type. `IndirectBatch` should be once per model, not once per mesh.
+	size_t drawCommandCount = 0;  // @UNUSED
 	for (ModelDrawCount& mdc : mdcs)
 	{
-		uint32_t numMeshes;
+		uint32_t numMeshes = 0;
 		mdc.model->appendPrimitiveDraws(meshDraws, numMeshes);
+		drawCommandCount += numMeshes * mdc.drawCount;
 
 		for (size_t i = 0; i < numMeshes; i++)
 		{
 			// Tell each mesh to draw as many times as the model exists, thus
 			// collating the mesh draws inside the model drawing window.
 			meshDraws[meshDraws.size() - numMeshes + i].count = mdc.drawCount;
-			meshDraws[meshDraws.size() - numMeshes + i].baseModelRenderObjectIndex = numMeshes;
+			meshDraws[meshDraws.size() - numMeshes + i].baseModelRenderObjectIndex = mdc.baseModelRenderObjectIndex;
+			meshDraws[meshDraws.size() - numMeshes + i].meshNumInModel = numMeshes;
 		}
 	}
 
@@ -3690,14 +3699,17 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame)
 	vmaMapMemory(_allocator, currentFrame.instancePtrBuffer._allocation, &instancePtrData);
 	GPUInstancePointer* instancePtrSSBO = (GPUInstancePointer*)instancePtrData;
 
+	void* indirectDrawCommandsData;
+	vmaMapMemory(_allocator, currentFrame.indirectDrawCommandBuffer._allocation, &indirectDrawCommandsData);
+	VkDrawIndexedIndirectCommand* indirectDrawCommands = (VkDrawIndexedIndirectCommand*)indirectDrawCommandsData;
+
 	//
 	// Write indirect commands
 	//
-	std::vector<VkDrawIndexedIndirectCommand> drawCommands; // @POC: @INCOMPLETE: very temporary. Should write to a buffer instead of this vector.
 	std::vector<IndirectBatch> batches;  // @TODO: turn the previous indirect batch's into some other data type, bc right here we're not using the meshindex stuff
 	lastModel = nullptr;
 	size_t instanceID = 0;
-	size_t modelMeshID = 0;
+	size_t meshIndex = 0;
 	size_t baseModelRenderObjectIndex = 0;
 	for (IndirectBatch& ib : meshDraws)
 	{
@@ -3712,31 +3724,36 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame)
 				.model = ib.model,
 				.first = (uint32_t)instanceID,
 				.count = ib.count,
-			});
+				});
 
 			lastModel = ib.model;
-			modelMeshID = 0;  // New model, so reset mesh ID counter too.
+			meshIndex = 0;  // New model, so reset the mesh index counter.
 			baseModelRenderObjectIndex = ib.baseModelRenderObjectIndex;
 		}
 
 		// Create draw command for each mesh instance.
-		for (size_t i = 0; i < ib.count; i++)
+		for (size_t modelIndex = 0; modelIndex < ib.count; modelIndex++)
 		{
-			drawCommands.push_back({
+			*indirectDrawCommands = {
 				.indexCount = ib.meshIndexCount,
 				.instanceCount = 1,
 				.firstIndex = ib.meshFirstIndex,
 				.vertexOffset = 0,
-				.firstInstance = (uint32_t)instanceID,
-			});
-			*instancePtrSSBO = _roManager->_renderObjectPool[_roManager->_renderObjectsIndices[baseModelRenderObjectIndex + i]].calculatedModelInstances[modelMeshID];
-			instanceID++;
+				.firstInstance = (uint32_t)instanceID++,
+			};
+			*instancePtrSSBO = _roManager->_renderObjectPool[_roManager->_renderObjectsIndices[baseModelRenderObjectIndex + modelIndex]].calculatedModelInstances[meshIndex];
+
+			indirectDrawCommands++;
+			instancePtrSSBO++;
 		}
-		modelMeshID++;
+
+		// Increment to the next mesh
+		meshIndex++;
 	}
 
 	// Cleanup and return
 	vmaUnmapMemory(_allocator, currentFrame.instancePtrBuffer._allocation);
+	vmaUnmapMemory(_allocator, currentFrame.indirectDrawCommandBuffer._allocation);
 	indirectBatches = batches;
 	return;
 
@@ -3750,7 +3767,7 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame)
 
 
 
-
+	/*
 
 
 	// @TODO: get the render object's model's primitive draw calls (i.e. indexed base index and count for each primitive).
@@ -3811,7 +3828,7 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame)
 		nextInstanceID += ro.calculatedModelInstances.size();
 	}
 
-	indirectBatches = draws;
+	indirectBatches = draws;*/
 }
 
 void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, size_t _, size_t _2, bool materialOverride, VkPipelineLayout* overrideLayout)
@@ -3834,7 +3851,7 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 	{
 		VkDeviceSize indirectOffset = batch.first * drawStride;
 		batch.model->bind(cmd);
-		vkCmdDrawIndexedIndirect(cmd, currentFrame.indirectCommandBuffer, indirectOffset, batch.count, drawStride);
+		vkCmdDrawIndexedIndirect(cmd, currentFrame.indirectDrawCommandBuffer._buffer, indirectOffset, batch.count, drawStride);
 	}
 }
 
@@ -3889,7 +3906,7 @@ void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& curr
 		vkCmdPushConstants(cmd, material.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ColorPushConstBlock), &pc);
 
 		// Iterate thru all the batches
-		for (IndirectBatch& batch : indirectBatches)
+		/*for (IndirectBatch& batch : indirectBatches)
 		{
 			// Draw with the correct instance ID
 			for (size_t i = 0; i < batch.count; i++)
@@ -3901,7 +3918,7 @@ void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& curr
 				batch.model->bind(cmd);
 				batch.model->draw(cmd, instanceID);
 			}
-		}
+		}*/
 	}
 }
 

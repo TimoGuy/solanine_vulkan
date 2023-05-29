@@ -56,6 +56,7 @@ struct FrameData
 	VkCommandPool commandPool;
 	VkCommandBuffer mainCommandBuffer;
 	VkCommandBuffer pickingCommandBuffer;
+	AllocatedBuffer indirectDrawCommandBuffer;
 
 	AllocatedBuffer cameraBuffer;
 	AllocatedBuffer pbrShadingPropsBuffer;

@@ -3,6 +3,8 @@
 #include <vulkan/vulkan.h>
 #include <vma/vk_mem_alloc.h>
 
+namespace vkglTF { struct Model; }
+
 
 #define VK_CHECK(x)                                                    \
 	do                                                                 \
@@ -48,14 +50,15 @@ struct IndirectBatch
 	vkglTF::Model* model;
 	uint32_t meshIndexCount;
 	uint32_t meshFirstIndex;
+	uint32_t meshNumInModel;
 	uint32_t baseModelRenderObjectIndex;
 	uint32_t first;
 	uint32_t count;
 
-	struct InstanceInfo
+	/*struct InstanceInfo
 	{
 		size_t instanceID;
 		size_t objectID;
 	};
-	std::vector<InstanceInfo> instanceInfos;
+	std::vector<InstanceInfo> instanceInfos;*/
 };
