@@ -263,7 +263,6 @@ private:
 	void loadMeshes();
 
 	void uploadCurrentFrameToGPU(const FrameData& currentFrame);
-	void uploadInstancePtrDataToGPU(const FrameData& currentFrame);
 	
 	std::vector<IndirectBatch> indirectBatches;
 

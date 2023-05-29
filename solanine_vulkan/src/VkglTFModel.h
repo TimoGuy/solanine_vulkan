@@ -102,9 +102,6 @@ namespace vkglTF
 			uint32_t aoMapIndex = 0;
 			uint32_t emissiveMapIndex = 0;
 		} texturePtr;
-	
-		// @NOCHECKIN: remove `calculatedMaterial` bc not being used anymore.
-		Material calculatedMaterial;    // @NOTE: this will contain the pbr pipeline, the pbr pipeline layout, and the texture descriptorset for this pbrmaterial instance
 	};
 
 	struct Primitive
@@ -365,10 +362,10 @@ namespace vkglTF
 		void bind(VkCommandBuffer commandBuffer);
 		void draw(VkCommandBuffer commandBuffer);
 		void draw(VkCommandBuffer commandBuffer, uint32_t& inOutInstanceID);
-		void appendPrimitiveDraws(std::vector<IndirectBatch>& draws, uint32_t& appendedCount);
+		void appendPrimitiveDraws(std::vector<MeshCapturedInfo>& draws, uint32_t& appendedCount);
 	private:
 		void drawNode(Node* node, VkCommandBuffer commandBuffer, uint32_t& inOutInstanceID);
-		void appendPrimitiveDrawNode(Node* node, std::vector<IndirectBatch>& draws, uint32_t& appendedCount);
+		void appendPrimitiveDrawNode(Node* node, std::vector<MeshCapturedInfo>& draws, uint32_t& appendedCount);
 		void calculateBoundingBox(Node* node, Node* parent);
 	public:
 		void getSceneDimensions();

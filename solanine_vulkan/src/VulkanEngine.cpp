@@ -352,7 +352,6 @@ void VulkanEngine::render()
 	//
 	uploadCurrentFrameToGPU(currentFrame);
 	compactRenderObjectsIntoDraws(currentFrame);
-	uploadInstancePtrDataToGPU(currentFrame);
 
 	//
 	// Shadow Render Pass
@@ -3619,26 +3618,6 @@ void VulkanEngine::uploadCurrentFrameToGPU(const FrameData& currentFrame)
 	vmaUnmapMemory(_allocator, currentFrame.objectBuffer._allocation);
 }
 
-void VulkanEngine::uploadInstancePtrDataToGPU(const FrameData& currentFrame)
-{
-	// //
-	// // Fill in instance level data
-	// //
-	// void* instancePtrData;
-	// vmaMapMemory(_allocator, currentFrame.instancePtrBuffer._allocation, &instancePtrData);
-	// GPUInstancePointer* instancePtrSSBO = (GPUInstancePointer*)instancePtrData;
-	// for (size_t poolIndex : _roManager->_renderObjectsIndices)
-	// {
-	// 	RenderObject& object = _roManager->_renderObjectPool[poolIndex];
-	// 	for (auto& instance : object.calculatedModelInstances)
-	// 	{
-	// 		*instancePtrSSBO = instance;
-	// 		instancePtrSSBO++;  // Increment along until all instance data is gathered
-	// 	}
-	// }
-	// vmaUnmapMemory(_allocator, currentFrame.instancePtrBuffer._allocation);
-}
-
 void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame)
 {
 	//
@@ -3674,19 +3653,17 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame)
 	//
 	// Gather each model's meshes and collate them into their own draw commands
 	//
-	std::vector<IndirectBatch> meshDraws;  // @TODO: this should be a different data type. `IndirectBatch` should be once per model, not once per mesh.
-	size_t drawCommandCount = 0;  // @UNUSED
+	std::vector<MeshCapturedInfo> meshDraws;
 	for (ModelDrawCount& mdc : mdcs)
 	{
 		uint32_t numMeshes = 0;
 		mdc.model->appendPrimitiveDraws(meshDraws, numMeshes);
-		drawCommandCount += numMeshes * mdc.drawCount;
 
 		for (size_t i = 0; i < numMeshes; i++)
 		{
 			// Tell each mesh to draw as many times as the model exists, thus
 			// collating the mesh draws inside the model drawing window.
-			meshDraws[meshDraws.size() - numMeshes + i].count = mdc.drawCount;
+			meshDraws[meshDraws.size() - numMeshes + i].modelDrawCount = mdc.drawCount;
 			meshDraws[meshDraws.size() - numMeshes + i].baseModelRenderObjectIndex = mdc.baseModelRenderObjectIndex;
 			meshDraws[meshDraws.size() - numMeshes + i].meshNumInModel = numMeshes;
 		}
@@ -3706,24 +3683,24 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame)
 	//
 	// Write indirect commands
 	//
-	std::vector<IndirectBatch> batches;  // @TODO: turn the previous indirect batch's into some other data type, bc right here we're not using the meshindex stuff
+	std::vector<IndirectBatch> batches;
 	lastModel = nullptr;
 	size_t instanceID = 0;
 	size_t meshIndex = 0;
 	size_t baseModelRenderObjectIndex = 0;
-	for (IndirectBatch& ib : meshDraws)
+	for (MeshCapturedInfo& ib : meshDraws)
 	{
 		// Combine the mesh-level draw commands into model-level draw commands.
 		if (lastModel == ib.model)
 		{
-			batches.back().count += ib.count;
+			batches.back().count += ib.modelDrawCount;
 		}
 		else
 		{
 			batches.push_back({
 				.model = ib.model,
 				.first = (uint32_t)instanceID,
-				.count = ib.count,
+				.count = ib.modelDrawCount,  // @NOTE: since the meshes are collated, we need to draw each mesh the number of times the model is going to get drawn.
 				});
 
 			lastModel = ib.model;
@@ -3732,7 +3709,7 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame)
 		}
 
 		// Create draw command for each mesh instance.
-		for (size_t modelIndex = 0; modelIndex < ib.count; modelIndex++)
+		for (size_t modelIndex = 0; modelIndex < ib.modelDrawCount; modelIndex++)
 		{
 			*indirectDrawCommands = {
 				.indexCount = ib.meshIndexCount,
@@ -3741,9 +3718,9 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame)
 				.vertexOffset = 0,
 				.firstInstance = (uint32_t)instanceID++,
 			};
-			*instancePtrSSBO = _roManager->_renderObjectPool[_roManager->_renderObjectsIndices[baseModelRenderObjectIndex + modelIndex]].calculatedModelInstances[meshIndex];
-
 			indirectDrawCommands++;
+
+			*instancePtrSSBO = _roManager->_renderObjectPool[_roManager->_renderObjectsIndices[baseModelRenderObjectIndex + modelIndex]].calculatedModelInstances[meshIndex];
 			instancePtrSSBO++;
 		}
 
@@ -3755,80 +3732,6 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame)
 	vmaUnmapMemory(_allocator, currentFrame.instancePtrBuffer._allocation);
 	vmaUnmapMemory(_allocator, currentFrame.indirectDrawCommandBuffer._allocation);
 	indirectBatches = batches;
-	return;
-
-
-
-
-
-
-
-
-
-
-
-	/*
-
-
-	// @TODO: get the render object's model's primitive draw calls (i.e. indexed base index and count for each primitive).
-	//        Then, for every time the model is seen (models should be sorted bc of the render object manager), increase the primitives' draw call count by 1. This should collate the draw calls.
-	//        Then, upload the instance ptr data such that the primitives' data is all collated too. It should be as simple as getting X being the number of models drawn, and blah blah... Ahh, you should be able to just iterate thru all the models, insert the meshes' corresponding instance ptr info with a giant stride that's the size of X (number of times model will get drawn), multiplied by the index of the primitive within the model. After recording everything about the models' draw calls, though, you'll have to set the data pointer to the end of all of that data getting slipped in.
-	size_t roIdx = 0;
-	size_t count = _roManager->_renderObjectsIndices.size();
-	size_t nextInstanceID = 0;
-
-	size_t poolIndex = _roManager->_renderObjectsIndices[roIdx];
-	RenderObject& ro = _roManager->_renderObjectPool[poolIndex];
-
-	std::vector<IndirectBatch> draws;
-	draws.push_back({
-		.model = ro.model,
-		.first = (uint32_t)roIdx,
-		.count = 1,
-		});
-
-	draws.back().instanceInfos.push_back({
-		.instanceID = nextInstanceID,
-		.objectID = poolIndex,
-	});
-	nextInstanceID += ro.calculatedModelInstances.size();
-
-	for (roIdx = 1; roIdx < count; roIdx++)
-	{
-		size_t poolIndex = _roManager->_renderObjectsIndices[roIdx];
-		RenderObject& ro = _roManager->_renderObjectPool[poolIndex];
-		if (!ro.model)
-		{
-			nextInstanceID += ro.calculatedModelInstances.size();
-			continue;  // Ignore objects that have no model
-		}
-		if (!_roManager->_renderObjectLayersEnabled[(size_t)ro.renderLayer])
-		{
-			nextInstanceID += ro.calculatedModelInstances.size();
-			continue;  // Ignore layers that are disabled
-		}
-
-		if (ro.model == draws.back().model)
-		{
-			draws.back().count++;
-		}
-		else
-		{
-			draws.push_back({
-				.model = ro.model,
-				.first = (uint32_t)roIdx,
-				.count = 1,
-			});
-		}
-
-		draws.back().instanceInfos.push_back({
-			.instanceID = nextInstanceID,
-			.objectID = poolIndex,
-		});
-		nextInstanceID += ro.calculatedModelInstances.size();
-	}
-
-	indirectBatches = draws;*/
 }
 
 void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, size_t _, size_t _2, bool materialOverride, VkPipelineLayout* overrideLayout)

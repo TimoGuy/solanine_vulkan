@@ -1067,48 +1067,6 @@ namespace vkglTF
 			static std::mutex materialCollectionMutex;
 			std::lock_guard<std::mutex> lg(materialCollectionMutex);
 			pbrMaterialCollection.materials.push_back(&material);
-
-
-			// // Allocate descriptor set for holding pbr texture info
-			// VkDescriptorSetAllocateInfo descriptorSetAllocInfo = {
-			// 	.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-			// 	.descriptorPool = engine->_descriptorPool,    // @TODO: @NOTE: since in the future there will be separate descriptor pools, there might need to be a different system and not directly refer to these descriptor pools
-			// 	.descriptorSetCount = 1,
-			// 	.pSetLayouts = &engine->_pbrTexturesSetLayout,
-			// };
-			// VK_CHECK(vkAllocateDescriptorSets(engine->_device, &descriptorSetAllocInfo, &material.calculatedMaterial.textureSet));    // @TODO: @NOTE: this could fail, fyi. So that's why having that abstraction would be really great.  -Timo
-
-			// //
-			// // Write image descriptors
-			// //
-			// std::array<Texture*, 5> pbrTextures = {
-			// 	&engine->_loadedTextures["empty"],
-			// 	&engine->_loadedTextures["empty"],
-			// 	material.normalTexture    ? material.normalTexture    : &engine->_loadedTextures["empty"],
-			// 	material.occlusionTexture ? material.occlusionTexture : &engine->_loadedTextures["empty"],
-			// 	material.emissiveTexture  ? material.emissiveTexture  : &engine->_loadedTextures["empty"],
-			// };
-
-			
-
-			// // Convert to VkDescriptorImageInfo
-			// std::array<VkDescriptorImageInfo, 5> imageDescriptors{};
-			// for (size_t i = 0; i < pbrTextures.size(); i++)
-			// 	imageDescriptors[i] =
-			// 		vkinit::textureToDescriptorImageInfo(pbrTextures[i]);
-
-			// // Convert to VkWriteDescriptorSet
-			// std::array<VkWriteDescriptorSet, 5> writeDescriptorSets{};
-			// for (size_t i = 0; i < imageDescriptors.size(); i++)
-			// 	writeDescriptorSets[i] =
-			// 		vkinit::writeDescriptorImage(
-			// 			VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-			// 			material.calculatedMaterial.textureSet,
-			// 			&imageDescriptors[i],
-			// 			static_cast<uint32_t>(i)
-			// 		);
-
-			// vkUpdateDescriptorSets(engine->_device, static_cast<uint32_t>(writeDescriptorSets.size()), writeDescriptorSets.data(), 0, nullptr);
 		}
 	}
 
@@ -1868,7 +1826,7 @@ namespace vkglTF
 		}
 	}
 
-	void Model::appendPrimitiveDraws(std::vector<IndirectBatch>& draws, uint32_t& appendedCount)
+	void Model::appendPrimitiveDraws(std::vector<MeshCapturedInfo>& draws, uint32_t& appendedCount)
 	{
 		for (auto& node : nodes)
 		{
@@ -1891,7 +1849,7 @@ namespace vkglTF
 		}
 	}
 
-	void Model::appendPrimitiveDrawNode(Node* node, std::vector<IndirectBatch>& draws, uint32_t& appendedCount)
+	void Model::appendPrimitiveDrawNode(Node* node, std::vector<MeshCapturedInfo>& draws, uint32_t& appendedCount)
 	{
 		if (node->mesh)
 		{

@@ -45,20 +45,19 @@ struct Material
 	VkPipelineLayout pipelineLayout;
 };
 
-struct IndirectBatch
+struct MeshCapturedInfo
 {
 	vkglTF::Model* model;
 	uint32_t meshIndexCount;
 	uint32_t meshFirstIndex;
 	uint32_t meshNumInModel;
+	uint32_t modelDrawCount;
 	uint32_t baseModelRenderObjectIndex;
+};
+
+struct IndirectBatch
+{
+	vkglTF::Model* model;
 	uint32_t first;
 	uint32_t count;
-
-	/*struct InstanceInfo
-	{
-		size_t instanceID;
-		size_t objectID;
-	};
-	std::vector<InstanceInfo> instanceInfos;*/
 };
