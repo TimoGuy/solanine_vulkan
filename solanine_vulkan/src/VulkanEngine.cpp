@@ -111,7 +111,7 @@ void VulkanEngine::run()
 	_camera->sceneCamera.boxCastExtents[2] = _camera->sceneCamera.zNear * 0.5f;
 	
 	// @HARDCODED: Set the initial light direction
-	vec4 lightDir = { 0.432f, 0.864f, 0.259f, 0.0f };
+	vec4 lightDir = { 0.273897f, 0.255802f, 0.960134f, 0.0f };
 	glm_vec4_normalize(lightDir);
 	glm_vec4_copy(lightDir, _pbrRendering.gpuSceneShadingProps.lightDir);
 
@@ -1649,7 +1649,31 @@ void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is 
 	VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo((float_t)numBloomMips, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
 	VK_CHECK(vkCreateSampler(_device, &samplerInfo, nullptr, &_bloomPostprocessImage.sampler));
 
+	//
+	// Postprocessing
+	// @TODO: @RESEARCH: doing this, where the descriptors are getting initialized every time
+	//                   the renderpass is getting created (which is necessary), does it cause
+	//                   a memory leak?  -Timo 2023/05/29
+	//
+	VkDescriptorImageInfo mainHDRImageInfo = {
+		.sampler = _mainImage.sampler,
+		.imageView = _mainImage.imageView,
+		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	};
+	VkDescriptorImageInfo bloomImageInfo = {
+		.sampler = _bloomPostprocessImage.sampler,
+		.imageView = _bloomPostprocessImage.imageView,
+		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	};
+	VkDescriptorSet postprocessingTextureSet;
+	vkutil::DescriptorBuilder::begin()
+		.bindImage(0, &mainHDRImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+		.bindImage(1, &bloomImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+		.build(postprocessingTextureSet, _postprocessSetLayout);
+	attachTextureSetToMaterial(postprocessingTextureSet, "postprocessMaterial");
+
 	_swapchainDependentDeletionQueue.pushFunction([=]() {
+
 		vkDestroySampler(_device, _bloomPostprocessImage.sampler, nullptr);
 		vkDestroyImageView(_device, _bloomPostprocessImage.imageView, nullptr);
 		vmaDestroyImage(_allocator, _bloomPostprocessImage.image._image, _bloomPostprocessImage.image._allocation);
@@ -2047,26 +2071,6 @@ void VulkanEngine::initDescriptors()    // @TODO: don't destroy and then recreat
 		.bindImage(0, &singleTextureImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
 		.build(singleTextureSet, _singleTextureSetLayout);
 	attachTextureSetToMaterial(singleTextureSet, "skyboxMaterial");
-
-	//
-	// Postprocessing
-	//
-	VkDescriptorImageInfo mainHDRImageInfo = {
-		.sampler = _mainImage.sampler,
-		.imageView = _mainImage.imageView,
-		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-	};
-	VkDescriptorImageInfo bloomImageInfo = {
-		.sampler = _bloomPostprocessImage.sampler,
-		.imageView = _bloomPostprocessImage.imageView,
-		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-	};
-	VkDescriptorSet postprocessingTextureSet;
-	vkutil::DescriptorBuilder::begin()
-		.bindImage(0, &mainHDRImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
-		.bindImage(1, &bloomImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
-		.build(postprocessingTextureSet, _postprocessSetLayout);
-	attachTextureSetToMaterial(postprocessingTextureSet, "postprocessMaterial");
 
 	//
 	// All PBR Textures
