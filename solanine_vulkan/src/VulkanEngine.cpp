@@ -396,7 +396,7 @@ void VulkanEngine::render()
 			CascadeIndexPushConstBlock pc = { i };
 			vkCmdPushConstants(cmd, shadowDepthPassMaterial.pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(CascadeIndexPushConstBlock), &pc);
 
-			renderRenderObjects(cmd, currentFrame, 0, _roManager->_renderObjectsIndices.size(), true, &shadowDepthPassMaterial.pipelineLayout);
+			renderRenderObjects(cmd, currentFrame, true, &shadowDepthPassMaterial.pipelineLayout);
 			
 			vkCmdEndRenderPass(cmd);
 		}
@@ -444,7 +444,7 @@ void VulkanEngine::render()
 		skybox->draw(cmd);
 		///////////////////
 
-		renderRenderObjects(cmd, currentFrame, 0, _roManager->_renderObjectsIndices.size(), false, nullptr);
+		renderRenderObjects(cmd, currentFrame, false, nullptr);
 		renderPickedObject(cmd, currentFrame);
 
 		// End renderpass
@@ -770,7 +770,7 @@ void VulkanEngine::render()
 		std::cout << "[PICKING]" << std::endl
 			<< "set picking scissor to: x=" << scissor.offset.x << "  y=" << scissor.offset.y << "  w=" << scissor.extent.width << "  h=" << scissor.extent.height << std::endl;
 
-		renderRenderObjects(cmd, currentFrame, 0, _roManager->_renderObjectsIndices.size(), true, &pickingMaterial.pipelineLayout);    // @NOTE: the joint descriptorset will still be bound in here   @HACK: it's using the wrong pipelinelayout but.... it should be fine? Bc the slot is still set=3 for the joints on the picking pipelinelayout too??
+		renderRenderObjects(cmd, currentFrame, true, &pickingMaterial.pipelineLayout);    // @NOTE: the joint descriptorset will still be bound in here   @HACK: it's using the wrong pipelinelayout but.... it should be fine? Bc the slot is still set=3 for the joints on the picking pipelinelayout too??
 
 		// End renderpass
 		vkCmdEndRenderPass(cmd);
@@ -3734,7 +3734,7 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame)
 	indirectBatches = batches;
 }
 
-void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, size_t _, size_t _2, bool materialOverride, VkPipelineLayout* overrideLayout)
+void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, bool materialOverride, VkPipelineLayout* overrideLayout)
 {
 	if (!materialOverride)
 	{
