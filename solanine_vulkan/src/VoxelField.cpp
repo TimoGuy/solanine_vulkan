@@ -136,7 +136,8 @@ inline void buildDefaultVoxelData(VoxelField_XData& data)
     for (size_t i = 0; i < sizeX; i++)
     for (size_t j = 0; j < sizeY; j++)
     for (size_t k = 0; k < sizeZ; k++)
-        vd[i * sizeY * sizeZ + j * sizeZ + k] = 1;
+        vd[i * sizeY * sizeZ + j * sizeZ + k] = 0;  //1;
+    vd[0] = 1;
     data.vfpd = physengine::createVoxelField(sizeX, sizeY, sizeZ, vd);
 }
 

@@ -2129,6 +2129,7 @@ namespace vkglTF
 		vmaMapMemory(engine->_allocator, nodeCollectionBuffer.buffer._allocation, &mappedMem);
 		nodeCollectionBuffer.mapped = (GPUAnimatorNode*)mappedMem;
 		memcpy(nodeCollectionBuffer.mapped, &defaultAnimatorNode, sizeof(GPUAnimatorNode));
+		vmaUnmapMemory(engine->_allocator, nodeCollectionBuffer.buffer._allocation);  // @DEBUG: @NOCHECKIN
 	}
 
 	void Animator::destroyEmpty(VulkanEngine* engine)

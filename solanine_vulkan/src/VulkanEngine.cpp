@@ -103,6 +103,9 @@ void VulkanEngine::init()
 	scene::loadScene(globalState::savedActiveScene, this);
 }
 
+constexpr size_t numPerfs = 15;
+uint64_t perfs[numPerfs];
+
 void VulkanEngine::run()
 {
 	//
@@ -133,9 +136,6 @@ void VulkanEngine::run()
 #ifdef _DEVELOP
 	std::mutex* hotswapMutex = hotswapres::startResourceChecker(this, &_recreateSwapchain, _roManager);
 #endif
-
-	constexpr size_t numPerfs = 14;
-	uint64_t perfs[numPerfs];
 
 	while (isRunning)
 	{
@@ -192,7 +192,7 @@ void VulkanEngine::run()
 
 		perfs[5] = SDL_GetPerformanceCounter();
 		// Update animators
-		_roManager->updateAnimators(scaledDeltaTime);
+		//_roManager->updateAnimators(scaledDeltaTime);
 		perfs[5] = SDL_GetPerformanceCounter() - perfs[5];
 
 
@@ -353,12 +353,14 @@ void VulkanEngine::render()
 	//
 	// Upload current frame to GPU and compact into draw calls
 	//
+	perfs[14] = SDL_GetPerformanceCounter();
 	uploadCurrentFrameToGPU(currentFrame);
 	if (currentFrame.sendInstancePtrDataToGPU)
 	{
 		compactRenderObjectsIntoDraws(currentFrame, {});
 		getCurrentFrame().sendInstancePtrDataToGPU = false;
 	}
+	perfs[14] = SDL_GetPerformanceCounter() - perfs[14];
 
 	//
 	// Shadow Render Pass
