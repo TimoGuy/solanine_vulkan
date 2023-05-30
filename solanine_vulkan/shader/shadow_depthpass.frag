@@ -23,7 +23,7 @@ layout(std140, set = 2, binding = 0) readonly buffer InstancePtrBuffer
 // Material bindings
 // @COPYPASTA
 //
-#define MAX_NUM_MAPS 128
+#define MAX_NUM_MAPS 21
 layout (set = 3, binding = 0) uniform sampler2D textureMaps[MAX_NUM_MAPS];
 
 struct MaterialParam

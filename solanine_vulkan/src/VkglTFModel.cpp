@@ -738,7 +738,7 @@ namespace vkglTF
 			VkFormat format = VK_FORMAT_R8G8B8A8_UNORM;
 
 			Texture texture;
-			vkutil::loadImageFromBuffer(*engine, image.width, image.height, bufferSize, format, buffer, 0, texture.image);
+			vkutil::loadImageFromBuffer(*engine, std::min(128, image.width), std::min(128, image.height), bufferSize, format, buffer, 1, texture.image);
 
 			if (deleteBuffer)
 				delete[] buffer;

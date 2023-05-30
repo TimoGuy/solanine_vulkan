@@ -354,7 +354,15 @@ void VulkanEngine::render()
 	// Upload current frame to GPU and compact into draw calls
 	//
 	perfs[14] = SDL_GetPerformanceCounter();
-	uploadCurrentFrameToGPU(currentFrame);
+	static bool doU = true;
+	if (input::onKeyRSBPress)
+	{
+		doU = !doU;
+		std::cout << "doU: " << doU << std::endl;
+	}
+
+	if (doU)
+		uploadCurrentFrameToGPU(currentFrame);
 	if (currentFrame.sendInstancePtrDataToGPU)
 	{
 		compactRenderObjectsIntoDraws(currentFrame, {});
@@ -1228,7 +1236,7 @@ void VulkanEngine::initSwapchain()
 	vkb::SwapchainBuilder swapchainBuilder{ _chosenGPU, _device, _surface };
 	vkb::Swapchain vkbSwapchain = swapchainBuilder
 		.use_default_format_selection()
-		.set_desired_present_mode(VK_PRESENT_MODE_MAILBOX_KHR)		// @NOTE: this is "soft" v-sync, where it won't go above the monitor hertz, but it won't immediately go down to 1/2 the framerate if dips below.
+		.set_desired_present_mode(VK_PRESENT_MODE_FIFO_RELAXED_KHR)		// @NOTE: this is "soft" v-sync, where it won't go above the monitor hertz, but it won't immediately go down to 1/2 the framerate if dips below.
 		.set_desired_extent(_windowExtent.width, _windowExtent.height)
 		.build()
 		.value();
