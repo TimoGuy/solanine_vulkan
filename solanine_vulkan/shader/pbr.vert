@@ -75,25 +75,26 @@ void main()
 	// Skin mesh
 	//
 	mat4 modelMatrix = objectBuffer.objects[instancePtrBuffer.pointers[gl_BaseInstance].objectID].modelMatrix;
-	SkeletonAnimationNode node = nodeCollection.nodes[instancePtrBuffer.pointers[gl_BaseInstance].animatorNodeID];
+	uint animatorNodeID = instancePtrBuffer.pointers[gl_BaseInstance].animatorNodeID;
+	mat4 nodeMatrix = nodeCollection.nodes[animatorNodeID].matrix;
 	vec4 locPos;
-	if (node.jointCount > 0.0)
+	if (nodeCollection.nodes[animatorNodeID].jointCount > 0.0)
 	{
 		// Is skinned
 		mat4 skinMat =
-			inWeight0.x * node.jointMatrix[int(inJoint0.x)] +
-			inWeight0.y * node.jointMatrix[int(inJoint0.y)] +
-			inWeight0.z * node.jointMatrix[int(inJoint0.z)] +
-			inWeight0.w * node.jointMatrix[int(inJoint0.w)];
+			inWeight0.x * nodeCollection.nodes[animatorNodeID].jointMatrix[int(inJoint0.x)] +
+			inWeight0.y * nodeCollection.nodes[animatorNodeID].jointMatrix[int(inJoint0.y)] +
+			inWeight0.z * nodeCollection.nodes[animatorNodeID].jointMatrix[int(inJoint0.z)] +
+			inWeight0.w * nodeCollection.nodes[animatorNodeID].jointMatrix[int(inJoint0.w)];
 
-		locPos = modelMatrix * node.matrix * skinMat * vec4(inPos, 1.0);
-		outNormal = normalize(transpose(inverse(mat3(modelMatrix * node.matrix * skinMat))) * inNormal);
+		locPos = modelMatrix * nodeMatrix * skinMat * vec4(inPos, 1.0);
+		outNormal = normalize(transpose(inverse(mat3(modelMatrix * nodeMatrix * skinMat))) * inNormal);
 	}
 	else
 	{
 		// Not skinned
-		locPos = modelMatrix * node.matrix * vec4(inPos, 1.0);
-		outNormal = normalize(transpose(inverse(mat3(modelMatrix * node.matrix))) * inNormal);
+		locPos = modelMatrix * nodeMatrix * vec4(inPos, 1.0);
+		outNormal = normalize(transpose(inverse(mat3(modelMatrix * nodeMatrix))) * inNormal);
 	}
 
 	outWorldPos = locPos.xyz / locPos.w;
