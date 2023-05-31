@@ -155,7 +155,7 @@ void RenderObjectManager::reloadModelAndTriggerCallbacks(VulkanEngine* engine, c
 }
 #endif
 
-RenderObjectManager::RenderObjectManager(VmaAllocator& allocator, std::vector<bool*> sendInstancePtrDataToGPU) : _allocator(allocator), _sendInstancePtrDataToGPU_refs(sendInstancePtrDataToGPU)
+RenderObjectManager::RenderObjectManager(VmaAllocator& allocator) : _allocator(allocator)
 {
 }
 

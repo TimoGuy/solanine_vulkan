@@ -12,5 +12,5 @@ constexpr unsigned int FRAME_OVERLAP = 2;
 constexpr size_t RENDER_OBJECTS_MAX_CAPACITY = 10000;
 constexpr size_t INSTANCE_PTR_MAX_CAPACITY   = 100000;
 
-constexpr size_t MAX_NUM_MAPS = 21;
+constexpr size_t MAX_NUM_MAPS = 128;
 constexpr size_t MAX_NUM_MATERIALS = 256;

@@ -57,7 +57,6 @@ struct FrameData
 	VkCommandBuffer mainCommandBuffer;
 	VkCommandBuffer pickingCommandBuffer;
 	AllocatedBuffer indirectDrawCommandBuffer;
-	bool sendInstancePtrDataToGPU = false;
 
 	AllocatedBuffer cameraBuffer;
 	AllocatedBuffer pbrShadingPropsBuffer;

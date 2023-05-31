@@ -54,7 +54,7 @@ public:
 #endif
 
 private:
-	RenderObjectManager(VmaAllocator& allocator, std::vector<bool*> sendInstancePtrDataToGPU);
+	RenderObjectManager(VmaAllocator& allocator);
 	~RenderObjectManager();
 
 	std::vector<bool*> _sendInstancePtrDataToGPU_refs;

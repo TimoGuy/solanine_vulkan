@@ -738,7 +738,7 @@ namespace vkglTF
 			VkFormat format = VK_FORMAT_R8G8B8A8_UNORM;
 
 			Texture texture;
-			vkutil::loadImageFromBuffer(*engine, std::min(128, image.width), std::min(128, image.height), bufferSize, format, buffer, 1, texture.image);
+			vkutil::loadImageFromBuffer(*engine, image.width, image.height, bufferSize, format, buffer, 0, texture.image);
 
 			if (deleteBuffer)
 				delete[] buffer;
@@ -2129,7 +2129,6 @@ namespace vkglTF
 		vmaMapMemory(engine->_allocator, nodeCollectionBuffer.buffer._allocation, &mappedMem);
 		nodeCollectionBuffer.mapped = (GPUAnimatorNode*)mappedMem;
 		memcpy(nodeCollectionBuffer.mapped, &defaultAnimatorNode, sizeof(GPUAnimatorNode));
-		vmaUnmapMemory(engine->_allocator, nodeCollectionBuffer.buffer._allocation);  // @DEBUG: @NOCHECKIN
 	}
 
 	void Animator::destroyEmpty(VulkanEngine* engine)
