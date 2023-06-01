@@ -3821,8 +3821,9 @@ void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& curr
 
 	//
 	// Render it with the wireframe color pipeline
+	// @BUG: recompacting and reuploading the picked pool index will overwrite the first mesh drawn's instance ptr information, so making a new system would be great, or not since this is just a debug feature.
 	//
-	/*compactRenderObjectsIntoDraws(currentFrame, {pickedPoolIndex});
+	compactRenderObjectsIntoDraws(currentFrame, {pickedPoolIndex});
 
 	constexpr size_t numRenders = 2;
 	std::string materialNames[numRenders] = {
@@ -3850,7 +3851,7 @@ void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& curr
 		vkCmdPushConstants(cmd, material.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ColorPushConstBlock), &pc);
 
 		renderRenderObjects(cmd, currentFrame, true);
-	}*/
+	}
 }
 
 #ifdef _DEVELOP
