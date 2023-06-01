@@ -258,8 +258,6 @@ private:
 	FrameData _frames[FRAME_OVERLAP];
 	FrameData& getCurrentFrame();
 
-	bool loadShaderModule(const char* filePath, VkShaderModule* outShaderModule);
-
 	void loadMeshes();
 
 	void uploadCurrentFrameToGPU(const FrameData& currentFrame);
@@ -370,23 +368,4 @@ private:
 
     friend class Entity;
 	friend Entity* scene::spinupNewObject(const std::string& objectName, VulkanEngine* engine, DataSerialized* ds);
-};
-
-
-class PipelineBuilder
-{
-public:
-	std::vector<VkPipelineShaderStageCreateInfo>       _shaderStages;
-	VkPipelineVertexInputStateCreateInfo               _vertexInputInfo;
-	VkPipelineInputAssemblyStateCreateInfo             _inputAssembly;
-	VkViewport                                         _viewport;
-	VkRect2D                                           _scissor;
-	VkPipelineRasterizationStateCreateInfo             _rasterizer;
-	std::vector<VkPipelineColorBlendAttachmentState>   _colorBlendAttachment;
-	VkPipelineMultisampleStateCreateInfo               _multisampling;
-	VkPipelineLayout                                   _pipelineLayout;
-	VkPipelineDepthStencilStateCreateInfo              _depthStencil;
-	VkPipelineDynamicStateCreateInfo                   _dynamicState;
-
-	VkPipeline buildPipeline(VkDevice device, VkRenderPass pass);
 };

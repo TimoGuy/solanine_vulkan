@@ -134,11 +134,13 @@ copy $(SolutionDir)libs\cglm\cglm.dll $(OutDirfullPath)cglm.dll</Command>
     <None Include="shader\pbr_khr.frag" />
     <None Include="shader\picking.frag" />
     <None Include="shader\picking.vert" />
+    <None Include="shader\postprocess.frag" />
     <None Include="shader\prefilterenvmap.frag" />
     <None Include="shader\shadow_depthpass.frag" />
     <None Include="shader\shadow_depthpass.vert" />
     <None Include="shader\skybox.frag" />
     <None Include="shader\skybox.vert" />
+    <None Include="shader\wireframe_color.vert" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\AudioEngine.h" />
@@ -176,6 +178,7 @@ copy $(SolutionDir)libs\cglm\cglm.dll $(OutDirfullPath)cglm.dll</Command>
     <ClInclude Include="src\VkDataStructures.h" />
     <ClInclude Include="src\VkglTFModel.h" />
     <ClInclude Include="src\VkInitializers.h" />
+    <ClInclude Include="src\VkPipelineBuilderUtil.h" />
     <ClInclude Include="src\VkTextures.h" />
     <ClInclude Include="src\VulkanEngine.h" />
     <ClInclude Include="src\StringHelper.h" />
@@ -220,6 +223,7 @@ copy $(SolutionDir)libs\cglm\cglm.dll $(OutDirfullPath)cglm.dll</Command>
     <ClCompile Include="src\VkBootstrap.cpp" />
     <ClCompile Include="src\VkglTFModel.cpp" />
     <ClCompile Include="src\VkInitializers.cpp" />
+    <ClCompile Include="src\VkPipelineBuilderUtil.cpp" />
     <ClCompile Include="src\VkTextures.cpp" />
     <ClCompile Include="src\VulkanEngine.cpp" />
     <ClCompile Include="src\PhysUtil.cpp" />

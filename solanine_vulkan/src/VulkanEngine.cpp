@@ -6,6 +6,7 @@
 #include "VkBootstrap.h"
 #include "VkInitializers.h"
 #include "VkDescriptorBuilderUtil.h"
+#include "VkPipelineBuilderUtil.h"
 #include "VkTextures.h"
 #include "VkglTFModel.h"
 #include "AudioEngine.h"
@@ -290,6 +291,7 @@ void VulkanEngine::cleanup()
 		_mainDeletionQueue.flush();
 		_swapchainDependentDeletionQueue.flush();
 
+		vkutil::pipelinelayoutcache::cleanup();
 		vkutil::descriptorlayoutcache::cleanup();
 		vkutil::descriptorallocator::cleanup();
 
@@ -1188,6 +1190,7 @@ void VulkanEngine::initVulkan()
 	//
 	vkutil::descriptorallocator::init(_device);
 	vkutil::descriptorlayoutcache::init(_device);
+	vkutil::pipelinelayoutcache::init(_device);
 	vkinit::_maxSamplerAnisotropy = _gpuProperties.limits.maxSamplerAnisotropy;
 
 	//
@@ -2172,347 +2175,248 @@ void VulkanEngine::initDescriptors()    // @TODO: don't destroy and then recreat
 	});
 }
 
-void VulkanEngine::initPipelines()  // @TODO: this is a big, scary, hairy mess!
+void VulkanEngine::initPipelines()
 {
 	//
 	// Load shader modules
 	//
-	VkShaderModule defaultLitVertShader,
-					defaultLitFragShader;
-	loadShaderModule("shader/pbr.vert.spv", &defaultLitVertShader);
-	loadShaderModule("shader/pbr_khr.frag.spv", &defaultLitFragShader);
-
-	VkShaderModule skyboxVertShader,
-					skyboxFragShader;
-	loadShaderModule("shader/skybox.vert.spv", &skyboxVertShader);
-	loadShaderModule("shader/skybox.frag.spv", &skyboxFragShader);
-
-	VkShaderModule pickingVertShader,
-					pickingFragShader;
-	loadShaderModule("shader/picking.vert.spv", &pickingVertShader);
-	loadShaderModule("shader/picking.frag.spv", &pickingFragShader);
-
-	VkShaderModule wireframeColorVertShader,
-					wireframeColorFragShader;
-	loadShaderModule("shader/wireframe_color.vert.spv", &wireframeColorVertShader);
-	loadShaderModule("shader/color.frag.spv", &wireframeColorFragShader);
-
 	/*VkShaderModule debugPhysicsObjectVertShader,
 					debugPhysicsObjectFragShader;
-	loadShaderModule("shader/debug_physics_object.vert.spv", &debugPhysicsObjectVertShader);
-	loadShaderModule("shader/debug_physics_object.frag.spv", &debugPhysicsObjectFragShader);*/
+	loadShaderModule("shader/debug_physics_object.vert.spv", debugPhysicsObjectVertShader);
+	loadShaderModule("shader/debug_physics_object.frag.spv", debugPhysicsObjectFragShader);*/
 
-	VkShaderModule shadowDepthPassVertShader,
-					shadowDepthPassFragShader;
-	loadShaderModule("shader/shadow_depthpass.vert.spv", &shadowDepthPassVertShader);
-	loadShaderModule("shader/shadow_depthpass.frag.spv", &shadowDepthPassFragShader);
 
-	VkShaderModule postprocessVertShader,
-				   postprocessFragShader;
-	loadShaderModule("shader/genbrdflut.vert.spv", &postprocessVertShader);
-	loadShaderModule("shader/postprocess.frag.spv", &postprocessFragShader);
 
-	//
+	// Common values
+	vkglTF::VertexInputDescription modelVertexDescription = vkglTF::Model::Vertex::getVertexDescription();
+	VkViewport screenspaceViewport = {
+		0.0f, 0.0f,
+		(float_t)_windowExtent.width, (float_t)_windowExtent.height,
+		0.0f, 1.0f,
+	};
+	VkRect2D screenspaceScissor = {
+		{ 0, 0 },
+		_windowExtent,
+	};
+
 	// Mesh Pipeline
-	//
-	VkPipelineLayoutCreateInfo meshPipelineLayoutInfo = vkinit::pipelineLayoutCreateInfo();
+	VkPipeline meshPipeline;
+	VkPipelineLayout meshPipelineLayout;
+	vkutil::pipelinebuilder::build(
+		{},
+		{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _pbrTexturesSetLayout, _skeletalAnimationSetLayout },
+		{
+			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/pbr.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/pbr_khr.frag.spv" },
+		},
+		modelVertexDescription.attributes,
+		modelVertexDescription.bindings,
+		vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+		screenspaceViewport,
+		screenspaceScissor,
+		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT),
+		{ vkinit::colorBlendAttachmentState() },
+		vkinit::multisamplingStateCreateInfo(),
+		vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL),
+		{},
+		_mainRenderPass,
+		meshPipeline,
+		meshPipelineLayout
+		);
+	attachPipelineToMaterial(meshPipeline, meshPipelineLayout, "pbrMaterial");
 
-	meshPipelineLayoutInfo.pPushConstantRanges = nullptr;
-	meshPipelineLayoutInfo.pushConstantRangeCount = 0;
-
-	VkDescriptorSetLayout setLayouts[] = { _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _pbrTexturesSetLayout, _skeletalAnimationSetLayout };
-	meshPipelineLayoutInfo.pSetLayouts = setLayouts;
-	meshPipelineLayoutInfo.setLayoutCount = 5;
-
-	VkPipelineLayout _meshPipelineLayout;
-	VK_CHECK(vkCreatePipelineLayout(_device, &meshPipelineLayoutInfo, nullptr, &_meshPipelineLayout));
-
-	vkglTF::VertexInputDescription vertexDescription = vkglTF::Model::Vertex::getVertexDescription();
-
-	PipelineBuilder pipelineBuilder;
-	pipelineBuilder._shaderStages.clear();
-	pipelineBuilder._shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, defaultLitVertShader));
-	pipelineBuilder._shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, defaultLitFragShader));
-
-	pipelineBuilder._vertexInputInfo = vkinit::vertexInputStateCreateInfo();
-	pipelineBuilder._vertexInputInfo.pVertexAttributeDescriptions = vertexDescription.attributes.data();
-	pipelineBuilder._vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(vertexDescription.attributes.size());
-	pipelineBuilder._vertexInputInfo.pVertexBindingDescriptions = vertexDescription.bindings.data();
-	pipelineBuilder._vertexInputInfo.vertexBindingDescriptionCount = static_cast<uint32_t>(vertexDescription.bindings.size());
-
-	pipelineBuilder._inputAssembly = vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-
-	pipelineBuilder._viewport.x = 0.0f;
-	pipelineBuilder._viewport.y = 0.0f;
-	pipelineBuilder._viewport.width = (float_t)_windowExtent.width;
-	pipelineBuilder._viewport.height = (float_t)_windowExtent.height;
-	pipelineBuilder._viewport.minDepth = 0.0f;
-	pipelineBuilder._viewport.maxDepth = 1.0f;
-
-	pipelineBuilder._scissor.offset = { 0, 0 };
-	pipelineBuilder._scissor.extent = _windowExtent;
-
-	pipelineBuilder._rasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT);
-	pipelineBuilder._colorBlendAttachment.push_back(vkinit::colorBlendAttachmentState());
-	pipelineBuilder._multisampling = vkinit::multisamplingStateCreateInfo();
-	pipelineBuilder._pipelineLayout = _meshPipelineLayout;
-	pipelineBuilder._depthStencil = vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL);
-	pipelineBuilder._dynamicState = {    // @TODO: for now we'll have this, but make a "..." initializing function in the vkinit namespace, bc honestly you just need one param and then just make it an expanding list!
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-		.dynamicStateCount = 0,
-		.pDynamicStates = nullptr,
-	};
-
-	auto _meshPipeline = pipelineBuilder.buildPipeline(_device, _mainRenderPass);
-	attachPipelineToMaterial(_meshPipeline, _meshPipelineLayout, "pbrMaterial");
-
-	for (auto shaderStage : pipelineBuilder._shaderStages)
-		vkDestroyShaderModule(_device, shaderStage.module, nullptr);
-
-	//
 	// Skybox pipeline
-	//
-	VkPipelineLayoutCreateInfo skyboxPipelineLayoutInfo = meshPipelineLayoutInfo;
-	skyboxPipelineLayoutInfo.pPushConstantRanges = nullptr;
-	skyboxPipelineLayoutInfo.pushConstantRangeCount = 0;
+	VkPipeline skyboxPipeline;
+	VkPipelineLayout skyboxPipelineLayout;
+	vkutil::pipelinebuilder::build(
+		{},
+		{ _globalSetLayout, _singleTextureSetLayout },
+		{
+			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/skybox.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/skybox.frag.spv" },
+		},
+		modelVertexDescription.attributes,
+		modelVertexDescription.bindings,
+		vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+		screenspaceViewport,
+		screenspaceScissor,
+		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_FRONT_BIT),    // Bc we're rendering a box inside-out
+		{ vkinit::colorBlendAttachmentState() },
+		vkinit::multisamplingStateCreateInfo(),
+		vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_NEVER),
+		{},
+		_mainRenderPass,
+		skyboxPipeline,
+		skyboxPipelineLayout
+		);
+	attachPipelineToMaterial(skyboxPipeline, skyboxPipelineLayout, "skyboxMaterial");
 
-	VkDescriptorSetLayout setLayouts2[] = { _globalSetLayout, _singleTextureSetLayout };
-	skyboxPipelineLayoutInfo.pSetLayouts = setLayouts2;
-	skyboxPipelineLayoutInfo.setLayoutCount = 2;
-
-	VkPipelineLayout _skyboxPipelineLayout;
-	VK_CHECK(vkCreatePipelineLayout(_device, &skyboxPipelineLayoutInfo, nullptr, &_skyboxPipelineLayout));
-
-	pipelineBuilder._shaderStages.clear();
-	pipelineBuilder._shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, skyboxVertShader));
-	pipelineBuilder._shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, skyboxFragShader));
-
-	pipelineBuilder._rasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_FRONT_BIT);    // Bc we're rendering a box inside-out
-	pipelineBuilder._depthStencil = vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_NEVER);
-	pipelineBuilder._pipelineLayout = _skyboxPipelineLayout;		// @NOTE: EFFING DON'T FORGET THIS LINE BC THAT'S WHAT CAUSED ME A BUTT TON OF GRIEF!!!!!
-
-	auto _skyboxPipeline = pipelineBuilder.buildPipeline(_device, _mainRenderPass);
-	attachPipelineToMaterial(_skyboxPipeline, _skyboxPipelineLayout, "skyboxMaterial");
-
-	for (auto shaderStage : pipelineBuilder._shaderStages)
-		vkDestroyShaderModule(_device, shaderStage.module, nullptr);
-
-	//
 	// Picking pipeline
-	//
-	VkPipelineLayoutCreateInfo pickingPipelineLayoutInfo = skyboxPipelineLayoutInfo;
-	pickingPipelineLayoutInfo.pPushConstantRanges = nullptr;
-	pickingPipelineLayoutInfo.pushConstantRangeCount = 0;
+	VkPipeline pickingPipeline;
+	VkPipelineLayout pickingPipelineLayout;
+	vkutil::pipelinebuilder::build(
+		{},
+		{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _pickingReturnValueSetLayout, _skeletalAnimationSetLayout },
+		{
+			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/picking.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/picking.frag.spv" },
+		},
+		modelVertexDescription.attributes,
+		modelVertexDescription.bindings,
+		vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+		screenspaceViewport,
+		screenspaceScissor,
+		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT),
+		{ vkinit::colorBlendAttachmentState() },
+		vkinit::multisamplingStateCreateInfo(),
+		vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL),
+		{ VK_DYNAMIC_STATE_SCISSOR },
+		_mainRenderPass,
+		pickingPipeline,
+		pickingPipelineLayout
+		);
+	attachPipelineToMaterial(pickingPipeline, pickingPipelineLayout, "pickingMaterial");
 
-	VkDescriptorSetLayout setLayouts3[] = { _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _pickingReturnValueSetLayout, _skeletalAnimationSetLayout };
-	pickingPipelineLayoutInfo.pSetLayouts = setLayouts3;
-	pickingPipelineLayoutInfo.setLayoutCount = 5;
-
-	VkPipelineLayout _pickingPipelineLayout;
-	VK_CHECK(vkCreatePipelineLayout(_device, &pickingPipelineLayoutInfo, nullptr, &_pickingPipelineLayout));
-
-	pipelineBuilder._shaderStages.clear();
-	pipelineBuilder._shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, pickingVertShader));
-	pipelineBuilder._shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, pickingFragShader));
-
-	pipelineBuilder._rasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT);    // Bc we're rendering a box inside-out
-	pipelineBuilder._depthStencil = vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL);
-	pipelineBuilder._pipelineLayout = _pickingPipelineLayout;
-
-	std::array<VkDynamicState, 1> states = { VK_DYNAMIC_STATE_SCISSOR };		// We're using a dynamic scissor here so that we can just render a 1x1 pixel and read from it using an ssbo for picking
-	VkPipelineDynamicStateCreateInfo dynamicState = {
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-		.dynamicStateCount = static_cast<uint32_t>(states.size()),
-		.pDynamicStates = states.data(),
-	};
-	pipelineBuilder._dynamicState = dynamicState;
-
-	auto _pickingPipeline = pipelineBuilder.buildPipeline(_device, _pickingRenderPass);    // @NOTE: the changed renderpass bc this is for picking
-	attachPipelineToMaterial(_pickingPipeline, _pickingPipelineLayout, "pickingMaterial");
-
-	for (auto shaderStage : pipelineBuilder._shaderStages)
-		vkDestroyShaderModule(_device, shaderStage.module, nullptr);
-
-	//
 	// Wireframe color pipeline
-	//
-	VkPipelineLayoutCreateInfo wireframeColorPipelineLayoutInfo = pickingPipelineLayoutInfo;
+	VkPipeline wireframePipeline;
+	VkPipelineLayout wireframePipelineLayout;
+	vkutil::pipelinebuilder::build(
+		{
+			VkPushConstantRange{
+				.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+				.offset = 0,
+				.size = sizeof(ColorPushConstBlock)
+			}
+		},
+		{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _skeletalAnimationSetLayout },
+		{
+			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/wireframe_color.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/color.frag.spv" },
+		},
+		modelVertexDescription.attributes,
+		modelVertexDescription.bindings,
+		vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+		screenspaceViewport,
+		screenspaceScissor,
+		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_LINE, VK_CULL_MODE_BACK_BIT),
+		{ vkinit::colorBlendAttachmentState() },
+		vkinit::multisamplingStateCreateInfo(),
+		vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL),
+		{},
+		_mainRenderPass,
+		wireframePipeline,
+		wireframePipelineLayout
+		);
+	attachPipelineToMaterial(wireframePipeline, wireframePipelineLayout, "wireframeColorMaterial");
 
-	VkPushConstantRange pushConstant = {
-		.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-		.offset = 0,
-		.size = sizeof(ColorPushConstBlock)
-	};
-	wireframeColorPipelineLayoutInfo.pPushConstantRanges = &pushConstant;
-	wireframeColorPipelineLayoutInfo.pushConstantRangeCount = 1;
-	VkDescriptorSetLayout setLayouts4[] = { _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _skeletalAnimationSetLayout };
-	wireframeColorPipelineLayoutInfo.pSetLayouts = setLayouts4;
-	wireframeColorPipelineLayoutInfo.setLayoutCount = 4;
+	VkPipeline wireframeBehindPipeline;
+	vkutil::pipelinebuilder::build(
+		{
+			VkPushConstantRange{
+				.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+				.offset = 0,
+				.size = sizeof(ColorPushConstBlock)
+			}
+		},
+		{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _skeletalAnimationSetLayout },
+		{
+			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/wireframe_color.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/color.frag.spv" },
+		},
+		modelVertexDescription.attributes,
+		modelVertexDescription.bindings,
+		vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+		screenspaceViewport,
+		screenspaceScissor,
+		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_LINE, VK_CULL_MODE_BACK_BIT),
+		{ vkinit::colorBlendAttachmentState() },
+		vkinit::multisamplingStateCreateInfo(),
+		vkinit::depthStencilCreateInfo(true, false, VK_COMPARE_OP_GREATER),
+		{},
+		_mainRenderPass,
+		wireframeBehindPipeline,
+		wireframePipelineLayout
+		);
+	attachPipelineToMaterial(wireframeBehindPipeline, wireframePipelineLayout, "wireframeColorBehindMaterial");
 
-	VkPipelineLayout _wireframeColorPipelineLayout;
-	VK_CHECK(vkCreatePipelineLayout(_device, &wireframeColorPipelineLayoutInfo, nullptr, &_wireframeColorPipelineLayout));
-
-	pipelineBuilder._shaderStages.clear();
-	pipelineBuilder._shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, wireframeColorVertShader));
-	pipelineBuilder._shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, wireframeColorFragShader));
-
-	pipelineBuilder._rasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_LINE, VK_CULL_MODE_BACK_BIT);    // Bc we're rendering a box inside-out
-	pipelineBuilder._depthStencil = vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL);
-	pipelineBuilder._pipelineLayout = _wireframeColorPipelineLayout;
-
-	VkPipelineDynamicStateCreateInfo noDynamicState = {
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-		.dynamicStateCount = 0,
-		.pDynamicStates = nullptr,
-	};
-	pipelineBuilder._dynamicState = noDynamicState;    // Turn off dynamic states
-
-	auto _wireframeColorPipeline = pipelineBuilder.buildPipeline(_device, _mainRenderPass);
-	attachPipelineToMaterial(_wireframeColorPipeline, _wireframeColorPipelineLayout, "wireframeColorMaterial");
-
-	pipelineBuilder._depthStencil = vkinit::depthStencilCreateInfo(true, false, VK_COMPARE_OP_GREATER);
-	auto _wireframeColorBehindPipeline = pipelineBuilder.buildPipeline(_device, _mainRenderPass);
-	attachPipelineToMaterial(_wireframeColorBehindPipeline, _wireframeColorPipelineLayout, "wireframeColorBehindMaterial");
-
-	for (auto shaderStage : pipelineBuilder._shaderStages)
-		vkDestroyShaderModule(_device, shaderStage.module, nullptr);
-
-	//
 	// Shadow Depth Pass pipeline
-	//
-	VkPipelineLayoutCreateInfo shadowDepthPassPipelineLayoutInfo = wireframeColorPipelineLayoutInfo;
+	auto shadowRasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE);
+	shadowRasterizer.depthClampEnable = VK_TRUE;
 
-	pushConstant = {
-		.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-		.offset = 0,
-		.size = sizeof(CascadeIndexPushConstBlock)
-	};
-	shadowDepthPassPipelineLayoutInfo.pPushConstantRanges = &pushConstant;
-	shadowDepthPassPipelineLayoutInfo.pushConstantRangeCount = 1;
+	VkPipeline shadowDepthPassPipeline;
+	VkPipelineLayout shadowDepthPassPipelineLayout;
+	vkutil::pipelinebuilder::build(
+		{
+			VkPushConstantRange{
+				.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+				.offset = 0,
+				.size = sizeof(CascadeIndexPushConstBlock)
+			}
+		},
+		{ _cascadeViewProjsSetLayout, _objectSetLayout, _instancePtrSetLayout, _pbrTexturesSetLayout, _skeletalAnimationSetLayout },
+		{
+			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/shadow_depthpass.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/shadow_depthpass.frag.spv" },
+		},
+		modelVertexDescription.attributes,
+		modelVertexDescription.bindings,
+		vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+		VkViewport{
+			0.0f, 0.0f,
+			(float_t)SHADOWMAP_DIMENSION, (float_t)SHADOWMAP_DIMENSION,
+			0.0f, 1.0f,
+		},
+		VkRect2D{
+			{ 0, 0 },
+			VkExtent2D{ SHADOWMAP_DIMENSION, SHADOWMAP_DIMENSION },
+		},
+		shadowRasterizer,
+		{},  // No color attachment for this pipeline
+		vkinit::multisamplingStateCreateInfo(),
+		vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL),
+		{},
+		_shadowRenderPass,
+		shadowDepthPassPipeline,
+		shadowDepthPassPipelineLayout
+		);
+	attachPipelineToMaterial(shadowDepthPassPipeline, shadowDepthPassPipelineLayout, "shadowDepthPassMaterial");
 
-	VkDescriptorSetLayout setLayouts6[] = { _cascadeViewProjsSetLayout, _objectSetLayout, _instancePtrSetLayout, _pbrTexturesSetLayout, _skeletalAnimationSetLayout };
-	shadowDepthPassPipelineLayoutInfo.pSetLayouts = setLayouts6;
-	shadowDepthPassPipelineLayoutInfo.setLayoutCount = 5;
-
-	VkPipelineLayout _shadowDepthPassPipelineLayout;
-	VK_CHECK(vkCreatePipelineLayout(_device, &shadowDepthPassPipelineLayoutInfo, nullptr, &_shadowDepthPassPipelineLayout));
-
-	pipelineBuilder._shaderStages.clear();
-	pipelineBuilder._shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, shadowDepthPassVertShader));
-	pipelineBuilder._shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, shadowDepthPassFragShader));
-
-	// Revert back to the vkglTF traditional tri-mesh models for the vertex input
-	pipelineBuilder._vertexInputInfo = vkinit::vertexInputStateCreateInfo();
-	pipelineBuilder._vertexInputInfo.pVertexAttributeDescriptions = vertexDescription.attributes.data();
-	pipelineBuilder._vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(vertexDescription.attributes.size());
-	pipelineBuilder._vertexInputInfo.pVertexBindingDescriptions = vertexDescription.bindings.data();
-	pipelineBuilder._vertexInputInfo.vertexBindingDescriptionCount = static_cast<uint32_t>(vertexDescription.bindings.size());
-
-	pipelineBuilder._inputAssembly = vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-
-	pipelineBuilder._viewport.x = 0.0f;
-	pipelineBuilder._viewport.y = 0.0f;
-	pipelineBuilder._viewport.width = (float_t)SHADOWMAP_DIMENSION;
-	pipelineBuilder._viewport.height = (float_t)SHADOWMAP_DIMENSION;
-	pipelineBuilder._viewport.minDepth = 0.0f;
-	pipelineBuilder._viewport.maxDepth = 1.0f;
-
-	pipelineBuilder._scissor.offset = { 0, 0 };
-	pipelineBuilder._scissor.extent = VkExtent2D{ SHADOWMAP_DIMENSION, SHADOWMAP_DIMENSION };
-
-	pipelineBuilder._rasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE);
-	pipelineBuilder._rasterizer.depthClampEnable = VK_TRUE;
-	pipelineBuilder._colorBlendAttachment.clear();  // No color attachment for this pipeline
-	pipelineBuilder._depthStencil = vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL);
-	pipelineBuilder._pipelineLayout = _shadowDepthPassPipelineLayout;
-
-	auto _shadowDepthPassPipeline = pipelineBuilder.buildPipeline(_device, _shadowRenderPass);
-	attachPipelineToMaterial(_shadowDepthPassPipeline, _shadowDepthPassPipelineLayout, "shadowDepthPassMaterial");
-
-	for (auto shaderStage : pipelineBuilder._shaderStages)
-		vkDestroyShaderModule(_device, shaderStage.module, nullptr);
-
-	//
 	// Postprocess pipeline
-	//
-	VkPipelineLayoutCreateInfo postprocessPipelineLayoutInfo = shadowDepthPassPipelineLayoutInfo;
+	VkPipeline postprocessPipeline;
+	VkPipelineLayout postprocessPipelineLayout;
+	vkutil::pipelinebuilder::build(
+		{},
+		{ _globalSetLayout, _postprocessSetLayout },
+		{
+			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/genbrdflut.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/postprocess.frag.spv" },
+		},
+		{},  // No triangles are actually streamed in
+		{},
+		vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+		screenspaceViewport,
+		screenspaceScissor,
+		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE),
+		{ vkinit::colorBlendAttachmentState() },
+		vkinit::multisamplingStateCreateInfo(),
+		vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_ALWAYS),
+		{},
+		_postprocessRenderPass,
+		postprocessPipeline,
+		postprocessPipelineLayout
+	);
+	attachPipelineToMaterial(postprocessPipeline, postprocessPipelineLayout, "postprocessMaterial");
 
-	pushConstant = {
-		.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-		.offset = 0,
-		.size = sizeof(CascadeIndexPushConstBlock)
-	};
-	postprocessPipelineLayoutInfo.pPushConstantRanges = &pushConstant;
-	postprocessPipelineLayoutInfo.pushConstantRangeCount = 1;
-
-	VkDescriptorSetLayout setLayouts7[] = { _globalSetLayout, _postprocessSetLayout };
-	postprocessPipelineLayoutInfo.pSetLayouts = setLayouts7;
-	postprocessPipelineLayoutInfo.setLayoutCount = 2;
-
-	VkPipelineLayout _postprocessPipelineLayout;
-	VK_CHECK(vkCreatePipelineLayout(_device, &postprocessPipelineLayoutInfo, nullptr, &_postprocessPipelineLayout));
-
-	pipelineBuilder._shaderStages.clear();
-	pipelineBuilder._shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, postprocessVertShader));
-	pipelineBuilder._shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, postprocessFragShader));
-
-	// Use empty vertex input
-	VkPipelineVertexInputStateCreateInfo emptyInputStateCI = {
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-	};
-	pipelineBuilder._vertexInputInfo = emptyInputStateCI;
-
-	pipelineBuilder._inputAssembly = vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-
-	pipelineBuilder._viewport.x = 0.0f;
-	pipelineBuilder._viewport.y = 0.0f;
-	pipelineBuilder._viewport.width = (float_t)_windowExtent.width;
-	pipelineBuilder._viewport.height = (float_t)_windowExtent.height;
-	pipelineBuilder._viewport.minDepth = 0.0f;
-	pipelineBuilder._viewport.maxDepth = 1.0f;
-
-	pipelineBuilder._scissor.offset = { 0, 0 };
-	pipelineBuilder._scissor.extent = _windowExtent;
-
-	pipelineBuilder._rasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE);
-	pipelineBuilder._colorBlendAttachment.push_back(vkinit::colorBlendAttachmentState());
-	pipelineBuilder._depthStencil = vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_ALWAYS);
-	pipelineBuilder._pipelineLayout = _postprocessPipelineLayout;
-
-	auto _postprocessPipeline = pipelineBuilder.buildPipeline(_device, _postprocessRenderPass);
-	attachPipelineToMaterial(_postprocessPipeline, _postprocessPipelineLayout, "postprocessMaterial");
-
-	for (auto shaderStage : pipelineBuilder._shaderStages)
-		vkDestroyShaderModule(_device, shaderStage.module, nullptr);
-
-	// Add destroy command for cleanup
+	// Destroy pipelines when recreating swapchain
 	_swapchainDependentDeletionQueue.pushFunction([=]() {
-		vkDestroyPipeline(_device, _meshPipeline, nullptr);
-		vkDestroyPipelineLayout(_device, _meshPipelineLayout, nullptr);    // @NOTE: pipelinelayouts don't have to get destroyed... but since we're not saving them anywhere, we're just destroying and recreating them anyway
-		vkDestroyPipeline(_device, _skyboxPipeline, nullptr);
-		vkDestroyPipelineLayout(_device, _skyboxPipelineLayout, nullptr);
-		vkDestroyPipeline(_device, _pickingPipeline, nullptr);
-		vkDestroyPipelineLayout(_device, _pickingPipelineLayout, nullptr);
-		vkDestroyPipeline(_device, _wireframeColorPipeline, nullptr);
-		vkDestroyPipeline(_device, _wireframeColorBehindPipeline, nullptr);
-		vkDestroyPipelineLayout(_device, _wireframeColorPipelineLayout, nullptr);
-		vkDestroyPipeline(_device, _shadowDepthPassPipeline, nullptr);
-		vkDestroyPipelineLayout(_device, _shadowDepthPassPipelineLayout, nullptr);
-		vkDestroyPipeline(_device, _postprocessPipeline, nullptr);
-		vkDestroyPipelineLayout(_device, _postprocessPipelineLayout, nullptr);
-		});
+		vkDestroyPipeline(_device, meshPipeline, nullptr);
+		vkDestroyPipeline(_device, skyboxPipeline, nullptr);
+		vkDestroyPipeline(_device, pickingPipeline, nullptr);
+		vkDestroyPipeline(_device, wireframePipeline, nullptr);
+		vkDestroyPipeline(_device, wireframeBehindPipeline, nullptr);
+		vkDestroyPipeline(_device, shadowDepthPassPipeline, nullptr);
+		vkDestroyPipeline(_device, postprocessPipeline, nullptr);
+	});
 }
 
 void VulkanEngine::generatePBRCubemaps()
@@ -2860,14 +2764,14 @@ void VulkanEngine::generatePBRCubemaps()
 
 		VkShaderModule filtercubeVertShader,
 						filtercubeFragShader;
-		loadShaderModule("shader/filtercube.vert.spv", &filtercubeVertShader);
+		vkutil::pipelinebuilder::loadShaderModule("shader/filtercube.vert.spv", filtercubeVertShader);
 		switch (target)
 		{
 		case IRRADIANCE:
-			loadShaderModule("shader/irradiancecube.frag.spv", &filtercubeFragShader);
+			vkutil::pipelinebuilder::loadShaderModule("shader/irradiancecube.frag.spv", filtercubeFragShader);
 			break;
 		case PREFILTEREDENV:
-			loadShaderModule("shader/prefilterenvmap.frag.spv", &filtercubeFragShader);
+			vkutil::pipelinebuilder::loadShaderModule("shader/prefilterenvmap.frag.spv", filtercubeFragShader);
 			break;
 		default:
 			filtercubeFragShader = VK_NULL_HANDLE;
@@ -3309,8 +3213,8 @@ void VulkanEngine::generateBRDFLUT()
 
 	VkShaderModule genBrdfLUTVertShader,
 					genBrdfLUTFragShader;
-	loadShaderModule("shader/genbrdflut.vert.spv", &genBrdfLUTVertShader);
-	loadShaderModule("shader/genbrdflut.frag.spv", &genBrdfLUTFragShader);
+	vkutil::pipelinebuilder::loadShaderModule("shader/genbrdflut.vert.spv", genBrdfLUTVertShader);
+	vkutil::pipelinebuilder::loadShaderModule("shader/genbrdflut.frag.spv", genBrdfLUTFragShader);
 
 	std::array<VkPipelineShaderStageCreateInfo, 2> shaderStages = {
 		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, genBrdfLUTVertShader),
@@ -3503,51 +3407,6 @@ void VulkanEngine::recreateSwapchain()
 FrameData& VulkanEngine::getCurrentFrame()
 {
 	return _frames[_frameNumber % FRAME_OVERLAP];
-}
-
-bool VulkanEngine::loadShaderModule(const char* filePath, VkShaderModule* outShaderModule)
-{
-	std::cout << "[LOAD SHADER MODULE]" << std::endl;
-
-	// Open SPIRV file
-	std::ifstream file(filePath, std::ios::ate | std::ios::binary);
-	if (!file.is_open())
-	{
-		std::cerr << "ERROR: could not open file " << filePath << std::endl;
-		return false;
-	}
-
-	//
-	// Get the filesize and copy the whole thing into the correct sized buffer
-	//
-	size_t filesize = (size_t)file.tellg();
-	std::vector<uint32_t> buffer(filesize / sizeof(uint32_t));
-	file.seekg(0);
-	file.read((char*)buffer.data(), filesize);
-	file.close();
-
-	//
-	// Load the shader into Vulkan
-	//
-	VkShaderModuleCreateInfo createInfo = {};
-	createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-	createInfo.pNext = nullptr;
-	createInfo.codeSize = buffer.size() * sizeof(uint32_t);
-	createInfo.pCode = buffer.data();
-
-	// Error check
-	VkShaderModule shaderModule;
-	if (vkCreateShaderModule(_device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS)
-	{
-		std::cerr << "ERROR: could not create shader module for shader file " << filePath << std::endl;
-		return false;
-	}
-
-	// Successful shader creation!
-	*outShaderModule = shaderModule;
-
-	std::cout << "Successfully created shader module for shader file " << filePath << std::endl;
-	return true;
 }
 
 void VulkanEngine::loadMeshes()
@@ -4477,58 +4336,4 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 	//
 	if (ImGui::GetIO().MousePos.x <= maxWindowWidth)
 		windowOffsetY += input::mouseScrollDelta[1] * scrollSpeed;
-}
-
-VkPipeline PipelineBuilder::buildPipeline(VkDevice device, VkRenderPass pass)
-{
-	VkPipelineViewportStateCreateInfo viewportState = {};
-	viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-	viewportState.pNext = nullptr;
-
-	viewportState.viewportCount = 1;
-	viewportState.pViewports = &_viewport;
-	viewportState.scissorCount = 1;
-	viewportState.pScissors = &_scissor;
-
-	VkPipelineColorBlendStateCreateInfo colorBlending = {};
-	colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-	colorBlending.pNext = nullptr;
-
-	colorBlending.logicOpEnable = VK_FALSE;
-	colorBlending.logicOp = VK_LOGIC_OP_COPY;
-	colorBlending.attachmentCount = static_cast<uint32_t>(_colorBlendAttachment.size());
-	colorBlending.pAttachments = _colorBlendAttachment.data();
-
-	//
-	// Build the actual pipeline
-	//
-	VkGraphicsPipelineCreateInfo pipelineInfo = {};
-	pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-	pipelineInfo.pNext = nullptr;
-
-	pipelineInfo.stageCount = static_cast<uint32_t>(_shaderStages.size());
-	pipelineInfo.pStages = _shaderStages.data();
-	pipelineInfo.pVertexInputState = &_vertexInputInfo;
-	pipelineInfo.pInputAssemblyState = &_inputAssembly;
-	pipelineInfo.pViewportState = &viewportState;
-	pipelineInfo.pRasterizationState = &_rasterizer;
-	pipelineInfo.pMultisampleState = &_multisampling;
-	pipelineInfo.pColorBlendState = &colorBlending;
-	pipelineInfo.layout = _pipelineLayout;
-	pipelineInfo.renderPass = pass;
-	pipelineInfo.subpass = 0;
-	pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
-	pipelineInfo.pDepthStencilState = &_depthStencil;
-	pipelineInfo.pDynamicState = &_dynamicState;
-
-	//
-	// Check for errors while creating gfx pipelines
-	//
-	VkPipeline newPipeline;
-	if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &newPipeline) != VK_SUCCESS)
-	{
-		std::cout << "FAILED: creating pipeline" << std::endl;
-		return VK_NULL_HANDLE;
-	}
-	return newPipeline;
 }

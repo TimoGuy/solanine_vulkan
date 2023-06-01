@@ -184,7 +184,7 @@ namespace vkutil
                 std::sort(
                     layoutInfo.bindings.begin(),
                     layoutInfo.bindings.end(),
-                    [](VkDescriptorSetLayoutBinding& a, VkDescriptorSetLayoutBinding& b ) {
+                    [](VkDescriptorSetLayoutBinding& a, VkDescriptorSetLayoutBinding& b) {
                         return a.binding < b.binding;
                     }
                 );
