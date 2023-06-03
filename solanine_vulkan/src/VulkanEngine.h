@@ -268,12 +268,12 @@ private:
 	void renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, bool materialOverride);
 	void renderPickedObject(VkCommandBuffer cmd, const FrameData& currentFrame);
 
+public:
 	//
 	// Camera
 	//
 	Camera* _camera;
 
-public:
 	//
 	// PBR rendering
 	//

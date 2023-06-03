@@ -44,7 +44,7 @@ namespace textmesh
 		AllocatedBuffer indexBuffer;
 		uint32_t indexCount = 0;
 		bool isVisible = true;
-		mat4 renderTransform = GLM_MAT4_IDENTITY_INIT;
+		vec3 renderWorldPosition = GLM_VEC3_ZERO_INIT;
 	};
 
 	void init(VulkanEngine* engine);

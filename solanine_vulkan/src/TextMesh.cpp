@@ -11,6 +11,7 @@
 #include "VkInitializers.h"
 #include "VkDescriptorBuilderUtil.h"
 #include "VkPipelineBuilderUtil.h"
+#include "Camera.h"
 
 
 namespace textmesh
@@ -208,8 +209,8 @@ namespace textmesh
 
 		// Upload font settings
 		GPUSDFFontSettings fontSettings = {  // @HARDCODE: for now it's default settings only, but catch me!
-			.outlineColor = { 53 / 255.0f, 204 / 255.0f, 101 / 255.0f, 0.0f },
-			.outlineWidth = 0.4f,
+			.outlineColor = { 26 / 255.0f, 102 / 255.0f, 50 / 255.0f, 0.0f },
+			.outlineWidth = 0.6f,
 			.outline = (float_t)true,
 		};
 		tf.fontSettingsBuffer = engine->createBuffer(sizeof(GPUSDFFontSettings), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
@@ -290,7 +291,7 @@ namespace textmesh
 			vertices.push_back({ { posx + xo,         -posy,        0.0f }, { us, ts } });
 			vertices.push_back({ { posx + dimx + xo,  -posy,        0.0f }, { ue, ts } });
 
-			std::array<uint32_t, 6> letterIndices = { 0,1,2, 2,3,0 };
+			std::array<uint32_t, 6> letterIndices = { 2,1,0, 0,3,2 };
 			for (auto& index : letterIndices)
 			{
 				indices.push_back(indexOffset + index);
@@ -307,7 +308,7 @@ namespace textmesh
 		for (auto& v : vertices)
 		{
 			v.pos[0] -= posx / 2.0f;
-			v.pos[1] -= 0.5f;
+			v.pos[1] += 0.5f;
 		}
 
 		// Generate host accessible buffers for the text vertices and indices and upload the data
@@ -419,8 +420,18 @@ namespace textmesh
 
 	void renderTextMesh(VkCommandBuffer cmd, TextMesh& tm)
 	{
-		GPUSDFFontPushConstants pc = {};
-		glm_mat4_copy(tm.renderTransform, pc.modelMatrix);
+		GPUSDFFontPushConstants pc = {
+			.modelMatrix = GLM_MAT4_IDENTITY_INIT,
+		};
+		
+		vec3 trans;
+		glm_vec3_sub(tm.renderWorldPosition, engine->_camera->sceneCamera.gpuCameraData.cameraPosition, trans);
+		glm_translate(pc.modelMatrix, trans);
+		mat4 invCameraView;
+		glm_mat4_inv(engine->_camera->sceneCamera.gpuCameraData.view, invCameraView);
+		glm_mat4_mul(pc.modelMatrix, invCameraView, pc.modelMatrix);
+		glm_scale(pc.modelMatrix, vec3{ 0.5f, 0.5f, 0.5f });
+
 		vkCmdPushConstants(cmd, textMeshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUSDFFontPushConstants), &pc);
 
 		const VkDeviceSize offsets[1] = { 0 };
