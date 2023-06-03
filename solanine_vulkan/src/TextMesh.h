@@ -4,6 +4,8 @@
 #include "ImportGLM.h"
 #include "VkDataStructures.h"
 
+class VulkanEngine;
+
 
 namespace textmesh
 {
@@ -28,7 +30,9 @@ namespace textmesh
 	struct TypeFace
 	{
 		BMChar fontChars[255];
-		VkDescriptorSet fontSDFTexture;
+		Texture fontSDFTexture;
+		AllocatedBuffer fontSettingsBuffer;
+		VkDescriptorSet fontSDFDescriptorSet;
 		vec2 textureSize;
 	};
 
@@ -40,9 +44,14 @@ namespace textmesh
 		uint32_t indexCount = 0;
 	};
 
-	void init(VkDevice device);
+	void init();
 	void cleanup();
 
-	void parsebmFont(TypeFace& tf, std::string filePath);
-	void loadFontSDFTexture(TypeFace& tf, std::string filePath);
+	void initPipeline(VulkanEngine* engine, VkViewport& screenspaceViewport, VkRect2D& screenspaceScissor);
+
+	void loadFontSDF(VulkanEngine* engine, std::string sdfTextureFilePath, std::string fontFilePath, std::string fontName);
+	TypeFace* getTypeFace(std::string fontName);
+	void generateText(VulkanEngine* engine, TextMesh& tm, const TypeFace& tf, std::string text);
+	void bindTextFont(VkCommandBuffer cmd, const VkDescriptorSet* globalDescriptor, const TypeFace& tf);
+	void renderTextMesh(VkCommandBuffer cmd, const TextMesh& tm, mat4& modelMatrix);
 }

@@ -9,6 +9,7 @@
 #include "VkPipelineBuilderUtil.h"
 #include "VkTextures.h"
 #include "VkglTFModel.h"
+#include "TextMesh.h"
 #include "AudioEngine.h"
 #include "PhysicsEngine.h"
 #include "InputManager.h"
@@ -291,6 +292,7 @@ void VulkanEngine::cleanup()
 		_mainDeletionQueue.flush();
 		_swapchainDependentDeletionQueue.flush();
 
+		textmesh::cleanup();
 		vkutil::pipelinelayoutcache::cleanup();
 		vkutil::descriptorlayoutcache::cleanup();
 		vkutil::descriptorallocator::cleanup();
@@ -1191,6 +1193,7 @@ void VulkanEngine::initVulkan()
 	vkutil::descriptorallocator::init(_device);
 	vkutil::descriptorlayoutcache::init(_device);
 	vkutil::pipelinelayoutcache::init(_device);
+	textmesh::init();
 	vkinit::_maxSamplerAnisotropy = _gpuProperties.limits.maxSamplerAnisotropy;
 
 	//
@@ -2173,6 +2176,11 @@ void VulkanEngine::initDescriptors()    // @TODO: don't destroy and then recreat
 	_mainDeletionQueue.pushFunction([=]() {
 		vmaDestroyBuffer(_allocator, materialParamsBuffer._buffer, materialParamsBuffer._allocation);
 	});
+
+	//
+	// Text Mesh Fonts
+	//
+	textmesh::loadFontSDF(this, "textures/font_sdf_rgba.png", "font.fnt", "defaultFont");
 }
 
 void VulkanEngine::initPipelines()
@@ -2417,6 +2425,11 @@ void VulkanEngine::initPipelines()
 		vkDestroyPipeline(_device, shadowDepthPassPipeline, nullptr);
 		vkDestroyPipeline(_device, postprocessPipeline, nullptr);
 	});
+
+	//
+	// Font Pipeline
+	//
+	textmesh::initPipeline(this, screenspaceViewport, screenspaceScissor);
 }
 
 void VulkanEngine::generatePBRCubemaps()

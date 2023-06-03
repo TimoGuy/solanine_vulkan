@@ -7,20 +7,95 @@
 #include <vector>
 #include <assert.h>
 #include "VulkanEngine.h"  // @TODO: work to just include the forward declaration of the createBuffer function
+#include "VkTextures.h"
+#include "VkInitializers.h"
+#include "VkDescriptorBuilderUtil.h"
+#include "VkPipelineBuilderUtil.h"
 
 
 namespace textmesh
 {
-	VkDevice device;
-
-	void init(VkDevice newDevice)
+	struct GPUSDFFontPushConstants
 	{
-		device = newDevice;
+		mat4 modelMatrix;
+	};
+
+	struct GPUSDFFontSettings
+	{
+		vec4 outlineColor;
+		float_t outlineWidth;
+		float_t outline;  // Boolean
+	};
+
+	VkDescriptorSetLayout textMeshSetLayout;
+	VkPipeline textMeshPipeline;
+	VkPipelineLayout textMeshPipelineLayout;
+
+	std::unordered_map<std::string, TypeFace> fontNameToTypeFace;
+
+
+	void init()
+	{
+		// Figure out something to do... or not eh!
 	}
 
 	void cleanup()
 	{
 		// @TODO
+	}
+
+	void initPipeline(VulkanEngine* engine, VkViewport& screenspaceViewport, VkRect2D& screenspaceScissor)
+	{
+		// Setup vertex descriptions
+		VkVertexInputAttributeDescription posAttribute = {
+			.location = 0,
+			.binding = 0,
+			.format = VK_FORMAT_R32G32B32_SFLOAT,
+			.offset = offsetof(Vertex, pos),
+		};
+		VkVertexInputAttributeDescription uvAttribute = {
+			.location = 1,
+			.binding = 0,
+			.format = VK_FORMAT_R32G32_SFLOAT,
+			.offset = offsetof(Vertex, uv),
+		};
+		std::vector<VkVertexInputAttributeDescription> attributes = { posAttribute, uvAttribute };
+
+		VkVertexInputBindingDescription mainBinding = {
+			.binding = 0,
+			.stride = sizeof(Vertex),
+			.inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+		};
+		std::vector<VkVertexInputBindingDescription> bindings = { mainBinding };
+
+		// Build pipeline
+		vkutil::pipelinebuilder::build(
+			{
+				VkPushConstantRange{
+					.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+					.offset = 0,
+					.size = sizeof(GPUSDFFontPushConstants)
+				}
+			},
+			{ engine->_globalSetLayout, textMeshSetLayout },
+			{
+				{ VK_SHADER_STAGE_VERTEX_BIT, "shader/sdf.vert.spv" },
+				{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/sdf.frag.spv" },
+			},
+			attributes,
+			bindings,
+			vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+			screenspaceViewport,
+			screenspaceScissor,
+			vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT),
+			{ vkinit::colorBlendAttachmentState() },
+			vkinit::multisamplingStateCreateInfo(),
+			vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL),
+			{},
+			engine->_mainRenderPass,
+			textMeshPipeline,
+			textMeshPipelineLayout
+			);
 	}
 
 	int32_t nextValuePair(std::stringstream* stream)
@@ -72,10 +147,66 @@ namespace textmesh
 		}
 	}
 
-	void loadFontSDFTexture(TypeFace& tf, std::string filePath)
+	void loadFontSDF(VulkanEngine* engine, std::string sdfTextureFilePath, std::string fontFilePath, std::string fontName)
 	{
-		tf.fontSDFTexture = {};
-		tf.textureSize = {};
+		TypeFace tf;
+		parsebmFont(tf, fontFilePath);
+
+		// Load Font Texture
+		int32_t texWidth, texHeight;
+		vkutil::loadImageFromFile(*engine, sdfTextureFilePath.c_str(), VK_FORMAT_R8G8B8A8_UNORM, 0, texWidth, texHeight, tf.fontSDFTexture.image);
+
+		VkImageViewCreateInfo imageViewInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_UNORM, tf.fontSDFTexture.image._image, VK_IMAGE_ASPECT_COLOR_BIT, tf.fontSDFTexture.image._mipLevels);
+		vkCreateImageView(engine->_device, &imageViewInfo, nullptr, &tf.fontSDFTexture.imageView);
+
+		VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(tf.fontSDFTexture.image._mipLevels), VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+		vkCreateSampler(engine->_device, &samplerInfo, nullptr, &tf.fontSDFTexture.sampler);
+
+		tf.textureSize[0] = (float_t)texWidth;
+		tf.textureSize[1] = (float_t)texHeight;
+
+		// Upload font settings
+		GPUSDFFontSettings fontSettings = {  // @HARDCODE: for now it's default settings only, but catch me!
+			.outlineColor = { 53 / 255.0f, 204 / 255.0f, 101 / 255.0f, 0.0f },
+			.outlineWidth = 0.4f,
+			.outline = (float_t)true,
+		};
+		tf.fontSettingsBuffer = engine->createBuffer(sizeof(GPUSDFFontSettings), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+
+		void* data;
+		vmaMapMemory(engine->_allocator, tf.fontSettingsBuffer._allocation, &data);
+		memcpy(data, &fontSettings, sizeof(GPUSDFFontSettings));
+		vmaUnmapMemory(engine->_allocator, tf.fontSettingsBuffer._allocation);
+
+		// Create descriptor set
+		VkDescriptorImageInfo descriptorImageInfo = {
+			.sampler = tf.fontSDFTexture.sampler,
+			.imageView = tf.fontSDFTexture.imageView,
+			.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		};
+
+		VkDescriptorBufferInfo fontSettingsBufferInfo = {
+			.buffer = tf.fontSettingsBuffer._buffer,
+			.offset = 0,
+			.range = sizeof(GPUSDFFontSettings),
+		};
+
+		vkutil::DescriptorBuilder::begin()
+			.bindImage(0, &descriptorImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+			.bindBuffer(1, &fontSettingsBufferInfo, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT)
+			.build(tf.fontSDFDescriptorSet, textMeshSetLayout);
+
+		// Add font to font dict
+		fontNameToTypeFace[fontName] = tf;
+
+		// @TODO: add cleanup for all this!
+	}
+
+	TypeFace* getTypeFace(std::string fontName)
+	{
+		if (fontNameToTypeFace.find(fontName) != fontNameToTypeFace.end())
+			return &fontNameToTypeFace[fontName];
+		return nullptr;
 	}
 
 	void generateText(VulkanEngine* engine, TextMesh& tm, const TypeFace& tf, std::string text)
@@ -194,5 +325,24 @@ namespace textmesh
 		// Destroy staging buffers
 		vmaDestroyBuffer(engine->_allocator, vertexStaging._buffer, vertexStaging._allocation);
 		vmaDestroyBuffer(engine->_allocator, indexStaging._buffer, indexStaging._allocation);
+	}
+
+	void bindTextFont(VkCommandBuffer cmd, const VkDescriptorSet* globalDescriptor, const TypeFace& tf)
+	{
+		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, textMeshPipeline);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, textMeshPipelineLayout, 0, 1, globalDescriptor, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, textMeshPipelineLayout, 1, 1, &tf.fontSDFDescriptorSet, 0, nullptr);
+	}
+
+	void renderTextMesh(VkCommandBuffer cmd, const TextMesh& tm, mat4& modelMatrix)
+	{
+		GPUSDFFontPushConstants pc = {};
+		glm_mat4_copy(modelMatrix, pc.modelMatrix);
+		vkCmdPushConstants(cmd, textMeshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUSDFFontPushConstants), &pc);
+
+		const VkDeviceSize offsets[1] = { 0 };
+		vkCmdBindVertexBuffers(cmd, 0, 1, &tm.vertexBuffer._buffer, offsets);
+		vkCmdBindIndexBuffer(cmd, tm.indexBuffer._buffer, 0, VK_INDEX_TYPE_UINT32);
+		vkCmdDrawIndexed(cmd, tm.indexCount, 1, 0, 0, 0);
 	}
 }

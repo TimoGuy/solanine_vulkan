@@ -86,6 +86,8 @@
     </None>
     <None Include="shader\wireframe_color.vert" />
     <None Include="shader\postprocess.frag" />
+    <None Include="shader\sdf.frag" />
+    <None Include="shader\sdf.vert" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\imgui\imconfig.h">

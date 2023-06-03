@@ -9,11 +9,17 @@
 
 bool vkutil::loadImageFromFile(VulkanEngine& engine, const char* fname, VkFormat imageFormat, uint32_t mipLevels, AllocatedImage& outImage)
 {
+	int32_t width, height;
+	loadImageFromFile(engine, fname, imageFormat, mipLevels, width, height, outImage);
+}
+
+bool vkutil::loadImageFromFile(VulkanEngine& engine, const char* fname, VkFormat imageFormat, uint32_t mipLevels, int32_t& outWidth, int32_t& outHeight, AllocatedImage& outImage)
+{
 	//
 	// Load image from file
 	//
-	int texWidth, texHeight, texChannels;
-	stbi_uc* pixels = stbi_load(fname, &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+	int32_t texChannels;
+	stbi_uc* pixels = stbi_load(fname, &outWidth, &outHeight, &texChannels, STBI_rgb_alpha);
 
 	if (!pixels)
 	{
@@ -22,10 +28,10 @@ bool vkutil::loadImageFromFile(VulkanEngine& engine, const char* fname, VkFormat
 	}
 
 	void* pixelPtr = pixels;
-	VkDeviceSize imageSize = texWidth * texHeight * 4;		// @HARDCODED: bc planning on having the alpha channel in here too
+	VkDeviceSize imageSize = outWidth * outHeight * 4;		// @HARDCODED: bc planning on having the alpha channel in here too
 	//VkFormat imageFormat = VK_FORMAT_R8G8B8A8_SRGB;		// @HARDCODED: this could easily change
 
-	bool ret = loadImageFromBuffer(engine, texWidth, texHeight, imageSize, imageFormat, pixelPtr, mipLevels, outImage);
+	bool ret = loadImageFromBuffer(engine, outWidth, outHeight, imageSize, imageFormat, pixelPtr, mipLevels, outImage);
 	stbi_image_free(pixels);
 
 	std::cout << "Texture (mips=" << outImage._mipLevels << ")" << std::endl << "\t" << fname << std::endl << "\tloaded successfully" << std::endl;
