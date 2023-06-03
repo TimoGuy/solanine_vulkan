@@ -45,7 +45,34 @@ namespace textmesh
 
 	void cleanup()
 	{
-		// @TODO
+		// Destroy any lingering allocated buffers
+		for (auto& tm : textmeshes)
+		{
+			if (tm.indexCount > 0)
+			{
+				// Cleanup previously created vertex index buffers.
+				vmaDestroyBuffer(engine->_allocator, tm.vertexBuffer._buffer, tm.vertexBuffer._allocation);
+				vmaDestroyBuffer(engine->_allocator, tm.indexBuffer._buffer, tm.indexBuffer._allocation);
+			}
+		}
+
+		// Destroy all typefaces
+		for (auto it = fontNameToTypeFace.begin(); it != fontNameToTypeFace.end(); it++)
+		{
+			auto& tf = it->second;
+
+			// Texture     @NOTE: images are already destroyed and handled by VkTextures.h/.cpp so only the sampler and imageview get destroyed here.
+			vkDestroySampler(engine->_device, tf.fontSDFTexture.sampler, nullptr);
+			vkDestroyImageView(engine->_device, tf.fontSDFTexture.imageView, nullptr);
+
+			// Buffer
+			vmaDestroyBuffer(engine->_allocator, tf.fontSettingsBuffer._buffer, tf.fontSettingsBuffer._allocation);
+		}
+
+		// Destroy pipeline
+		vkDestroyPipeline(engine->_device, textMeshPipeline, nullptr);  // @NOTE: pipelinelayouts are already destroyed and handled by VkPipelineBuilderUtil.h/.cpp
+
+		// @NOTE: the descriptorpool gets destroyed automatically, so individual descriptorsets don't have to get destroyed
 	}
 
 	void initPipeline(VkViewport& screenspaceViewport, VkRect2D& screenspaceScissor)
@@ -72,6 +99,16 @@ namespace textmesh
 		};
 		std::vector<VkVertexInputBindingDescription> bindings = { mainBinding };
 
+		// Setup color blend attachment state
+		VkPipelineColorBlendAttachmentState blendAttachmentState = vkinit::colorBlendAttachmentState();
+		blendAttachmentState.blendEnable = VK_TRUE;
+		blendAttachmentState.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+		blendAttachmentState.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+		blendAttachmentState.colorBlendOp = VK_BLEND_OP_ADD;
+		blendAttachmentState.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+		blendAttachmentState.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+		blendAttachmentState.alphaBlendOp = VK_BLEND_OP_ADD;
+
 		// Build pipeline
 		vkutil::pipelinebuilder::build(
 			{
@@ -92,9 +129,9 @@ namespace textmesh
 			screenspaceViewport,
 			screenspaceScissor,
 			vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT),
-			{ vkinit::colorBlendAttachmentState() },
+			{ blendAttachmentState },
 			vkinit::multisamplingStateCreateInfo(),
-			vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL),
+			vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_LESS_OR_EQUAL),
 			{},
 			engine->_mainRenderPass,
 			textMeshPipeline,
@@ -211,7 +248,7 @@ namespace textmesh
 		return nullptr;
 	}
 
-	void generateTextMeshMesh(TextMesh& tm, const TypeFace& tf, std::string text)
+	void generateTextMeshMesh(TextMesh& tm, TypeFace& tf, std::string text)
 	{
 		if (tm.indexCount > 0)
 		{
@@ -248,10 +285,10 @@ namespace textmesh
 
 			posy = yo;
 
-			vertices.push_back({ { posx + dimx + xo,  posy + dimy, 0.0f }, { ue, te } });
-			vertices.push_back({ { posx + xo,         posy + dimy, 0.0f }, { us, te } });
-			vertices.push_back({ { posx + xo,         posy,        0.0f }, { us, ts } });
-			vertices.push_back({ { posx + dimx + xo,  posy,        0.0f }, { ue, ts } });
+			vertices.push_back({ { posx + dimx + xo,  -posy - dimy, 0.0f }, { ue, te } });
+			vertices.push_back({ { posx + xo,         -posy - dimy, 0.0f }, { us, te } });
+			vertices.push_back({ { posx + xo,         -posy,        0.0f }, { us, ts } });
+			vertices.push_back({ { posx + dimx + xo,  -posy,        0.0f }, { ue, ts } });
 
 			std::array<uint32_t, 6> letterIndices = { 0,1,2, 2,3,0 };
 			for (auto& index : letterIndices)
@@ -264,6 +301,7 @@ namespace textmesh
 			posx += advance;
 		}
 		tm.indexCount = indices.size();
+		tm.typeFace = &tf;
 
 		// Center
 		for (auto& v : vertices)
@@ -283,7 +321,7 @@ namespace textmesh
 			);
 		tm.vertexBuffer =
 			engine->createBuffer(
-				vertices.size() * sizeof(Vertex),
+				vertexBufferSize,
 				VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 				VMA_MEMORY_USAGE_GPU_ONLY
 			);
@@ -356,7 +394,19 @@ namespace textmesh
 
 	void destroyAndUnregisterTextMesh(TextMesh* tm)
 	{
-		std::erase_if(textmeshes, [&](TextMesh& tml) { return &tml == tm; });
+		std::erase_if(textmeshes, [&](TextMesh& tml) {
+			if (&tml == tm)
+			{
+				if (tml.indexCount > 0)
+				{
+					// Cleanup previously created vertex index buffers.
+					vmaDestroyBuffer(engine->_allocator, tml.vertexBuffer._buffer, tml.vertexBuffer._allocation);
+					vmaDestroyBuffer(engine->_allocator, tml.indexBuffer._buffer, tml.indexBuffer._allocation);
+				}
+				return true;
+			}
+			return false;
+			});
 		//sortTextMeshesByTypeFace();  // To keep descriptor set switches to a minimum.
 	}
 

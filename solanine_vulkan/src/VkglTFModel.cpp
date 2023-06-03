@@ -767,7 +767,7 @@ namespace vkglTF
 			};
 			vkCreateSampler(engine->_device, &samplerInfo, nullptr, &texture.sampler);
 
-			engine->_mainDeletionQueue.pushFunction([=]() {
+			engine->_mainDeletionQueue.pushFunction([=]() {  // @NOTE: images are already destroyed and handled by VkTextures.h/.cpp so only the sampler and imageview get destroyed here.
 				vkDestroySampler(engine->_device, texture.sampler, nullptr);
 				vkDestroyImageView(engine->_device, texture.imageView, nullptr);
 				});
