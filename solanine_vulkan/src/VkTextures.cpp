@@ -10,7 +10,7 @@
 bool vkutil::loadImageFromFile(VulkanEngine& engine, const char* fname, VkFormat imageFormat, uint32_t mipLevels, AllocatedImage& outImage)
 {
 	int32_t width, height;
-	loadImageFromFile(engine, fname, imageFormat, mipLevels, width, height, outImage);
+	return loadImageFromFile(engine, fname, imageFormat, mipLevels, width, height, outImage);
 }
 
 bool vkutil::loadImageFromFile(VulkanEngine& engine, const char* fname, VkFormat imageFormat, uint32_t mipLevels, int32_t& outWidth, int32_t& outHeight, AllocatedImage& outImage)

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <string>
 #include <vulkan/vulkan.h>
 #include "ImportGLM.h"
 #include "VkDataStructures.h"
@@ -42,16 +43,17 @@ namespace textmesh
 		AllocatedBuffer vertexBuffer;
 		AllocatedBuffer indexBuffer;
 		uint32_t indexCount = 0;
+		bool isVisible = true;
+		mat4 renderTransform = GLM_MAT4_IDENTITY_INIT;
 	};
 
-	void init();
+	void init(VulkanEngine* engine);
 	void cleanup();
 
-	void initPipeline(VulkanEngine* engine, VkViewport& screenspaceViewport, VkRect2D& screenspaceScissor);
+	void initPipeline(VkViewport& screenspaceViewport, VkRect2D& screenspaceScissor);
 
-	void loadFontSDF(VulkanEngine* engine, std::string sdfTextureFilePath, std::string fontFilePath, std::string fontName);
-	TypeFace* getTypeFace(std::string fontName);
-	void generateText(VulkanEngine* engine, TextMesh& tm, const TypeFace& tf, std::string text);
-	void bindTextFont(VkCommandBuffer cmd, const VkDescriptorSet* globalDescriptor, const TypeFace& tf);
-	void renderTextMesh(VkCommandBuffer cmd, const TextMesh& tm, mat4& modelMatrix);
+	void loadFontSDF(std::string sdfTextureFilePath, std::string fontFilePath, std::string fontName);
+	TextMesh* createAndRegisterTextMesh(std::string fontName, std::string text);
+	void destroyAndUnregisterTextMesh(TextMesh* tm);
+	void renderTextMeshes(VkCommandBuffer cmd, const VkDescriptorSet* globalDescriptor);
 }

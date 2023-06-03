@@ -7,6 +7,7 @@
 #include "VkglTFModel.h"
 #include "RenderObject.h"
 #include "EntityManager.h"
+#include "TextMesh.h"
 #include "Camera.h"
 #include "InputManager.h"
 #include "AudioEngine.h"
@@ -35,6 +36,8 @@ struct Player_XData
     float_t attackTwitchAngleReturnSpeed = 3.0f;
     bool    prevIsGrounded = false;
     vec3    prevGroundNormal = GLM_VEC3_ZERO_INIT;
+
+    textmesh::TextMesh* debugTextMesh;
 
     // Tweak Props
     vec3 position;
@@ -146,6 +149,9 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
 
     _data->cpd = physengine::createCapsule(0.5f, 1.0f);  // Total height is 2, but r*2 is subtracted to get the capsule height (i.e. the line segment length that the capsule rides along)
     glm_vec3_copy(_data->position, _data->cpd->basePosition);
+
+    // Debug text
+    _data->debugTextMesh = textmesh::createAndRegisterTextMesh("defaultFont", "Hi I'm a Player");
 }
 
 Player::~Player()
@@ -157,6 +163,8 @@ Player::~Player()
     _data->rom->removeModelCallbacks(this);
 
     physengine::destroyCapsule(_data->cpd);
+
+    textmesh::destroyAndUnregisterTextMesh(_data->debugTextMesh);
 
     delete _data;
 }
@@ -286,6 +294,9 @@ void Player::lateUpdate(const float_t& deltaTime)
     _data->characterRenderObj->animator->getJointMatrix(_data->weaponAttachmentJointName, attachmentJointMat);
     glm_mat4_mul(_data->characterRenderObj->transformMatrix, attachmentJointMat, _data->weaponRenderObj->transformMatrix);
     glm_mat4_copy(_data->weaponRenderObj->transformMatrix, _data->handleRenderObj->transformMatrix);
+
+    glm_mat4_copy(transform, _data->debugTextMesh->renderTransform);
+    glm_translate(_data->debugTextMesh->renderTransform, vec3{ 0.0f, 2.0f, 0.0f });
 }
 
 void Player::dump(DataSerializer& ds)

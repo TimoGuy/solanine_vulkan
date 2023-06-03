@@ -452,6 +452,7 @@ void VulkanEngine::render()
 
 		renderRenderObjects(cmd, currentFrame, false);
 		renderPickedObject(cmd, currentFrame);
+		textmesh::renderTextMeshes(cmd, &currentFrame.globalDescriptor);
 
 		// End renderpass
 		vkCmdEndRenderPass(cmd);
@@ -1193,7 +1194,7 @@ void VulkanEngine::initVulkan()
 	vkutil::descriptorallocator::init(_device);
 	vkutil::descriptorlayoutcache::init(_device);
 	vkutil::pipelinelayoutcache::init(_device);
-	textmesh::init();
+	textmesh::init(this);
 	vkinit::_maxSamplerAnisotropy = _gpuProperties.limits.maxSamplerAnisotropy;
 
 	//
@@ -2180,7 +2181,7 @@ void VulkanEngine::initDescriptors()    // @TODO: don't destroy and then recreat
 	//
 	// Text Mesh Fonts
 	//
-	textmesh::loadFontSDF(this, "textures/font_sdf_rgba.png", "font.fnt", "defaultFont");
+	textmesh::loadFontSDF("res/textures/font_sdf_rgba.png", "res/font.fnt", "defaultFont");
 }
 
 void VulkanEngine::initPipelines()
@@ -2429,7 +2430,7 @@ void VulkanEngine::initPipelines()
 	//
 	// Font Pipeline
 	//
-	textmesh::initPipeline(this, screenspaceViewport, screenspaceScissor);
+	textmesh::initPipeline(screenspaceViewport, screenspaceScissor);
 }
 
 void VulkanEngine::generatePBRCubemaps()

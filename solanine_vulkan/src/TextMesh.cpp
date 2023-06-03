@@ -1,10 +1,10 @@
 #include "TextMesh.h"
 
 #include <fstream>
-#include <string>
 #include <sstream>
 #include <array>
 #include <vector>
+#include <algorithm>
 #include <assert.h>
 #include "VulkanEngine.h"  // @TODO: work to just include the forward declaration of the createBuffer function
 #include "VkTextures.h"
@@ -27,16 +27,20 @@ namespace textmesh
 		float_t outline;  // Boolean
 	};
 
+	VulkanEngine* engine;
+
 	VkDescriptorSetLayout textMeshSetLayout;
 	VkPipeline textMeshPipeline;
 	VkPipelineLayout textMeshPipelineLayout;
 
 	std::unordered_map<std::string, TypeFace> fontNameToTypeFace;
+	std::vector<TextMesh> textmeshes;
 
 
-	void init()
+	void init(VulkanEngine* engineRef)
 	{
-		// Figure out something to do... or not eh!
+		engine = engineRef;
+		textmeshes.reserve(RENDER_OBJECTS_MAX_CAPACITY);  // @NOTE: this protects pointers from going stale if new space needs to be reallocated.
 	}
 
 	void cleanup()
@@ -44,7 +48,7 @@ namespace textmesh
 		// @TODO
 	}
 
-	void initPipeline(VulkanEngine* engine, VkViewport& screenspaceViewport, VkRect2D& screenspaceScissor)
+	void initPipeline(VkViewport& screenspaceViewport, VkRect2D& screenspaceScissor)
 	{
 		// Setup vertex descriptions
 		VkVertexInputAttributeDescription posAttribute = {
@@ -147,7 +151,7 @@ namespace textmesh
 		}
 	}
 
-	void loadFontSDF(VulkanEngine* engine, std::string sdfTextureFilePath, std::string fontFilePath, std::string fontName)
+	void loadFontSDF(std::string sdfTextureFilePath, std::string fontFilePath, std::string fontName)
 	{
 		TypeFace tf;
 		parsebmFont(tf, fontFilePath);
@@ -198,8 +202,6 @@ namespace textmesh
 
 		// Add font to font dict
 		fontNameToTypeFace[fontName] = tf;
-
-		// @TODO: add cleanup for all this!
 	}
 
 	TypeFace* getTypeFace(std::string fontName)
@@ -209,7 +211,7 @@ namespace textmesh
 		return nullptr;
 	}
 
-	void generateText(VulkanEngine* engine, TextMesh& tm, const TypeFace& tf, std::string text)
+	void generateTextMeshMesh(TextMesh& tm, const TypeFace& tf, std::string text)
 	{
 		if (tm.indexCount > 0)
 		{
@@ -327,6 +329,37 @@ namespace textmesh
 		vmaDestroyBuffer(engine->_allocator, indexStaging._buffer, indexStaging._allocation);
 	}
 
+	void sortTextMeshesByTypeFace()
+	{
+		std::sort(
+			textmeshes.begin(),
+			textmeshes.end(),
+			[&](TextMesh& a, TextMesh& b) {
+				return a.typeFace < b.typeFace;
+			}
+		);
+	}
+
+	TextMesh* createAndRegisterTextMesh(std::string fontName, std::string text)
+	{
+		if (textmeshes.size() >= RENDER_OBJECTS_MAX_CAPACITY)
+		{
+			std::cerr << "ERROR: New text mesh cannot be created because textmesh list is at capacity (" << RENDER_OBJECTS_MAX_CAPACITY << ")" << std::endl;
+			return nullptr;
+		}
+		textmeshes.push_back(TextMesh());
+		TypeFace* tf = getTypeFace(fontName);
+		generateTextMeshMesh(textmeshes.back(), *tf, text);
+		//sortTextMeshesByTypeFace();  // To keep descriptor set switches to a minimum.
+		return &textmeshes.back();
+	}
+
+	void destroyAndUnregisterTextMesh(TextMesh* tm)
+	{
+		std::erase_if(textmeshes, [&](TextMesh& tml) { return &tml == tm; });
+		//sortTextMeshesByTypeFace();  // To keep descriptor set switches to a minimum.
+	}
+
 	void bindTextFont(VkCommandBuffer cmd, const VkDescriptorSet* globalDescriptor, const TypeFace& tf)
 	{
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, textMeshPipeline);
@@ -334,15 +367,33 @@ namespace textmesh
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, textMeshPipelineLayout, 1, 1, &tf.fontSDFDescriptorSet, 0, nullptr);
 	}
 
-	void renderTextMesh(VkCommandBuffer cmd, const TextMesh& tm, mat4& modelMatrix)
+	void renderTextMesh(VkCommandBuffer cmd, TextMesh& tm)
 	{
 		GPUSDFFontPushConstants pc = {};
-		glm_mat4_copy(modelMatrix, pc.modelMatrix);
+		glm_mat4_copy(tm.renderTransform, pc.modelMatrix);
 		vkCmdPushConstants(cmd, textMeshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUSDFFontPushConstants), &pc);
 
 		const VkDeviceSize offsets[1] = { 0 };
 		vkCmdBindVertexBuffers(cmd, 0, 1, &tm.vertexBuffer._buffer, offsets);
 		vkCmdBindIndexBuffer(cmd, tm.indexBuffer._buffer, 0, VK_INDEX_TYPE_UINT32);
 		vkCmdDrawIndexed(cmd, tm.indexCount, 1, 0, 0, 0);
+	}
+
+	void renderTextMeshes(VkCommandBuffer cmd, const VkDescriptorSet* globalDescriptor)
+	{
+		TypeFace* lastTypeFace = nullptr;
+		for (TextMesh& tm : textmeshes)
+		{
+			if (!tm.isVisible)
+				continue;
+
+			if (tm.typeFace != lastTypeFace)
+			{
+				bindTextFont(cmd, globalDescriptor, *tm.typeFace);
+				lastTypeFace = tm.typeFace;
+			}
+
+			renderTextMesh(cmd, tm);
+		}
 	}
 }
