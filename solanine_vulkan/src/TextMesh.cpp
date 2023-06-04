@@ -19,6 +19,7 @@ namespace textmesh
 	struct GPUSDFFontPushConstants
 	{
 		mat4 modelMatrix;
+		float_t renderInScreenspace;
 	};
 
 	struct GPUSDFFontSettings
@@ -422,10 +423,17 @@ namespace textmesh
 	{
 		GPUSDFFontPushConstants pc = {
 			.modelMatrix = GLM_MAT4_IDENTITY_INIT,
+			.renderInScreenspace = tm.isPositionScreenspace,
 		};
+
+		if (tm.isPositionScreenspace)
+		{
+			// Resize width of all screenspace meshes to keep in line with screen aspect ratio.
+			glm_scale(pc.modelMatrix, vec3{ engine->_camera->sceneCamera.aspect, 1.0f, 1.0f });  // @TODO: @RESEARCH: do a ui pass, and when loading everything up just add this into the mix too!
+		}
 		
 		vec3 trans;
-		glm_vec3_sub(tm.renderWorldPosition, engine->_camera->sceneCamera.gpuCameraData.cameraPosition, trans);
+		glm_vec3_sub(tm.renderPosition, engine->_camera->sceneCamera.gpuCameraData.cameraPosition, trans);
 		glm_translate(pc.modelMatrix, trans);
 		mat4 invCameraView;
 		glm_mat4_inv(engine->_camera->sceneCamera.gpuCameraData.view, invCameraView);

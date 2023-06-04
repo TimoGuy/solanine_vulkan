@@ -295,7 +295,7 @@ void Player::lateUpdate(const float_t& deltaTime)
     glm_mat4_mul(_data->characterRenderObj->transformMatrix, attachmentJointMat, _data->weaponRenderObj->transformMatrix);
     glm_mat4_copy(_data->weaponRenderObj->transformMatrix, _data->handleRenderObj->transformMatrix);
 
-    glm_vec3_add(_data->cpd->interpolBasePosition, vec3{ 0.0f, 2.0f, 0.0f }, _data->debugTextMesh->renderWorldPosition);
+    glm_vec3_add(_data->cpd->interpolBasePosition, vec3{ 0.0f, 2.0f, 0.0f }, _data->debugTextMesh->renderPosition);
 }
 
 void Player::dump(DataSerializer& ds)
