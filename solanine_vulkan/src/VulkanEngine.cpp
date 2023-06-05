@@ -3875,11 +3875,19 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 	ImGui::Begin("##Debug Statistics", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs);
 	{
 		ImGui::Text((std::to_string(_debugStats.currentFPS) + " FPS").c_str());
-		ImGui::Text((std::format("{:.2f}", _debugStats.renderTimesMS[_debugStats.renderTimesMSHeadIndex]) + "ms").c_str());
 		ImGui::Text(("Frame : " + std::to_string(_frameNumber)).c_str());
 
-		ImGui::Text(("Render Times :     [0, " + std::format("{:.2f}", _debugStats.highestRenderTime) + "]").c_str());
+		ImGui::Separator();
+
+		ImGui::Text("Render Times");
+		ImGui::Text((std::format("{:.2f}", _debugStats.renderTimesMS[_debugStats.renderTimesMSHeadIndex]) + "ms").c_str());
 		ImGui::PlotHistogram("##Render Times Histogram", _debugStats.renderTimesMS, (int32_t)_debugStats.renderTimesMSCount, (int32_t)_debugStats.renderTimesMSHeadIndex, "", 0.0f, _debugStats.highestRenderTime, ImVec2(256, 24.0f));
+		ImGui::SameLine();
+		ImGui::Text(("[0, " + std::format("{:.2f}", _debugStats.highestRenderTime) + "]").c_str());
+
+		ImGui::Separator();
+
+		physengine::renderImguiPerformanceStats();
 
 		debugStatsWindowWidth = ImGui::GetWindowWidth();
 		debugStatsWindowHeight = ImGui::GetWindowHeight();

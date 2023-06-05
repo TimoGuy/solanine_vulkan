@@ -59,4 +59,8 @@ namespace physengine
     void moveCapsuleAccountingForCollision(CapsulePhysicsData& cpd, vec3 deltaPosition, bool stickToGround, vec3& outNormal, float_t ccdDistance = 0.25f);  // @NOTE: `ccdDistance` is fine as long as it's below the capsule radius (or the radius of the voxels, whichever is smaller)
 
     void setPhysicsObjectInterpolation(const float_t& physicsAlpha);
+
+#ifdef _DEVELOP
+    void renderImguiPerformanceStats();
+#endif
 }

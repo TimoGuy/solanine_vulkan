@@ -5,8 +5,11 @@
 #include <chrono>
 #include <thread>
 #include <algorithm>
+#include <format>
 #include "PhysUtil.h"
 #include "EntityManager.h"
+#include "imgui/imgui.h"
+#include "imgui/implot.h"
 
 
 namespace physengine
@@ -23,6 +26,16 @@ namespace physengine
     bool isAsyncRunnerRunning;
     std::thread* asyncRunner = nullptr;
     uint64_t lastTick;
+
+#ifdef _DEVELOP
+    struct DebugStats
+    {
+        size_t simTimesUSHeadIndex = 0;
+        size_t simTimesUSCount = 256;
+        float_t simTimesUS[256 * 2];
+        float_t highestSimTime = -1.0f;
+    } perfStats;
+#endif
 
     void initialize(EntityManager* em)
     {
@@ -57,12 +70,44 @@ namespace physengine
         while (isAsyncRunnerRunning)
         {
             lastTick = SDL_GetTicks64();
-            
+         
+#ifdef _DEVELOP
+            uint64_t perfTime = SDL_GetPerformanceCounter();
+#endif
+
             // @NOTE: this is the only place where `timeScale` is used. That's
             //        because this system is designed to be running at 40fps constantly
             //        in real time, so it doesn't slow down or speed up with time scale.
             tick();
             entityManager->INTERNALphysicsUpdate(physicsDeltaTime * timeScale);
+
+#ifdef _DEVELOP
+            {
+                //
+                // Update performance metrics
+                // @COPYPASTA
+                //
+                perfTime = SDL_GetPerformanceCounter() - perfTime;
+                perfStats.simTimesUSHeadIndex = (size_t)std::fmodf((float_t)perfStats.simTimesUSHeadIndex + 1, (float_t)perfStats.simTimesUSCount);
+
+                // Find what the highest simulation time is
+                if (perfTime > perfStats.highestSimTime)
+                    perfStats.highestSimTime = perfTime;
+                else if (perfStats.simTimesUS[perfStats.simTimesUSHeadIndex] == perfStats.highestSimTime)
+                {
+                    // Former highest sim time is getting overwritten; recalculate the 2nd highest sim time.
+                    float_t nextHighestsimTime = perfTime;
+                    for (size_t i = perfStats.simTimesUSHeadIndex + 1; i < perfStats.simTimesUSHeadIndex + perfStats.simTimesUSCount; i++)
+                        nextHighestsimTime = std::max(nextHighestsimTime, perfStats.simTimesUS[i]);
+                    perfStats.highestSimTime = nextHighestsimTime;
+                }
+
+                // Apply simulation time to buffer
+                perfStats.simTimesUS[perfStats.simTimesUSHeadIndex] =
+                    perfStats.simTimesUS[perfStats.simTimesUSHeadIndex + perfStats.simTimesUSCount] =
+                    perfTime;
+            }
+#endif
 
             // Wait for remaining time
             uint64_t endingTime = SDL_GetTicks64();
@@ -547,4 +592,16 @@ namespace physengine
             }
         }
     }
+
+#ifdef _DEVELOP
+    void renderImguiPerformanceStats()
+    {
+        static const float_t perfTimeToMS = 1000.0f / (float_t)SDL_GetPerformanceFrequency();
+        ImGui::Text("Physics Times");
+        ImGui::Text((std::format("{:.2f}", perfStats.simTimesUS[perfStats.simTimesUSHeadIndex] * perfTimeToMS) + "ms").c_str());
+        ImGui::PlotHistogram("##Physics Times Histogram", perfStats.simTimesUS, (int32_t)perfStats.simTimesUSCount, (int32_t)perfStats.simTimesUSHeadIndex, "", 0.0f, perfStats.highestSimTime, ImVec2(256, 24.0f));
+        ImGui::SameLine();
+        ImGui::Text(("[0, " + std::format("{:.2f}", perfStats.highestSimTime * perfTimeToMS) + "]").c_str());
+    }
+#endif
 }
