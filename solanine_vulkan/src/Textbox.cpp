@@ -59,6 +59,8 @@ namespace textbox
                     querySelectionTexts.push_back(
                         textmesh::createAndRegisterTextMesh("defaultFont", messageQueue.front().endingQuery.queryOptions[(size_t)i])
                     );
+                    querySelectionTexts.back()->isPositionScreenspace = true;
+                    glm_vec3_copy(vec3{ 0.75f, 0.75f, 0.0f }, querySelectionTexts.back()->renderPosition);
                 }
             }
 
