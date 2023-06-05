@@ -250,7 +250,7 @@ namespace textmesh
 		return nullptr;
 	}
 
-	void generateTextMeshMesh(TextMesh& tm, TypeFace& tf, std::string text)
+	void generateTextMeshMesh(TextMesh& tm, std::string text)
 	{
 		if (tm.indexCount > 0)
 		{
@@ -258,6 +258,8 @@ namespace textmesh
 			vmaDestroyBuffer(engine->_allocator, tm.vertexBuffer._buffer, tm.vertexBuffer._allocation);
 			vmaDestroyBuffer(engine->_allocator, tm.indexBuffer._buffer, tm.indexBuffer._allocation);
 		}
+
+		TypeFace& tf = *tm.typeFace;
 
 		std::vector<Vertex> vertices;
 		std::vector<uint32_t> indices;
@@ -303,7 +305,6 @@ namespace textmesh
 			posx += advance;
 		}
 		tm.indexCount = indices.size();
-		tm.typeFace = &tf;
 
 		// Center
 		for (auto& v : vertices)
@@ -389,8 +390,10 @@ namespace textmesh
 		}
 		textmeshes.push_back(TextMesh());
 		TypeFace* tf = getTypeFace(fontName);
-		generateTextMeshMesh(textmeshes.back(), *tf, text);
-		//sortTextMeshesByTypeFace();  // To keep descriptor set switches to a minimum.
+		textmeshes.back().typeFace = tf;
+
+		generateTextMeshMesh(textmeshes.back(), text);
+		sortTextMeshesByTypeFace();  // To keep descriptor set switches to a minimum.
 		return &textmeshes.back();
 	}
 
@@ -409,7 +412,12 @@ namespace textmesh
 			}
 			return false;
 			});
-		//sortTextMeshesByTypeFace();  // To keep descriptor set switches to a minimum.
+		sortTextMeshesByTypeFace();  // To keep descriptor set switches to a minimum.
+	}
+
+	void regenerateTextMeshMesh(TextMesh* tm, std::string text)
+	{
+		generateTextMeshMesh(*tm, text);
 	}
 
 	void bindTextFont(VkCommandBuffer cmd, const VkDescriptorSet* globalDescriptor, const TypeFace& tf)
@@ -423,7 +431,7 @@ namespace textmesh
 	{
 		GPUSDFFontPushConstants pc = {
 			.modelMatrix = GLM_MAT4_IDENTITY_INIT,
-			.renderInScreenspace = tm.isPositionScreenspace,
+			.renderInScreenspace = (float_t)tm.isPositionScreenspace,
 		};
 
 		if (tm.isPositionScreenspace)

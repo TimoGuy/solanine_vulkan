@@ -13,6 +13,7 @@
 #include "AudioEngine.h"
 #include "PhysicsEngine.h"
 #include "InputManager.h"
+#include "Textbox.h"
 #include "RenderObject.h"
 #include "Entity.h"
 #include "EntityManager.h"
@@ -184,6 +185,9 @@ void VulkanEngine::run()
 
 
 		perfs[4] = SDL_GetPerformanceCounter();
+		// Update textbox
+		textbox::update(deltaTime);
+
 		// Update entities
 		_entityManager->update(scaledDeltaTime);
 		perfs[4] = SDL_GetPerformanceCounter() - perfs[4];

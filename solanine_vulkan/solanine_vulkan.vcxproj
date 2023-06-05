@@ -176,6 +176,7 @@ copy $(SolutionDir)libs\cglm\cglm.dll $(OutDirfullPath)cglm.dll</Command>
     <ClInclude Include="src\InputManager.h" />
     <ClInclude Include="src\Player.h" />
     <ClInclude Include="src\Settings.h" />
+    <ClInclude Include="src\Textbox.h" />
     <ClInclude Include="src\TextMesh.h" />
     <ClInclude Include="src\VkBootstrap.h" />
     <ClInclude Include="src\VkDataStructures.h" />
@@ -223,6 +224,7 @@ copy $(SolutionDir)libs\cglm\cglm.dll $(OutDirfullPath)cglm.dll</Command>
     <ClCompile Include="src\RenderObject.cpp" />
     <ClCompile Include="src\ReplaySystem.cpp" />
     <ClCompile Include="src\SceneManagement.cpp" />
+    <ClCompile Include="src\Textbox.cpp" />
     <ClCompile Include="src\TextMesh.cpp" />
     <ClCompile Include="src\VkBootstrap.cpp" />
     <ClCompile Include="src\VkglTFModel.cpp" />

@@ -56,5 +56,6 @@ namespace textmesh
 	void loadFontSDF(std::string sdfTextureFilePath, std::string fontFilePath, std::string fontName);
 	TextMesh* createAndRegisterTextMesh(std::string fontName, std::string text);
 	void destroyAndUnregisterTextMesh(TextMesh* tm);
+	void regenerateTextMeshMesh(TextMesh* textmesh, std::string text);
 	void renderTextMeshes(VkCommandBuffer cmd, const VkDescriptorSet* globalDescriptor);
 }
