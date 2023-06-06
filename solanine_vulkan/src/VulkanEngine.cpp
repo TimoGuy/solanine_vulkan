@@ -361,6 +361,7 @@ void VulkanEngine::render()
 	//
 	perfs[14] = SDL_GetPerformanceCounter();
 	uploadCurrentFrameToGPU(currentFrame);
+	textmesh::uploadUICameraDataToGPU();
 	compactRenderObjectsIntoDraws(currentFrame, {});
 	perfs[14] = SDL_GetPerformanceCounter() - perfs[14];
 
@@ -489,7 +490,7 @@ void VulkanEngine::render()
 		// Renderpass
 		vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-		textmesh::renderTextMeshes(cmd, &currentFrame.globalDescriptor);
+		textmesh::renderTextMeshes(cmd);
 
 		vkCmdEndRenderPass(cmd);
 	}

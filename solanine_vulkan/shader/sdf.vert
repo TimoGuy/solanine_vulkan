@@ -6,13 +6,11 @@ layout (location = 1) in vec2 inUV;
 layout (location = 0) out vec2 outUV;
 
 
-// Camera Props
-layout(set = 0, binding = 0) uniform CameraBuffer
+// UI Camera Props
+layout(set = 0, binding = 0) uniform UICameraBuffer
 {
-	mat4 view;
-	mat4 projection;
 	mat4 projectionView;
-	vec3 cameraPosition;
+	mat4 screenspaceOrthoView;
 } cameraData;
 
 // Push constant for model matrix
@@ -28,7 +26,7 @@ void main()
 	outUV = inUV;
 	if (pushConsts.renderInScreenspace > 0.0)
 	{
-		gl_Position = pushConsts.modelMatrix * vec4(inPos.xyz, 1.0);
+		gl_Position = cameraData.screenspaceOrthoView * pushConsts.modelMatrix * vec4(inPos.xyz, 1.0);
 	}
 	else
 	{

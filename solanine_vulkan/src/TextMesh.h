@@ -43,7 +43,7 @@ namespace textmesh
 		AllocatedBuffer vertexBuffer;
 		AllocatedBuffer indexBuffer;
 		uint32_t indexCount = 0;
-		bool isVisible = true;
+		bool excludeFromBulkRender = false;
 		vec3 renderPosition = GLM_VEC3_ZERO_INIT;
 		bool isPositionScreenspace = false;
 	};
@@ -57,5 +57,6 @@ namespace textmesh
 	TextMesh* createAndRegisterTextMesh(std::string fontName, std::string text);
 	void destroyAndUnregisterTextMesh(TextMesh* tm);
 	void regenerateTextMeshMesh(TextMesh* textmesh, std::string text);
-	void renderTextMeshes(VkCommandBuffer cmd, const VkDescriptorSet* globalDescriptor);
+	void uploadUICameraDataToGPU();
+	void renderTextMeshes(VkCommandBuffer cmd);
 }

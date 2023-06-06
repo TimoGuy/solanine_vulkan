@@ -16,6 +16,15 @@
 
 namespace textmesh
 {
+	struct GPUUICamera
+	{
+		mat4 projectionView;
+		mat4 screenspaceOrthoView;
+	} gpuUICamera;
+	AllocatedBuffer gpuUICameraBuffer;
+	VkDescriptorSet gpuUICameraDescriptorSet;
+	VkDescriptorSetLayout gpuUICameraSetLayout;
+
 	struct GPUSDFFontPushConstants
 	{
 		mat4 modelMatrix;
@@ -32,7 +41,7 @@ namespace textmesh
 	VulkanEngine* engine;
 
 	VkDescriptorSetLayout textMeshSetLayout;
-	VkPipeline textMeshPipeline;
+	VkPipeline textMeshPipeline = VK_NULL_HANDLE;
 	VkPipelineLayout textMeshPipelineLayout;
 
 	std::unordered_map<std::string, TypeFace> fontNameToTypeFace;
@@ -43,10 +52,25 @@ namespace textmesh
 	{
 		engine = engineRef;
 		textmeshes.reserve(RENDER_OBJECTS_MAX_CAPACITY);  // @NOTE: this protects pointers from going stale if new space needs to be reallocated.
+
+		// Create descriptor for ui camera data
+		gpuUICameraBuffer = engine->createBuffer(sizeof(GPUUICamera), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+
+		VkDescriptorBufferInfo uiCameraBufferInfo = {
+			.buffer = gpuUICameraBuffer._buffer,
+			.offset = 0,
+			.range = sizeof(GPUUICamera),
+		};
+
+		vkutil::DescriptorBuilder::begin()
+			.bindBuffer(0, &uiCameraBufferInfo, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT)
+			.build(gpuUICameraDescriptorSet, gpuUICameraSetLayout);
 	}
 
 	void cleanup()
 	{
+		vmaDestroyBuffer(engine->_allocator, gpuUICameraBuffer._buffer, gpuUICameraBuffer._allocation);
+
 		// Destroy any lingering allocated buffers
 		for (auto& tm : textmeshes)
 		{
@@ -79,6 +103,9 @@ namespace textmesh
 
 	void initPipeline(VkViewport& screenspaceViewport, VkRect2D& screenspaceScissor)
 	{
+		if (textMeshPipeline != VK_NULL_HANDLE)
+			vkDestroyPipeline(engine->_device, textMeshPipeline, nullptr);
+
 		// Setup vertex descriptions
 		VkVertexInputAttributeDescription posAttribute = {
 			.location = 0,
@@ -120,7 +147,7 @@ namespace textmesh
 					.size = sizeof(GPUSDFFontPushConstants)
 				}
 			},
-			{ engine->_globalSetLayout, textMeshSetLayout },
+			{ gpuUICameraSetLayout, textMeshSetLayout },
 			{
 				{ VK_SHADER_STAGE_VERTEX_BIT, "shader/sdf.vert.spv" },
 				{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/sdf.frag.spv" },
@@ -139,6 +166,14 @@ namespace textmesh
 			textMeshPipeline,
 			textMeshPipelineLayout
 			);
+
+		// Recreate ui ortho projview
+		glm_ortho(
+			screenspaceViewport.x, screenspaceViewport.x + screenspaceViewport.width,
+			screenspaceViewport.y + screenspaceViewport.height, screenspaceViewport.y,
+			0.0f, 1.0f,
+			gpuUICamera.screenspaceOrthoView
+		);
 	}
 
 	int32_t nextValuePair(std::stringstream* stream)
@@ -420,10 +455,22 @@ namespace textmesh
 		generateTextMeshMesh(*tm, text);
 	}
 
-	void bindTextFont(VkCommandBuffer cmd, const VkDescriptorSet* globalDescriptor, const TypeFace& tf)
+	void uploadUICameraDataToGPU()
+	{
+		// Keep UI camera data up to date with main camera.
+		// @NOTE: since this buffer isn't double buffered, it will desync as far as the projectionView matrix (for debug stuff afaik), but the ortho projection should be just fine.
+		glm_mat4_copy(engine->_camera->sceneCamera.gpuCameraData.projectionView, gpuUICamera.projectionView);
+
+		void* data;
+		vmaMapMemory(engine->_allocator, gpuUICameraBuffer._allocation, &data);
+		memcpy(data, &gpuUICamera, sizeof(mat4));
+		vmaUnmapMemory(engine->_allocator, gpuUICameraBuffer._allocation);
+	}
+
+	void bindTextFont(VkCommandBuffer cmd, const TypeFace& tf)
 	{
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, textMeshPipeline);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, textMeshPipelineLayout, 0, 1, globalDescriptor, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, textMeshPipelineLayout, 0, 1, &gpuUICameraDescriptorSet, 0, nullptr);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, textMeshPipelineLayout, 1, 1, &tf.fontSDFDescriptorSet, 0, nullptr);
 	}
 
@@ -456,17 +503,17 @@ namespace textmesh
 		vkCmdDrawIndexed(cmd, tm.indexCount, 1, 0, 0, 0);
 	}
 
-	void renderTextMeshes(VkCommandBuffer cmd, const VkDescriptorSet* globalDescriptor)
+	void renderTextMeshes(VkCommandBuffer cmd)
 	{
 		TypeFace* lastTypeFace = nullptr;
 		for (TextMesh& tm : textmeshes)
 		{
-			if (!tm.isVisible)
+			if (tm.excludeFromBulkRender)
 				continue;
 
 			if (tm.typeFace != lastTypeFace)
 			{
-				bindTextFont(cmd, globalDescriptor, *tm.typeFace);
+				bindTextFont(cmd, *tm.typeFace);
 				lastTypeFace = tm.typeFace;
 			}
 
