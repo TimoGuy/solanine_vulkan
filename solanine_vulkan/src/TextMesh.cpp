@@ -108,7 +108,7 @@ namespace textmesh
 		blendAttachmentState.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
 		blendAttachmentState.colorBlendOp = VK_BLEND_OP_ADD;
 		blendAttachmentState.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-		blendAttachmentState.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+		blendAttachmentState.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
 		blendAttachmentState.alphaBlendOp = VK_BLEND_OP_ADD;
 
 		// Build pipeline
@@ -133,9 +133,9 @@ namespace textmesh
 			vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT),
 			{ blendAttachmentState },
 			vkinit::multisamplingStateCreateInfo(),
-			vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_LESS_OR_EQUAL),
+			vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_NEVER),
 			{},
-			engine->_mainRenderPass,
+			engine->_uiRenderPass,
 			textMeshPipeline,
 			textMeshPipelineLayout
 			);

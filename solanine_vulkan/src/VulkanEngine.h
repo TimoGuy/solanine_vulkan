@@ -164,6 +164,13 @@ public:
 	VkFormat _depthFormat;
 
 	//
+	// UI Renderpass
+	//
+	VkRenderPass  _uiRenderPass;
+	VkFramebuffer _uiFramebuffer;
+	Texture       _uiImage;
+
+	//
 	// Postprocessing Renderpass
 	//
 	VkRenderPass _postprocessRenderPass;  // @NOTE: no framebuffers defined here, bc this will write to the swapchain framebuffers
@@ -243,6 +250,7 @@ private:
 	void initShadowRenderpass();
 	void initShadowImages();
 	void initMainRenderpass();
+	void initUIRenderpass();
 	void initPostprocessRenderpass();
 	void initPickingRenderpass();
 	void initFramebuffers();

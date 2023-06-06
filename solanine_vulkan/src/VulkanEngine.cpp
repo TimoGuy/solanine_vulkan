@@ -79,6 +79,7 @@ void VulkanEngine::init()
 	initShadowRenderpass();
 	initShadowImages();  // @NOTE: this isn't screen space, so no need to recreate images on swapchain recreation
 	initMainRenderpass();
+	initUIRenderpass();
 	initPostprocessRenderpass();
 	initPickingRenderpass();
 	initFramebuffers();
@@ -456,9 +457,40 @@ void VulkanEngine::render()
 
 		renderRenderObjects(cmd, currentFrame, false);
 		renderPickedObject(cmd, currentFrame);
-		textmesh::renderTextMeshes(cmd, &currentFrame.globalDescriptor);
 
 		// End renderpass
+		vkCmdEndRenderPass(cmd);
+	}
+
+	//
+	// UI Render Pass
+	//
+	{
+		VkClearValue clearValue;
+		clearValue.color = { { 0.0f, 0.0f, 0.0f, 0.0f } };
+
+		VkClearValue clearValues[] = { clearValue };
+
+		VkRenderPassBeginInfo renderpassInfo = {
+			.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+			.pNext = nullptr,
+
+			.renderPass = _uiRenderPass,
+			.framebuffer = _uiFramebuffer,
+			.renderArea = {
+				.offset = VkOffset2D{ 0, 0 },
+				.extent = _windowExtent,
+			},
+
+			.clearValueCount = 1,
+			.pClearValues = &clearValues[0],
+		};
+
+		// Renderpass
+		vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+		textmesh::renderTextMeshes(cmd, &currentFrame.globalDescriptor);
+
 		vkCmdEndRenderPass(cmd);
 	}
 
@@ -1578,6 +1610,95 @@ void VulkanEngine::initMainRenderpass()
 		});
 }
 
+void VulkanEngine::initUIRenderpass()    // @NOTE: @COPYPASTA: This is really copypasta of the above function (initMainRenderpass)
+{
+	//
+	// Color Attachment
+	//
+	VkAttachmentDescription colorAttachment = {
+		.format = VK_FORMAT_R16G16B16A16_SFLOAT,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+		.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+		.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+	};
+	VkAttachmentReference colorAttachmentRef = {
+		.attachment = 0,
+		.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+	};
+
+	//
+	// Define the subpass to render to the default renderpass
+	//
+	VkSubpassDescription subpass = {
+		.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+		.colorAttachmentCount = 1,
+		.pColorAttachments = &colorAttachmentRef,
+	};
+
+	//
+	// GPU work ordering dependencies
+	//
+	VkSubpassDependency colorDependency = {
+		.srcSubpass = VK_SUBPASS_EXTERNAL,
+		.dstSubpass = 0,
+		.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.srcAccessMask = 0,
+		.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+	};
+
+	//
+	// Create the renderpass for the subpass
+	//
+	VkRenderPassCreateInfo renderPassInfo = {
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+		.attachmentCount = 1,
+		.pAttachments = &colorAttachment,
+		.subpassCount = 1,
+		.pSubpasses = &subpass,
+		.dependencyCount = 1,
+		.pDependencies = &colorDependency
+	};
+
+	VK_CHECK(vkCreateRenderPass(_device, &renderPassInfo, nullptr, &_uiRenderPass));
+
+	// Add destroy command for cleanup
+	_swapchainDependentDeletionQueue.pushFunction([=]() {
+		vkDestroyRenderPass(_device, _uiRenderPass, nullptr);
+		});
+
+	//
+	// Create image for renderpass
+	//
+	// Color image
+	VkExtent3D mainImgExtent = {
+		.width = _windowExtent.width,
+		.height = _windowExtent.height,
+		.depth = 1,
+	};
+	VkImageCreateInfo mainColorImgInfo = vkinit::imageCreateInfo(VK_FORMAT_R16G16B16A16_SFLOAT, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, mainImgExtent, 1);
+	VmaAllocationCreateInfo mainImgAllocInfo = {
+		.usage = VMA_MEMORY_USAGE_GPU_ONLY,
+	};
+	vmaCreateImage(_allocator, &mainColorImgInfo, &mainImgAllocInfo, &_uiImage.image._image, &_uiImage.image._allocation, nullptr);
+
+	VkImageViewCreateInfo mainColorViewInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R16G16B16A16_SFLOAT, _uiImage.image._image, VK_IMAGE_ASPECT_COLOR_BIT, 1);
+	VK_CHECK(vkCreateImageView(_device, &mainColorViewInfo, nullptr, &_uiImage.imageView));
+
+	VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(1.0f, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
+	VK_CHECK(vkCreateSampler(_device, &samplerInfo, nullptr, &_uiImage.sampler));
+
+	_swapchainDependentDeletionQueue.pushFunction([=]() {
+		vkDestroySampler(_device, _uiImage.sampler, nullptr);
+		vkDestroyImageView(_device, _uiImage.imageView, nullptr);
+		vmaDestroyImage(_allocator, _uiImage.image._image, _uiImage.image._allocation);
+		});
+}
+
 void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is really copypasta of the above function (initMainRenderpass)
 {
 	//
@@ -1673,6 +1794,11 @@ void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is 
 		.imageView = _mainImage.imageView,
 		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 	};
+	VkDescriptorImageInfo uiImageInfo = {
+		.sampler = _uiImage.sampler,
+		.imageView = _uiImage.imageView,
+		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	};
 	VkDescriptorImageInfo bloomImageInfo = {
 		.sampler = _bloomPostprocessImage.sampler,
 		.imageView = _bloomPostprocessImage.imageView,
@@ -1681,7 +1807,8 @@ void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is 
 	VkDescriptorSet postprocessingTextureSet;
 	vkutil::DescriptorBuilder::begin()
 		.bindImage(0, &mainHDRImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
-		.bindImage(1, &bloomImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+		.bindImage(1, &uiImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+		.bindImage(2, &bloomImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
 		.build(postprocessingTextureSet, _postprocessSetLayout);
 	attachTextureSetToMaterial(postprocessingTextureSet, "postprocessMaterial");
 
@@ -1872,6 +1999,24 @@ void VulkanEngine::initFramebuffers()
 
 		_swapchainDependentDeletionQueue.pushFunction([=]() {
 			vkDestroyFramebuffer(_device, _mainFramebuffer, nullptr);
+			});
+	}
+
+	//
+	// Create framebuffer for ui renderpass
+	//
+	{
+		VkImageView attachments[] = {
+			_uiImage.imageView,
+		};
+		fbInfo.renderPass = _uiRenderPass;
+		fbInfo.attachmentCount = 1;
+		fbInfo.pAttachments = &attachments[0];
+
+		VK_CHECK(vkCreateFramebuffer(_device, &fbInfo, nullptr, &_uiFramebuffer));
+
+		_swapchainDependentDeletionQueue.pushFunction([=]() {
+			vkDestroyFramebuffer(_device, _uiFramebuffer, nullptr);
 			});
 	}
 
@@ -3412,6 +3557,7 @@ void VulkanEngine::recreateSwapchain()
 	initSwapchain();
 	initShadowRenderpass();
 	initMainRenderpass();
+	initUIRenderpass();
 	initPostprocessRenderpass();
 	initPickingRenderpass();
 	initFramebuffers();
