@@ -88,6 +88,7 @@
     <None Include="shader\postprocess.frag" />
     <None Include="shader\sdf.frag" />
     <None Include="shader\sdf.vert" />
+    <None Include="shader\color_textbox_bg.frag" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\imgui\imconfig.h">

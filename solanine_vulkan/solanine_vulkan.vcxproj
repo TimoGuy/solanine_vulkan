@@ -124,6 +124,7 @@ copy $(SolutionDir)libs\cglm\cglm.dll $(OutDirfullPath)cglm.dll</Command>
   </ItemDefinitionGroup>
   <ItemGroup>
     <None Include="shader\color.frag" />
+    <None Include="shader\color_textbox_bg.frag" />
     <None Include="shader\debug_physics_object.frag" />
     <None Include="shader\debug_physics_object.vert" />
     <None Include="shader\filtercube.vert" />

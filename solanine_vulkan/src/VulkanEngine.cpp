@@ -297,6 +297,7 @@ void VulkanEngine::cleanup()
 		_mainDeletionQueue.flush();
 		_swapchainDependentDeletionQueue.flush();
 
+		textbox::cleanup();
 		textmesh::cleanup();
 		vkutil::pipelinelayoutcache::cleanup();
 		vkutil::descriptorlayoutcache::cleanup();
@@ -1233,6 +1234,7 @@ void VulkanEngine::initVulkan()
 	vkutil::descriptorlayoutcache::init(_device);
 	vkutil::pipelinelayoutcache::init(_device);
 	textmesh::init(this);
+	textbox::init(this);
 	vkinit::_maxSamplerAnisotropy = _gpuProperties.limits.maxSamplerAnisotropy;
 
 	//
@@ -1618,7 +1620,7 @@ void VulkanEngine::initUIRenderpass()    // @NOTE: @COPYPASTA: This is really co
 	// Color Attachment
 	//
 	VkAttachmentDescription colorAttachment = {
-		.format = VK_FORMAT_R16G16B16A16_SFLOAT,
+		.format = VK_FORMAT_R8G8B8A8_UNORM,
 		.samples = VK_SAMPLE_COUNT_1_BIT,
 		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
 		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
@@ -1682,13 +1684,13 @@ void VulkanEngine::initUIRenderpass()    // @NOTE: @COPYPASTA: This is really co
 		.height = _windowExtent.height,
 		.depth = 1,
 	};
-	VkImageCreateInfo mainColorImgInfo = vkinit::imageCreateInfo(VK_FORMAT_R16G16B16A16_SFLOAT, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, mainImgExtent, 1);
+	VkImageCreateInfo mainColorImgInfo = vkinit::imageCreateInfo(VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, mainImgExtent, 1);
 	VmaAllocationCreateInfo mainImgAllocInfo = {
 		.usage = VMA_MEMORY_USAGE_GPU_ONLY,
 	};
 	vmaCreateImage(_allocator, &mainColorImgInfo, &mainImgAllocInfo, &_uiImage.image._image, &_uiImage.image._allocation, nullptr);
 
-	VkImageViewCreateInfo mainColorViewInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R16G16B16A16_SFLOAT, _uiImage.image._image, VK_IMAGE_ASPECT_COLOR_BIT, 1);
+	VkImageViewCreateInfo mainColorViewInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_UNORM, _uiImage.image._image, VK_IMAGE_ASPECT_COLOR_BIT, 1);
 	VK_CHECK(vkCreateImageView(_device, &mainColorViewInfo, nullptr, &_uiImage.imageView));
 
 	VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(1.0f, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
@@ -2579,9 +2581,10 @@ void VulkanEngine::initPipelines()
 	});
 
 	//
-	// Font Pipeline
+	// Other pipelines
 	//
 	textmesh::initPipeline(screenspaceViewport, screenspaceScissor);
+	textbox::initPipeline(screenspaceViewport, screenspaceScissor);
 }
 
 void VulkanEngine::generatePBRCubemaps()
@@ -4193,6 +4196,13 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 			ImGui::DragFloat("focusRadiusY", &_camera->mainCamMode.focusRadiusY, 1.0f, 0.0f);
 			ImGui::SliderFloat("focusCentering", &_camera->mainCamMode.focusCentering, 0.0f, 1.0f);
 			ImGui::DragFloat3("focusPositionOffset", _camera->mainCamMode.focusPositionOffset);
+		}
+
+		if (ImGui::CollapsingHeader("Textbox Properties", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			ImGui::DragFloat3("mainRenderPosition", textbox::mainRenderPosition);
+			ImGui::DragFloat3("mainRenderExtents", textbox::mainRenderExtents);
+			ImGui::DragFloat3("querySelectionsRenderPosition", textbox::querySelectionsRenderPosition);
 		}
 
 		accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;

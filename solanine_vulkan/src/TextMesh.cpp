@@ -25,19 +25,6 @@ namespace textmesh
 	VkDescriptorSet gpuUICameraDescriptorSet;
 	VkDescriptorSetLayout gpuUICameraSetLayout;
 
-	struct GPUSDFFontPushConstants
-	{
-		mat4 modelMatrix;
-		float_t renderInScreenspace;
-	};
-
-	struct GPUSDFFontSettings
-	{
-		vec4 outlineColor;
-		float_t outlineWidth;
-		float_t outline;  // Boolean
-	};
-
 	VulkanEngine* engine;
 
 	VkDescriptorSetLayout textMeshSetLayout;

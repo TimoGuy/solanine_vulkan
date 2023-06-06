@@ -168,15 +168,20 @@ namespace vkutil
             };
 
             // Check for errors while creating gfx pipelines
+            std::cout << "[BUILD GRAPHICS PIPELINE]" << std::endl;
             if (vkCreateGraphicsPipelines(pipelinelayoutcache::device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &outPipeline) != VK_SUCCESS)
             {
                 std::cout << "FAILED: creating pipeline" << std::endl;
                 return false;
             }
 
+            std::cout << "Successfully built graphics pipeline" << std::endl;
+
             // Cleanup
             for (auto shaderStage : compiledShaderStages)
                 vkDestroyShaderModule(pipelinelayoutcache::device, shaderStage.module, nullptr);
+
+            std::cout << "Cleaned up used shader modules (count: " << compiledShaderStages.size() << ")" << std::endl;
 
             return true;
         }

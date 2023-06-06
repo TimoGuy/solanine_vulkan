@@ -4,10 +4,17 @@
 #include <vector>
 #include <functional>
 #include <vulkan/vulkan.h>
+#include "ImportGLM.h"
+
+class VulkanEngine;
 
 
 namespace textbox
 {
+    extern vec3 mainRenderPosition;
+    extern vec3 mainRenderExtents;
+    extern vec3 querySelectionsRenderPosition;
+
     struct TextboxUserQuery
     {
         std::vector<std::string> queryOptions;
@@ -20,6 +27,10 @@ namespace textbox
         bool useEndingQuery = false;
         TextboxUserQuery endingQuery;
     };
+
+    void init(VulkanEngine* engine);
+    void initPipeline(VkViewport& screenspaceViewport, VkRect2D& screenspaceScissor);
+    void cleanup();
 
     void update(const float_t& unscaledDeltaTime);
 

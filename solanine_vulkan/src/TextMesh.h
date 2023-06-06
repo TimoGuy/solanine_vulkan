@@ -10,6 +10,9 @@ class VulkanEngine;
 
 namespace textmesh
 {
+	extern VkDescriptorSet gpuUICameraDescriptorSet;
+	extern VkDescriptorSetLayout gpuUICameraSetLayout;
+
     struct Vertex
     {
         vec3 pos;
@@ -47,6 +50,19 @@ namespace textmesh
 		vec3 renderPosition = GLM_VEC3_ZERO_INIT;
 		bool isPositionScreenspace = false;
 		float_t scale = 1.0f;
+	};
+
+	struct GPUSDFFontPushConstants
+	{
+		mat4 modelMatrix;
+		float_t renderInScreenspace;
+	};
+
+	struct GPUSDFFontSettings
+	{
+		vec4 outlineColor;
+		float_t outlineWidth;
+		float_t outline;  // Boolean
 	};
 
 	void init(VulkanEngine* engine);
