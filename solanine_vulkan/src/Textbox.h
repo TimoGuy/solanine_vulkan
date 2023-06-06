@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <functional>
+#include <vulkan/vulkan.h>
 
 
 namespace textbox
@@ -24,4 +25,5 @@ namespace textbox
 
     bool isProcessingMessage();  // @NOTE: this should be for checking whether to do input at the current time for the player.
     void sendTextboxMessage(TextboxMessage message);
+    void renderTextbox(VkCommandBuffer cmd);
 }

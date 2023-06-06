@@ -168,10 +168,13 @@ namespace textmesh
 			);
 
 		// Recreate ui ortho projview
+		float_t ratio = screenspaceViewport.width / screenspaceViewport.height;
+		float_t width = 1080.0f * ratio;
+		float_t height = 1080.0f;
 		glm_ortho(
-			screenspaceViewport.x, screenspaceViewport.x + screenspaceViewport.width,
-			screenspaceViewport.y + screenspaceViewport.height, screenspaceViewport.y,
-			0.0f, 1.0f,
+			-width * 0.5f,   width * 0.5f,
+			 height * 0.5f, -height * 0.5f,
+			screenspaceViewport.minDepth, screenspaceViewport.maxDepth,
 			gpuUICamera.screenspaceOrthoView
 		);
 	}
@@ -463,7 +466,7 @@ namespace textmesh
 
 		void* data;
 		vmaMapMemory(engine->_allocator, gpuUICameraBuffer._allocation, &data);
-		memcpy(data, &gpuUICamera, sizeof(mat4));
+		memcpy(data, &gpuUICamera, sizeof(GPUUICamera));
 		vmaUnmapMemory(engine->_allocator, gpuUICameraBuffer._allocation);
 	}
 
@@ -474,26 +477,32 @@ namespace textmesh
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, textMeshPipelineLayout, 1, 1, &tf.fontSDFDescriptorSet, 0, nullptr);
 	}
 
-	void renderTextMesh(VkCommandBuffer cmd, TextMesh& tm)
+	void renderTextMesh(VkCommandBuffer cmd, TextMesh& tm, bool bindFont)
 	{
+		if (bindFont)
+			bindTextFont(cmd, *tm.typeFace);
+
 		GPUSDFFontPushConstants pc = {
 			.modelMatrix = GLM_MAT4_IDENTITY_INIT,
 			.renderInScreenspace = (float_t)tm.isPositionScreenspace,
 		};
-
+		
 		if (tm.isPositionScreenspace)
 		{
-			// Resize width of all screenspace meshes to keep in line with screen aspect ratio.
-			glm_scale(pc.modelMatrix, vec3{ engine->_camera->sceneCamera.aspect, 1.0f, 1.0f });  // @TODO: @RESEARCH: do a ui pass, and when loading everything up just add this into the mix too!
+			glm_translate(pc.modelMatrix, tm.renderPosition);
 		}
-		
-		vec3 trans;
-		glm_vec3_sub(tm.renderPosition, engine->_camera->sceneCamera.gpuCameraData.cameraPosition, trans);
-		glm_translate(pc.modelMatrix, trans);
-		mat4 invCameraView;
-		glm_mat4_inv(engine->_camera->sceneCamera.gpuCameraData.view, invCameraView);
-		glm_mat4_mul(pc.modelMatrix, invCameraView, pc.modelMatrix);
-		glm_scale(pc.modelMatrix, vec3{ 0.5f, 0.5f, 0.5f });
+		else
+		{
+			vec3 trans;
+			glm_vec3_sub(tm.renderPosition, engine->_camera->sceneCamera.gpuCameraData.cameraPosition, trans);
+			glm_translate(pc.modelMatrix, trans);
+
+			mat4 invCameraView;
+			glm_mat4_inv(engine->_camera->sceneCamera.gpuCameraData.view, invCameraView);
+			glm_mat4_mul(pc.modelMatrix, invCameraView, pc.modelMatrix);
+		}
+
+		glm_scale(pc.modelMatrix, vec3{ tm.scale, tm.scale, tm.scale });
 
 		vkCmdPushConstants(cmd, textMeshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUSDFFontPushConstants), &pc);
 
@@ -503,7 +512,7 @@ namespace textmesh
 		vkCmdDrawIndexed(cmd, tm.indexCount, 1, 0, 0, 0);
 	}
 
-	void renderTextMeshes(VkCommandBuffer cmd)
+	void renderTextMeshesBulk(VkCommandBuffer cmd)
 	{
 		TypeFace* lastTypeFace = nullptr;
 		for (TextMesh& tm : textmeshes)
@@ -511,13 +520,13 @@ namespace textmesh
 			if (tm.excludeFromBulkRender)
 				continue;
 
+			bool bindFont = false;
 			if (tm.typeFace != lastTypeFace)
 			{
-				bindTextFont(cmd, *tm.typeFace);
+				bindFont = true;
 				lastTypeFace = tm.typeFace;
 			}
-
-			renderTextMesh(cmd, tm);
+			renderTextMesh(cmd, tm, bindFont);
 		}
 	}
 }

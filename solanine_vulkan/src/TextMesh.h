@@ -46,6 +46,7 @@ namespace textmesh
 		bool excludeFromBulkRender = false;
 		vec3 renderPosition = GLM_VEC3_ZERO_INIT;
 		bool isPositionScreenspace = false;
+		float_t scale = 1.0f;
 	};
 
 	void init(VulkanEngine* engine);
@@ -58,5 +59,6 @@ namespace textmesh
 	void destroyAndUnregisterTextMesh(TextMesh* tm);
 	void regenerateTextMeshMesh(TextMesh* textmesh, std::string text);
 	void uploadUICameraDataToGPU();
-	void renderTextMeshes(VkCommandBuffer cmd);
+	void renderTextMesh(VkCommandBuffer cmd, TextMesh& tm, bool bindFont);
+	void renderTextMeshesBulk(VkCommandBuffer cmd);
 }

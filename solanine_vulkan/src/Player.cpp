@@ -152,6 +152,7 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
 
     // Debug text
     _data->debugTextMesh = textmesh::createAndRegisterTextMesh("defaultFont", "Hi I'm a Player");
+    _data->debugTextMesh->scale = 0.5f;
 }
 
 Player::~Player()
