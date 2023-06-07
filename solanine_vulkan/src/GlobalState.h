@@ -17,16 +17,8 @@ namespace globalState
     extern int32_t savedPlayerHealth;
     extern int32_t savedPlayerMaxHealth;
 
-    //
-    // Non-saved
-    //
-    struct EntityInformation
-    {
-        vec3        position = GLM_VEC3_ZERO_INIT;
-        std::string type;
-        bool        isHidden = false;  // Just in case if a disappearing entity would be used like a rabbit that burrows. Then the enemy would be confused (@NOTE that the position still updates)
-    };
-    extern std::vector<EntityInformation*> enemysEnemiesEntInfo;
+    extern std::string playerGUID;
+    extern vec3* playerPositionRef;
 
     void initGlobalState(SceneCamera& sc);
     void launchAsyncWriteTask();  // @NOTE: this is simply for things that are marked saved

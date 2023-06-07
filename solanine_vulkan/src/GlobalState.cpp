@@ -17,6 +17,9 @@ namespace globalState
     int32_t savedPlayerHealth          = 100;
     int32_t savedPlayerMaxHealth       = 100;
 
+    std::string playerGUID = "";
+    vec3* playerPositionRef = nullptr;
+
     SceneCamera* sceneCameraRef = nullptr;
 
     //

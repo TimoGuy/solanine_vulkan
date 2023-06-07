@@ -150,6 +150,9 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
     _data->cpd = physengine::createCapsule(0.5f, 1.0f);  // Total height is 2, but r*2 is subtracted to get the capsule height (i.e. the line segment length that the capsule rides along)
     glm_vec3_copy(_data->position, _data->cpd->basePosition);
 
+    globalState::playerGUID = getGUID();
+    globalState::playerPositionRef = &_data->cpd->basePosition;
+
     // Debug text
     _data->debugTextMesh = textmesh::createAndRegisterTextMesh("defaultFont", "Hi I'm a Player");
     _data->debugTextMesh->scale = 0.5f;
@@ -157,6 +160,13 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
 
 Player::~Player()
 {
+    if (globalState::playerGUID == getGUID() ||
+        globalState::playerPositionRef == &_data->cpd->basePosition)
+    {
+        globalState::playerGUID = "";
+        globalState::playerPositionRef = nullptr;
+    }
+
     delete _data->characterRenderObj->animator;
     _data->rom->unregisterRenderObject(_data->characterRenderObj);
     _data->rom->unregisterRenderObject(_data->handleRenderObj);
@@ -313,8 +323,81 @@ void Player::load(DataSerialized& ds)
     ds.loadFloat(_data->facingDirection);
 }
 
+// @TODO: @INCOMPLETE: will need to move the interaction logic into its own type of object, where you can update the interactor position and add/register interaction fields.
+struct GUIDWithVerb
+{
+    std::string guid, actionVerb;
+};
+std::vector<GUIDWithVerb> interactionGUIDPriorityQueue;
+textmesh::TextMesh* interactionUIText;
+std::string currentText;
+
+void updateInteractionUI()
+{
+    // Initial creation of the UI.
+    if (interactionUIText == nullptr)
+    {
+        currentText = "";
+        interactionUIText = textmesh::createAndRegisterTextMesh("defaultFont", currentText);
+        interactionUIText->isPositionScreenspace = true;
+        glm_vec3_copy(vec3{ 0.0f, -50.0f, 0.0f }, interactionUIText->renderPosition);
+        interactionUIText->scale = 25.0f;
+    }
+
+    // Update UI text and visibility.
+    std::string newText = interactionGUIDPriorityQueue.empty() ? "" : ("Press 'E' to " + interactionGUIDPriorityQueue.front().actionVerb);
+    if (currentText != newText)
+    {
+        currentText = newText;
+        textmesh::regenerateTextMeshMesh(interactionUIText, currentText);
+    }
+
+    interactionUIText->excludeFromBulkRender = currentText.empty();
+}
+
 bool Player::processMessage(DataSerialized& message)
 {
+    std::string messageType;
+    message.loadString(messageType);
+
+    if (messageType == "msg_request_interaction")
+    {
+        std::string guid, actionVerb;
+        message.loadString(guid);
+        message.loadString(actionVerb);
+
+        // Add to queue if not already in. Front is the current interaction field.
+        bool guidExists = false;
+        for (auto& gwv : interactionGUIDPriorityQueue)
+            if (gwv.guid == guid)
+            {
+                guidExists = true;
+                break;
+            }
+        if (!guidExists)
+        {
+            interactionGUIDPriorityQueue.push_back({
+                .guid = guid,
+                .actionVerb = actionVerb,
+            });
+            updateInteractionUI();
+        }
+    }
+    else if (messageType == "msg_remove_interaction_request")
+    {
+        std::string guid;
+        message.loadString(guid);
+
+        // Remove the interaction request from the guid queue.
+        std::erase_if(
+            interactionGUIDPriorityQueue,
+            [guid](GUIDWithVerb& gwv) {
+                return gwv.guid == guid;
+            }
+        );
+        updateInteractionUI();
+    }
+
     return false;
 }
 

@@ -277,13 +277,6 @@ namespace textmesh
 
 	void generateTextMeshMesh(TextMesh& tm, std::string text)
 	{
-		if (tm.indexCount > 0)
-		{
-			// Cleanup previously created vertex index buffers.
-			vmaDestroyBuffer(engine->_allocator, tm.vertexBuffer._buffer, tm.vertexBuffer._allocation);
-			vmaDestroyBuffer(engine->_allocator, tm.indexBuffer._buffer, tm.indexBuffer._allocation);
-		}
-
 		TypeFace& tf = *tm.typeFace;
 
 		std::vector<Vertex> vertices;
@@ -328,6 +321,18 @@ namespace textmesh
 
 			float_t advance = ((float_t)(charInfo->xadvance) / 36.0f);
 			posx += advance;
+		}
+
+		// Don't attempt to generate buffers with size 0
+		// (@NOTE: VK_ERROR_INITIALIZATION_FAILED was given when attempting this.)
+		if (indices.size() == 0)
+			return;
+
+		// Cleanup previously created vertex index buffers.
+		if (tm.indexCount > 0)
+		{
+			vmaDestroyBuffer(engine->_allocator, tm.vertexBuffer._buffer, tm.vertexBuffer._allocation);
+			vmaDestroyBuffer(engine->_allocator, tm.indexBuffer._buffer, tm.indexBuffer._allocation);
 		}
 		tm.indexCount = indices.size();
 
@@ -468,6 +473,9 @@ namespace textmesh
 	{
 		if (bindFont)
 			bindTextFont(cmd, *tm.typeFace);
+
+		if (tm.indexCount == 0)
+			return;  // Don't try to render if there is nothing to render.
 
 		GPUSDFFontPushConstants pc = {
 			.modelMatrix = GLM_MAT4_IDENTITY_INIT,
