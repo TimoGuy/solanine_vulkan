@@ -20,7 +20,38 @@ namespace globalState
     extern std::string playerGUID;
     extern vec3* playerPositionRef;
 
+    enum AncientWeaponItemType
+    {
+        WEAPON,
+        FOOD,
+        TOOL,
+    };
+
+    struct HarvestableMaterial
+    {
+        std::string name;
+        std::string modelName;
+    };
+
+    struct HarvestableMaterialWithQuantity
+    {
+        HarvestableMaterial* material;
+        uint32_t quantity;
+    };
+
+    struct AncientWeaponItem
+    {
+        std::string name;
+        std::string modelName;
+        AncientWeaponItemType type;
+        std::vector<HarvestableMaterialWithQuantity> requiredMaterialsToMaterialize;
+    };
+
+
     void initGlobalState(SceneCamera& sc);
     void launchAsyncWriteTask();  // @NOTE: this is simply for things that are marked saved
     void cleanupGlobalState();
+
+    std::string ancientWeaponItemTypeToString(AncientWeaponItemType awit);
+    AncientWeaponItem* getAncientWeaponItemByIndex(size_t index);
 }

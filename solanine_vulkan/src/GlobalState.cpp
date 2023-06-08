@@ -131,4 +131,44 @@ namespace globalState
 
         // Lol, no cleanup. Thanks Dmitri!
     }
+    
+    std::string ancientWeaponItemTypeToString(AncientWeaponItemType awit)
+    {
+        switch (awit)
+        {
+            case WEAPON: return "weapon";
+            case FOOD:   return "food";
+            case TOOL:   return "tool";
+            default:     return "NO ITEM TYPE TO STRING CONVERSTION AVAILABLE";
+        }
+    }
+
+    std::vector<HarvestableMaterial> allHarvestableMaterials = {
+        HarvestableMaterial{ .name = "Sheet Metal", .modelName = "SheetMetalProp" },
+        HarvestableMaterial{ .name = "TEST Slime", .modelName = "TESTSlime" },
+    };
+
+    std::vector<AncientWeaponItem> allAncientWeaponItems = {
+        AncientWeaponItem{
+            .name = "Wing Blade",
+            .modelName = "WingWeapon",
+            .type = WEAPON,
+            .requiredMaterialsToMaterialize = {
+                { &allHarvestableMaterials[0], 4 }
+            }
+        },
+        AncientWeaponItem{
+            .name = "TEST Slime girl",
+            .modelName = "SlimeGirl",
+            .type = FOOD,
+            .requiredMaterialsToMaterialize = {
+                { &allHarvestableMaterials[1], 69 },
+            }
+        },
+    };
+
+    AncientWeaponItem* getAncientWeaponItemByIndex(size_t index)
+    {
+        return &allAncientWeaponItems[index];
+    }
 }

@@ -4,17 +4,17 @@
 class EntityManager;
 class RenderObjectManager;
 struct Camera;
-struct ScannableWeapon_XData;
+struct ScannableItem_XData;
 
 
-class ScannableWeapon : public Entity
+class ScannableItem : public Entity
 {
 public:
     static const std::string TYPE_NAME;
     std::string getTypeName() { return TYPE_NAME; };
 
-    ScannableWeapon(EntityManager* em, RenderObjectManager* rom, DataSerialized* ds);
-    ~ScannableWeapon();
+    ScannableItem(EntityManager* em, RenderObjectManager* rom, DataSerialized* ds);
+    ~ScannableItem();
 
     void physicsUpdate(const float_t& physicsDeltaTime);
     void update(const float_t& deltaTime);
@@ -28,5 +28,5 @@ public:
     void renderImGui();
 
 private:
-    ScannableWeapon_XData* _data;
+    ScannableItem_XData* _data;
 };
