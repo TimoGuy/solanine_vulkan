@@ -8,6 +8,7 @@
 #include "RenderObject.h"
 #include "EntityManager.h"
 #include "TextMesh.h"
+#include "Textbox.h"
 #include "Camera.h"
 #include "InputManager.h"
 #include "AudioEngine.h"
@@ -174,6 +175,9 @@ Player::~Player()
 
 void Player::physicsUpdate(const float_t& physicsDeltaTime)
 {
+    if (textbox::isProcessingMessage())
+        return;
+
     //
     // Calculate input
     //
@@ -270,6 +274,28 @@ std::string currentText;
 
 void Player::update(const float_t& deltaTime)
 {
+    //
+    // Handle 'E' action
+    //
+    if (interactionUIText != nullptr &&
+        !interactionGUIDPriorityQueue.empty())
+        if (_data->prevIsGrounded && !textbox::isProcessingMessage())
+        {
+            interactionUIText->excludeFromBulkRender = false;
+            if (input::onKeyInteractPress)
+            {
+                DataSerializer ds;
+                ds.dumpString("msg_commit_interaction");
+                DataSerialized dsd = ds.getSerializedData();
+                _em->sendMessage(interactionGUIDPriorityQueue.front().guid, dsd);
+            }
+        }
+        else
+            interactionUIText->excludeFromBulkRender = true;
+
+    if (textbox::isProcessingMessage())
+        return;
+
     _data->inputFlagJump |= input::onKeyJumpPress;
     _data->inputFlagAttack |= input::onLMBPress;
 
@@ -284,20 +310,6 @@ void Player::update(const float_t& deltaTime)
     
     _data->characterRenderObj->animator->setTwitchAngle(_data->attackTwitchAngle);
     _data->attackTwitchAngle = glm_lerp(_data->attackTwitchAngle, 0.0f, std::abs(_data->attackTwitchAngle) * _data->attackTwitchAngleReturnSpeed * 60.0f * deltaTime);
-
-    //
-    // Handle 'E' action
-    //
-    if (!interactionGUIDPriorityQueue.empty())
-    {
-        if (input::onKeyInteractPress)
-        {
-            DataSerializer ds;
-            ds.dumpString("msg_commit_interaction");
-            DataSerialized dsd = ds.getSerializedData();
-            _em->sendMessage(interactionGUIDPriorityQueue.front().guid, dsd);
-        }
-    }
 }
 
 void Player::lateUpdate(const float_t& deltaTime)
