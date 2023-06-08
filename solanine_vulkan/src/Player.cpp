@@ -37,8 +37,6 @@ struct Player_XData
     bool    prevIsGrounded = false;
     vec3    prevGroundNormal = GLM_VEC3_ZERO_INIT;
 
-    textmesh::TextMesh* debugTextMesh;
-
     // Tweak Props
     vec3 position;
     float_t facingDirection = 0.0f;
@@ -152,10 +150,6 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
 
     globalState::playerGUID = getGUID();
     globalState::playerPositionRef = &_data->cpd->basePosition;
-
-    // Debug text
-    _data->debugTextMesh = textmesh::createAndRegisterTextMesh("defaultFont", "Hi I'm a Player");
-    _data->debugTextMesh->scale = 0.5f;
 }
 
 Player::~Player()
@@ -174,8 +168,6 @@ Player::~Player()
     _data->rom->removeModelCallbacks(this);
 
     physengine::destroyCapsule(_data->cpd);
-
-    textmesh::destroyAndUnregisterTextMesh(_data->debugTextMesh);
 
     delete _data;
 }
@@ -267,6 +259,15 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     }
 }
 
+// @TODO: @INCOMPLETE: will need to move the interaction logic into its own type of object, where you can update the interactor position and add/register interaction fields.
+struct GUIDWithVerb
+{
+    std::string guid, actionVerb;
+};
+std::vector<GUIDWithVerb> interactionGUIDPriorityQueue;
+textmesh::TextMesh* interactionUIText;
+std::string currentText;
+
 void Player::update(const float_t& deltaTime)
 {
     _data->inputFlagJump |= input::onKeyJumpPress;
@@ -283,6 +284,20 @@ void Player::update(const float_t& deltaTime)
     
     _data->characterRenderObj->animator->setTwitchAngle(_data->attackTwitchAngle);
     _data->attackTwitchAngle = glm_lerp(_data->attackTwitchAngle, 0.0f, std::abs(_data->attackTwitchAngle) * _data->attackTwitchAngleReturnSpeed * 60.0f * deltaTime);
+
+    //
+    // Handle 'E' action
+    //
+    if (!interactionGUIDPriorityQueue.empty())
+    {
+        if (input::onKeyInteractPress)
+        {
+            DataSerializer ds;
+            ds.dumpString("msg_commit_interaction");
+            DataSerialized dsd = ds.getSerializedData();
+            _em->sendMessage(interactionGUIDPriorityQueue.front().guid, dsd);
+        }
+    }
 }
 
 void Player::lateUpdate(const float_t& deltaTime)
@@ -305,8 +320,6 @@ void Player::lateUpdate(const float_t& deltaTime)
     _data->characterRenderObj->animator->getJointMatrix(_data->weaponAttachmentJointName, attachmentJointMat);
     glm_mat4_mul(_data->characterRenderObj->transformMatrix, attachmentJointMat, _data->weaponRenderObj->transformMatrix);
     glm_mat4_copy(_data->weaponRenderObj->transformMatrix, _data->handleRenderObj->transformMatrix);
-
-    glm_vec3_add(_data->cpd->interpolBasePosition, vec3{ 0.0f, 2.0f, 0.0f }, _data->debugTextMesh->renderPosition);
 }
 
 void Player::dump(DataSerializer& ds)
@@ -322,15 +335,6 @@ void Player::load(DataSerialized& ds)
     ds.loadVec3(_data->position);
     ds.loadFloat(_data->facingDirection);
 }
-
-// @TODO: @INCOMPLETE: will need to move the interaction logic into its own type of object, where you can update the interactor position and add/register interaction fields.
-struct GUIDWithVerb
-{
-    std::string guid, actionVerb;
-};
-std::vector<GUIDWithVerb> interactionGUIDPriorityQueue;
-textmesh::TextMesh* interactionUIText;
-std::string currentText;
 
 void updateInteractionUI()
 {
@@ -382,6 +386,8 @@ bool Player::processMessage(DataSerialized& message)
             });
             updateInteractionUI();
         }
+
+        return true;
     }
     else if (messageType == "msg_remove_interaction_request")
     {
@@ -396,6 +402,8 @@ bool Player::processMessage(DataSerialized& message)
             }
         );
         updateInteractionUI();
+
+        return true;
     }
 
     return false;

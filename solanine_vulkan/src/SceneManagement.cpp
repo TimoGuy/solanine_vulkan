@@ -20,7 +20,7 @@ const std::vector<std::string> ENTITY_TYPE_NAMES = {
     ":player",
     ":notetaker",
     ":voxelfield",
-    ":scannableweapon",
+    ":scannableitem",
 };
 const std::string Player::TYPE_NAME           = ENTITY_TYPE_NAMES[0];
 const std::string NoteTaker::TYPE_NAME        = ENTITY_TYPE_NAMES[1];

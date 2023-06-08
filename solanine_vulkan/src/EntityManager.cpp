@@ -134,7 +134,11 @@ bool EntityManager::sendMessage(const std::string& guid, DataSerialized& message
 {
 	if (Entity* ent = getEntityViaGUID(guid))
 	{
-		return ent->processMessage(message);
+		bool ret = ent->processMessage(message);
+		if (!ret)
+			std::cerr << "[ENTITY MGR SEND MESSAGE]" << std::endl
+				<< "WARNING: message was sent to entity with guid " << guid << ", however, the message processing returned false." << std::endl;
+		return ret;
 	}
 
 	std::string s;

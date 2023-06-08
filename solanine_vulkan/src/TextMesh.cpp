@@ -288,8 +288,19 @@ namespace textmesh
 		float_t posx = 0.0f;
 		float_t posy = 0.0f;
 
+		uint32_t numLines = 1;
+		float_t width = 0.0f;
+
 		for (uint32_t i = 0; i < text.size(); i++)
 		{
+			if (text[i] == '\n')
+			{
+				// Newline (align left)
+				numLines++;
+				posx = 0.0f;
+				continue;
+			}
+
 			const BMChar* charInfo = &tf.fontChars[(int32_t)text[i]];
 
 			float_t charw = ((float_t)(charInfo->width) / 36.0f);
@@ -305,7 +316,7 @@ namespace textmesh
 			float_t xo = charInfo->xoffset / 36.0f;
 			float_t yo = charInfo->yoffset / 36.0f;
 
-			posy = yo;
+			posy = yo + (numLines - 1) * 1.0f;
 
 			vertices.push_back({ { posx + dimx + xo,  -posy - dimy, 0.0f }, { ue, te } });
 			vertices.push_back({ { posx + xo,         -posy - dimy, 0.0f }, { us, te } });
@@ -321,6 +332,7 @@ namespace textmesh
 
 			float_t advance = ((float_t)(charInfo->xadvance) / 36.0f);
 			posx += advance;
+			width = std::max(width, posx);
 		}
 
 		// Don't attempt to generate buffers with size 0
@@ -339,8 +351,8 @@ namespace textmesh
 		// Center
 		for (auto& v : vertices)
 		{
-			v.pos[0] -= posx / 2.0f;
-			v.pos[1] += 0.5f;
+			v.pos[0] -= width / 2.0f;
+			v.pos[1] += (float_t)numLines * 0.5f;
 		}
 
 		// Generate host accessible buffers for the text vertices and indices and upload the data

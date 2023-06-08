@@ -6,6 +6,7 @@
 #include "EntityManager.h"
 #include "DataSerialization.h"
 #include "GlobalState.h"
+#include "Textbox.h"
 #include "imgui/imgui.h"
 
 
@@ -14,6 +15,10 @@ struct ScannableWeapon_XData
     RenderObjectManager* rom;
     RenderObject* renderObj;
     vec3 position = GLM_VEC3_ZERO_INIT;
+    std::string itemModel = "WingWeapon";
+    std::string itemName = "Wing Blade";
+    std::string itemType = "weapon";
+
     float_t interactionRadius = 5.0f;
     bool prevIsInteractible = false;  // Whether the player position is within the interaction field.
 };
@@ -30,7 +35,7 @@ ScannableWeapon::ScannableWeapon(EntityManager* em, RenderObjectManager* rom, Da
     if (ds)
         load(*ds);
 
-    vkglTF::Model* weaponModel = _data->rom->getModel("WingWeapon", this, []() {});
+    vkglTF::Model* weaponModel = _data->rom->getModel(_data->itemModel, this, []() {});
     _data->renderObj =
         _data->rom->registerRenderObject({
             .model = weaponModel,
@@ -91,16 +96,48 @@ void ScannableWeapon::dump(DataSerializer& ds)
 {
     Entity::dump(ds);
     ds.dumpVec3(_data->position);
+    ds.dumpString(_data->itemModel);
+    ds.dumpString(_data->itemName);
+    ds.dumpString(_data->itemType);
 }
 
 void ScannableWeapon::load(DataSerialized& ds)
 {
     Entity::load(ds);
     ds.loadVec3(_data->position);
+    ds.loadString(_data->itemModel);
+    ds.loadString(_data->itemName);
+    ds.loadString(_data->itemType);
 }
 
 bool ScannableWeapon::processMessage(DataSerialized& message)
 {
+    std::string messageType;
+    message.loadString(messageType);
+
+    if (messageType == "msg_commit_interaction")
+    {
+        textbox::sendTextboxMessage({
+            .texts = {
+                "Item scanned.",
+                "You now have the " + _data->itemType + ":\n\"" + _data->itemName + "\".",
+                "Press 'LMB'\nto materialize and use.",
+            },
+            .useEndingQuery = false,
+        });
+
+        DataSerializer msg;
+        msg.dumpString("msg_add_item_to_ancient_weapon");
+        msg.dumpString(_data->itemName);
+        msg.dumpString(_data->itemType);
+        msg.dumpFloat(0);   // @TODO: this is supposed to be the position in "memory" of the ancient weapon that the item starts at.
+        msg.dumpFloat(10);  //        This... is the size of "memory" this item takes up.
+        DataSerialized ds = msg.getSerializedData();
+        _em->sendMessage(globalState::playerGUID, ds);
+
+        return true;
+    }
+
     return false;
 }
 
