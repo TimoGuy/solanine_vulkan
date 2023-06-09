@@ -27,7 +27,7 @@ namespace globalState
         TOOL,
     };
 
-    struct HarvestableMaterial
+    struct HarvestableItemOption
     {
         std::string name;
         std::string modelName;
@@ -35,11 +35,11 @@ namespace globalState
 
     struct HarvestableMaterialWithQuantity
     {
-        HarvestableMaterial* material;
+        HarvestableItemOption* material;
         uint32_t quantity;
     };
 
-    struct AncientWeaponItem
+    struct ScannableItemOption
     {
         std::string name;
         std::string modelName;
@@ -52,6 +52,14 @@ namespace globalState
     void launchAsyncWriteTask();  // @NOTE: this is simply for things that are marked saved
     void cleanupGlobalState();
 
+    HarvestableItemOption* getHarvestableItemByIndex(size_t index);
+    uint16_t getInventoryQtyOfHarvestableItemByIndex(size_t harvestableItemId);
+    void changeInventoryItemQtyByIndex(size_t harvestableItemId, int16_t changeInQty);
+    size_t getNumHarvestableItemIds();
+
     std::string ancientWeaponItemTypeToString(AncientWeaponItemType awit);
-    AncientWeaponItem* getAncientWeaponItemByIndex(size_t index);
+    ScannableItemOption* getAncientWeaponItemByIndex(size_t index);
+    bool getCanMaterializeScannableItemByIndex(size_t scannableItemId);
+    void flagScannableItemAsCanMaterializeByIndex(size_t scannableItemId, bool flag);
+    size_t getNumScannableItemIds();
 }

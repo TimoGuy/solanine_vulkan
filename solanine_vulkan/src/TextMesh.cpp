@@ -343,6 +343,7 @@ namespace textmesh
 		// Cleanup previously created vertex index buffers.
 		if (tm.indexCount > 0)
 		{
+			vkDeviceWaitIdle(engine->_device);
 			vmaDestroyBuffer(engine->_allocator, tm.vertexBuffer._buffer, tm.vertexBuffer._allocation);
 			vmaDestroyBuffer(engine->_allocator, tm.indexBuffer._buffer, tm.indexBuffer._allocation);
 		}
@@ -441,6 +442,7 @@ namespace textmesh
 
 	void destroyAndUnregisterTextMesh(TextMesh* tm)
 	{
+		vkDeviceWaitIdle(engine->_device);
 		std::erase_if(textmeshes, [&](TextMesh& tml) {
 			if (&tml == tm)
 			{

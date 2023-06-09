@@ -152,6 +152,7 @@ copy $(SolutionDir)libs\cglm\cglm.dll $(OutDirfullPath)cglm.dll</Command>
     <ClInclude Include="src\EntityManager.h" />
     <ClInclude Include="src\GenerateGUID.h" />
     <ClInclude Include="src\GlobalState.h" />
+    <ClInclude Include="src\HarvestableItem.h" />
     <ClInclude Include="src\imgui\imgui_stdlib.h" />
     <ClInclude Include="src\ImportGLM.h" />
     <ClInclude Include="src\NoteTaker.h" />
@@ -202,6 +203,7 @@ copy $(SolutionDir)libs\cglm\cglm.dll $(OutDirfullPath)cglm.dll</Command>
     <ClCompile Include="src\EntityManager.cpp" />
     <ClCompile Include="src\GenerateGUID.cpp" />
     <ClCompile Include="src\GlobalState.cpp" />
+    <ClCompile Include="src\HarvestableItem.cpp" />
     <ClCompile Include="src\imgui\imgui.cpp" />
     <ClCompile Include="src\imgui\ImGuizmo.cpp" />
     <ClCompile Include="src\imgui\imgui_demo.cpp" />

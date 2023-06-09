@@ -22,6 +22,37 @@ namespace globalState
 
     SceneCamera* sceneCameraRef = nullptr;
 
+    // Harvestable items (e.g. materials, raw ores, etc.)
+    std::vector<HarvestableItemOption> allHarvestableItems = {
+        HarvestableItemOption{.name = "sheet metal", .modelName = "Box" },
+        HarvestableItemOption{.name = "TEST slime", .modelName = "Box" },
+    };
+
+    std::vector<uint16_t> harvestableItemQuantities;  // This is the inventory data for collectable/ephemeral items.
+
+    // Scannable items
+    std::vector<ScannableItemOption> allAncientWeaponItems = {
+        ScannableItemOption{
+            .name = "Wing Blade",
+            .modelName = "WingWeapon",
+            .type = WEAPON,
+            .requiredMaterialsToMaterialize = {
+                { &allHarvestableItems[0], 4 }
+            }
+        },
+        ScannableItemOption{
+            .name = "TEST Slime girl",
+            .modelName = "SlimeGirl",
+            .type = FOOD,
+            .requiredMaterialsToMaterialize = {
+                { &allHarvestableItems[1], 69 },
+            }
+        },
+    };
+
+    std::vector<bool> scannableItemCanMaterializeFlags;  // This is the list of materializable items.  @FUTURE: make this into a more sophisticated data structure for doing the "memory" system of aligning the data and overwriting previously written data.
+
+
     //
     // Global state writing brain
     //
@@ -112,6 +143,10 @@ namespace globalState
     {
         sceneCameraRef = &sc;
 
+        // Initial values for inventory and list of materializable items.
+        harvestableItemQuantities.resize(allHarvestableItems.size(), 0);
+        scannableItemCanMaterializeFlags.resize(allAncientWeaponItems.size(), false);
+
         loadGlobalState();
 
         tfTaskAsyncWriting.emplace([&]() {
@@ -131,6 +166,27 @@ namespace globalState
 
         // Lol, no cleanup. Thanks Dmitri!
     }
+
+    HarvestableItemOption* getHarvestableItemByIndex(size_t index)
+    {
+        return &allHarvestableItems[index];
+    }
+
+    uint16_t getInventoryQtyOfHarvestableItemByIndex(size_t harvestableItemId)
+    {
+        return harvestableItemQuantities[harvestableItemId];
+    }
+
+    void changeInventoryItemQtyByIndex(size_t harvestableItemId, int16_t changeInQty)
+    {
+        // Clamp all item quantities in the range [0-999]
+        harvestableItemQuantities[harvestableItemId] = (uint16_t)std::max(0, std::min(999, (int32_t)harvestableItemQuantities[harvestableItemId] + changeInQty));
+    }
+
+    size_t getNumHarvestableItemIds()
+    {
+        return allHarvestableItems.size();
+    }
     
     std::string ancientWeaponItemTypeToString(AncientWeaponItemType awit)
     {
@@ -143,32 +199,23 @@ namespace globalState
         }
     }
 
-    std::vector<HarvestableMaterial> allHarvestableMaterials = {
-        HarvestableMaterial{ .name = "Sheet Metal", .modelName = "SheetMetalProp" },
-        HarvestableMaterial{ .name = "TEST Slime", .modelName = "TESTSlime" },
-    };
-
-    std::vector<AncientWeaponItem> allAncientWeaponItems = {
-        AncientWeaponItem{
-            .name = "Wing Blade",
-            .modelName = "WingWeapon",
-            .type = WEAPON,
-            .requiredMaterialsToMaterialize = {
-                { &allHarvestableMaterials[0], 4 }
-            }
-        },
-        AncientWeaponItem{
-            .name = "TEST Slime girl",
-            .modelName = "SlimeGirl",
-            .type = FOOD,
-            .requiredMaterialsToMaterialize = {
-                { &allHarvestableMaterials[1], 69 },
-            }
-        },
-    };
-
-    AncientWeaponItem* getAncientWeaponItemByIndex(size_t index)
+    ScannableItemOption* getAncientWeaponItemByIndex(size_t index)
     {
         return &allAncientWeaponItems[index];
+    }
+
+    bool getCanMaterializeScannableItemByIndex(size_t scannableItemId)
+    {
+        return scannableItemCanMaterializeFlags[scannableItemId];
+    }
+
+    void flagScannableItemAsCanMaterializeByIndex(size_t scannableItemId, bool flag)
+    {
+        scannableItemCanMaterializeFlags[scannableItemId] = flag;
+    }
+
+    size_t getNumScannableItemIds()
+    {
+        return allAncientWeaponItems.size();
     }
 }
