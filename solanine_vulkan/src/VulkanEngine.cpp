@@ -3924,21 +3924,11 @@ void VulkanEngine::submitSelectedRenderObjectId(int32_t poolIndex)
 		<< "Selected object " << poolIndex << std::endl;
 }
 
-void VulkanEngine::renderImGui(float_t deltaTime)
+void VulkanEngine::renderImGuiContent(float_t deltaTime)
 {
-	ImGui_ImplVulkan_NewFrame();
-	ImGui_ImplSDL2_NewFrame(_window);
-	ImGui::NewFrame();
-
-	ImGuizmo::SetOrthographic(false);
-	ImGuizmo::AllowAxisFlip(false);
-	ImGuizmo::BeginFrame();
-	ImGuiIO& io = ImGui::GetIO();
-	ImGuizmo::SetRect(0, 0, io.DisplaySize.x, io.DisplaySize.y);
-
 	static bool showDemoWindows = false;
-	if (input::onKeyF1Press)
-		showDemoWindows = !showDemoWindows;
+	// if (input::onKeyF1Press)  // @DEBUG: enable this to allow toggling showing demo windows.
+	// 	showDemoWindows = !showDemoWindows;
 	if (showDemoWindows)
 	{
 		ImGui::ShowDemoWindow();
@@ -4415,7 +4405,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 
 			bool hasMouseButtonDown = false;
 			for (size_t i = 0; i < 5; i++)
-				hasMouseButtonDown |= io.MouseDown[i];    // @NOTE: this covers cases of gizmo operation changing while left clicking on the gizmo (or anywhere else) or flying around with right click.  -Timo
+				hasMouseButtonDown |= ImGui::GetIO().MouseDown[i];    // @NOTE: this covers cases of gizmo operation changing while left clicking on the gizmo (or anywhere else) or flying around with right click.  -Timo
 			if (!hasMouseButtonDown && allowKeyboardShortcuts)
 			{
 				static bool qKeyLock = false;
@@ -4513,11 +4503,31 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 		ImGui::End();
 	}
 
-	ImGui::Render();
-
 	//
 	// Scroll the left pane
 	//
 	if (ImGui::GetIO().MousePos.x <= maxWindowWidth)
 		windowOffsetY += input::mouseScrollDelta[1] * scrollSpeed;
+}
+
+void VulkanEngine::renderImGui(float_t deltaTime)
+{
+	ImGui_ImplVulkan_NewFrame();
+	ImGui_ImplSDL2_NewFrame(_window);
+	ImGui::NewFrame();
+
+	ImGuizmo::SetOrthographic(false);
+	ImGuizmo::AllowAxisFlip(false);
+	ImGuizmo::BeginFrame();
+	ImGuiIO& io = ImGui::GetIO();
+	ImGuizmo::SetRect(0, 0, io.DisplaySize.x, io.DisplaySize.y);
+
+	static bool showImguiRender = true;
+	if (input::onKeyF1Press)
+		showImguiRender = !showImguiRender;
+
+	if (showImguiRender)
+		renderImGuiContent(deltaTime);
+
+	ImGui::Render();
 }

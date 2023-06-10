@@ -371,6 +371,7 @@ private:
 		VkDescriptorSet textureLayerBuilder;
 		VkDescriptorSet textureLayerCollision;
 	} _imguiData;
+	void renderImGuiContent(float_t deltaTime);
 	void renderImGui(float_t deltaTime);
 #endif
 
