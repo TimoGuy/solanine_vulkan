@@ -3138,7 +3138,7 @@ void VulkanEngine::generatePBRCubemaps()
 						imageMemoryBarrier.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
 						vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, nullptr, 0, nullptr, 1, &imageMemoryBarrier);
 					}
-					});
+				});
 			}
 		}
 
@@ -3153,7 +3153,7 @@ void VulkanEngine::generatePBRCubemaps()
 			imageMemoryBarrier.dstAccessMask = VK_ACCESS_HOST_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
 			imageMemoryBarrier.subresourceRange = subresourceRange;
 			vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, nullptr, 0, nullptr, 1, &imageMemoryBarrier);
-			});
+		});
 
 		//
 		// Cleanup
@@ -3171,7 +3171,7 @@ void VulkanEngine::generatePBRCubemaps()
 			vkDestroySampler(_device, cubemapTexture.sampler, nullptr);
 			vkDestroyImageView(_device, cubemapTexture.imageView, nullptr);
 			vmaDestroyImage(_allocator, cubemapTexture.image._image, cubemapTexture.image._allocation);
-			});
+		});
 
 		// Apply the created texture/sampler to global scene
 		std::string cubemapTypeName = "";
