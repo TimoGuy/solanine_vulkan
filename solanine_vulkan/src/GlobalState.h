@@ -33,9 +33,9 @@ namespace globalState
         std::string modelName;
     };
 
-    struct HarvestableMaterialWithQuantity
+    struct HarvestableItemWithQuantity
     {
-        HarvestableItemOption* material;
+        size_t harvestableItemId;
         uint32_t quantity;
     };
 
@@ -44,7 +44,7 @@ namespace globalState
         std::string name;
         std::string modelName;
         AncientWeaponItemType type;
-        std::vector<HarvestableMaterialWithQuantity> requiredMaterialsToMaterialize;
+        std::vector<HarvestableItemWithQuantity> requiredMaterialsToMaterialize;
     };
 
 
@@ -62,4 +62,6 @@ namespace globalState
     bool getCanMaterializeScannableItemByIndex(size_t scannableItemId);
     void flagScannableItemAsCanMaterializeByIndex(size_t scannableItemId, bool flag);
     size_t getNumScannableItemIds();
+    size_t getSelectedScannableItemId();
+    void setSelectedScannableItemId(size_t scannableItemId);
 }

@@ -37,7 +37,7 @@ namespace globalState
             .modelName = "WingWeapon",
             .type = WEAPON,
             .requiredMaterialsToMaterialize = {
-                { &allHarvestableItems[0], 4 }
+                { .harvestableItemId = 0, .quantity = 1 }
             }
         },
         ScannableItemOption{
@@ -45,12 +45,13 @@ namespace globalState
             .modelName = "SlimeGirl",
             .type = FOOD,
             .requiredMaterialsToMaterialize = {
-                { &allHarvestableItems[1], 69 },
+                { .harvestableItemId = 1, .quantity = 69 },
             }
         },
     };
 
     std::vector<bool> scannableItemCanMaterializeFlags;  // This is the list of materializable items.  @FUTURE: make this into a more sophisticated data structure for doing the "memory" system of aligning the data and overwriting previously written data.
+    size_t selectedScannableItemId = 0;                  // This is the item selected to be materialized if LMB is pressed.
 
 
     //
@@ -217,5 +218,15 @@ namespace globalState
     size_t getNumScannableItemIds()
     {
         return allAncientWeaponItems.size();
+    }
+
+    size_t getSelectedScannableItemId()
+    {
+        return selectedScannableItemId;
+    }
+
+    void setSelectedScannableItemId(size_t scannableItemId)
+    {
+        selectedScannableItemId = scannableItemId;
     }
 }

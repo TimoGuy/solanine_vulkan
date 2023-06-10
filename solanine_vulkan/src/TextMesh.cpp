@@ -340,10 +340,11 @@ namespace textmesh
 		if (indices.size() == 0)
 			return;
 
+		vkDeviceWaitIdle(engine->_device);  // @FIXME: This is an issue when accessed by different threads
+
 		// Cleanup previously created vertex index buffers.
 		if (tm.indexCount > 0)
 		{
-			vkDeviceWaitIdle(engine->_device);
 			vmaDestroyBuffer(engine->_allocator, tm.vertexBuffer._buffer, tm.vertexBuffer._allocation);
 			vmaDestroyBuffer(engine->_allocator, tm.indexBuffer._buffer, tm.indexBuffer._allocation);
 		}

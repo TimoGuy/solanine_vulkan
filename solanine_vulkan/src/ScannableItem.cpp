@@ -134,7 +134,7 @@ bool ScannableItem::processMessage(DataSerialized& message)
 
         std::string materializationReqLine = "To materialize:";
         for (auto req : awi->requiredMaterialsToMaterialize)
-            materializationReqLine += "\n" + req.material->name + " (x" + std::to_string(req.quantity) + ")";
+            materializationReqLine += "\n" + globalState::getHarvestableItemByIndex(req.harvestableItemId)->name + " (x" + std::to_string(req.quantity) + ")";
 
         textbox::sendTextboxMessage({
             .texts = {
@@ -148,6 +148,12 @@ bool ScannableItem::processMessage(DataSerialized& message)
 
         // Flag this item as materializable in ancient weapon.  @FUTURE: have a "limited memory" gameplay system, where you have to organize the memory that the new item takes up.
         globalState::flagScannableItemAsCanMaterializeByIndex(_data->scannableItemId, true);
+        globalState::setSelectedScannableItemId(_data->scannableItemId);
+
+        DataSerializer msg;
+        msg.dumpString("msg_notify_scannable_item_added");
+        DataSerialized ds = msg.getSerializedData();
+        _em->sendMessage(globalState::playerGUID, ds);
 
         return true;
     }

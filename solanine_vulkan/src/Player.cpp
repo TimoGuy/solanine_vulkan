@@ -29,6 +29,10 @@ struct Player_XData
 
     physengine::CapsulePhysicsData* cpd;
 
+    textmesh::TextMesh* uiMaterializeItem;  // @NOTE: This is a debug ui thing. In the real thing, I'd really want there to be in the bottom right the ancient weapon handle pointing vertically with the materializing item in a wireframe with a mysterious blue hue at the end of the handle, and when the item does get materialized, it becomes a rendered version.
+    std::string currentUIMaterializeItemText = "";
+    globalState::ScannableItemOption* materializedItem = nullptr;
+
     vec3 worldSpaceInput = GLM_VEC3_ZERO_INIT;
     float_t gravityForce = 0.0f;
     bool    inputFlagJump = false;
@@ -43,6 +47,93 @@ struct Player_XData
     float_t facingDirection = 0.0f;
     float_t modelSize = 0.3f;
 };
+
+std::string getUIMaterializeItemText(Player_XData* d)
+{
+    if (d->materializedItem == nullptr)
+    {
+        std::string text = "No item to materialize";
+        size_t sii = globalState::getSelectedScannableItemId();
+        if (globalState::getCanMaterializeScannableItemByIndex(sii))
+            text = "Press LMB to materialize " + globalState::getAncientWeaponItemByIndex(sii)->name;
+        return text;
+    }
+    else
+    {
+        std::string text = "Press LMB to use " + d->materializedItem->name;
+        return text;
+    }
+}
+
+void processAttack(Player_XData* d)
+{
+    if (d->materializedItem == nullptr)
+    {
+        // Attempt to materialize item.
+        size_t sii = globalState::getSelectedScannableItemId();
+        if (globalState::getCanMaterializeScannableItemByIndex(sii))
+        {
+            // Check if have enough materials
+            globalState::ScannableItemOption* sio = globalState::getAncientWeaponItemByIndex(sii);
+            bool canMaterialize = true;
+            for (globalState::HarvestableItemWithQuantity& hiwq : sio->requiredMaterialsToMaterialize)
+                if (globalState::getInventoryQtyOfHarvestableItemByIndex(hiwq.harvestableItemId) < hiwq.quantity)
+                {
+                    canMaterialize = false;
+                    break;
+                }
+            
+            // Materialize item!
+            if (canMaterialize)
+            {
+                for (globalState::HarvestableItemWithQuantity& hiwq : sio->requiredMaterialsToMaterialize)
+                    globalState::changeInventoryItemQtyByIndex(hiwq.harvestableItemId, hiwq.quantity);  // Remove from inventory the materials needed.
+                d->materializedItem = sio;
+            }
+            else
+            {
+                debug::pushDebugMessage({
+                    .message = "Not enough materials for materialization.",
+                });
+            }
+        }
+        else
+        {
+            debug::pushDebugMessage({
+                .message = "No item is selected to materialize.",
+            });
+        }
+    }
+    else
+    {
+        // Attempt to use item.
+        switch (d->materializedItem->type)
+        {
+            case globalState::WEAPON:
+            {
+
+                // Attack rhythm failed. Twitch and take away stamina.
+                d->attackTwitchAngle = (float_t)std::rand() / (RAND_MAX / 2.0f) > 0.5f ? glm_rad(2.0f) : glm_rad(-2.0f);
+            } break;
+
+            case globalState::FOOD:
+            {
+
+        // Attempt to eat.
+            } break;
+
+            case globalState::TOOL:
+            {
+
+        // Attempt to use tool.
+        // @NOTE: in the future may combine weapon and tool classifications as far as this branching goes.
+            } break;
+        }
+    }
+
+    // Update ui text
+    textmesh::regenerateTextMeshMesh(d->uiMaterializeItem, getUIMaterializeItemText(d));
+}
 
 
 Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSerialized* ds) : Entity(em, ds), _data(new Player_XData())
@@ -151,10 +242,17 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
 
     globalState::playerGUID = getGUID();
     globalState::playerPositionRef = &_data->cpd->basePosition;
+
+    _data->uiMaterializeItem = textmesh::createAndRegisterTextMesh("defaultFont", getUIMaterializeItemText(_data));
+    _data->uiMaterializeItem->isPositionScreenspace = true;
+    glm_vec3_copy(vec3{ 0.0f, -20.0f, 0.0f }, _data->uiMaterializeItem->renderPosition);
+    _data->uiMaterializeItem->scale = 25.0f;
 }
 
 Player::~Player()
 {
+    textmesh::destroyAndUnregisterTextMesh(_data->uiMaterializeItem);
+
     if (globalState::playerGUID == getGUID() ||
         globalState::playerPositionRef == &_data->cpd->basePosition)
     {
@@ -176,7 +274,12 @@ Player::~Player()
 void Player::physicsUpdate(const float_t& physicsDeltaTime)
 {
     if (textbox::isProcessingMessage())
+    {
+        _data->uiMaterializeItem->excludeFromBulkRender = true;
         return;
+    }
+    else
+        _data->uiMaterializeItem->excludeFromBulkRender = false;
 
     //
     // Calculate input
@@ -247,23 +350,21 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     glm_vec3_copy(_data->cpd->basePosition, _data->position);
 
     _data->prevIsGrounded = (_data->prevGroundNormal[1] >= 0.707106781187);  // >=45 degrees
-    static size_t jt = 0;
     if (_data->prevIsGrounded)
         _data->gravityForce = 0.0f;
-    else
-        std::cout << "GROUNDED: " << (jt++) << std::endl;
 
     //
     // Update Attack
     //
     if (_data->inputFlagAttack)
     {
-        _data->attackTwitchAngle = (float_t)std::rand() / (RAND_MAX / 2.0f) > 0.5f ? glm_rad(2.0f) : glm_rad(-2.0f);
+        processAttack(_data);
         _data->inputFlagAttack = false;
     }
 }
 
 // @TODO: @INCOMPLETE: will need to move the interaction logic into its own type of object, where you can update the interactor position and add/register interaction fields.
+// @COMMENT: hey, i think this should be attached to the player, not some global logic. Using the messaging system to add interaction guids makes sense to me.
 struct GUIDWithVerb
 {
     std::string guid, actionVerb;
@@ -308,6 +409,7 @@ void Player::update(const float_t& deltaTime)
         false
     );
     
+    // Update twitch angle
     _data->characterRenderObj->animator->setTwitchAngle(_data->attackTwitchAngle);
     _data->attackTwitchAngle = glm_lerp(_data->attackTwitchAngle, 0.0f, std::abs(_data->attackTwitchAngle) * _data->attackTwitchAngleReturnSpeed * 60.0f * deltaTime);
 }
@@ -415,6 +517,11 @@ bool Player::processMessage(DataSerialized& message)
         );
         updateInteractionUI();
 
+        return true;
+    }
+    else if (messageType == "msg_notify_scannable_item_added")
+    {
+        textmesh::regenerateTextMeshMesh(_data->uiMaterializeItem, getUIMaterializeItemText(_data));
         return true;
     }
 
