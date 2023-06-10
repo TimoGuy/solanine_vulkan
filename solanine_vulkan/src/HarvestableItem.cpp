@@ -4,6 +4,7 @@
 #include "VkglTFModel.h"
 #include "RenderObject.h"
 #include "EntityManager.h"
+#include "AudioEngine.h"
 #include "DataSerialization.h"
 #include "GlobalState.h"
 #include "Textbox.h"
@@ -146,6 +147,8 @@ bool HarvestableItem::processMessage(DataSerialized& message)
         debug::pushDebugMessage({
             .message = "Harvested item " + hitem->name + ".",  // @TODO: have an in-game harvesting notification system. (Sim. to botw)
             });
+
+        AudioEngine::getInstance().playSound("res/sfx/wip_item_get.wav");
 
         // Add item in inventory and destroy myself.
         globalState::changeInventoryItemQtyByIndex(_data->harvestableItemId, 1);

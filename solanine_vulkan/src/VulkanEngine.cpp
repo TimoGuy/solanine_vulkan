@@ -3924,7 +3924,7 @@ void VulkanEngine::submitSelectedRenderObjectId(int32_t poolIndex)
 		<< "Selected object " << poolIndex << std::endl;
 }
 
-void VulkanEngine::renderImGuiContent(float_t deltaTime)
+void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 {
 	static bool showDemoWindows = false;
 	// if (input::onKeyF1Press)  // @DEBUG: enable this to allow toggling showing demo windows.
@@ -3938,7 +3938,7 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime)
 	bool allowKeyboardShortcuts =
 		_camera->getCameraMode() == Camera::_cameraMode_freeCamMode &&
 		!_camera->freeCamMode.enabled &&
-		!ImGui::GetIO().WantTextInput;
+		!io.WantTextInput;
 
 	//
 	// Debug Messages window
@@ -4405,7 +4405,7 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime)
 
 			bool hasMouseButtonDown = false;
 			for (size_t i = 0; i < 5; i++)
-				hasMouseButtonDown |= ImGui::GetIO().MouseDown[i];    // @NOTE: this covers cases of gizmo operation changing while left clicking on the gizmo (or anywhere else) or flying around with right click.  -Timo
+				hasMouseButtonDown |= io.MouseDown[i];    // @NOTE: this covers cases of gizmo operation changing while left clicking on the gizmo (or anywhere else) or flying around with right click.  -Timo
 			if (!hasMouseButtonDown && allowKeyboardShortcuts)
 			{
 				static bool qKeyLock = false;
@@ -4506,7 +4506,7 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime)
 	//
 	// Scroll the left pane
 	//
-	if (ImGui::GetIO().MousePos.x <= maxWindowWidth)
+	if (io.MousePos.x <= maxWindowWidth)
 		windowOffsetY += input::mouseScrollDelta[1] * scrollSpeed;
 }
 
@@ -4527,7 +4527,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 		showImguiRender = !showImguiRender;
 
 	if (showImguiRender)
-		renderImGuiContent(deltaTime);
+		renderImGuiContent(deltaTime, io);
 
 	ImGui::Render();
 }

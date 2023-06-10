@@ -3,6 +3,7 @@
 #include "TextMesh.h"
 #include "InputManager.h"
 #include "VulkanEngine.h"
+#include "AudioEngine.h"
 #include "VkPipelineBuilderUtil.h"
 #include "VkInitializers.h"
 
@@ -259,11 +260,13 @@ namespace textbox
             // Destroy textbox mesh if no more textbox messages
             if (messageQueue.empty())
             {
+                AudioEngine::getInstance().playSound("res/sfx/wip_Sys_Talk_End.wav");
                 textmesh::destroyAndUnregisterTextMesh(myText);
                 myText = nullptr;
             }
             else
             {
+                AudioEngine::getInstance().playSound("res/sfx/wip_Sys_Talk_Next.wav");
                 textmesh::regenerateTextMeshMesh(myText, messageQueue.front().texts[currentTextIndex]);
             }
         }
@@ -289,6 +292,7 @@ namespace textbox
     {
         if (myText == nullptr)
         {
+            AudioEngine::getInstance().playSound("res/sfx/wip_Sys_Do_Start.wav");
             currentTextIndex = 0;
             myText = textmesh::createAndRegisterTextMesh("defaultFont", message.texts[currentTextIndex]);
             myText->excludeFromBulkRender = true;

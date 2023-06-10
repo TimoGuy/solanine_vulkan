@@ -13,6 +13,7 @@ class Entity;
 class EntityManager;
 struct Camera;
 namespace vkglTF { struct Model; }
+struct ImGuiIO;
 
 struct CascadeIndexPushConstBlock
 {
@@ -371,7 +372,7 @@ private:
 		VkDescriptorSet textureLayerBuilder;
 		VkDescriptorSet textureLayerCollision;
 	} _imguiData;
-	void renderImGuiContent(float_t deltaTime);
+	void renderImGuiContent(float_t deltaTime, ImGuiIO& io);
 	void renderImGui(float_t deltaTime);
 #endif
 
