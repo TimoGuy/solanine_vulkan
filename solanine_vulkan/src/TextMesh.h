@@ -40,12 +40,18 @@ namespace textmesh
 		vec2 textureSize;
 	};
 
+	enum HorizontalAlignment
+	{
+		LEFT, CENTER, RIGHT,
+	};
+
 	struct TextMesh
 	{
 		TypeFace* typeFace;
 		AllocatedBuffer vertexBuffer;
 		AllocatedBuffer indexBuffer;
 		uint32_t indexCount = 0;
+		HorizontalAlignment halign = CENTER;
 		bool excludeFromBulkRender = false;
 		vec3 renderPosition = GLM_VEC3_ZERO_INIT;
 		bool isPositionScreenspace = false;
@@ -71,10 +77,12 @@ namespace textmesh
 	void initPipeline(VkViewport& screenspaceViewport, VkRect2D& screenspaceScissor);
 
 	void loadFontSDF(std::string sdfTextureFilePath, std::string fontFilePath, std::string fontName);
-	TextMesh* createAndRegisterTextMesh(std::string fontName, std::string text);
+	TextMesh* createAndRegisterTextMesh(std::string fontName, HorizontalAlignment halign, std::string text);
 	void destroyAndUnregisterTextMesh(TextMesh* tm);
 	void regenerateTextMeshMesh(TextMesh* textmesh, std::string text);
 	void uploadUICameraDataToGPU();
 	void renderTextMesh(VkCommandBuffer cmd, TextMesh& tm, bool bindFont);
 	void renderTextMeshesBulk(VkCommandBuffer cmd);
+
+	void INTERNALflushChangeQueue();
 }

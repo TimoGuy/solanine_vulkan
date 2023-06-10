@@ -5,6 +5,7 @@
 #include <array>
 #include <vector>
 #include <algorithm>
+#include <mutex>
 #include <assert.h>
 #include "VulkanEngine.h"  // @TODO: work to just include the forward declaration of the createBuffer function
 #include "VkTextures.h"
@@ -33,6 +34,15 @@ namespace textmesh
 
 	std::unordered_map<std::string, TypeFace> fontNameToTypeFace;
 	std::vector<TextMesh> textmeshes;
+
+	struct ChangeRequest
+	{
+		TextMesh* tm;
+		std::string newText;
+	};
+	std::vector<ChangeRequest> changeRequests;
+	std::vector<TextMesh*> deleteRequests;
+	std::mutex acrRequestsMutex;
 
 
 	void init(VulkanEngine* engineRef)
@@ -340,8 +350,6 @@ namespace textmesh
 		if (indices.size() == 0)
 			return;
 
-		vkDeviceWaitIdle(engine->_device);  // @FIXME: This is an issue when accessed by different threads
-
 		// Cleanup previously created vertex index buffers.
 		if (tm.indexCount > 0)
 		{
@@ -353,7 +361,20 @@ namespace textmesh
 		// Center
 		for (auto& v : vertices)
 		{
-			v.pos[0] -= width / 2.0f;
+			switch(tm.halign)
+			{
+				case LEFT:
+					// Do nothing. It's already left-aligned by default.
+					break;
+					
+				case CENTER:
+					v.pos[0] -= width / 2.0f;
+					break;
+
+				case RIGHT:
+					v.pos[0] -= width;
+					break;
+			}
 			v.pos[1] += (float_t)numLines * 0.5f;
 		}
 
@@ -425,7 +446,19 @@ namespace textmesh
 		);
 	}
 
-	TextMesh* createAndRegisterTextMesh(std::string fontName, std::string text)
+	void addChangeRequest(TextMesh* tm, std::string newText)
+	{
+		std::lock_guard<std::mutex> lg(acrRequestsMutex);
+		changeRequests.push_back({ tm, newText });
+	}
+
+	void addDeleteRequest(TextMesh* tm)
+	{
+		std::lock_guard<std::mutex> lg(acrRequestsMutex);
+		deleteRequests.push_back(tm);
+	}
+
+	TextMesh* createAndRegisterTextMesh(std::string fontName, HorizontalAlignment halign, std::string text)
 	{
 		if (textmeshes.size() >= RENDER_OBJECTS_MAX_CAPACITY)
 		{
@@ -435,34 +468,22 @@ namespace textmesh
 		textmeshes.push_back(TextMesh());
 		TypeFace* tf = getTypeFace(fontName);
 		textmeshes.back().typeFace = tf;
-
-		generateTextMeshMesh(textmeshes.back(), text);
+		textmeshes.back().halign = halign;
+		
 		sortTextMeshesByTypeFace();  // To keep descriptor set switches to a minimum.
+		addChangeRequest(&textmeshes.back(), text);
+
 		return &textmeshes.back();
 	}
 
 	void destroyAndUnregisterTextMesh(TextMesh* tm)
 	{
-		vkDeviceWaitIdle(engine->_device);
-		std::erase_if(textmeshes, [&](TextMesh& tml) {
-			if (&tml == tm)
-			{
-				if (tml.indexCount > 0)
-				{
-					// Cleanup previously created vertex index buffers.
-					vmaDestroyBuffer(engine->_allocator, tml.vertexBuffer._buffer, tml.vertexBuffer._allocation);
-					vmaDestroyBuffer(engine->_allocator, tml.indexBuffer._buffer, tml.indexBuffer._allocation);
-				}
-				return true;
-			}
-			return false;
-			});
-		sortTextMeshesByTypeFace();  // To keep descriptor set switches to a minimum.
+		addDeleteRequest(tm);
 	}
 
 	void regenerateTextMeshMesh(TextMesh* tm, std::string text)
 	{
-		generateTextMeshMesh(*tm, text);
+		addChangeRequest(tm, text);
 	}
 
 	void uploadUICameraDataToGPU()
@@ -537,6 +558,47 @@ namespace textmesh
 				lastTypeFace = tm.typeFace;
 			}
 			renderTextMesh(cmd, tm, bindFont);
+		}
+	}
+
+	void INTERNALflushChangeQueue()
+	{
+		// Sync with graphics first to get ready to make graphics changes.
+		std::lock_guard<std::mutex> lg(acrRequestsMutex);
+		vkDeviceWaitIdle(engine->_device);
+
+		size_t numChangeReqests = changeRequests.size();
+		while (numChangeReqests > 0)
+		{
+			ChangeRequest& cr = changeRequests[0];
+			generateTextMeshMesh(*cr.tm, cr.newText);
+			changeRequests.erase(changeRequests.begin());
+			numChangeReqests--;
+		}
+		
+		size_t numDelRequests = deleteRequests.size();
+		while (numDelRequests > 0)
+		{
+			TextMesh* tm = deleteRequests[0];
+			std::erase_if(textmeshes, [&](TextMesh& tml) {
+				if (&tml == tm)
+				{
+					if (tml.indexCount > 0)
+					{
+						// Cleanup previously created vertex index buffers.
+						vmaDestroyBuffer(engine->_allocator, tml.vertexBuffer._buffer, tml.vertexBuffer._allocation);
+						vmaDestroyBuffer(engine->_allocator, tml.indexBuffer._buffer, tml.indexBuffer._allocation);
+					}
+					return true;
+				}
+				return false;
+			});
+
+			if (numDelRequests == 1)  // Last delete request
+				sortTextMeshesByTypeFace();  // To keep descriptor set switches to a minimum.
+
+			deleteRequests.erase(deleteRequests.begin());
+			numDelRequests--;
 		}
 	}
 }

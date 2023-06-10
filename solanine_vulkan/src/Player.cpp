@@ -243,9 +243,9 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
     globalState::playerGUID = getGUID();
     globalState::playerPositionRef = &_data->cpd->basePosition;
 
-    _data->uiMaterializeItem = textmesh::createAndRegisterTextMesh("defaultFont", getUIMaterializeItemText(_data));
+    _data->uiMaterializeItem = textmesh::createAndRegisterTextMesh("defaultFont", textmesh::RIGHT, getUIMaterializeItemText(_data));
     _data->uiMaterializeItem->isPositionScreenspace = true;
-    glm_vec3_copy(vec3{ 0.0f, -20.0f, 0.0f }, _data->uiMaterializeItem->renderPosition);
+    glm_vec3_copy(vec3{ 925.0f, -495.0f, 0.0f }, _data->uiMaterializeItem->renderPosition);
     _data->uiMaterializeItem->scale = 25.0f;
 }
 
@@ -456,7 +456,7 @@ void updateInteractionUI()
     if (interactionUIText == nullptr)
     {
         currentText = "";
-        interactionUIText = textmesh::createAndRegisterTextMesh("defaultFont", currentText);
+        interactionUIText = textmesh::createAndRegisterTextMesh("defaultFont", textmesh::CENTER, currentText);
         interactionUIText->isPositionScreenspace = true;
         glm_vec3_copy(vec3{ 0.0f, -50.0f, 0.0f }, interactionUIText->renderPosition);
         interactionUIText->scale = 25.0f;
@@ -542,4 +542,5 @@ void Player::renderImGui()
 {
     ImGui::DragFloat("modelSize", &_data->modelSize);
     ImGui::DragFloat("attackTwitchAngleReturnSpeed", &_data->attackTwitchAngleReturnSpeed);
+    ImGui::DragFloat3("uiMaterializeItem->renderPosition", _data->uiMaterializeItem->renderPosition);
 }
