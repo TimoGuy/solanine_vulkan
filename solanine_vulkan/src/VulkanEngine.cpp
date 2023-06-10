@@ -217,7 +217,7 @@ void VulkanEngine::run()
 		_entityManager->INTERNALaddRemoveRequestedEntities();
 
 		// Add/Change/Remove text meshes
-		textmesh::INTERNALflushChangeQueue();
+		textmesh::INTERNALprocessChangeQueue();
 		perfs[8] = SDL_GetPerformanceCounter() - perfs[8];
 
 

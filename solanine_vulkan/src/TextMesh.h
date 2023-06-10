@@ -84,5 +84,5 @@ namespace textmesh
 	void renderTextMesh(VkCommandBuffer cmd, TextMesh& tm, bool bindFont);
 	void renderTextMeshesBulk(VkCommandBuffer cmd);
 
-	void INTERNALflushChangeQueue();
+	void INTERNALprocessChangeQueue();
 }

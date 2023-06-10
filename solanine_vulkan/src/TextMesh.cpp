@@ -561,7 +561,7 @@ namespace textmesh
 		}
 	}
 
-	void INTERNALflushChangeQueue()
+	void INTERNALprocessChangeQueue()
 	{
 		// Sync with graphics first to get ready to make graphics changes.
 		std::lock_guard<std::mutex> lg(acrRequestsMutex);
