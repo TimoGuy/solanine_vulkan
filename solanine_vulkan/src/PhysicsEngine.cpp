@@ -78,6 +78,9 @@ namespace physengine
             // @NOTE: this is the only place where `timeScale` is used. That's
             //        because this system is designed to be running at 40fps constantly
             //        in real time, so it doesn't slow down or speed up with time scale.
+            // @REPLY: I thought that the system should just run in a constant 40fps. As in,
+            //         if the timescale slows down, then the tick rate should also slow down
+            //         proportionate to the timescale.  -Timo 2023/06/10
             tick();
             entityManager->INTERNALphysicsUpdate(physicsDeltaTime * timeScale);
 
