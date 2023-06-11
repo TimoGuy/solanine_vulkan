@@ -361,7 +361,7 @@ namespace textmesh
 		// Center
 		for (auto& v : vertices)
 		{
-			switch(tm.halign)
+			switch (tm.halign)
 			{
 				case LEFT:
 					// Do nothing. It's already left-aligned by default.
@@ -375,7 +375,21 @@ namespace textmesh
 					v.pos[0] -= width;
 					break;
 			}
-			v.pos[1] += (float_t)numLines * 0.5f;
+
+			switch (tm.valign)
+			{
+				case TOP:
+					// Do nothing.
+					break;
+					
+				case MID:
+					v.pos[1] += (float_t)numLines * 0.5f;
+					break;
+
+				case BOTTOM:
+					v.pos[1] += (float_t)numLines;
+					break;
+			}
 		}
 
 		// Generate host accessible buffers for the text vertices and indices and upload the data
@@ -458,7 +472,7 @@ namespace textmesh
 		deleteRequests.push_back(tm);
 	}
 
-	TextMesh* createAndRegisterTextMesh(std::string fontName, HorizontalAlignment halign, std::string text)
+	TextMesh* createAndRegisterTextMesh(std::string fontName, HorizontalAlignment halign, VerticalAlignment valign, std::string text)
 	{
 		if (textmeshes.size() >= RENDER_OBJECTS_MAX_CAPACITY)
 		{
@@ -469,6 +483,7 @@ namespace textmesh
 		TypeFace* tf = getTypeFace(fontName);
 		textmeshes.back().typeFace = tf;
 		textmeshes.back().halign = halign;
+		textmeshes.back().valign = valign;
 		
 		sortTextMeshesByTypeFace();  // To keep descriptor set switches to a minimum.
 		addChangeRequest(&textmeshes.back(), text);

@@ -154,6 +154,11 @@ bool HarvestableItem::processMessage(DataSerialized& message)
         globalState::changeInventoryItemQtyByIndex(_data->harvestableItemId, 1);
         _em->destroyEntity(this);
 
+        DataSerializer msg;
+        msg.dumpString("msg_notify_harvestable_item_harvested");
+        DataSerialized ds = msg.getSerializedData();
+        _em->sendMessage(globalState::playerGUID, ds);
+
         return true;
     }
 

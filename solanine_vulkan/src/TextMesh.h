@@ -45,6 +45,11 @@ namespace textmesh
 		LEFT, CENTER, RIGHT,
 	};
 
+	enum VerticalAlignment
+	{
+		TOP, MID, BOTTOM,
+	};
+
 	struct TextMesh
 	{
 		TypeFace* typeFace;
@@ -52,6 +57,7 @@ namespace textmesh
 		AllocatedBuffer indexBuffer;
 		uint32_t indexCount = 0;
 		HorizontalAlignment halign = CENTER;
+		VerticalAlignment valign = MID;
 		bool excludeFromBulkRender = false;
 		vec3 renderPosition = GLM_VEC3_ZERO_INIT;
 		bool isPositionScreenspace = false;
@@ -77,7 +83,7 @@ namespace textmesh
 	void initPipeline(VkViewport& screenspaceViewport, VkRect2D& screenspaceScissor);
 
 	void loadFontSDF(std::string sdfTextureFilePath, std::string fontFilePath, std::string fontName);
-	TextMesh* createAndRegisterTextMesh(std::string fontName, HorizontalAlignment halign, std::string text);
+	TextMesh* createAndRegisterTextMesh(std::string fontName, HorizontalAlignment halign, VerticalAlignment valign, std::string text);
 	void destroyAndUnregisterTextMesh(TextMesh* tm);
 	void regenerateTextMeshMesh(TextMesh* textmesh, std::string text);
 	void uploadUICameraDataToGPU();

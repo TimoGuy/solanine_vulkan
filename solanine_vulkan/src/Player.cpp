@@ -56,7 +56,14 @@ std::string getUIMaterializeItemText(Player_XData* d)
         std::string text = "No item to materialize";
         size_t sii = globalState::getSelectedScannableItemId();
         if (globalState::getCanMaterializeScannableItemByIndex(sii))
-            text = "Press LMB to materialize " + globalState::getAncientWeaponItemByIndex(sii)->name;
+        {
+            text = "";
+            globalState::ScannableItemOption* sio = globalState::getAncientWeaponItemByIndex(sii);
+            for (globalState::HarvestableItemWithQuantity& hiwq : sio->requiredMaterialsToMaterialize)
+                text +=
+                    "(" + std::to_string(globalState::getInventoryQtyOfHarvestableItemByIndex(hiwq.harvestableItemId)) + "/" + std::to_string(hiwq.quantity) + ") " + globalState::getHarvestableItemByIndex(hiwq.harvestableItemId)->name + "\n";
+            text += "Press LMB to materialize " + sio->name;
+        }
         return text;
     }
     else
@@ -259,9 +266,9 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
     globalState::playerGUID = getGUID();
     globalState::playerPositionRef = &_data->cpd->basePosition;
 
-    _data->uiMaterializeItem = textmesh::createAndRegisterTextMesh("defaultFont", textmesh::RIGHT, getUIMaterializeItemText(_data));
+    _data->uiMaterializeItem = textmesh::createAndRegisterTextMesh("defaultFont", textmesh::RIGHT, textmesh::BOTTOM, getUIMaterializeItemText(_data));
     _data->uiMaterializeItem->isPositionScreenspace = true;
-    glm_vec3_copy(vec3{ 925.0f, -495.0f, 0.0f }, _data->uiMaterializeItem->renderPosition);
+    glm_vec3_copy(vec3{ 925.0f, -510.0f, 0.0f }, _data->uiMaterializeItem->renderPosition);
     _data->uiMaterializeItem->scale = 25.0f;
 }
 
@@ -479,7 +486,7 @@ void updateInteractionUI()
     if (interactionUIText == nullptr)
     {
         currentText = "";
-        interactionUIText = textmesh::createAndRegisterTextMesh("defaultFont", textmesh::CENTER, currentText);
+        interactionUIText = textmesh::createAndRegisterTextMesh("defaultFont", textmesh::CENTER, textmesh::MID, currentText);
         interactionUIText->isPositionScreenspace = true;
         glm_vec3_copy(vec3{ 0.0f, -50.0f, 0.0f }, interactionUIText->renderPosition);
         interactionUIText->scale = 25.0f;
@@ -542,7 +549,7 @@ bool Player::processMessage(DataSerialized& message)
 
         return true;
     }
-    else if (messageType == "msg_notify_scannable_item_added")
+    else if (messageType == "msg_notify_scannable_item_added" || messageType == "msg_notify_harvestable_item_harvested")
     {
         textmesh::regenerateTextMeshMesh(_data->uiMaterializeItem, getUIMaterializeItemText(_data));
         return true;
