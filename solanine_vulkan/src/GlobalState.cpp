@@ -45,7 +45,7 @@ namespace globalState
             .modelName = "SlimeGirl",
             .type = FOOD,
             .requiredMaterialsToMaterialize = {
-                { .harvestableItemId = 1, .quantity = 69 },
+                { .harvestableItemId = 1, .quantity = 2 },
             }
         },
     };

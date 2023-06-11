@@ -37,6 +37,7 @@ struct Player_XData
     float_t gravityForce = 0.0f;
     bool    inputFlagJump = false;
     bool    inputFlagAttack = false;
+    bool    inputFlagRelease = false;
     float_t attackTwitchAngle = 0.0f;
     float_t attackTwitchAngleReturnSpeed = 3.0f;
     bool    prevIsGrounded = false;
@@ -87,8 +88,9 @@ void processAttack(Player_XData* d)
             if (canMaterialize)
             {
                 for (globalState::HarvestableItemWithQuantity& hiwq : sio->requiredMaterialsToMaterialize)
-                    globalState::changeInventoryItemQtyByIndex(hiwq.harvestableItemId, hiwq.quantity);  // Remove from inventory the materials needed.
+                    globalState::changeInventoryItemQtyByIndex(hiwq.harvestableItemId, -(int32_t)hiwq.quantity);  // Remove from inventory the materials needed.
                 d->materializedItem = sio;
+                AudioEngine::getInstance().playSound("res/sfx/wip_Pl_Kago_Ready.wav");
             }
             else
             {
@@ -118,15 +120,18 @@ void processAttack(Player_XData* d)
 
             case globalState::FOOD:
             {
-
-        // Attempt to eat.
+                // Attempt to eat.
+                globalState::savedPlayerHealth += 5;
+                d->materializedItem = nullptr;  // Ate the item off the handle.
+                AudioEngine::getInstance().playSound("res/sfx/wip_Pl_Eating_S00.wav");
+                AudioEngine::getInstance().playSound("res/sfx/wip_Sys_ExtraHeartUp_01.wav");
             } break;
 
             case globalState::TOOL:
             {
 
-        // Attempt to use tool.
-        // @NOTE: in the future may combine weapon and tool classifications as far as this branching goes.
+                // Attempt to use tool.
+                // @NOTE: in the future may combine weapon and tool classifications as far as this branching goes.
             } break;
         }
     }
@@ -135,6 +140,17 @@ void processAttack(Player_XData* d)
     textmesh::regenerateTextMeshMesh(d->uiMaterializeItem, getUIMaterializeItemText(d));
 }
 
+void processRelease(Player_XData* d)
+{
+    d->materializedItem = nullptr;  // Release the item off the handle.
+    // @TODO: leave the item on the ground if you wanna reattach or use or litter.
+    AudioEngine::getInstance().playSoundFromList({
+        "res/sfx/wip_Pl_IceBreaking00.wav",
+        "res/sfx/wip_Pl_IceBreaking01.wav",
+        "res/sfx/wip_Pl_IceBreaking02.wav",
+    });
+    textmesh::regenerateTextMeshMesh(d->uiMaterializeItem, getUIMaterializeItemText(d));
+}
 
 Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSerialized* ds) : Entity(em, ds), _data(new Player_XData())
 {
@@ -361,6 +377,12 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         processAttack(_data);
         _data->inputFlagAttack = false;
     }
+
+    if (_data->inputFlagRelease)
+    {
+        processRelease(_data);
+        _data->inputFlagRelease = false;
+    }
 }
 
 // @TODO: @INCOMPLETE: will need to move the interaction logic into its own type of object, where you can update the interactor position and add/register interaction fields.
@@ -399,6 +421,7 @@ void Player::update(const float_t& deltaTime)
 
     _data->inputFlagJump |= input::onKeyJumpPress;
     _data->inputFlagAttack |= input::onLMBPress;
+    _data->inputFlagRelease |= input::onRMBPress;
 
     //
     // Update mask for animation
