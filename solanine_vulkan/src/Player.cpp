@@ -30,8 +30,16 @@ struct Player_XData
     physengine::CapsulePhysicsData* cpd;
 
     textmesh::TextMesh* uiMaterializeItem;  // @NOTE: This is a debug ui thing. In the real thing, I'd really want there to be in the bottom right the ancient weapon handle pointing vertically with the materializing item in a wireframe with a mysterious blue hue at the end of the handle, and when the item does get materialized, it becomes a rendered version.
-    std::string currentUIMaterializeItemText = "";
     globalState::ScannableItemOption* materializedItem = nullptr;
+
+    textmesh::TextMesh* uiStamina;
+    int16_t currentStamina;
+    int16_t maxStamina = 100;
+    float_t staminaRefillTime = 0.5f;  // Wait this time before starting to refill stamina.
+    float_t staminaRefillTimer = 0.0f;
+    float_t staminaChangedTime = 0.5f;  // Wait this time before disappearing after a stamina change occurred.
+    float_t staminaChangedTimer = 0.0f;
+    int16_t staminaRefillRate = 50;
 
     vec3 worldSpaceInput = GLM_VEC3_ZERO_INIT;
     float_t gravityForce = 0.0f;
@@ -71,6 +79,23 @@ std::string getUIMaterializeItemText(Player_XData* d)
         std::string text = "Press LMB to use " + d->materializedItem->name;
         return text;
     }
+}
+
+std::string getStaminaText(Player_XData* d)
+{
+    return "Stamina: " + std::to_string(d->currentStamina) + "/" + std::to_string(d->maxStamina);
+}
+
+void changeStamina(Player_XData* d, int16_t amount)
+{
+    d->currentStamina += amount;
+    d->currentStamina = std::clamp(d->currentStamina, (int16_t)0, d->maxStamina);
+
+    if (amount < 0)
+        d->staminaRefillTimer = d->staminaRefillTime;
+    d->staminaChangedTimer = d->staminaChangedTime;
+
+    textmesh::regenerateTextMeshMesh(d->uiStamina, getStaminaText(d));
 }
 
 void processAttack(Player_XData* d)
@@ -113,16 +138,29 @@ void processAttack(Player_XData* d)
             });
         }
     }
-    else
+    else if (d->currentStamina > 0)
     {
         // Attempt to use item.
         switch (d->materializedItem->type)
         {
             case globalState::WEAPON:
             {
+                bool attackFailed = false;
+                int16_t staminaReq = 25;
+                if (staminaReq > d->currentStamina)
+                    attackFailed = true;
+                else
+                {
+                    if (true)  // Check if attack timing is okay  @TODO
+                        attackFailed = false;
+                }
 
-                // Attack rhythm failed. Twitch and take away stamina.
-                d->attackTwitchAngle = (float_t)std::rand() / (RAND_MAX / 2.0f) > 0.5f ? glm_rad(2.0f) : glm_rad(-2.0f);
+                if (attackFailed)
+                    d->attackTwitchAngle = (float_t)std::rand() / (RAND_MAX / 2.0f) > 0.5f ? glm_rad(2.0f) : glm_rad(-2.0f);  // Attack rhythm failed. Twitch and take away stamina.
+                else
+                    {}  // @TODO: Add in attack here.
+
+                changeStamina(d, -staminaReq);
             } break;
 
             case globalState::FOOD:
@@ -170,6 +208,8 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
 
     if (ds)
         load(*ds);
+
+    _data->currentStamina = _data->maxStamina;
 
     _data->weaponAttachmentJointName = "Back Attachment";
     std::vector<vkglTF::Animator::AnimatorCallback> animatorCallbacks = {
@@ -270,6 +310,11 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
     _data->uiMaterializeItem->isPositionScreenspace = true;
     glm_vec3_copy(vec3{ 925.0f, -510.0f, 0.0f }, _data->uiMaterializeItem->renderPosition);
     _data->uiMaterializeItem->scale = 25.0f;
+
+    _data->uiStamina = textmesh::createAndRegisterTextMesh("defaultFont", textmesh::LEFT, textmesh::MID, getStaminaText(_data));
+    _data->uiStamina->isPositionScreenspace = true;
+    glm_vec3_copy(vec3{ 25.0f, -135.0f, 0.0f }, _data->uiStamina->renderPosition);
+    _data->uiStamina->scale = 25.0f;
 }
 
 Player::~Player()
@@ -390,6 +435,19 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         processRelease(_data);
         _data->inputFlagRelease = false;
     }
+
+    if (_data->staminaRefillTimer > 0.0f)
+        _data->staminaRefillTimer -= physicsDeltaTime;
+    else if (_data->currentStamina != _data->maxStamina)
+        changeStamina(_data, _data->staminaRefillRate * physicsDeltaTime);
+
+    if (_data->staminaChangedTimer > 0.0f)
+    {
+        _data->uiStamina->excludeFromBulkRender = false;    
+        _data->staminaChangedTimer -= physicsDeltaTime;
+    }
+    else
+        _data->uiStamina->excludeFromBulkRender = true;    
 }
 
 // @TODO: @INCOMPLETE: will need to move the interaction logic into its own type of object, where you can update the interactor position and add/register interaction fields.
@@ -573,4 +631,5 @@ void Player::renderImGui()
     ImGui::DragFloat("modelSize", &_data->modelSize);
     ImGui::DragFloat("attackTwitchAngleReturnSpeed", &_data->attackTwitchAngleReturnSpeed);
     ImGui::DragFloat3("uiMaterializeItem->renderPosition", _data->uiMaterializeItem->renderPosition);
+    ImGui::DragFloat3("uiStamina->renderPosition", _data->uiStamina->renderPosition);
 }
