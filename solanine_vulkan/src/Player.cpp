@@ -33,13 +33,48 @@ struct Player_XData
     globalState::ScannableItemOption* materializedItem = nullptr;
 
     textmesh::TextMesh* uiStamina;
-    int16_t currentStamina;
-    int16_t maxStamina = 100;
-    float_t staminaRefillTime = 0.5f;  // Wait this time before starting to refill stamina.
-    float_t staminaRefillTimer = 0.0f;
-    float_t staminaChangedTime = 0.5f;  // Wait this time before disappearing after a stamina change occurred.
-    float_t staminaChangedTimer = 0.0f;
-    int16_t staminaRefillRate = 50;
+    struct StaminaData
+    {
+        int16_t currentStamina;
+        int16_t maxStamina = 100;
+        float_t refillTime = 0.5f;  // Wait this time before starting to refill stamina.
+        float_t refillTimer = 0.0f;
+        float_t changedTime = 0.5f;  // Wait this time before disappearing after a stamina change occurred.
+        float_t changedTimer = 0.0f;
+        int16_t refillRate = 50;
+    } staminaData;
+
+    struct AttackWaza
+    {
+        std::string animationTrigger;
+        int16_t staminaCost = 10;
+        float_t duration = 0.0f;
+        
+        struct HitscanFlowNode
+        {
+            // These ends create a line where `numHitscanSamples` number of points traverse.
+            // These points are connected to the previous node's ends' traversed lines to create
+            // the hitscan query lines. Note also that these points are in object space,
+            // where { 0, 0, 1 } represents the player's facing forward vector.
+            vec3 nodeEnd1, nodeEnd2;
+            float_t executeAtTime = 0.0f;
+        };
+        uint32_t numHitscanSamples = 5;
+        std::vector<HitscanFlowNode> hitscanNodes;  // Each node uses the previous node's data to create the hitscans (the first node is ignored except for using it as prev node data).
+
+        struct Chain
+        {
+            float_t inputTimeWindowStart = 0.0f;  // Press the attack button in this window to trigger the chain.
+            float_t inputTimeWindowEnd = 0.0f;
+            AttackWaza* nextAttack = nullptr;
+        };
+        std::vector<Chain> chains;  // Note that you can have different chains depending on your rhythm in the attack.
+    };
+    AttackWaza  rootWaza;
+
+    AttackWaza* currentWaza = nullptr;
+    float_t     wazaTimer = 0.0f;  // Used for timing chains and hitscans.
+    size_t      wazaCurrentHitScanIdx = 1;  // 0th hitscan node is ignored.
 
     vec3 worldSpaceInput = GLM_VEC3_ZERO_INIT;
     float_t gravityForce = 0.0f;
@@ -83,17 +118,17 @@ std::string getUIMaterializeItemText(Player_XData* d)
 
 std::string getStaminaText(Player_XData* d)
 {
-    return "Stamina: " + std::to_string(d->currentStamina) + "/" + std::to_string(d->maxStamina);
+    return "Stamina: " + std::to_string(d->staminaData.currentStamina) + "/" + std::to_string(d->staminaData.maxStamina);
 }
 
 void changeStamina(Player_XData* d, int16_t amount)
 {
-    d->currentStamina += amount;
-    d->currentStamina = std::clamp(d->currentStamina, (int16_t)0, d->maxStamina);
+    d->staminaData.currentStamina += amount;
+    d->staminaData.currentStamina = std::clamp(d->staminaData.currentStamina, (int16_t)0, d->staminaData.maxStamina);
 
     if (amount < 0)
-        d->staminaRefillTimer = d->staminaRefillTime;
-    d->staminaChangedTimer = d->staminaChangedTime;
+        d->staminaData.refillTimer = d->staminaData.refillTime;
+    d->staminaData.changedTimer = d->staminaData.changedTime;
 
     textmesh::regenerateTextMeshMesh(d->uiStamina, getStaminaText(d));
 }
@@ -138,29 +173,14 @@ void processAttack(Player_XData* d)
             });
         }
     }
-    else if (d->currentStamina > 0)
+    else if (d->staminaData.currentStamina > 0)
     {
         // Attempt to use item.
         switch (d->materializedItem->type)
         {
             case globalState::WEAPON:
             {
-                bool attackFailed = false;
-                int16_t staminaReq = 25;
-                if (staminaReq > d->currentStamina)
-                    attackFailed = true;
-                else
-                {
-                    if (true)  // Check if attack timing is okay  @TODO
-                        attackFailed = false;
-                }
-
-                if (attackFailed)
-                    d->attackTwitchAngle = (float_t)std::rand() / (RAND_MAX / 2.0f) > 0.5f ? glm_rad(2.0f) : glm_rad(-2.0f);  // Attack rhythm failed. Twitch and take away stamina.
-                else
-                    {}  // @TODO: Add in attack here.
-
-                changeStamina(d, -staminaReq);
+                processWeaponAttackInput(d);
             } break;
 
             case globalState::FOOD:
@@ -197,6 +217,109 @@ void processRelease(Player_XData* d)
     textmesh::regenerateTextMeshMesh(d->uiMaterializeItem, getUIMaterializeItemText(d));
 }
 
+void initRootWaza(Player_XData::AttackWaza& waza)
+{
+    // @HARDCODE: this kind of data would ideally be written in some kind of scripting file fyi.
+
+}
+
+void processWeaponAttackInput(Player_XData* d)
+{
+    Player_XData::AttackWaza* nextWaza = nullptr;
+    bool attackFailed = false;
+    int16_t staminaCost;
+
+    if (d->currentWaza == nullptr)
+    {
+        // By default start at the root waza.
+        nextWaza = &d->rootWaza;
+    }
+    else
+    {
+        // Check if input chains into another attack.
+        bool doChain = false;
+        for (auto& chain : d->currentWaza->chains)
+            if (d->wazaTimer >= chain.inputTimeWindowStart &&
+                d->wazaTimer < chain.inputTimeWindowEnd)
+            {
+                doChain = true;
+                nextWaza = chain.nextAttack;
+                break;
+            }
+
+        if (!doChain)
+        {
+            attackFailed = true;  // No chain matched the timing: attack failure by bad rhythm.
+            staminaCost = 25;     // Bad rhythm penalty.
+        }
+    }
+
+    // Check if stamina is sufficient.
+    if (!attackFailed)
+    {
+        staminaCost = nextWaza->staminaCost;
+        if (staminaCost > d->staminaData.currentStamina)
+            attackFailed = true;
+    }
+    
+    // Collect stamina cost
+    changeStamina(d, -staminaCost);
+
+    // Execute attack
+    if (attackFailed)
+        d->attackTwitchAngle = (float_t)std::rand() / (RAND_MAX / 2.0f) > 0.5f ? glm_rad(2.0f) : glm_rad(-2.0f);  // The most you could do was a twitch (attack failure).
+    else
+    {
+        // Kick off new waza with a clear state.
+        d->currentWaza = nextWaza;
+        d->wazaTimer = 0.0f;
+        d->wazaCurrentHitScanIdx = 1;  // 0th hitscan node is ignored.
+
+        d->characterRenderObj->animator->setTrigger(d->currentWaza->animationTrigger);
+    }
+}
+
+void processWazaUpdate(Player_XData* d, EntityManager* em, const float_t& physicsDeltaTime)
+{
+    d->wazaTimer += physicsDeltaTime;
+    size_t hitscanLayer = physengine::getCollisionLayer("HitscanInteractible");
+
+    // Execute all hitscans that need to be executed in the timeline.
+    while (d->wazaTimer >= d->currentWaza->hitscanNodes[d->wazaCurrentHitScanIdx].executeAtTime)
+    {
+        auto& node     = d->currentWaza->hitscanNodes[d->wazaCurrentHitScanIdx];
+        auto& nodePrev = d->currentWaza->hitscanNodes[d->wazaCurrentHitScanIdx - 1];
+
+        for (uint32_t s = 0; s <= d->currentWaza->numHitscanSamples; s++)
+        {
+            float_t t = (float_t)s / (float_t)d->currentWaza->numHitscanSamples;
+            vec3 pt1, pt2;
+            glm_vec3_lerp(node.nodeEnd1, node.nodeEnd2, t, pt1);
+            glm_vec3_lerp(nodePrev.nodeEnd1, nodePrev.nodeEnd2, t, pt2);
+
+            std::string hitGuid;
+            if (physengine::lineSegmentCast(pt1, pt2, hitscanLayer, hitGuid))
+            {
+                // @TODO: @INCOMPLETE: @HARDCODE: dummy values
+                float_t attackLvl = 4;
+
+                // Successful hitscan!
+                DataSerializer ds;
+                ds.dumpString("msg_hitscan_hit");
+                ds.dumpFloat(attackLvl);
+                DataSerialized dsd = ds.getSerializedData();
+                em->sendMessage(hitGuid, dsd);
+                break;
+            }
+        }
+        d->wazaCurrentHitScanIdx++;
+    }
+
+    // End waza if duration has passed.
+    if (d->wazaTimer >= d->currentWaza->duration)
+        d->currentWaza = nullptr;
+}
+
 Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSerialized* ds) : Entity(em, ds), _data(new Player_XData())
 {
     Entity::_enablePhysicsUpdate = true;
@@ -209,7 +332,7 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
     if (ds)
         load(*ds);
 
-    _data->currentStamina = _data->maxStamina;
+    _data->staminaData.currentStamina = _data->staminaData.maxStamina;
 
     _data->weaponAttachmentJointName = "Back Attachment";
     std::vector<vkglTF::Animator::AnimatorCallback> animatorCallbacks = {
@@ -315,6 +438,8 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
     _data->uiStamina->isPositionScreenspace = true;
     glm_vec3_copy(vec3{ 25.0f, -135.0f, 0.0f }, _data->uiStamina->renderPosition);
     _data->uiStamina->scale = 25.0f;
+
+    initRootWaza(_data->rootWaza);
 }
 
 Player::~Player()
@@ -349,43 +474,89 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     else
         _data->uiMaterializeItem->excludeFromBulkRender = false;
 
-    //
-    // Calculate input
-    //
-    vec2 input = GLM_VEC2_ZERO_INIT;
-    input[0] += input::keyLeftPressed  ? -1.0f : 0.0f;
-    input[0] += input::keyRightPressed ?  1.0f : 0.0f;
-    input[1] += input::keyUpPressed    ?  1.0f : 0.0f;
-    input[1] += input::keyDownPressed  ? -1.0f : 0.0f;
-
-    if (_data->camera->freeCamMode.enabled || ImGui::GetIO().WantTextInput)  // @DEBUG: for the level editor
+    if (_data->currentWaza == nullptr)
     {
-        input[0] = input[1] = 0.0f;
-        _data->inputFlagJump = false;
+        //
+        // Calculate input
+        //
+        vec2 input = GLM_VEC2_ZERO_INIT;
+        input[0] += input::keyLeftPressed  ? -1.0f : 0.0f;
+        input[0] += input::keyRightPressed ?  1.0f : 0.0f;
+        input[1] += input::keyUpPressed    ?  1.0f : 0.0f;
+        input[1] += input::keyDownPressed  ? -1.0f : 0.0f;
+
+        if (_data->camera->freeCamMode.enabled || ImGui::GetIO().WantTextInput)  // @DEBUG: for the level editor
+        {
+            input[0] = input[1] = 0.0f;
+            _data->inputFlagJump = false;
+        }
+
+        vec3 flatCameraFacingDirection = {
+            _data->camera->sceneCamera.facingDirection[0],
+            0.0f,
+            _data->camera->sceneCamera.facingDirection[2]
+        };
+        glm_normalize(flatCameraFacingDirection);
+
+        glm_vec3_scale(flatCameraFacingDirection, input[1], _data->worldSpaceInput);
+        vec3 up = { 0.0f, 1.0f, 0.0f };
+        vec3 flatCamRight;
+        glm_vec3_cross(flatCameraFacingDirection, up, flatCamRight);
+        glm_normalize(flatCamRight);
+        glm_vec3_muladds(flatCamRight, input[0], _data->worldSpaceInput);
+
+        if (glm_vec3_norm2(_data->worldSpaceInput) < 0.01f)
+            glm_vec3_zero(_data->worldSpaceInput);
+        else
+        {
+            float_t magnitude = glm_clamp_zo(glm_vec3_norm(_data->worldSpaceInput));
+            glm_vec3_scale_as(_data->worldSpaceInput, magnitude, _data->worldSpaceInput);
+            _data->facingDirection = atan2f(_data->worldSpaceInput[0], _data->worldSpaceInput[2]);
+        }
     }
-
-    vec3 flatCameraFacingDirection = {
-        _data->camera->sceneCamera.facingDirection[0],
-        0.0f,
-        _data->camera->sceneCamera.facingDirection[2]
-    };
-    glm_normalize(flatCameraFacingDirection);
-
-    glm_vec3_scale(flatCameraFacingDirection, input[1], _data->worldSpaceInput);
-    vec3 up = { 0.0f, 1.0f, 0.0f };
-    vec3 flatCamRight;
-    glm_vec3_cross(flatCameraFacingDirection, up, flatCamRight);
-    glm_normalize(flatCamRight);
-    glm_vec3_muladds(flatCamRight, input[0], _data->worldSpaceInput);
-
-    if (glm_vec3_norm2(_data->worldSpaceInput) < 0.01f)
-        glm_vec3_zero(_data->worldSpaceInput);
     else
     {
-        float_t magnitude = glm_clamp_zo(glm_vec3_norm(_data->worldSpaceInput));
-        glm_vec3_scale_as(_data->worldSpaceInput, magnitude, _data->worldSpaceInput);
-        _data->facingDirection = atan2f(_data->worldSpaceInput[0], _data->worldSpaceInput[2]);
+        //
+        // Update waza performance
+        //
+        glm_vec3_zero(_data->worldSpaceInput);  // Filter movement to put out the waza.
+        _data->inputFlagJump = false;
+        _data->inputFlagRelease = false;  // @NOTE: @TODO: Idk if this is appropriate or wanted behavior.
+
+        processWazaUpdate(_data, _em, physicsDeltaTime);
     }
+
+
+    //
+    // Process input flags
+    //
+    if (_data->inputFlagAttack)
+    {
+        processAttack(_data);
+        _data->inputFlagAttack = false;
+    }
+
+    if (_data->inputFlagRelease)
+    {
+        processRelease(_data);
+        _data->inputFlagRelease = false;
+    }
+
+    //
+    // Update stamina gauge
+    //
+    if (_data->staminaData.refillTimer > 0.0f)
+        _data->staminaData.refillTimer -= physicsDeltaTime;
+    else if (_data->staminaData.currentStamina != _data->staminaData.maxStamina)
+        changeStamina(_data, _data->staminaData.refillRate * physicsDeltaTime);
+
+    if (_data->staminaData.changedTimer > 0.0f)
+    {
+        _data->uiStamina->excludeFromBulkRender = false;
+        _data->staminaData.changedTimer -= physicsDeltaTime;
+    }
+    else
+        _data->uiStamina->excludeFromBulkRender = true;
 
 
     //
@@ -420,34 +591,6 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     _data->prevIsGrounded = (_data->prevGroundNormal[1] >= 0.707106781187);  // >=45 degrees
     if (_data->prevIsGrounded)
         _data->gravityForce = 0.0f;
-
-    //
-    // Update Attack
-    //
-    if (_data->inputFlagAttack)
-    {
-        processAttack(_data);
-        _data->inputFlagAttack = false;
-    }
-
-    if (_data->inputFlagRelease)
-    {
-        processRelease(_data);
-        _data->inputFlagRelease = false;
-    }
-
-    if (_data->staminaRefillTimer > 0.0f)
-        _data->staminaRefillTimer -= physicsDeltaTime;
-    else if (_data->currentStamina != _data->maxStamina)
-        changeStamina(_data, _data->staminaRefillRate * physicsDeltaTime);
-
-    if (_data->staminaChangedTimer > 0.0f)
-    {
-        _data->uiStamina->excludeFromBulkRender = false;    
-        _data->staminaChangedTimer -= physicsDeltaTime;
-    }
-    else
-        _data->uiStamina->excludeFromBulkRender = true;    
 }
 
 // @TODO: @INCOMPLETE: will need to move the interaction logic into its own type of object, where you can update the interactor position and add/register interaction fields.
