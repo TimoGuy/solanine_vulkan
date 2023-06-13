@@ -285,6 +285,7 @@ void processWazaUpdate(Player_XData* d, EntityManager* em, const float_t& physic
 {
     d->wazaTimer += physicsDeltaTime;
     size_t hitscanLayer = physengine::getCollisionLayer("HitscanInteractible");
+    assert(d->currentWaza->hitscanNodes.size() >= 2);
 
     // Execute all hitscans that need to be executed in the timeline.
     while (d->wazaTimer >= d->currentWaza->hitscanNodes[d->wazaCurrentHitScanIdx].executeAtTime)
