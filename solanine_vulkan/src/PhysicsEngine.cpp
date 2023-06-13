@@ -135,7 +135,7 @@ namespace physengine
     size_t voxelFieldIndices[PHYSICS_OBJECTS_MAX_CAPACITY];
     size_t numVFsCreated = 0;
 
-    VoxelFieldPhysicsData* createVoxelField(const size_t& sizeX, const size_t& sizeY, const size_t& sizeZ, uint8_t* voxelData)
+    VoxelFieldPhysicsData* createVoxelField(const std::string& entityGuid, const size_t& sizeX, const size_t& sizeY, const size_t& sizeZ, uint8_t* voxelData)
     {
         if (numVFsCreated < PHYSICS_OBJECTS_MAX_CAPACITY)
         {
@@ -150,6 +150,7 @@ namespace physengine
             numVFsCreated++;
 
             // Insert in the data
+            vfpd.entityGuid = entityGuid;
             vfpd.sizeX = sizeX;
             vfpd.sizeY = sizeY;
             vfpd.sizeZ = sizeZ;
@@ -199,7 +200,7 @@ namespace physengine
     size_t capsuleIndices[PHYSICS_OBJECTS_MAX_CAPACITY];
     size_t numCapsCreated = 0;
 
-    CapsulePhysicsData* createCapsule(const float_t& radius, const float_t& height)
+    CapsulePhysicsData* createCapsule(const std::string& entityGuid, const float_t& radius, const float_t& height)
     {
         if (numCapsCreated < PHYSICS_OBJECTS_MAX_CAPACITY)
         {
@@ -214,6 +215,7 @@ namespace physengine
             numCapsCreated++;
 
             // Insert in the data
+            cpd.entityGuid = entityGuid;
             cpd.radius = radius;
             cpd.height = height;
             
@@ -594,6 +596,73 @@ namespace physengine
                 glm_vec3_lerp(cpd.prevBasePosition, cpd.basePosition, physicsAlpha, cpd.interpolBasePosition);
             }
         }
+    }
+
+    
+    size_t getCollisionLayer(const std::string& layerName)
+    {
+        return 0;  // @INCOMPLETE: for now, just ignore the collision layers and check everything.
+    }
+
+    bool checkLineSegmentIntersectingCapsule(CapsulePhysicsData& cpd, vec3& pt1, vec3& pt2, std::string& outHitGuid)
+    {
+        vec3 a_A, a_B;
+        glm_vec3_add(cpd.basePosition, vec3{ 0.0f, cpd.radius, 0.0f }, a_A);
+        glm_vec3_add(cpd.basePosition, vec3{ 0.0f, cpd.radius + cpd.height, 0.0f }, a_B);
+
+        vec3 v0, v1, v2, v3;
+        glm_vec3_sub(pt1, a_A, v0);
+        glm_vec3_sub(pt2, a_A, v1);
+        glm_vec3_sub(pt1, a_B, v2);
+        glm_vec3_sub(pt2, a_B, v3);
+
+        float_t d0 = glm_vec3_norm2(v0);
+        float_t d1 = glm_vec3_norm2(v1);
+        float_t d2 = glm_vec3_norm2(v2);
+        float_t d3 = glm_vec3_norm2(v3);
+
+        vec3 bestA;
+        if (d2 < d0 || d2 < d1 || d3 < d0 || d3 < d1)
+            glm_vec3_copy(a_B, bestA);
+        else
+            glm_vec3_copy(a_A, bestA);
+
+        vec3 bestB;
+        closestPointToLineSegment(bestA, pt1, pt2, bestB);
+        closestPointToLineSegment(bestB, a_A, a_B, bestA);
+
+        // Use best points to test collision
+        outHitGuid = cpd.entityGuid;
+        return (glm_vec3_distance2(bestA, bestB) <= cpd.radius * cpd.radius);
+    }
+
+    bool lineSegmentCast(vec3& pt1, vec3& pt2, size_t collisionLayer, bool getAllGuids, std::vector<std::string>& outHitGuids)
+    {
+        collisionLayer;  // @INCOMPLETE: note that this is unused.
+        bool success = false;
+
+        // Check capsules
+        for (size_t i = 0; i < numCapsCreated; i++)
+        {
+            size_t& index = capsuleIndices[i];
+            std::string outHitGuid;
+            if (checkLineSegmentIntersectingCapsule(capsulePool[index], pt1, pt2, outHitGuid))
+            {
+                outHitGuids.push_back(outHitGuid);
+                success = true;
+
+                if (!getAllGuids)
+                    return true;
+            }
+        }
+
+        // Check Voxel Fields
+        for (size_t i = 0; i < numVFsCreated; i++)
+        {
+            // @INCOMPLETE: just ignore voxel fields for now.
+        }
+
+        return success;
     }
 
 #ifdef _DEVELOP

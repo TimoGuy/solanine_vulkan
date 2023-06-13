@@ -133,6 +133,8 @@ void changeStamina(Player_XData* d, int16_t amount)
     textmesh::regenerateTextMeshMesh(d->uiStamina, getStaminaText(d));
 }
 
+void processWeaponAttackInput(Player_XData* d);
+
 void processAttack(Player_XData* d)
 {
     if (d->materializedItem == nullptr)
@@ -297,18 +299,21 @@ void processWazaUpdate(Player_XData* d, EntityManager* em, const float_t& physic
             glm_vec3_lerp(node.nodeEnd1, node.nodeEnd2, t, pt1);
             glm_vec3_lerp(nodePrev.nodeEnd1, nodePrev.nodeEnd2, t, pt2);
 
-            std::string hitGuid;
-            if (physengine::lineSegmentCast(pt1, pt2, hitscanLayer, hitGuid))
+            std::vector<std::string> hitGuids;
+            if (physengine::lineSegmentCast(pt1, pt2, hitscanLayer, true, hitGuids))
             {
                 // @TODO: @INCOMPLETE: @HARDCODE: dummy values
                 float_t attackLvl = 4;
 
                 // Successful hitscan!
-                DataSerializer ds;
-                ds.dumpString("msg_hitscan_hit");
-                ds.dumpFloat(attackLvl);
-                DataSerialized dsd = ds.getSerializedData();
-                em->sendMessage(hitGuid, dsd);
+                for (auto& guid : hitGuids)
+                {
+                    DataSerializer ds;
+                    ds.dumpString("msg_hitscan_hit");
+                    ds.dumpFloat(attackLvl);
+                    DataSerialized dsd = ds.getSerializedData();
+                    em->sendMessage(guid, dsd);
+                }
                 break;
             }
         }
@@ -423,7 +428,7 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
 
     _data->camera->mainCamMode.setMainCamTargetObject(_data->characterRenderObj);  // @NOTE: I believe that there should be some kind of main camera system that targets the player by default but when entering different volumes etc. the target changes depending.... essentially the system needs to be more built out imo
 
-    _data->cpd = physengine::createCapsule(0.5f, 1.0f);  // Total height is 2, but r*2 is subtracted to get the capsule height (i.e. the line segment length that the capsule rides along)
+    _data->cpd = physengine::createCapsule(getGUID(), 0.5f, 1.0f);  // Total height is 2, but r*2 is subtracted to get the capsule height (i.e. the line segment length that the capsule rides along)
     glm_vec3_copy(_data->position, _data->cpd->basePosition);
 
     globalState::playerGUID = getGUID();
