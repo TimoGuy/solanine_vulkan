@@ -92,6 +92,8 @@ struct Player_XData
     float_t modelSize = 0.3f;
 };
 
+void processWeaponAttackInput(Player_XData* d);
+
 std::string getUIMaterializeItemText(Player_XData* d)
 {
     if (d->materializedItem == nullptr)
@@ -132,8 +134,6 @@ void changeStamina(Player_XData* d, int16_t amount)
 
     textmesh::regenerateTextMeshMesh(d->uiStamina, getStaminaText(d));
 }
-
-void processWeaponAttackInput(Player_XData* d);
 
 void processAttack(Player_XData* d)
 {
@@ -222,7 +222,33 @@ void processRelease(Player_XData* d)
 void initRootWaza(Player_XData::AttackWaza& waza)
 {
     // @HARDCODE: this kind of data would ideally be written in some kind of scripting file fyi.
-
+    waza.animationTrigger = "goto_combat_prepause";
+    waza.staminaCost = 25;
+    waza.duration = 1.0f;
+    waza.hitscanNodes.push_back({
+        .nodeEnd1 = { -1.0f, 0.0f, 0.0f },
+        .nodeEnd2 = { -5.0f, 0.0f, 0.0f },
+    });
+    waza.hitscanNodes.push_back({
+        .nodeEnd1 = { -1.0f, 0.0f, 1.0f },
+        .nodeEnd2 = { -5.0f, 0.0f, 5.0f },
+        .executeAtTime = 0.25f,
+    });
+    waza.hitscanNodes.push_back({
+        .nodeEnd1 = { 0.0f, 0.0f, 1.0f },
+        .nodeEnd2 = { 0.0f, 0.0f, 5.0f },
+        .executeAtTime = 0.5f,
+    });
+    waza.hitscanNodes.push_back({
+        .nodeEnd1 = { 1.0f, 0.0f, 1.0f },
+        .nodeEnd2 = { 5.0f, 0.0f, 5.0f },
+        .executeAtTime = 0.75f,
+    });
+    waza.hitscanNodes.push_back({
+        .nodeEnd1 = { 1.0f, 0.0f, 0.0f },
+        .nodeEnd2 = { 5.0f, 0.0f, 0.0f },
+        .executeAtTime = 1.0f,
+    });
 }
 
 void processWeaponAttackInput(Player_XData* d)
@@ -288,7 +314,8 @@ void processWazaUpdate(Player_XData* d, EntityManager* em, const float_t& physic
     assert(d->currentWaza->hitscanNodes.size() >= 2);
 
     // Execute all hitscans that need to be executed in the timeline.
-    while (d->wazaTimer >= d->currentWaza->hitscanNodes[d->wazaCurrentHitScanIdx].executeAtTime)
+    while (d->wazaCurrentHitScanIdx < d->currentWaza->hitscanNodes.size() &&
+        d->wazaTimer >= d->currentWaza->hitscanNodes[d->wazaCurrentHitScanIdx].executeAtTime)
     {
         auto& node     = d->currentWaza->hitscanNodes[d->wazaCurrentHitScanIdx];
         auto& nodePrev = d->currentWaza->hitscanNodes[d->wazaCurrentHitScanIdx - 1];
