@@ -209,6 +209,9 @@ void processAttack(Player_XData* d)
 
 void processRelease(Player_XData* d)
 {
+    if (d->materializedItem == nullptr)
+        return;
+
     d->materializedItem = nullptr;  // Release the item off the handle.
     // @TODO: leave the item on the ground if you wanna reattach or use or litter.
     AudioEngine::getInstance().playSoundFromList({

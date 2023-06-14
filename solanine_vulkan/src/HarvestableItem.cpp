@@ -5,6 +5,7 @@
 #include "RenderObject.h"
 #include "EntityManager.h"
 #include "AudioEngine.h"
+#include "PhysicsEngine.h"  // @DEBUG
 #include "DataSerialization.h"
 #include "GlobalState.h"
 #include "Textbox.h"
@@ -16,6 +17,7 @@ struct HarvestableItem_XData
 {
     RenderObjectManager* rom;
     RenderObject* renderObj;
+    physengine::CapsulePhysicsData* cpd;  // @DEBUG
     vec3 position = GLM_VEC3_ZERO_INIT;
     size_t harvestableItemId = 0;
 #ifdef _DEVELOP
@@ -45,6 +47,9 @@ HarvestableItem::HarvestableItem(EntityManager* em, RenderObjectManager* rom, Da
             .attachedEntityGuid = getGUID(),
             });
     glm_translate(_data->renderObj->transformMatrix, _data->position);
+
+    _data->cpd = physengine::createCapsule(getGUID(), 1.0f, 0.0f);
+    glm_vec3_copy(_data->position, _data->cpd->basePosition);    // @DEBUG
 }
 
 HarvestableItem::~HarvestableItem()
@@ -56,6 +61,8 @@ HarvestableItem::~HarvestableItem()
     DataSerialized ds = msg.getSerializedData();
     _em->sendMessage(globalState::playerGUID, ds);
     /////////////
+
+    physengine::destroyCapsule(_data->cpd);  // @DEBUG
 
     _data->rom->unregisterRenderObject(_data->renderObj);
     _data->rom->removeModelCallbacks(this);

@@ -5,10 +5,19 @@
 #include "ImportGLM.h"
 class EntityManager;
 
+#ifdef _DEVELOP
+#include <vulkan/vulkan.h>
+class VulkanEngine;
+#endif
 
 namespace physengine
 {
-    void initialize(EntityManager* em);
+#ifdef _DEVELOP
+    void initDebugVisDescriptors(VulkanEngine* engine);
+    void initDebugVisPipelines(VkRenderPass mainRenderPass, VkViewport& screenspaceViewport, VkRect2D& screenspaceScissor);
+#endif
+
+    void start(EntityManager* em);
     void cleanup();
 
     void setTimeScale(const float_t& timeScale);
@@ -71,5 +80,6 @@ namespace physengine
 
 #ifdef _DEVELOP
     void renderImguiPerformanceStats();
+    void renderDebugVisualization(VulkanEngine* engine, VkCommandBuffer cmd);
 #endif
 }

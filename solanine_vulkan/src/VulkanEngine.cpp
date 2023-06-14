@@ -94,7 +94,7 @@ void VulkanEngine::init()
 	initPipelines();
 
 	AudioEngine::getInstance().initialize();
-	physengine::initialize(_entityManager);
+	physengine::start(_entityManager);
 	globalState::initGlobalState(_camera->sceneCamera);
 
 	SDL_ShowWindow(_window);
@@ -462,6 +462,7 @@ void VulkanEngine::render()
 
 		renderRenderObjects(cmd, currentFrame, false);
 		renderPickedObject(cmd, currentFrame);
+		physengine::renderDebugVisualization(this, cmd);
 
 		// End renderpass
 		vkCmdEndRenderPass(cmd);
@@ -2338,6 +2339,8 @@ void VulkanEngine::initDescriptors()    // @TODO: don't destroy and then recreat
 	// Text Mesh Fonts
 	//
 	textmesh::loadFontSDF("res/textures/font_sdf_rgba.png", "res/font.fnt", "defaultFont");
+
+	physengine::initDebugVisDescriptors(this);
 }
 
 void VulkanEngine::initPipelines()
@@ -2588,6 +2591,7 @@ void VulkanEngine::initPipelines()
 	//
 	textmesh::initPipeline(screenspaceViewport, screenspaceScissor);
 	textbox::initPipeline(screenspaceViewport, screenspaceScissor);
+	physengine::initDebugVisPipelines(_mainRenderPass, screenspaceViewport, screenspaceScissor);
 }
 
 void VulkanEngine::generatePBRCubemaps()
