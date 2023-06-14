@@ -289,7 +289,11 @@ void VulkanEngine::cleanup()
 		vkDeviceWaitIdle(_device);
 
 		globalState::cleanupGlobalState();
-		physengine::cleanup();
+		physengine::cleanup(
+#ifdef _DEVELOP
+			this
+#endif
+		);
 		AudioEngine::getInstance().cleanup();
 
 		delete _entityManager;

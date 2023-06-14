@@ -227,15 +227,25 @@ void initRootWaza(Player_XData::AttackWaza& waza)
     // @HARDCODE: this kind of data would ideally be written in some kind of scripting file fyi.
     waza.animationTrigger = "goto_combat_prepause";
     waza.staminaCost = 25;
-    waza.duration = 1.0f;
+    waza.duration = 0.25f;
     waza.hitscanNodes.push_back({
         .nodeEnd1 = { -1.0f, 0.0f, 0.0f },
         .nodeEnd2 = { -5.0f, 0.0f, 0.0f },
     });
     waza.hitscanNodes.push_back({
-        .nodeEnd1 = { -1.0f, 0.0f, 1.0f },
-        .nodeEnd2 = { -5.0f, 0.0f, 5.0f },
+        .nodeEnd1 = { -0.924f, 0.0f, 0.383f },
+        .nodeEnd2 = { -4.619f, 0.0f, 1.913f },
+        .executeAtTime = 0.125f,
+    });
+    waza.hitscanNodes.push_back({
+        .nodeEnd1 = { -0.707f, 0.0f, 0.707f },
+        .nodeEnd2 = { -3.536f, 0.0f, 3.536f },
         .executeAtTime = 0.25f,
+    });
+    waza.hitscanNodes.push_back({
+        .nodeEnd1 = { -0.383f, 0.0f, 0.924f },
+        .nodeEnd2 = { -1.913f, 0.0f, 4.619f },
+        .executeAtTime = 0.375f,
     });
     waza.hitscanNodes.push_back({
         .nodeEnd1 = { 0.0f, 0.0f, 1.0f },
@@ -243,15 +253,27 @@ void initRootWaza(Player_XData::AttackWaza& waza)
         .executeAtTime = 0.5f,
     });
     waza.hitscanNodes.push_back({
-        .nodeEnd1 = { 1.0f, 0.0f, 1.0f },
-        .nodeEnd2 = { 5.0f, 0.0f, 5.0f },
+        .nodeEnd1 = { 0.383f, 0.0f, 0.924f },
+        .nodeEnd2 = { 1.913f, 0.0f, 4.619f },
+        .executeAtTime = 0.625f,
+    });
+    waza.hitscanNodes.push_back({
+        .nodeEnd1 = { 0.707f, 0.0f, 0.707f },
+        .nodeEnd2 = { 3.536f, 0.0f, 3.536f },
         .executeAtTime = 0.75f,
+    });
+    waza.hitscanNodes.push_back({
+        .nodeEnd1 = { 0.924f, 0.0f, 0.383f },
+        .nodeEnd2 = { 4.619f, 0.0f, 1.913f },
+        .executeAtTime = 0.875f,
     });
     waza.hitscanNodes.push_back({
         .nodeEnd1 = { 1.0f, 0.0f, 0.0f },
         .nodeEnd2 = { 5.0f, 0.0f, 0.0f },
         .executeAtTime = 1.0f,
     });
+    for (auto& hsn : waza.hitscanNodes)
+        hsn.executeAtTime *= waza.duration;  // @DEBUG.. I think. It scales the execution time.
 }
 
 void processWeaponAttackInput(Player_XData* d)
@@ -298,9 +320,20 @@ void processWeaponAttackInput(Player_XData* d)
 
     // Execute attack
     if (attackFailed)
+    {
+        AudioEngine::getInstance().playSound("res/sfx/wip_SE_S_HP_GAUGE_DOWN.wav");
         d->attackTwitchAngle = (float_t)std::rand() / (RAND_MAX / 2.0f) > 0.5f ? glm_rad(2.0f) : glm_rad(-2.0f);  // The most you could do was a twitch (attack failure).
+    }
     else
     {
+        AudioEngine::getInstance().playSoundFromList({
+            "res/sfx/wip_MM_Link_Attack1.wav",
+            "res/sfx/wip_MM_Link_Attack2.wav",
+            "res/sfx/wip_MM_Link_Attack3.wav",
+            "res/sfx/wip_MM_Link_Attack4.wav",
+            //"res/sfx/wip_hollow_knight_sfx/hero_nail_art_great_slash.wav",
+        });
+
         // Kick off new waza with a clear state.
         d->currentWaza = nextWaza;
         d->wazaTimer = 0.0f;
@@ -316,6 +349,8 @@ void processWazaUpdate(Player_XData* d, EntityManager* em, const float_t& physic
     size_t hitscanLayer = physengine::getCollisionLayer("HitscanInteractible");
     assert(d->currentWaza->hitscanNodes.size() >= 2);
 
+    bool playWazaHitSfx = false;
+
     // Execute all hitscans that need to be executed in the timeline.
     while (d->wazaCurrentHitScanIdx < d->currentWaza->hitscanNodes.size() &&
         d->wazaTimer >= d->currentWaza->hitscanNodes[d->wazaCurrentHitScanIdx].executeAtTime)
@@ -323,12 +358,22 @@ void processWazaUpdate(Player_XData* d, EntityManager* em, const float_t& physic
         auto& node     = d->currentWaza->hitscanNodes[d->wazaCurrentHitScanIdx];
         auto& nodePrev = d->currentWaza->hitscanNodes[d->wazaCurrentHitScanIdx - 1];
 
+        vec3 translation;
+        glm_vec3_add(d->position, vec3{ 0.0f, d->cpd->radius + d->cpd->height * 0.5f, 0.0f }, translation);
+        mat4 rotation;
+        glm_euler_zyx(vec3{ 0.0f, d->facingDirection, 0.0f }, rotation);
+
         for (uint32_t s = 0; s <= d->currentWaza->numHitscanSamples; s++)
         {
             float_t t = (float_t)s / (float_t)d->currentWaza->numHitscanSamples;
             vec3 pt1, pt2;
             glm_vec3_lerp(node.nodeEnd1, node.nodeEnd2, t, pt1);
             glm_vec3_lerp(nodePrev.nodeEnd1, nodePrev.nodeEnd2, t, pt2);
+
+            glm_mat4_mulv3(rotation, pt1, 0.0f, pt1);
+            glm_mat4_mulv3(rotation, pt2, 0.0f, pt2);
+            glm_vec3_add(pt1, translation, pt1);
+            glm_vec3_add(pt2, translation, pt2);
 
             std::vector<std::string> hitGuids;
             if (physengine::lineSegmentCast(pt1, pt2, hitscanLayer, true, hitGuids))
@@ -345,11 +390,17 @@ void processWazaUpdate(Player_XData* d, EntityManager* em, const float_t& physic
                     DataSerialized dsd = ds.getSerializedData();
                     em->sendMessage(guid, dsd);
                 }
+
+                playWazaHitSfx = true;
                 break;
             }
         }
         d->wazaCurrentHitScanIdx++;
     }
+
+    // Play sound if an attack waza landed.
+    if (playWazaHitSfx)
+        AudioEngine::getInstance().playSound("res/sfx/wip_EnemyHit_Critical.wav");
 
     // End waza if duration has passed.
     if (d->wazaTimer >= d->currentWaza->duration)

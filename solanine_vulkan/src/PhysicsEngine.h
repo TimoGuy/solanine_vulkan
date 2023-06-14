@@ -18,7 +18,11 @@ namespace physengine
 #endif
 
     void start(EntityManager* em);
-    void cleanup();
+    void cleanup(
+#ifdef _DEVELOP
+        VulkanEngine* engine
+#endif
+    );
 
     void setTimeScale(const float_t& timeScale);
     float_t getPhysicsAlpha();

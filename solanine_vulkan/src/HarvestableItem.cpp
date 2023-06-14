@@ -49,7 +49,7 @@ HarvestableItem::HarvestableItem(EntityManager* em, RenderObjectManager* rom, Da
     glm_translate(_data->renderObj->transformMatrix, _data->position);
 
     _data->cpd = physengine::createCapsule(getGUID(), 1.0f, 0.0f);
-    glm_vec3_copy(_data->position, _data->cpd->basePosition);    // @DEBUG
+    glm_vec3_add(_data->position, vec3{ 0.0f, -_data->cpd->radius, 0.0f }, _data->cpd->basePosition);    // @DEBUG
 }
 
 HarvestableItem::~HarvestableItem()
@@ -179,6 +179,9 @@ void HarvestableItem::reportMoved(mat4* matrixMoved)
     vec3 sca;
     glm_decompose(*matrixMoved, pos, rot, sca);
     glm_vec3_copy(pos, _data->position);
+    
+    // @DEBUG: update the capsule collider position
+    glm_vec3_add(_data->position, vec3{ 0.0f, -_data->cpd->radius, 0.0f }, _data->cpd->basePosition);    // @DEBUG
 }
 
 void HarvestableItem::renderImGui()

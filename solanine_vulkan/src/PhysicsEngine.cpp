@@ -289,11 +289,22 @@ namespace physengine
         asyncRunner = new std::thread(runPhysicsEngineAsync);
     }
 
-    void cleanup()
+    void cleanup(
+#ifdef _DEVELOP
+        VulkanEngine* engine
+#endif
+        )
     {
         isAsyncRunnerRunning = false;
         asyncRunner->join();
         delete asyncRunner;
+
+#ifdef _DEVELOP
+        vmaDestroyBuffer(engine->_allocator, visCameraBuffer._buffer, visCameraBuffer._allocation);
+        vmaDestroyBuffer(engine->_allocator, capsuleVisVertexBuffer._buffer, capsuleVisVertexBuffer._allocation);
+        vmaDestroyBuffer(engine->_allocator, lineVisVertexBuffer._buffer, lineVisVertexBuffer._allocation);
+        vkDestroyPipeline(engine->_device, debugVisPipeline, nullptr);
+#endif
     }
 
     void setTimeScale(const float_t& timeScale)
