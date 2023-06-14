@@ -75,6 +75,13 @@ namespace physengine
     uint32_t lineVisVertexCount;
     bool vertexBuffersInitialized = false;
 
+    struct DebugVisLine
+    {
+        vec3 pt1, pt2;
+    };
+    std::vector<DebugVisLine> debugVisLines;
+    std::mutex mutateDebugVisLines;
+
     void initializeAndUploadBuffers(VulkanEngine* engine)
     {
         static std::vector<DebugVisVertex> capsuleVertices = {
@@ -311,6 +318,11 @@ namespace physengine
 
 #ifdef _DEVELOP
             uint64_t perfTime = SDL_GetPerformanceCounter();
+
+            {   // Reset all the debug vis lines.
+                std::lock_guard<std::mutex> lg(mutateDebugVisLines);
+                debugVisLines.clear();
+            }
 #endif
 
             // @NOTE: this is the only place where `timeScale` is used. That's
@@ -844,6 +856,17 @@ namespace physengine
 
     bool checkLineSegmentIntersectingCapsule(CapsulePhysicsData& cpd, vec3& pt1, vec3& pt2, std::string& outHitGuid)
     {
+#ifdef _DEVELOP
+        {
+            DebugVisLine dvl = {};
+            glm_vec3_copy(pt1, dvl.pt1);
+            glm_vec3_copy(pt2, dvl.pt2);
+
+            std::lock_guard<std::mutex> lg(mutateDebugVisLines);
+            debugVisLines.push_back(dvl);
+        }
+#endif
+
         vec3 a_A, a_B;
         glm_vec3_add(cpd.basePosition, vec3{ 0.0f, cpd.radius, 0.0f }, a_A);
         glm_vec3_add(cpd.basePosition, vec3{ 0.0f, cpd.radius + cpd.height, 0.0f }, a_B);
@@ -944,6 +967,25 @@ namespace physengine
             vkCmdPushConstants(cmd, debugVisPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUVisInstancePushConst), &pc);
 
             vkCmdDraw(cmd, capsuleVisVertexCount, 1, 0, 0);
+        }
+
+        // Draw lines
+        std::vector<DebugVisLine> visLinesCopy;
+        {
+            // Copy debug vis lines so locking time is minimal.
+            std::lock_guard<std::mutex> lg(mutateDebugVisLines);
+            visLinesCopy = debugVisLines;
+        }
+        vkCmdBindVertexBuffers(cmd, 0, 1, &lineVisVertexBuffer._buffer, offsets);
+        for (DebugVisLine& dvl : visLinesCopy)
+        {
+            GPUVisInstancePushConst pc = {};
+            glm_vec4_copy(vec4{ 0.75f, 0.0f, 1.0f, 1.0f }, pc.color);
+            glm_vec4(dvl.pt1, 0.0f, pc.pt1);
+            glm_vec4(dvl.pt2, 0.0f, pc.pt2);
+            vkCmdPushConstants(cmd, debugVisPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUVisInstancePushConst), &pc);
+
+            vkCmdDraw(cmd, lineVisVertexCount, 1, 0, 0);
         }
     }
 #endif
