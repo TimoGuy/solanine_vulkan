@@ -233,19 +233,9 @@ void initRootWaza(Player_XData::AttackWaza& waza)
         .nodeEnd2 = { -5.0f, 0.0f, 0.0f },
     });
     waza.hitscanNodes.push_back({
-        .nodeEnd1 = { -0.924f, 0.0f, 0.383f },
-        .nodeEnd2 = { -4.619f, 0.0f, 1.913f },
-        .executeAtTime = 0.125f,
-    });
-    waza.hitscanNodes.push_back({
         .nodeEnd1 = { -0.707f, 0.0f, 0.707f },
         .nodeEnd2 = { -3.536f, 0.0f, 3.536f },
         .executeAtTime = 0.25f,
-    });
-    waza.hitscanNodes.push_back({
-        .nodeEnd1 = { -0.383f, 0.0f, 0.924f },
-        .nodeEnd2 = { -1.913f, 0.0f, 4.619f },
-        .executeAtTime = 0.375f,
     });
     waza.hitscanNodes.push_back({
         .nodeEnd1 = { 0.0f, 0.0f, 1.0f },
@@ -253,19 +243,9 @@ void initRootWaza(Player_XData::AttackWaza& waza)
         .executeAtTime = 0.5f,
     });
     waza.hitscanNodes.push_back({
-        .nodeEnd1 = { 0.383f, 0.0f, 0.924f },
-        .nodeEnd2 = { 1.913f, 0.0f, 4.619f },
-        .executeAtTime = 0.625f,
-    });
-    waza.hitscanNodes.push_back({
         .nodeEnd1 = { 0.707f, 0.0f, 0.707f },
         .nodeEnd2 = { 3.536f, 0.0f, 3.536f },
         .executeAtTime = 0.75f,
-    });
-    waza.hitscanNodes.push_back({
-        .nodeEnd1 = { 0.924f, 0.0f, 0.383f },
-        .nodeEnd2 = { 4.619f, 0.0f, 1.913f },
-        .executeAtTime = 0.875f,
     });
     waza.hitscanNodes.push_back({
         .nodeEnd1 = { 1.0f, 0.0f, 0.0f },
