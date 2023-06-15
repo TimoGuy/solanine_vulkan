@@ -32,6 +32,7 @@
 
 
 constexpr uint64_t TIMEOUT_1_SEC = 1000000000;
+bool showCollisionDebugDraw = false;
 
 
 void VulkanEngine::init()
@@ -466,7 +467,8 @@ void VulkanEngine::render()
 
 		renderRenderObjects(cmd, currentFrame, false);
 		renderPickedObject(cmd, currentFrame);
-		physengine::renderDebugVisualization(this, cmd);
+		if (showCollisionDebugDraw)
+			physengine::renderDebugVisualization(this, cmd);
 
 		// End renderpass
 		vkCmdEndRenderPass(cmd);
@@ -4124,7 +4126,7 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 				break;
 
 			case 3:
-				isLayerActive = false;  // _showCollisionDebugDraw;
+				isLayerActive = showCollisionDebugDraw;
 				break;
 			}
 
@@ -4159,7 +4161,7 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 
 				case 3:
 					// Collision Layer debug draw toggle
-					// _showCollisionDebugDraw = !_showCollisionDebugDraw;
+					showCollisionDebugDraw = !showCollisionDebugDraw;
 					break;
 				}
 
