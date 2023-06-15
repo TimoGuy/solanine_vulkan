@@ -24,6 +24,10 @@ struct Beanbag_XData
 #ifdef _DEVELOP
     bool requestChangeItemModel = false;
 #endif
+
+    int32_t health = 100;
+    float_t iframesTime = 0.25f;
+    float_t iframesTimer = 0.0f;
 };
 
 
@@ -62,7 +66,8 @@ Beanbag::~Beanbag()
 
 void Beanbag::physicsUpdate(const float_t& physicsDeltaTime)
 {
-    
+    if (_data->iframesTimer > 0.0f)
+        _data->iframesTimer -= physicsDeltaTime;
 }
 
 void Beanbag::update(const float_t& deltaTime)
@@ -98,6 +103,8 @@ void Beanbag::dump(DataSerializer& ds)
     Entity::dump(ds);
     ds.dumpVec3(_data->position);
     ds.dumpMat4(_data->rotation);
+    float_t healthF = _data->health;
+    ds.dumpFloat(healthF);
 }
 
 void Beanbag::load(DataSerialized& ds)
@@ -105,6 +112,9 @@ void Beanbag::load(DataSerialized& ds)
     Entity::load(ds);
     ds.loadVec3(_data->position);
     ds.loadMat4(_data->rotation);
+    float_t healthF;
+    ds.loadFloat(healthF);
+    _data->health = healthF;
 }
 
 bool Beanbag::processMessage(DataSerialized& message)
@@ -114,9 +124,17 @@ bool Beanbag::processMessage(DataSerialized& message)
 
     if (messageType == "msg_hitscan_hit")
     {
-        // @TODO: get hit code right here!
+        // Don't react to hitscan if in invincibility frames.
+        if (_data->iframesTimer <= 0.0f)
+        {
+            float_t attackLvl;
+            message.loadFloat(attackLvl);
+            _data->health -= attackLvl;
 
-        return true;
+            _data->iframesTimer = _data->iframesTime;
+
+            return true;
+        }
     }
 
     return false;
@@ -138,4 +156,5 @@ void Beanbag::renderImGui()
     ImGui::DragFloat("cpd->radius", &_data->cpd->radius);
     ImGui::DragFloat("cpd->height", &_data->cpd->height);
     ImGui::DragFloat("modelSize", &_data->modelSize);
+    ImGui::InputInt("health", &_data->health);
 }
