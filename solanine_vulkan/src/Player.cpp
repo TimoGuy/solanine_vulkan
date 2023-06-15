@@ -359,7 +359,7 @@ void processWazaUpdate(Player_XData* d, EntityManager* em, const float_t& physic
             if (physengine::lineSegmentCast(pt1, pt2, hitscanLayer, true, hitGuids))
             {
                 // @TODO: @INCOMPLETE: @HARDCODE: dummy values
-                float_t attackLvl = 4;
+                float_t attackLvl = 1;
 
                 // Successful hitscan!
                 for (auto& guid : hitGuids)

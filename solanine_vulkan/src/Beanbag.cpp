@@ -25,10 +25,16 @@ struct Beanbag_XData
     bool requestChangeItemModel = false;
 #endif
 
-    int32_t health = 100;
+    int32_t health = 3;
     float_t iframesTime = 0.25f;
     float_t iframesTimer = 0.0f;
 };
+
+void processOutOfHealth(EntityManager* em, Entity* e)
+{
+    // @TODO: drop items here.
+    em->destroyEntity(e);
+}
 
 
 Beanbag::Beanbag(EntityManager* em, RenderObjectManager* rom, DataSerialized* ds) : Entity(em, ds), _data(new Beanbag_XData())
@@ -132,6 +138,9 @@ bool Beanbag::processMessage(DataSerialized& message)
             _data->health -= attackLvl;
 
             _data->iframesTimer = _data->iframesTime;
+
+            if (_data->health <= 0)
+                processOutOfHealth(_em, this);
 
             return true;
         }
