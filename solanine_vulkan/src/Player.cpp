@@ -368,10 +368,9 @@ void processWazaUpdate(Player_XData* d, EntityManager* em, const float_t& physic
                     ds.dumpString("msg_hitscan_hit");
                     ds.dumpFloat(attackLvl);
                     DataSerialized dsd = ds.getSerializedData();
-                    em->sendMessage(guid, dsd);
+                    if (em->sendMessage(guid, dsd))
+                        playWazaHitSfx = true;
                 }
-
-                playWazaHitSfx = true;
                 break;
             }
         }
@@ -720,12 +719,11 @@ void Player::lateUpdate(const float_t& deltaTime)
     vec3 eulerAngles = { 0.0f, _data->facingDirection, 0.0f };
     mat4 rotation;
     glm_euler_zyx(eulerAngles, rotation);
-    vec3 scale = { _data->modelSize, _data->modelSize, _data->modelSize };
 
     mat4 transform = GLM_MAT4_IDENTITY_INIT;
     glm_translate(transform, _data->cpd->interpolBasePosition);
     glm_mat4_mul(transform, rotation, transform);
-    glm_scale(transform, scale);
+    glm_scale(transform, vec3{ _data->modelSize, _data->modelSize, _data->modelSize });
     glm_mat4_copy(transform, _data->characterRenderObj->transformMatrix);
 
     mat4 attachmentJointMat;
