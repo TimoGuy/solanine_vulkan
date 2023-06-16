@@ -14,7 +14,6 @@
 #include "AudioEngine.h"
 #include "DataSerialization.h"
 #include "GlobalState.h"
-#include "Debug.h"
 #include "imgui/imgui.h"
 
 
@@ -76,6 +75,14 @@ struct Player_XData
     float_t     wazaTimer = 0.0f;  // Used for timing chains and hitscans.
     size_t      wazaCurrentHitScanIdx = 1;  // 0th hitscan node is ignored.
 
+    // Notifications
+    struct Notification
+    {
+        float_t showMessageTime = 2.0f;
+        float_t showMessageTimer = 0.0f;
+        textmesh::TextMesh* message = nullptr;
+    } notification;
+
     vec3 worldSpaceInput = GLM_VEC3_ZERO_INIT;
     float_t gravityForce = 0.0f;
     bool    inputFlagJump = false;
@@ -91,6 +98,23 @@ struct Player_XData
     float_t facingDirection = 0.0f;
     float_t modelSize = 0.3f;
 };
+
+void pushPlayerNotification(const std::string& message, Player_XData* d)
+{
+    AudioEngine::getInstance().playSound("wip_bonk.ogg");
+    d->notification.showMessageTimer = d->notification.showMessageTime;
+
+    // Lazyload the message textmesh. (@NOTE: no multithreading so no locks required)
+    if (d->notification.message == nullptr)
+    {
+        d->notification.message = textmesh::createAndRegisterTextMesh("defaultFont", textmesh::CENTER, textmesh::MID, message);
+        d->notification.message->isPositionScreenspace = true;
+        glm_vec3_copy(vec3{ 0.0f, 250.0f, 0.0f }, d->notification.message->renderPosition);
+        d->notification.message->scale = 25.0f;
+    }
+    else
+        textmesh::regenerateTextMeshMesh(d->notification.message, message);
+}
 
 void processWeaponAttackInput(Player_XData* d);
 
@@ -163,16 +187,12 @@ void processAttack(Player_XData* d)
             }
             else
             {
-                debug::pushDebugMessage({
-                    .message = "Not enough materials for materialization.",
-                });
+                pushPlayerNotification("Not enough materials for materialization.", d);
             }
         }
         else
         {
-            debug::pushDebugMessage({
-                .message = "No item is selected to materialize.",
-            });
+            pushPlayerNotification("No item is selected to materialize.", d);
         }
     }
     else if (d->staminaData.currentStamina > 0)
@@ -510,6 +530,8 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
 
 Player::~Player()
 {
+    if (_data->notification.message != nullptr)
+        textmesh::destroyAndUnregisterTextMesh(_data->notification.message);
     textmesh::destroyAndUnregisterTextMesh(_data->uiMaterializeItem);
 
     if (globalState::playerGUID == getGUID() ||
@@ -689,6 +711,13 @@ void Player::update(const float_t& deltaTime)
         }
         else
             interactionUIText->excludeFromBulkRender = true;
+
+    // Notification UI
+    if (_data->notification.showMessageTimer > 0.0f)
+    {
+        _data->notification.showMessageTimer -= deltaTime;
+        _data->notification.message->excludeFromBulkRender = (_data->notification.showMessageTimer <= 0.0f);
+    }
 
     if (textbox::isProcessingMessage())
         return;
