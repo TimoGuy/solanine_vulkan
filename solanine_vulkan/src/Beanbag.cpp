@@ -11,6 +11,8 @@
 #include "Textbox.h"
 #include "Debug.h"
 #include "imgui/imgui.h"
+#include "HarvestableItem.h"
+#include "ScannableItem.h"
 
 
 struct Beanbag_XData
@@ -28,11 +30,34 @@ struct Beanbag_XData
     int32_t health = 3;
     float_t iframesTime = 0.25f;
     float_t iframesTimer = 0.0f;
+
+    std::vector<size_t> harvestableItemsIdsToSpawnAfterDeath;
+    std::vector<size_t> scannableItemsIdsToSpawnAfterDeath;
 };
 
-void processOutOfHealth(EntityManager* em, Entity* e)
+void processOutOfHealth(EntityManager* em, Entity* e, Beanbag_XData* d)
 {
-    // @TODO: drop items here.
+    // Drop off items and then destroy self.
+    for (size_t id : d->harvestableItemsIdsToSpawnAfterDeath)
+    {
+        DataSerializer ds;
+        ds.dumpString(e->getGUID());  // Use this guid to force a guid recalculation.
+        ds.dumpVec3(d->position);
+        float_t hii = (float_t)id;
+        ds.dumpFloat(hii);
+        DataSerialized dsd = ds.getSerializedData();
+        new HarvestableItem(em, d->rom, &dsd);
+    }
+    for (size_t id : d->scannableItemsIdsToSpawnAfterDeath)
+    {
+        DataSerializer ds;
+        ds.dumpString(e->getGUID());  // Use this guid to force a guid recalculation.
+        ds.dumpVec3(d->position);
+        float_t hii = (float_t)id;
+        ds.dumpFloat(hii);
+        DataSerialized dsd = ds.getSerializedData();
+        new ScannableItem(em, d->rom, &dsd);
+    }
     em->destroyEntity(e);
 }
 
@@ -111,6 +136,24 @@ void Beanbag::dump(DataSerializer& ds)
     ds.dumpMat4(_data->rotation);
     float_t healthF = _data->health;
     ds.dumpFloat(healthF);
+
+    // Harvestable item ids
+    float_t numHarvestableItems = (float_t)_data->harvestableItemsIdsToSpawnAfterDeath.size();
+    ds.dumpFloat(numHarvestableItems);
+    for (size_t id : _data->harvestableItemsIdsToSpawnAfterDeath)
+    {
+        float_t idF = (float_t)id;
+        ds.dumpFloat(idF);
+    }
+
+    // Scannable item ids
+    float_t numScannableItems = (float_t)_data->scannableItemsIdsToSpawnAfterDeath.size();
+    ds.dumpFloat(numScannableItems);
+    for (size_t id : _data->scannableItemsIdsToSpawnAfterDeath)
+    {
+        float_t idF = (float_t)id;
+        ds.dumpFloat(idF);
+    }
 }
 
 void Beanbag::load(DataSerialized& ds)
@@ -121,6 +164,28 @@ void Beanbag::load(DataSerialized& ds)
     float_t healthF;
     ds.loadFloat(healthF);
     _data->health = healthF;
+
+    // Harvestable item ids
+    float_t numHarvestableItemsF;
+    ds.loadFloat(numHarvestableItemsF);
+    _data->harvestableItemsIdsToSpawnAfterDeath.resize((size_t)numHarvestableItemsF);
+    for (size_t& idRef : _data->harvestableItemsIdsToSpawnAfterDeath)
+    {
+        float_t idF;
+        ds.loadFloat(idF);
+        idRef = (size_t)idF;
+    }
+
+    // Scannable item ids
+    float_t numScannableItemsF;
+    ds.loadFloat(numScannableItemsF);
+    _data->scannableItemsIdsToSpawnAfterDeath.resize((size_t)numScannableItemsF);
+    for (size_t& idRef : _data->scannableItemsIdsToSpawnAfterDeath)
+    {
+        float_t idF;
+        ds.loadFloat(idF);
+        idRef = (size_t)idF;
+    }
 }
 
 bool Beanbag::processMessage(DataSerialized& message)
@@ -140,7 +205,7 @@ bool Beanbag::processMessage(DataSerialized& message)
             _data->iframesTimer = _data->iframesTime;
 
             if (_data->health <= 0)
-                processOutOfHealth(_em, this);
+                processOutOfHealth(_em, this, _data);
 
             return true;
         }

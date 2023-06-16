@@ -129,17 +129,17 @@ void HarvestableItem::dump(DataSerializer& ds)
 {
     Entity::dump(ds);
     ds.dumpVec3(_data->position);
-    float_t awii = (float_t)_data->harvestableItemId;
-    ds.dumpFloat(awii);
+    float_t hii = (float_t)_data->harvestableItemId;
+    ds.dumpFloat(hii);
 }
 
 void HarvestableItem::load(DataSerialized& ds)
 {
     Entity::load(ds);
     ds.loadVec3(_data->position);
-    float_t awii;
-    ds.loadFloat(awii);
-    _data->harvestableItemId = (size_t)awii;
+    float_t hii;
+    ds.loadFloat(hii);
+    _data->harvestableItemId = (size_t)hii;
 }
 
 bool HarvestableItem::processMessage(DataSerialized& message)
