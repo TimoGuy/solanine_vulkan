@@ -14,6 +14,7 @@
 #include "VkTextures.h"
 #include "VkInitializers.h"
 #include "StringHelper.h"
+#include <chrono>
 
 
 namespace vkglTF
@@ -1622,7 +1623,15 @@ namespace vkglTF
 	void Model::loadFromFile(VulkanEngine* engine, std::string filename, float scale)
 	{
 		this->engine = engine;
-		auto tStart = std::chrono::high_resolution_clock::now();
+
+		constexpr size_t numPerfs = 11;
+		std::chrono::steady_clock::time_point perfs[numPerfs];
+		double_t perfsAsMS[numPerfs];
+		#define PERF_TSTART(x) perfs[x] = std::chrono::high_resolution_clock::now()
+		#define PERF_TEND(x) perfsAsMS[x] = std::chrono::duration<double_t, std::milli>(std::chrono::high_resolution_clock::now() - perfs[x]).count()
+		#define GET_PERF_TDIFF_MS(x) perfsAsMS[x]
+
+		PERF_TSTART(0);
 
 		//
 		// Load in data from file
@@ -1638,7 +1647,9 @@ namespace vkglTF
 		if (extpos != std::string::npos)
 			binary = (filename.substr(extpos + 1, filename.length() - extpos) == "glb");
 
+		PERF_TSTART(8);
 		bool fileLoaded = binary ? gltfContext.LoadBinaryFromFile(&gltfModel, &error, &warning, filename.c_str()) : gltfContext.LoadASCIIFromFile(&gltfModel, &error, &warning, filename.c_str());
+		PERF_TEND(8);
 
 		// LoaderInfo loaderInfo{ };  @TODO: @IMPROVE: @MEMORY: See below
 		loaderInfo = {};
@@ -1655,13 +1666,24 @@ namespace vkglTF
 		//
 		// Load gltf data into data structures
 		//
+		PERF_TSTART(1);
 		loadTextureSamplers(gltfModel);		// @TODO: RE-ENABLE THESE. THESE ARE ALREADY IMPLEMENTED BUT THEY ARE SLOW
-		loadTextures(gltfModel);		// @TODO: RE-ENABLE THESE. THESE ARE ALREADY IMPLEMENTED BUT THEY ARE SLOW
-		loadMaterials(gltfModel);
+		PERF_TEND(1);
 
+		PERF_TSTART(9);
+		loadTextures(gltfModel);		// @TODO: RE-ENABLE THESE. THESE ARE ALREADY IMPLEMENTED BUT THEY ARE SLOW
+		PERF_TEND(9);
+		
+		PERF_TSTART(10);
+		loadMaterials(gltfModel);
+		PERF_TEND(10);
+
+		PERF_TSTART(2);
 		const tinygltf::Scene& scene = gltfModel.scenes[gltfModel.defaultScene > -1 ? gltfModel.defaultScene : 0];		// TODO: scene handling with no default scene
+		PERF_TEND(2);
 
 		// Get vertex and index buffer sizes
+		PERF_TSTART(3);
 		for (size_t i = 0; i < scene.nodes.size(); i++)
 			getNodeProps(gltfModel.nodes[scene.nodes[i]], gltfModel, vertexCount, indexCount);
 
@@ -1669,15 +1691,19 @@ namespace vkglTF
 		loaderInfo.vertexBuffer = new Vertex[vertexCount];
 		loaderInfo.indexCount = indexCount;
 		loaderInfo.vertexCount = vertexCount;
+		PERF_TEND(3);
 
 		// Load in vertices and indices
+		PERF_TSTART(4);
 		for (size_t i = 0; i < scene.nodes.size(); i++)
 		{
 			const tinygltf::Node node = gltfModel.nodes[scene.nodes[i]];
 			loadNode(nullptr, node, scene.nodes[i], gltfModel, loaderInfo, scale);
 		}
+		PERF_TEND(4);
 
 		// Load in animations
+		PERF_TSTART(5);
 		if (gltfModel.animations.size() > 0)
 		{
 			loadAnimations(gltfModel);
@@ -1691,7 +1717,9 @@ namespace vkglTF
 			if (node->skinIndex > -1)
 				node->skin = skins[node->skinIndex];
 		}
+		PERF_TEND(5);
 
+		PERF_TSTART(6);
 		extensions = gltfModel.extensionsUsed;
 
 		size_t vertexBufferSize = vertexCount * sizeof(Vertex);
@@ -1780,28 +1808,41 @@ namespace vkglTF
 		vmaDestroyBuffer(engine->_allocator, vertexStaging._buffer, vertexStaging._allocation);
 		if (indexBufferSize > 0)
 			vmaDestroyBuffer(engine->_allocator, indexStaging._buffer, indexStaging._allocation);
+		PERF_TEND(6);
 
 		// @TODO: @IMPROVE: @MEMORY: figure out how to fetch the loader information bc it really should get deleted right here... or later once stuff is loaded up
 		/*delete[] loaderInfo.vertexBuffer;
 		delete[] loaderInfo.indexBuffer;*/
 
+		PERF_TSTART(7);
 		getSceneDimensions();
+		PERF_TEND(7);
+
+		PERF_TEND(0);
 
 		// Report time it took to load
-		auto tEnd = std::chrono::high_resolution_clock::now();
-		auto tDiff = std::chrono::duration<double, std::milli>(tEnd - tStart).count();
-
 		static std::mutex reportModelMutex;
 		std::lock_guard<std::mutex> lg(reportModelMutex);
 		std::cout << "[LOAD glTF MODEL FROM FILE]" << std::endl
-			<< "filename:           " << filename << std::endl
-			<< "meshes:             " << gltfModel.meshes.size() << std::endl
-			<< "animations:         " << gltfModel.animations.size() << std::endl
-			<< "materials:          " << gltfModel.materials.size() << std::endl
-			<< "images:             " << gltfModel.images.size() << std::endl
-			<< "total vertices:     " << vertexCount << std::endl
-			<< "total indices:      " << indexCount << std::endl
-			<< "execution duration: " << tDiff << " ms" << std::endl;
+			<< "filename:                      " << filename << std::endl
+			<< "meshes:                        " << gltfModel.meshes.size() << std::endl
+			<< "animations:                    " << gltfModel.animations.size() << std::endl
+			<< "materials:                     " << gltfModel.materials.size() << std::endl
+			<< "images:                        " << gltfModel.images.size() << std::endl
+			<< "total vertices:                " << vertexCount << std::endl
+			<< "total indices:                 " << indexCount << std::endl
+			<< "load data from file duration:  " << GET_PERF_TDIFF_MS(8) << " ms" << std::endl
+			<< "allocate samplers duration:    " << GET_PERF_TDIFF_MS(1) << " ms" << std::endl
+			<< "allocate textures duration:    " << GET_PERF_TDIFF_MS(9) << " ms" << std::endl
+			<< "allocate materials duration:   " << GET_PERF_TDIFF_MS(10) << " ms" << std::endl
+			<< "init scene duration:           " << GET_PERF_TDIFF_MS(2) << " ms" << std::endl
+			<< "get node props duration:       " << GET_PERF_TDIFF_MS(3) << " ms" << std::endl
+			<< "load nodes duration:           " << GET_PERF_TDIFF_MS(4) << " ms" << std::endl
+			<< "load animations duration:      " << GET_PERF_TDIFF_MS(5) << " ms" << std::endl
+			<< "load vert/ind buffer duration: " << GET_PERF_TDIFF_MS(6) << " ms" << std::endl
+			<< "get scene dimensions duration: " << GET_PERF_TDIFF_MS(7) << " ms" << std::endl
+			<< "total execution duration:      " << GET_PERF_TDIFF_MS(0) << " ms" << std::endl
+			<< std::endl;
 	}
 
 	void Model::bind(VkCommandBuffer commandBuffer)
