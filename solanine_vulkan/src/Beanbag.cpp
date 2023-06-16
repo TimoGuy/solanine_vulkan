@@ -31,7 +31,7 @@ struct Beanbag_XData
     float_t iframesTime = 0.25f;
     float_t iframesTimer = 0.0f;
 
-    std::vector<size_t> harvestableItemsIdsToSpawnAfterDeath;
+    std::vector<size_t> harvestableItemsIdsToSpawnAfterDeath;  // @TODO: make tool to be able to add the spawn items and delete them (just use imgui popup with buttons of the model names to add and an X button to delete.)
     std::vector<size_t> scannableItemsIdsToSpawnAfterDeath;
 };
 
@@ -231,4 +231,62 @@ void Beanbag::renderImGui()
     ImGui::DragFloat("cpd->height", &_data->cpd->height);
     ImGui::DragFloat("modelSize", &_data->modelSize);
     ImGui::InputInt("health", &_data->health);
+
+    // Harvestable item
+    ImGui::Text("Harvestable item drops");
+    ImGui::SameLine();
+    if (ImGui::Button("Add..##Harvestable Item Drop"))
+        ImGui::OpenPopup("add_harvestable_popup");
+    if (ImGui::BeginPopup("add_harvestable_popup"))
+    {
+        for (size_t i = 0; i < globalState::getNumHarvestableItemIds(); i++)
+        {
+            if (ImGui::Button(globalState::getHarvestableItemByIndex(i)->name.c_str()))
+            {
+                _data->harvestableItemsIdsToSpawnAfterDeath.push_back(i);
+                ImGui::CloseCurrentPopup();
+            }
+        }
+        ImGui::EndPopup();
+    }
+    for (size_t i = 0; i < _data->harvestableItemsIdsToSpawnAfterDeath.size(); i++)
+    {
+        size_t id = _data->harvestableItemsIdsToSpawnAfterDeath[i];
+        ImGui::Text(globalState::getHarvestableItemByIndex(id)->name.c_str());
+        ImGui::SameLine();
+        if (ImGui::Button(("X##HIITSAD" + std::to_string(i)).c_str()))
+        {
+            _data->harvestableItemsIdsToSpawnAfterDeath.erase(_data->harvestableItemsIdsToSpawnAfterDeath.begin() + i);
+            break;
+        }
+    }
+
+    // Scannable item
+    ImGui::Text("Scannable item drops");
+    ImGui::SameLine();
+    if (ImGui::Button("Add..##Scannable Item Drop"))
+        ImGui::OpenPopup("add_scannable_popup");
+    if (ImGui::BeginPopup("add_scannable_popup"))
+    {
+        for (size_t i = 0; i < globalState::getNumScannableItemIds(); i++)
+        {
+            if (ImGui::Button(globalState::getAncientWeaponItemByIndex(i)->name.c_str()))
+            {
+                _data->scannableItemsIdsToSpawnAfterDeath.push_back(i);
+                ImGui::CloseCurrentPopup();
+            }
+        }
+        ImGui::EndPopup();
+    }
+    for (size_t i = 0; i < _data->scannableItemsIdsToSpawnAfterDeath.size(); i++)
+    {
+        size_t id = _data->scannableItemsIdsToSpawnAfterDeath[i];
+        ImGui::Text(globalState::getAncientWeaponItemByIndex(id)->name.c_str());
+        ImGui::SameLine();
+        if (ImGui::Button(("X##SIITSAD" + std::to_string(i)).c_str()))
+        {
+            _data->scannableItemsIdsToSpawnAfterDeath.erase(_data->scannableItemsIdsToSpawnAfterDeath.begin() + i);
+            break;
+        }
+    }
 }
