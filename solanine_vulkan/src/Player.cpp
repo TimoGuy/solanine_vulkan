@@ -640,7 +640,15 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
 
     if (_data->inputFlagRelease)
     {
-        processRelease(_data);
+        if (_data->materializedItem != nullptr)
+            processRelease(_data);
+        else
+        {
+            // Cycle thru the available materializable items.
+            if (globalState::selectNextCanMaterializeScannableItemId())
+                AudioEngine::getInstance().playSound("res/sfx/wip_SYS_AppHome_Slide.wav");
+            textmesh::regenerateTextMeshMesh(_data->uiMaterializeItem, getUIMaterializeItemText(_data));
+        }
         _data->inputFlagRelease = false;
     }
 

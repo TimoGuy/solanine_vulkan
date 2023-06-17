@@ -146,7 +146,8 @@ bool ScannableItem::processMessage(DataSerialized& message)
             .useEndingQuery = false,
         });
 
-        // Flag this item as materializable in ancient weapon.  @FUTURE: have a "limited memory" gameplay system, where you have to organize the memory that the new item takes up.
+        // Flag this item as materializable in ancient weapon.
+        // @FUTURE: have a "limited memory" gameplay system, where you have to organize the memory that the new item takes up.
         globalState::flagScannableItemAsCanMaterializeByIndex(_data->scannableItemId, true);
         globalState::setSelectedScannableItemId(_data->scannableItemId);
 

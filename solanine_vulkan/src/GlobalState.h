@@ -71,4 +71,5 @@ namespace globalState
     size_t getNumScannableItemIds();
     size_t getSelectedScannableItemId();
     void setSelectedScannableItemId(size_t scannableItemId);
+    bool selectNextCanMaterializeScannableItemId();
 }

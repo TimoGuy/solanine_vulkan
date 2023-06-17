@@ -234,4 +234,17 @@ namespace globalState
     {
         selectedScannableItemId = scannableItemId;
     }
+
+    bool selectNextCanMaterializeScannableItemId()
+    {
+        size_t originalId = selectedScannableItemId;
+        do
+        {
+            selectedScannableItemId = (selectedScannableItemId + 1) % allAncientWeaponItems.size();
+            if (selectedScannableItemId == originalId)
+                return false;  // Cycled thru all of them and couldn't find another one that was materializable. So, just keep the original id.
+        } while (!getCanMaterializeScannableItemByIndex(selectedScannableItemId));
+
+        return true;  // New id was found and got selected.
+    }
 }
