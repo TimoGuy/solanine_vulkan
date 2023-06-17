@@ -79,7 +79,7 @@ namespace vkglTF
 	//
 	// Mesh
 	//
-	Mesh::Mesh() : animatorNodeReservedIndex(0)
+	Mesh::Mesh() : animatorSkinIndex(0)
 	{
 	}
 
@@ -1948,7 +1948,7 @@ namespace vkglTF
 			for (Primitive* primitive : node->mesh->primitives)
 			{
 				// @NOTE: Propagate a copy of the index for render object manager to use
-				primitive->animatorNodeReservedIndexPropagatedCopy = node->mesh->animatorNodeReservedIndex;
+				primitive->animatorSkinIndexPropagatedCopy = node->mesh->animatorSkinIndex;
 				collection.push_back(primitive);
 			}
 
@@ -2027,6 +2027,10 @@ namespace vkglTF
 		engine               = model->engine;
 		animStateMachineCopy = StateMachine(model->animStateMachine);  // Make a copy to play with here
 
+		for (auto& node : model->linearNodes)
+			if (node->mesh)
+				node->mesh->animatorSkinIndex = 0;  // Reset all mesh nodes to be assigned to the empty animator skin by default (@NOTE later mesh nodes will be assigned the correct skin, but this line is to prevent danglers).
+
 		for (auto skin : model->skins)
 		{
 			GPUAnimatorNode newAnimatorNode = {};
@@ -2054,7 +2058,7 @@ namespace vkglTF
 			myReservedNodeCollectionIndices.push_back(reserveIndexCandidate);
 			for (auto& node : model->linearNodes)
 				if (node->mesh && node->skin == skin)
-					node->mesh->animatorNodeReservedIndex = myReservedNodeCollectionIndices.size() - 1;
+					node->mesh->animatorSkinIndex = myReservedNodeCollectionIndices.size() - 1;
 			uniformBlocks[reserveIndexCandidate] = newAnimatorNode;
 
 			memcpy(nodeCollectionBuffer.mapped + reserveIndexCandidate, &newAnimatorNode, sizeof(GPUAnimatorNode));
@@ -2501,14 +2505,14 @@ namespace vkglTF
 				mat4 m = GLM_MAT4_IDENTITY_INIT;
 				if (skin->skeletonRoot)
 					skin->skeletonRoot->getMatrix(m);
-				updateJointMatrices(myReservedNodeCollectionIndices[i], skin, m);
+				updateJointMatrices(skinIndexToGlobalReservedNodeIndex(i), skin, m);
 			}
 		}
 	}
 
-	void Animator::updateJointMatrices(size_t animatorNodeReservedIndex, vkglTF::Skin* skin, mat4& m)
+	void Animator::updateJointMatrices(size_t globalNodeReservedIndex, vkglTF::Skin* skin, mat4& m)
 	{
-		auto& uniformBlock = uniformBlocks[animatorNodeReservedIndex];
+		auto& uniformBlock = uniformBlocks[globalNodeReservedIndex];
 		glm_mat4_copy(m, uniformBlock.matrix);
 
 		// Update join matrices
@@ -2524,7 +2528,7 @@ namespace vkglTF
 			glm_mat4_mul(inverseTransform, jointMat, uniformBlock.jointMatrix[i]);
 		}
 		uniformBlock.jointcount = (float)numJoints;
-		memcpy(nodeCollectionBuffer.mapped + animatorNodeReservedIndex, &uniformBlock, sizeof(GPUAnimatorNode));
+		memcpy(nodeCollectionBuffer.mapped + globalNodeReservedIndex, &uniformBlock, sizeof(GPUAnimatorNode));
 	}
 
 	bool Animator::getJointMatrix(const std::string& jointName, mat4& out)
@@ -2547,5 +2551,10 @@ namespace vkglTF
 		std::cerr << "[GET JOINT MATRIX]" << std::endl
 			<< "WARNING: joint matrix \"" << jointName << "\" not found. Returning identity matrix" << std::endl;
 		return false;
+	}
+
+	size_t Animator::skinIndexToGlobalReservedNodeIndex(size_t skinIndex)
+	{
+		return myReservedNodeCollectionIndices[skinIndex];
 	}
 }

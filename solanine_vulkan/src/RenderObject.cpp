@@ -39,7 +39,7 @@ RenderObject* RenderObjectManager::registerRenderObject(RenderObject renderObjec
 		renderObjectData.calculatedModelInstances.push_back({
 			.objectID = (uint32_t)registerIndex,
 			.materialID = primitive->materialID,
-			.animatorNodeID = (uint32_t)(renderObjectData.animator == nullptr ? 0 : renderObjectData.animator->myReservedNodeCollectionIndices[primitive->animatorNodeReservedIndexPropagatedCopy]),
+			.animatorNodeID = (uint32_t)(renderObjectData.animator == nullptr ? 0 : renderObjectData.animator->skinIndexToGlobalReservedNodeIndex(primitive->animatorSkinIndexPropagatedCopy)),
 		});
 
 	// Register object
