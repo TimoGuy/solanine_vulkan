@@ -86,6 +86,9 @@
     </None>
     <None Include="shader\wireframe_color.vert" />
     <None Include="shader\postprocess.frag" />
+    <None Include="shader\sdf.frag" />
+    <None Include="shader\sdf.vert" />
+    <None Include="shader\color_textbox_bg.frag" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\imgui\imconfig.h">
@@ -220,6 +223,21 @@
     <ClInclude Include="src\VkPipelineBuilderUtil.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\TextMesh.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Textbox.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ScannableItem.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\HarvestableItem.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Beanbag.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Main.cpp">
@@ -337,6 +355,21 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\VkPipelineBuilderUtil.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\TextMesh.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Textbox.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ScannableItem.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\HarvestableItem.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Beanbag.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

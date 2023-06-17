@@ -9,9 +9,11 @@
 #include "VkPipelineBuilderUtil.h"
 #include "VkTextures.h"
 #include "VkglTFModel.h"
+#include "TextMesh.h"
 #include "AudioEngine.h"
 #include "PhysicsEngine.h"
 #include "InputManager.h"
+#include "Textbox.h"
 #include "RenderObject.h"
 #include "Entity.h"
 #include "EntityManager.h"
@@ -30,6 +32,7 @@
 
 
 constexpr uint64_t TIMEOUT_1_SEC = 1000000000;
+bool showCollisionDebugDraw = false;
 
 
 void VulkanEngine::init()
@@ -77,6 +80,7 @@ void VulkanEngine::init()
 	initShadowRenderpass();
 	initShadowImages();  // @NOTE: this isn't screen space, so no need to recreate images on swapchain recreation
 	initMainRenderpass();
+	initUIRenderpass();
 	initPostprocessRenderpass();
 	initPickingRenderpass();
 	initFramebuffers();
@@ -91,7 +95,7 @@ void VulkanEngine::init()
 	initPipelines();
 
 	AudioEngine::getInstance().initialize();
-	physengine::initialize(_entityManager);
+	physengine::start(_entityManager);
 	globalState::initGlobalState(_camera->sceneCamera);
 
 	SDL_ShowWindow(_window);
@@ -183,6 +187,9 @@ void VulkanEngine::run()
 
 
 		perfs[4] = SDL_GetPerformanceCounter();
+		// Update textbox
+		textbox::update(deltaTime);
+
 		// Update entities
 		_entityManager->update(scaledDeltaTime);
 		perfs[4] = SDL_GetPerformanceCounter() - perfs[4];
@@ -209,6 +216,9 @@ void VulkanEngine::run()
 		perfs[8] = SDL_GetPerformanceCounter();
 		// Add/Remove requested entities
 		_entityManager->INTERNALaddRemoveRequestedEntities();
+
+		// Add/Change/Remove text meshes
+		textmesh::INTERNALprocessChangeQueue();
 		perfs[8] = SDL_GetPerformanceCounter() - perfs[8];
 
 
@@ -280,7 +290,11 @@ void VulkanEngine::cleanup()
 		vkDeviceWaitIdle(_device);
 
 		globalState::cleanupGlobalState();
-		physengine::cleanup();
+		physengine::cleanup(
+#ifdef _DEVELOP
+			this
+#endif
+		);
 		AudioEngine::getInstance().cleanup();
 
 		delete _entityManager;
@@ -291,6 +305,8 @@ void VulkanEngine::cleanup()
 		_mainDeletionQueue.flush();
 		_swapchainDependentDeletionQueue.flush();
 
+		textbox::cleanup();
+		textmesh::cleanup();
 		vkutil::pipelinelayoutcache::cleanup();
 		vkutil::descriptorlayoutcache::cleanup();
 		vkutil::descriptorallocator::cleanup();
@@ -354,6 +370,7 @@ void VulkanEngine::render()
 	//
 	perfs[14] = SDL_GetPerformanceCounter();
 	uploadCurrentFrameToGPU(currentFrame);
+	textmesh::uploadUICameraDataToGPU();
 	compactRenderObjectsIntoDraws(currentFrame, {});
 	perfs[14] = SDL_GetPerformanceCounter() - perfs[14];
 
@@ -450,8 +467,43 @@ void VulkanEngine::render()
 
 		renderRenderObjects(cmd, currentFrame, false);
 		renderPickedObject(cmd, currentFrame);
+		if (showCollisionDebugDraw)
+			physengine::renderDebugVisualization(this, cmd);
 
 		// End renderpass
+		vkCmdEndRenderPass(cmd);
+	}
+
+	//
+	// UI Render Pass
+	//
+	{
+		VkClearValue clearValue;
+		clearValue.color = { { 0.0f, 0.0f, 0.0f, 0.0f } };
+
+		VkClearValue clearValues[] = { clearValue };
+
+		VkRenderPassBeginInfo renderpassInfo = {
+			.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+			.pNext = nullptr,
+
+			.renderPass = _uiRenderPass,
+			.framebuffer = _uiFramebuffer,
+			.renderArea = {
+				.offset = VkOffset2D{ 0, 0 },
+				.extent = _windowExtent,
+			},
+
+			.clearValueCount = 1,
+			.pClearValues = &clearValues[0],
+		};
+
+		// Renderpass
+		vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+		textmesh::renderTextMeshesBulk(cmd);
+		textbox::renderTextbox(cmd);
+
 		vkCmdEndRenderPass(cmd);
 	}
 
@@ -1191,6 +1243,8 @@ void VulkanEngine::initVulkan()
 	vkutil::descriptorallocator::init(_device);
 	vkutil::descriptorlayoutcache::init(_device);
 	vkutil::pipelinelayoutcache::init(_device);
+	textmesh::init(this);
+	textbox::init(this);
 	vkinit::_maxSamplerAnisotropy = _gpuProperties.limits.maxSamplerAnisotropy;
 
 	//
@@ -1570,6 +1624,95 @@ void VulkanEngine::initMainRenderpass()
 		});
 }
 
+void VulkanEngine::initUIRenderpass()    // @NOTE: @COPYPASTA: This is really copypasta of the above function (initMainRenderpass)
+{
+	//
+	// Color Attachment
+	//
+	VkAttachmentDescription colorAttachment = {
+		.format = VK_FORMAT_R8G8B8A8_UNORM,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+		.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+		.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+	};
+	VkAttachmentReference colorAttachmentRef = {
+		.attachment = 0,
+		.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+	};
+
+	//
+	// Define the subpass to render to the default renderpass
+	//
+	VkSubpassDescription subpass = {
+		.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+		.colorAttachmentCount = 1,
+		.pColorAttachments = &colorAttachmentRef,
+	};
+
+	//
+	// GPU work ordering dependencies
+	//
+	VkSubpassDependency colorDependency = {
+		.srcSubpass = VK_SUBPASS_EXTERNAL,
+		.dstSubpass = 0,
+		.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.srcAccessMask = 0,
+		.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+	};
+
+	//
+	// Create the renderpass for the subpass
+	//
+	VkRenderPassCreateInfo renderPassInfo = {
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+		.attachmentCount = 1,
+		.pAttachments = &colorAttachment,
+		.subpassCount = 1,
+		.pSubpasses = &subpass,
+		.dependencyCount = 1,
+		.pDependencies = &colorDependency
+	};
+
+	VK_CHECK(vkCreateRenderPass(_device, &renderPassInfo, nullptr, &_uiRenderPass));
+
+	// Add destroy command for cleanup
+	_swapchainDependentDeletionQueue.pushFunction([=]() {
+		vkDestroyRenderPass(_device, _uiRenderPass, nullptr);
+		});
+
+	//
+	// Create image for renderpass
+	//
+	// Color image
+	VkExtent3D mainImgExtent = {
+		.width = _windowExtent.width,
+		.height = _windowExtent.height,
+		.depth = 1,
+	};
+	VkImageCreateInfo mainColorImgInfo = vkinit::imageCreateInfo(VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, mainImgExtent, 1);
+	VmaAllocationCreateInfo mainImgAllocInfo = {
+		.usage = VMA_MEMORY_USAGE_GPU_ONLY,
+	};
+	vmaCreateImage(_allocator, &mainColorImgInfo, &mainImgAllocInfo, &_uiImage.image._image, &_uiImage.image._allocation, nullptr);
+
+	VkImageViewCreateInfo mainColorViewInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_UNORM, _uiImage.image._image, VK_IMAGE_ASPECT_COLOR_BIT, 1);
+	VK_CHECK(vkCreateImageView(_device, &mainColorViewInfo, nullptr, &_uiImage.imageView));
+
+	VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(1.0f, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
+	VK_CHECK(vkCreateSampler(_device, &samplerInfo, nullptr, &_uiImage.sampler));
+
+	_swapchainDependentDeletionQueue.pushFunction([=]() {
+		vkDestroySampler(_device, _uiImage.sampler, nullptr);
+		vkDestroyImageView(_device, _uiImage.imageView, nullptr);
+		vmaDestroyImage(_allocator, _uiImage.image._image, _uiImage.image._allocation);
+		});
+}
+
 void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is really copypasta of the above function (initMainRenderpass)
 {
 	//
@@ -1665,6 +1808,11 @@ void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is 
 		.imageView = _mainImage.imageView,
 		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 	};
+	VkDescriptorImageInfo uiImageInfo = {
+		.sampler = _uiImage.sampler,
+		.imageView = _uiImage.imageView,
+		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	};
 	VkDescriptorImageInfo bloomImageInfo = {
 		.sampler = _bloomPostprocessImage.sampler,
 		.imageView = _bloomPostprocessImage.imageView,
@@ -1673,7 +1821,8 @@ void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is 
 	VkDescriptorSet postprocessingTextureSet;
 	vkutil::DescriptorBuilder::begin()
 		.bindImage(0, &mainHDRImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
-		.bindImage(1, &bloomImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+		.bindImage(1, &uiImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+		.bindImage(2, &bloomImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
 		.build(postprocessingTextureSet, _postprocessSetLayout);
 	attachTextureSetToMaterial(postprocessingTextureSet, "postprocessMaterial");
 
@@ -1864,6 +2013,24 @@ void VulkanEngine::initFramebuffers()
 
 		_swapchainDependentDeletionQueue.pushFunction([=]() {
 			vkDestroyFramebuffer(_device, _mainFramebuffer, nullptr);
+			});
+	}
+
+	//
+	// Create framebuffer for ui renderpass
+	//
+	{
+		VkImageView attachments[] = {
+			_uiImage.imageView,
+		};
+		fbInfo.renderPass = _uiRenderPass;
+		fbInfo.attachmentCount = 1;
+		fbInfo.pAttachments = &attachments[0];
+
+		VK_CHECK(vkCreateFramebuffer(_device, &fbInfo, nullptr, &_uiFramebuffer));
+
+		_swapchainDependentDeletionQueue.pushFunction([=]() {
+			vkDestroyFramebuffer(_device, _uiFramebuffer, nullptr);
 			});
 	}
 
@@ -2173,6 +2340,13 @@ void VulkanEngine::initDescriptors()    // @TODO: don't destroy and then recreat
 	_mainDeletionQueue.pushFunction([=]() {
 		vmaDestroyBuffer(_allocator, materialParamsBuffer._buffer, materialParamsBuffer._allocation);
 	});
+
+	//
+	// Text Mesh Fonts
+	//
+	textmesh::loadFontSDF("res/textures/font_sdf_rgba.png", "res/font.fnt", "defaultFont");
+
+	physengine::initDebugVisDescriptors(this);
 }
 
 void VulkanEngine::initPipelines()
@@ -2417,6 +2591,13 @@ void VulkanEngine::initPipelines()
 		vkDestroyPipeline(_device, shadowDepthPassPipeline, nullptr);
 		vkDestroyPipeline(_device, postprocessPipeline, nullptr);
 	});
+
+	//
+	// Other pipelines
+	//
+	textmesh::initPipeline(screenspaceViewport, screenspaceScissor);
+	textbox::initPipeline(screenspaceViewport, screenspaceScissor);
+	physengine::initDebugVisPipelines(_mainRenderPass, screenspaceViewport, screenspaceScissor);
 }
 
 void VulkanEngine::generatePBRCubemaps()
@@ -2970,7 +3151,7 @@ void VulkanEngine::generatePBRCubemaps()
 						imageMemoryBarrier.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
 						vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, nullptr, 0, nullptr, 1, &imageMemoryBarrier);
 					}
-					});
+				});
 			}
 		}
 
@@ -2985,7 +3166,7 @@ void VulkanEngine::generatePBRCubemaps()
 			imageMemoryBarrier.dstAccessMask = VK_ACCESS_HOST_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
 			imageMemoryBarrier.subresourceRange = subresourceRange;
 			vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, nullptr, 0, nullptr, 1, &imageMemoryBarrier);
-			});
+		});
 
 		//
 		// Cleanup
@@ -3003,7 +3184,7 @@ void VulkanEngine::generatePBRCubemaps()
 			vkDestroySampler(_device, cubemapTexture.sampler, nullptr);
 			vkDestroyImageView(_device, cubemapTexture.imageView, nullptr);
 			vmaDestroyImage(_allocator, cubemapTexture.image._image, cubemapTexture.image._allocation);
-			});
+		});
 
 		// Apply the created texture/sampler to global scene
 		std::string cubemapTypeName = "";
@@ -3394,6 +3575,7 @@ void VulkanEngine::recreateSwapchain()
 	initSwapchain();
 	initShadowRenderpass();
 	initMainRenderpass();
+	initUIRenderpass();
 	initPostprocessRenderpass();
 	initPickingRenderpass();
 	initFramebuffers();
@@ -3755,21 +3937,11 @@ void VulkanEngine::submitSelectedRenderObjectId(int32_t poolIndex)
 		<< "Selected object " << poolIndex << std::endl;
 }
 
-void VulkanEngine::renderImGui(float_t deltaTime)
+void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 {
-	ImGui_ImplVulkan_NewFrame();
-	ImGui_ImplSDL2_NewFrame(_window);
-	ImGui::NewFrame();
-
-	ImGuizmo::SetOrthographic(false);
-	ImGuizmo::AllowAxisFlip(false);
-	ImGuizmo::BeginFrame();
-	ImGuiIO& io = ImGui::GetIO();
-	ImGuizmo::SetRect(0, 0, io.DisplaySize.x, io.DisplaySize.y);
-
 	static bool showDemoWindows = false;
-	if (input::onKeyF1Press)
-		showDemoWindows = !showDemoWindows;
+	// if (input::onKeyF1Press)  // @DEBUG: enable this to allow toggling showing demo windows.
+	// 	showDemoWindows = !showDemoWindows;
 	if (showDemoWindows)
 	{
 		ImGui::ShowDemoWindow();
@@ -3779,7 +3951,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 	bool allowKeyboardShortcuts =
 		_camera->getCameraMode() == Camera::_cameraMode_freeCamMode &&
 		!_camera->freeCamMode.enabled &&
-		!ImGui::GetIO().WantTextInput;
+		!io.WantTextInput;
 
 	//
 	// Debug Messages window
@@ -3857,11 +4029,19 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 	ImGui::Begin("##Debug Statistics", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs);
 	{
 		ImGui::Text((std::to_string(_debugStats.currentFPS) + " FPS").c_str());
-		ImGui::Text((std::format("{:.2f}", _debugStats.renderTimesMS[_debugStats.renderTimesMSHeadIndex]) + "ms").c_str());
 		ImGui::Text(("Frame : " + std::to_string(_frameNumber)).c_str());
 
-		ImGui::Text(("Render Times :     [0, " + std::format("{:.2f}", _debugStats.highestRenderTime) + "]").c_str());
+		ImGui::Separator();
+
+		ImGui::Text("Render Times");
+		ImGui::Text((std::format("{:.2f}", _debugStats.renderTimesMS[_debugStats.renderTimesMSHeadIndex]) + "ms").c_str());
 		ImGui::PlotHistogram("##Render Times Histogram", _debugStats.renderTimesMS, (int32_t)_debugStats.renderTimesMSCount, (int32_t)_debugStats.renderTimesMSHeadIndex, "", 0.0f, _debugStats.highestRenderTime, ImVec2(256, 24.0f));
+		ImGui::SameLine();
+		ImGui::Text(("[0, " + std::format("{:.2f}", _debugStats.highestRenderTime) + "]").c_str());
+
+		ImGui::Separator();
+
+		physengine::renderImguiPerformanceStats();
 
 		debugStatsWindowWidth = ImGui::GetWindowWidth();
 		debugStatsWindowHeight = ImGui::GetWindowHeight();
@@ -3946,7 +4126,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 				break;
 
 			case 3:
-				isLayerActive = false;  // _showCollisionDebugDraw;
+				isLayerActive = showCollisionDebugDraw;
 				break;
 			}
 
@@ -3981,7 +4161,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 
 				case 3:
 					// Collision Layer debug draw toggle
-					// _showCollisionDebugDraw = !_showCollisionDebugDraw;
+					showCollisionDebugDraw = !showCollisionDebugDraw;
 					break;
 				}
 
@@ -4019,6 +4199,13 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 			ImGui::DragFloat("focusRadiusY", &_camera->mainCamMode.focusRadiusY, 1.0f, 0.0f);
 			ImGui::SliderFloat("focusCentering", &_camera->mainCamMode.focusCentering, 0.0f, 1.0f);
 			ImGui::DragFloat3("focusPositionOffset", _camera->mainCamMode.focusPositionOffset);
+		}
+
+		if (ImGui::CollapsingHeader("Textbox Properties", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			ImGui::DragFloat3("mainRenderPosition", textbox::mainRenderPosition);
+			ImGui::DragFloat3("mainRenderExtents", textbox::mainRenderExtents);
+			ImGui::DragFloat3("querySelectionsRenderPosition", textbox::querySelectionsRenderPosition);
 		}
 
 		accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
@@ -4329,11 +4516,31 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 		ImGui::End();
 	}
 
-	ImGui::Render();
-
 	//
 	// Scroll the left pane
 	//
-	if (ImGui::GetIO().MousePos.x <= maxWindowWidth)
+	if (io.MousePos.x <= maxWindowWidth)
 		windowOffsetY += input::mouseScrollDelta[1] * scrollSpeed;
+}
+
+void VulkanEngine::renderImGui(float_t deltaTime)
+{
+	ImGui_ImplVulkan_NewFrame();
+	ImGui_ImplSDL2_NewFrame(_window);
+	ImGui::NewFrame();
+
+	ImGuizmo::SetOrthographic(false);
+	ImGuizmo::AllowAxisFlip(false);
+	ImGuizmo::BeginFrame();
+	ImGuiIO& io = ImGui::GetIO();
+	ImGuizmo::SetRect(0, 0, io.DisplaySize.x, io.DisplaySize.y);
+
+	static bool showImguiRender = true;
+	if (input::onKeyF1Press)
+		showImguiRender = !showImguiRender;
+
+	if (showImguiRender)
+		renderImGuiContent(deltaTime, io);
+
+	ImGui::Render();
 }

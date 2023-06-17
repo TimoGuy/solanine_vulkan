@@ -13,6 +13,7 @@ class Entity;
 class EntityManager;
 struct Camera;
 namespace vkglTF { struct Model; }
+struct ImGuiIO;
 
 struct CascadeIndexPushConstBlock
 {
@@ -164,6 +165,13 @@ public:
 	VkFormat _depthFormat;
 
 	//
+	// UI Renderpass
+	//
+	VkRenderPass  _uiRenderPass;
+	VkFramebuffer _uiFramebuffer;
+	Texture       _uiImage;
+
+	//
 	// Postprocessing Renderpass
 	//
 	VkRenderPass _postprocessRenderPass;  // @NOTE: no framebuffers defined here, bc this will write to the swapchain framebuffers
@@ -243,6 +251,7 @@ private:
 	void initShadowRenderpass();
 	void initShadowImages();
 	void initMainRenderpass();
+	void initUIRenderpass();
 	void initPostprocessRenderpass();
 	void initPickingRenderpass();
 	void initFramebuffers();
@@ -268,12 +277,12 @@ private:
 	void renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, bool materialOverride);
 	void renderPickedObject(VkCommandBuffer cmd, const FrameData& currentFrame);
 
+public:
 	//
 	// Camera
 	//
 	Camera* _camera;
 
-public:
 	//
 	// PBR rendering
 	//
@@ -363,6 +372,7 @@ private:
 		VkDescriptorSet textureLayerBuilder;
 		VkDescriptorSet textureLayerCollision;
 	} _imguiData;
+	void renderImGuiContent(float_t deltaTime, ImGuiIO& io);
 	void renderImGui(float_t deltaTime);
 #endif
 

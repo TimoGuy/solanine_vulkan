@@ -17,7 +17,47 @@ namespace globalState
     int32_t savedPlayerHealth          = 100;
     int32_t savedPlayerMaxHealth       = 100;
 
+    std::string playerGUID = "";
+    vec3* playerPositionRef = nullptr;
+
     SceneCamera* sceneCameraRef = nullptr;
+
+    // Harvestable items (e.g. materials, raw ores, etc.)
+    std::vector<HarvestableItemOption> allHarvestableItems = {
+        HarvestableItemOption{.name = "sheet metal", .modelName = "Box" },
+        HarvestableItemOption{.name = "TEST slime", .modelName = "Box" },
+    };
+
+    std::vector<uint16_t> harvestableItemQuantities;  // This is the inventory data for collectable/ephemeral items.
+
+    // Scannable items
+    std::vector<ScannableItemOption> allAncientWeaponItems = {
+        ScannableItemOption{
+            .name = "Wing Blade",
+            .modelName = "WingWeapon",
+            .type = WEAPON,
+            .requiredMaterialsToMaterialize = {
+                { .harvestableItemId = 0, .quantity = 1 }
+            },
+            .weaponStats = {
+                .durability = 32,
+                .attackPower = 2,
+                .attackPowerWhenDulled = 1,
+            },
+        },
+        ScannableItemOption{
+            .name = "TEST Slime girl",
+            .modelName = "SlimeGirl",
+            .type = FOOD,
+            .requiredMaterialsToMaterialize = {
+                { .harvestableItemId = 1, .quantity = 2 },
+            },
+        },
+    };
+
+    std::vector<bool> scannableItemCanMaterializeFlags;  // This is the list of materializable items.  @FUTURE: make this into a more sophisticated data structure for doing the "memory" system of aligning the data and overwriting previously written data.
+    size_t selectedScannableItemId = 0;                  // This is the item selected to be materialized if LMB is pressed.
+
 
     //
     // Global state writing brain
@@ -109,6 +149,10 @@ namespace globalState
     {
         sceneCameraRef = &sc;
 
+        // Initial values for inventory and list of materializable items.
+        harvestableItemQuantities.resize(allHarvestableItems.size(), 0);
+        scannableItemCanMaterializeFlags.resize(allAncientWeaponItems.size(), false);
+
         loadGlobalState();
 
         tfTaskAsyncWriting.emplace([&]() {
@@ -127,5 +171,80 @@ namespace globalState
         launchAsyncWriteTask();  // Run the task one last time before cleanup
 
         // Lol, no cleanup. Thanks Dmitri!
+    }
+
+    HarvestableItemOption* getHarvestableItemByIndex(size_t index)
+    {
+        return &allHarvestableItems[index];
+    }
+
+    uint16_t getInventoryQtyOfHarvestableItemByIndex(size_t harvestableItemId)
+    {
+        return harvestableItemQuantities[harvestableItemId];
+    }
+
+    void changeInventoryItemQtyByIndex(size_t harvestableItemId, int16_t changeInQty)
+    {
+        // Clamp all item quantities in the range [0-999]
+        harvestableItemQuantities[harvestableItemId] = (uint16_t)std::max(0, std::min(999, (int32_t)harvestableItemQuantities[harvestableItemId] + changeInQty));
+    }
+
+    size_t getNumHarvestableItemIds()
+    {
+        return allHarvestableItems.size();
+    }
+    
+    std::string ancientWeaponItemTypeToString(AncientWeaponItemType awit)
+    {
+        switch (awit)
+        {
+            case WEAPON: return "weapon";
+            case FOOD:   return "food";
+            case TOOL:   return "tool";
+            default:     return "NO ITEM TYPE TO STRING CONVERSTION AVAILABLE";
+        }
+    }
+
+    ScannableItemOption* getAncientWeaponItemByIndex(size_t index)
+    {
+        return &allAncientWeaponItems[index];
+    }
+
+    bool getCanMaterializeScannableItemByIndex(size_t scannableItemId)
+    {
+        return scannableItemCanMaterializeFlags[scannableItemId];
+    }
+
+    void flagScannableItemAsCanMaterializeByIndex(size_t scannableItemId, bool flag)
+    {
+        scannableItemCanMaterializeFlags[scannableItemId] = flag;
+    }
+
+    size_t getNumScannableItemIds()
+    {
+        return allAncientWeaponItems.size();
+    }
+
+    size_t getSelectedScannableItemId()
+    {
+        return selectedScannableItemId;
+    }
+
+    void setSelectedScannableItemId(size_t scannableItemId)
+    {
+        selectedScannableItemId = scannableItemId;
+    }
+
+    bool selectNextCanMaterializeScannableItemId()
+    {
+        size_t originalId = selectedScannableItemId;
+        do
+        {
+            selectedScannableItemId = (selectedScannableItemId + 1) % allAncientWeaponItems.size();
+            if (selectedScannableItemId == originalId)
+                return false;  // Cycled thru all of them and couldn't find another one that was materializable. So, just keep the original id.
+        } while (!getCanMaterializeScannableItemByIndex(selectedScannableItemId));
+
+        return true;  // New id was found and got selected.
     }
 }

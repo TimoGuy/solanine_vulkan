@@ -17,18 +17,59 @@ namespace globalState
     extern int32_t savedPlayerHealth;
     extern int32_t savedPlayerMaxHealth;
 
-    //
-    // Non-saved
-    //
-    struct EntityInformation
+    extern std::string playerGUID;
+    extern vec3* playerPositionRef;
+
+    enum AncientWeaponItemType
     {
-        vec3        position = GLM_VEC3_ZERO_INIT;
-        std::string type;
-        bool        isHidden = false;  // Just in case if a disappearing entity would be used like a rabbit that burrows. Then the enemy would be confused (@NOTE that the position still updates)
+        WEAPON,
+        FOOD,
+        TOOL,
     };
-    extern std::vector<EntityInformation*> enemysEnemiesEntInfo;
+
+    struct HarvestableItemOption
+    {
+        std::string name;
+        std::string modelName;
+    };
+
+    struct HarvestableItemWithQuantity
+    {
+        size_t harvestableItemId;
+        uint32_t quantity;
+    };
+
+    struct ScannableItemOption
+    {
+        std::string name;
+        std::string modelName;
+        AncientWeaponItemType type;
+        std::vector<HarvestableItemWithQuantity> requiredMaterialsToMaterialize;
+
+        struct WeaponStats  // @NOTE: garbage values if this is not a weapon.
+        {
+            int32_t durability;
+            int32_t attackPower;
+            int32_t attackPowerWhenDulled;  // This is when durability hits 0.
+        } weaponStats;
+    };
+
 
     void initGlobalState(SceneCamera& sc);
     void launchAsyncWriteTask();  // @NOTE: this is simply for things that are marked saved
     void cleanupGlobalState();
+
+    HarvestableItemOption* getHarvestableItemByIndex(size_t index);
+    uint16_t getInventoryQtyOfHarvestableItemByIndex(size_t harvestableItemId);
+    void changeInventoryItemQtyByIndex(size_t harvestableItemId, int16_t changeInQty);
+    size_t getNumHarvestableItemIds();
+
+    std::string ancientWeaponItemTypeToString(AncientWeaponItemType awit);
+    ScannableItemOption* getAncientWeaponItemByIndex(size_t index);
+    bool getCanMaterializeScannableItemByIndex(size_t scannableItemId);
+    void flagScannableItemAsCanMaterializeByIndex(size_t scannableItemId, bool flag);
+    size_t getNumScannableItemIds();
+    size_t getSelectedScannableItemId();
+    void setSelectedScannableItemId(size_t scannableItemId);
+    bool selectNextCanMaterializeScannableItemId();
 }

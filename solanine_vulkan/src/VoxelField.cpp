@@ -18,7 +18,7 @@ struct VoxelField_XData
     physengine::VoxelFieldPhysicsData* vfpd = nullptr;
 };
 
-inline void    buildDefaultVoxelData(VoxelField_XData& data);
+inline void    buildDefaultVoxelData(VoxelField_XData& data, const std::string& myGuid);
 inline void    assembleVoxelRenderObjects(VoxelField_XData& data, const std::string& attachedEntityGuid);
 inline void    deleteVoxelRenderObjects(VoxelField_XData& data);
 
@@ -38,7 +38,7 @@ VoxelField::VoxelField(EntityManager* em, RenderObjectManager* rom, DataSerializ
     // Initialization
     //
     if (_data->vfpd == nullptr)
-        buildDefaultVoxelData(*_data);
+        buildDefaultVoxelData(*_data, getGUID());
 
     _data->voxelModel = _data->rom->getModel("DevBoxWood", this, [](){});
     assembleVoxelRenderObjects(*_data, getGUID());
@@ -96,7 +96,7 @@ void VoxelField::load(DataSerialized& ds)
     }
 
     // Create Voxel Field Physics Data
-    _data->vfpd = physengine::createVoxelField(load_size[0], load_size[1], load_size[2], load_voxelData);
+    _data->vfpd = physengine::createVoxelField(getGUID(), load_size[0], load_size[1], load_size[2], load_voxelData);
     glm_mat4_copy(load_transform, _data->vfpd->transform);
 }
 
@@ -129,7 +129,7 @@ void VoxelField::renderImGui()
 }
 
 
-inline void buildDefaultVoxelData(VoxelField_XData& data)
+inline void buildDefaultVoxelData(VoxelField_XData& data, const std::string& myGuid)
 {
     size_t sizeX = 8, sizeY = 8, sizeZ = 8;
     uint8_t* vd = new uint8_t[sizeX * sizeY * sizeZ];
@@ -138,7 +138,7 @@ inline void buildDefaultVoxelData(VoxelField_XData& data)
     for (size_t k = 0; k < sizeZ; k++)
         vd[i * sizeY * sizeZ + j * sizeZ + k] = 0;  //1;
     vd[0] = 1;
-    data.vfpd = physengine::createVoxelField(sizeX, sizeY, sizeZ, vd);
+    data.vfpd = physengine::createVoxelField(myGuid, sizeX, sizeY, sizeZ, vd);
 }
 
 inline void assembleVoxelRenderObjects(VoxelField_XData& data, const std::string& attachedEntityGuid)

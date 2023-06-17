@@ -112,7 +112,7 @@ namespace vkglTF
 		bool hasIndices;
 		BoundingBox bb;
 		uint32_t materialID;
-		size_t   animatorNodeReservedIndexPropagatedCopy;
+		size_t   animatorSkinIndexPropagatedCopy;
 		Primitive(uint32_t firstIndex, uint32_t indexCount, uint32_t vertexCount, uint32_t materialID);
 		void setBoundingBox(vec3 min, vec3 max);
 	};
@@ -123,7 +123,7 @@ namespace vkglTF
 		BoundingBox bb;
 		BoundingBox aabb;
 
-		size_t animatorNodeReservedIndex;
+		size_t animatorSkinIndex;
 
 		Mesh();
 		~Mesh();
@@ -156,10 +156,8 @@ namespace vkglTF
 		BoundingBox bvh;
 		BoundingBox aabb;
 
-		void generateCalculateJointMatrixTaskflow(Animator* animator, tf::Taskflow& taskflow, tf::Task* taskPrerequisite);
 		void localMatrix(mat4& out);
 		void getMatrix(mat4& out);
-		void update(Animator* animator);
 		~Node();
 	};
 
@@ -415,14 +413,15 @@ namespace vkglTF
 		float_t                       twitchAngle;
 
 		void updateAnimation();
-		void updateJointMatrices(size_t animatorNodeReservedIndex, vkglTF::Skin* skin, mat4& m);
+		void updateJointMatrices(size_t globalNodeReservedIndex, vkglTF::Skin* skin, mat4& m);
 	public:
 		bool getJointMatrix(const std::string& jointName, mat4& out);
+		size_t skinIndexToGlobalReservedNodeIndex(size_t skinIndex);
 	private:
 
 		struct GPUAnimatorNode
 		{
-			mat4 matrix;
+			mat4 matrix = GLM_MAT4_IDENTITY_INIT;
 			mat4 jointMatrix[MAX_NUM_JOINTS]{};
 			float_t jointcount{ 0 };
 		};
@@ -438,9 +437,6 @@ namespace vkglTF
 		static std::vector<size_t> reservedNodeCollectionIndices;
 
 		std::vector<size_t> myReservedNodeCollectionIndices;
-
-		tf::Taskflow calculateJointMatricesTaskflow;
-		tf::Executor taskflowExecutor;
 
 	public:
 		friend struct Node;
