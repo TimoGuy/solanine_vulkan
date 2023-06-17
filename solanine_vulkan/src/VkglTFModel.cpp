@@ -99,26 +99,6 @@ namespace vkglTF
 	//
 	// Node
 	//
-	void Node::generateCalculateJointMatrixTaskflow(Animator* animator, tf::Taskflow& taskflow, tf::Task* taskPrerequisite)
-	{
-		if (mesh)
-		{
-			auto smolTask = taskflow.emplace([&, animator]() {
-				update(animator);
-				});
-
-			if (taskPrerequisite != nullptr)
-				smolTask.succeed(*taskPrerequisite);
-
-			taskPrerequisite = &smolTask;
-		}
-
-		for (auto& child : children)
-		{
-			child->generateCalculateJointMatrixTaskflow(animator, taskflow, taskPrerequisite);
-		}
-	}
-
 	void Node::localMatrix(mat4& out)
 	{
 		glm_mat4_identity(out);
@@ -144,7 +124,7 @@ namespace vkglTF
 	{
 		mat4 m;
 		getMatrix(m);
-		animator->updateJointMatrices(mesh->animatorNodeReservedIndex, skin, m);
+		animator->updateJointMatrices(animator->myReservedNodeCollectionIndices[mesh->animatorNodeReservedIndex], skin, m);
 	}
 
 	Node::~Node()
@@ -2054,15 +2034,11 @@ namespace vkglTF
 		engine               = model->engine;
 		animStateMachineCopy = StateMachine(model->animStateMachine);  // Make a copy to play with here
 
-		uint32_t meshId = 0;
-		for (auto node : model->linearNodes)  // @NOTE: linearnodes is used to access all of the meshes bc just nodes just gives top level unless if you recurse thru it
+		size_t skinIdx = 0;
+		for (auto skin : model->skins)
 		{
-			if (!node->mesh)
-				continue;
-
-
 			GPUAnimatorNode newAnimatorNode = {};
-			node->getMatrix(newAnimatorNode.matrix);
+			skin->skeletonRoot->getMatrix(newAnimatorNode.matrix);
 
 			// Reserve new node index
 			size_t reserveIndexCandidate = (reservedNodeCollectionIndices.back() + 1) % RENDER_OBJECTS_MAX_CAPACITY;
@@ -2083,16 +2059,12 @@ namespace vkglTF
 
 			reservedNodeCollectionIndices.push_back(reserveIndexCandidate);
 			myReservedNodeCollectionIndices.push_back(reserveIndexCandidate);
-			node->mesh->animatorNodeReservedIndex = reserveIndexCandidate;
+			for (auto node : skin->joints)
+				node->mesh->animatorNodeReservedIndex = skinIdx++;
 			uniformBlocks[reserveIndexCandidate] = newAnimatorNode;
 
 			memcpy(nodeCollectionBuffer.mapped + reserveIndexCandidate, &newAnimatorNode, sizeof(GPUAnimatorNode));
 		}
-
-		// Build animation joint matrices calculation taskflow
-		calculateJointMatricesTaskflow.clear();
-		for (auto& node : model->nodes)
-			node->generateCalculateJointMatrixTaskflow(this, calculateJointMatricesTaskflow, nullptr);
 
 		// Calculate Initial Pose
 		if (animStateMachineCopy.loaded)
@@ -2528,7 +2500,13 @@ namespace vkglTF
 		}
 		if (updated)
 		{
-			taskflowExecutor.run(calculateJointMatricesTaskflow).wait();
+			for (size_t i = 0; i < model->skins.size(); i++)
+			{
+				auto& skin = model->skins[i];
+				mat4 m;
+				skin->skeletonRoot->getMatrix(m);
+				updateJointMatrices(myReservedNodeCollectionIndices[i], skin, m);
+			}
 		}
 	}
 
@@ -2548,8 +2526,7 @@ namespace vkglTF
 				mat4 jointMat;
 				jointNode->getMatrix(jointMat);
 				glm_mat4_mul(jointMat, skin->inverseBindMatrices[i].raw, jointMat);
-				glm_mat4_mul(inverseTransform, jointMat, jointMat);
-				glm_mat4_copy(jointMat, uniformBlock.jointMatrix[i]);
+				glm_mat4_mul(inverseTransform, jointMat, uniformBlock.jointMatrix[i]);
 			}
 			uniformBlock.jointcount = (float)numJoints;
 			memcpy(nodeCollectionBuffer.mapped + animatorNodeReservedIndex, &uniformBlock, sizeof(GPUAnimatorNode));

@@ -156,7 +156,6 @@ namespace vkglTF
 		BoundingBox bvh;
 		BoundingBox aabb;
 
-		void generateCalculateJointMatrixTaskflow(Animator* animator, tf::Taskflow& taskflow, tf::Task* taskPrerequisite);
 		void localMatrix(mat4& out);
 		void getMatrix(mat4& out);
 		void update(Animator* animator);
@@ -438,9 +437,6 @@ namespace vkglTF
 		static std::vector<size_t> reservedNodeCollectionIndices;
 
 		std::vector<size_t> myReservedNodeCollectionIndices;
-
-		tf::Taskflow calculateJointMatricesTaskflow;
-		tf::Executor taskflowExecutor;
 
 	public:
 		friend struct Node;
