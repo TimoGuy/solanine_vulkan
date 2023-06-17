@@ -5,6 +5,8 @@
 #include <vma/vk_mem_alloc.h>
 #include "VkBootstrap.h"
 #include "VkInitializers.h"
+#include "VkDescriptorBuilderUtil.h"
+#include "VkPipelineBuilderUtil.h"
 #include "VkTextures.h"
 #include "VkglTFModel.h"
 #include "AudioEngine.h"
@@ -79,17 +81,15 @@ void VulkanEngine::init()
 	initPickingRenderpass();
 	initFramebuffers();
 	initSyncStructures();
-	initDescriptors();
+
 	initImgui();
-	initPipelines();
 	loadImages();
 	loadMeshes();
-	initScene();
 	generatePBRCubemaps();
 	generateBRDFLUT();
-	attachPBRDescriptors();
+	initDescriptors();
+	initPipelines();
 
-	vkglTF::Animator::initializeEmpty(this);
 	AudioEngine::getInstance().initialize();
 	physengine::initialize(_entityManager);
 	globalState::initGlobalState(_camera->sceneCamera);
@@ -100,6 +100,9 @@ void VulkanEngine::init()
 
 	scene::loadScene(globalState::savedActiveScene, this);
 }
+
+constexpr size_t numPerfs = 15;
+uint64_t perfs[numPerfs];
 
 void VulkanEngine::run()
 {
@@ -112,7 +115,7 @@ void VulkanEngine::run()
 	_camera->sceneCamera.boxCastExtents[2] = _camera->sceneCamera.zNear * 0.5f;
 	
 	// @HARDCODED: Set the initial light direction
-	vec4 lightDir = { 0.432f, 0.864f, 0.259f, 0.0f };
+	vec4 lightDir = { 0.273897f, 0.255802f, 0.960134f, 0.0f };
 	glm_vec4_normalize(lightDir);
 	glm_vec4_copy(lightDir, _pbrRendering.gpuSceneShadingProps.lightDir);
 
@@ -131,9 +134,6 @@ void VulkanEngine::run()
 #ifdef _DEVELOP
 	std::mutex* hotswapMutex = hotswapres::startResourceChecker(this, &_recreateSwapchain, _roManager);
 #endif
-
-	constexpr size_t numPerfs = 14;
-	uint64_t perfs[numPerfs];
 
 	while (isRunning)
 	{
@@ -279,18 +279,21 @@ void VulkanEngine::cleanup()
 	{
 		vkDeviceWaitIdle(_device);
 
-		delete _entityManager;  // @NOTE: all entities must be deleted before the physicsengine can shut down
-
 		globalState::cleanupGlobalState();
 		physengine::cleanup();
 		AudioEngine::getInstance().cleanup();
 
+		delete _entityManager;
 		delete _roManager;
 
 		vkglTF::Animator::destroyEmpty(this);
 
 		_mainDeletionQueue.flush();
 		_swapchainDependentDeletionQueue.flush();
+
+		vkutil::pipelinelayoutcache::cleanup();
+		vkutil::descriptorlayoutcache::cleanup();
+		vkutil::descriptorallocator::cleanup();
 
 		vmaDestroyAllocator(_allocator);
 		vkDestroySurfaceKHR(_instance, _surface, nullptr);
@@ -318,7 +321,9 @@ void VulkanEngine::render()
 
 	VK_CHECK(vkResetFences(_device, 1, &currentFrame.renderFence));
 
+	//
 	// Request image from swapchain
+	//
 	uint32_t swapchainImageIndex;
 	result = vkAcquireNextImageKHR(_device, _swapchain, TIMEOUT_1_SEC, currentFrame.presentSemaphore, nullptr, &swapchainImageIndex);
 	if (result == VK_ERROR_OUT_OF_DATE_KHR)
@@ -331,7 +336,9 @@ void VulkanEngine::render()
 		throw std::runtime_error("ERROR: failed to acquire swap chain image!");
 	}
 
+	//
 	// Reset command buffer to start recording commands again
+	//
 	VK_CHECK(vkResetCommandBuffer(currentFrame.mainCommandBuffer, 0));
 	VkCommandBuffer cmd = currentFrame.mainCommandBuffer;
 	VkCommandBufferBeginInfo cmdBeginInfo = {
@@ -341,6 +348,14 @@ void VulkanEngine::render()
 		.pInheritanceInfo = nullptr,
 	};
 	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
+
+	//
+	// Upload current frame to GPU and compact into draw calls
+	//
+	perfs[14] = SDL_GetPerformanceCounter();
+	uploadCurrentFrameToGPU(currentFrame);
+	compactRenderObjectsIntoDraws(currentFrame, {});
+	perfs[14] = SDL_GetPerformanceCounter() - perfs[14];
 
 	//
 	// Shadow Render Pass
@@ -369,19 +384,23 @@ void VulkanEngine::render()
 		memcpy(data, &_camera->sceneCamera.gpuCascadeViewProjsData, sizeof(GPUCascadeViewProjsData));
 		vmaUnmapMemory(_allocator, currentFrame.cascadeViewProjsBuffer._allocation);
 
-		Material* shadowDepthPassMaterial = getMaterial("shadowDepthPassMaterial");  // @TODO: @IMPLEMENT this material so we can use the correct shaders
+		Material& shadowDepthPassMaterial = *getMaterial("shadowDepthPassMaterial");
 		for (uint32_t i = 0; i < SHADOWMAP_CASCADES; i++)
 		{
 			renderpassInfo.framebuffer = _shadowCascades[i].framebuffer;
 			vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-			vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial->pipeline);
-			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial->pipelineLayout, 0, 1, &currentFrame.cascadeViewProjsDescriptor, 0, nullptr);
-			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial->pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
-			CascadeIndexPushConstBlock pc = { i };
-			vkCmdPushConstants(cmd, shadowDepthPassMaterial->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(CascadeIndexPushConstBlock), &pc);
+			vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipeline);
+			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 0, 1, &currentFrame.cascadeViewProjsDescriptor, 0, nullptr);
+			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
+			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
+			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 3, 1, &getMaterial("pbrMaterial")->textureSet, 0, nullptr);
+			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(), 0, nullptr);
 
-			renderRenderObjects(cmd, currentFrame, 0, _roManager->_renderObjectsIndices.size(), false, true, &shadowDepthPassMaterial->pipelineLayout, true);
+			CascadeIndexPushConstBlock pc = { i };
+			vkCmdPushConstants(cmd, shadowDepthPassMaterial.pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(CascadeIndexPushConstBlock), &pc);
+
+			renderRenderObjects(cmd, currentFrame, true);
 			
 			vkCmdEndRenderPass(cmd);
 		}
@@ -417,8 +436,19 @@ void VulkanEngine::render()
 		// Begin renderpass
 		vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-		uploadCurrentFrameToGPU(currentFrame);
-		renderRenderObjects(cmd, currentFrame, 0, _roManager->_renderObjectsIndices.size(), true, false, nullptr, false);
+		// Render skybox //
+		// @TODO: put this into its own function!
+		Material& skyboxMaterial = *getMaterial("skyboxMaterial");
+		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipeline);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipelineLayout, 1, 1, &skyboxMaterial.textureSet, 0, nullptr);
+
+		auto skybox = _roManager->getModel("Box", nullptr, [](){});
+		skybox->bind(cmd);
+		skybox->draw(cmd);
+		///////////////////
+
+		renderRenderObjects(cmd, currentFrame, false);
 		renderPickedObject(cmd, currentFrame);
 
 		// End renderpass
@@ -668,6 +698,7 @@ void VulkanEngine::render()
 	submit.pCommandBuffers = &cmd;
 
 	result = vkQueueSubmit(_graphicsQueue, 1, &submit, currentFrame.renderFence);		// Submit work to gpu
+
 	if (result == VK_ERROR_DEVICE_LOST)
 		return;
 
@@ -727,15 +758,11 @@ void VulkanEngine::render()
 		// Bind picking material
 		Material& pickingMaterial = *getMaterial("pickingMaterial");
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipeline);
-
-		// Global data descriptor             (set = 0)
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
-
-		// Object data descriptor             (set = 1)
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
-
-		// Picking Return value id descriptor (set = 3)
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 3, 1, &currentFrame.pickingReturnValueDescriptor, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(), 0, nullptr);
 
 		// Set dynamic scissor
 		VkRect2D scissor = {};
@@ -747,7 +774,7 @@ void VulkanEngine::render()
 		std::cout << "[PICKING]" << std::endl
 			<< "set picking scissor to: x=" << scissor.offset.x << "  y=" << scissor.offset.y << "  w=" << scissor.extent.width << "  h=" << scissor.extent.height << std::endl;
 
-		renderRenderObjects(cmd, currentFrame, 0, _roManager->_renderObjectsIndices.size(), false, true, &pickingMaterial.pipelineLayout, false);    // @NOTE: the joint descriptorset will still be bound in here   @HACK: it's using the wrong pipelinelayout but.... it should be fine? Bc the slot is still set=3 for the joints on the picking pipelinelayout too??
+		renderRenderObjects(cmd, currentFrame, true);
 
 		// End renderpass
 		vkCmdEndRenderPass(cmd);
@@ -1005,7 +1032,7 @@ void VulkanEngine::loadImages()
 	//
 }
 
-Material* VulkanEngine::createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name)
+Material* VulkanEngine::attachPipelineToMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name)
 {
 	Material material = {};
 	Material* alreadyExistsMaterial = getMaterial(name);
@@ -1016,6 +1043,22 @@ Material* VulkanEngine::createMaterial(VkPipeline pipeline, VkPipelineLayout lay
 	}
 	material.pipeline = pipeline;
 	material.pipelineLayout = layout;
+
+	_materials[name] = material;
+	return &_materials[name];
+}
+
+Material* VulkanEngine::attachTextureSetToMaterial(VkDescriptorSet textureSet, const std::string& name)
+{
+	Material material = {};
+	Material* alreadyExistsMaterial = getMaterial(name);
+	if (alreadyExistsMaterial != nullptr)
+	{
+		// Copy over the pipeline and layout
+		material.pipeline = alreadyExistsMaterial->pipeline;
+		material.pipelineLayout = alreadyExistsMaterial->pipelineLayout;
+	}
+	material.textureSet = textureSet;
 
 	_materials[name] = material;
 	return &_materials[name];
@@ -1106,7 +1149,8 @@ void VulkanEngine::initVulkan()
 		.set_surface(_surface)
 		.set_required_features({
 			// @NOTE: @FEATURES: Enable required features right here
-			.depthClamp = VK_TRUE,				// @NOTE: for shadow maps, this is really nice
+			.multiDrawIndirect = VK_TRUE,           // @NOTE: this is so that vkCmdDrawIndexedIndirect() can be called with a >1 drawCount
+			.depthClamp = VK_TRUE,				    // @NOTE: for shadow maps, this is really nice
 			.fillModeNonSolid = VK_TRUE,            // @NOTE: well, I guess this is necessary to render wireframes
 			.samplerAnisotropy = VK_TRUE,
 			.fragmentStoresAndAtomics = VK_TRUE,    // @NOTE: this is only necessary for the picking buffer! If a release build then you can just disable this feature (@NOTE: it allows for me to write into an ssbo in the fragment shader. The picking buffer shader would have to be readonly if this were disabled)  -Timo 2022/10/21
@@ -1142,27 +1186,37 @@ void VulkanEngine::initVulkan()
 	vmaCreateAllocator(&allocatorInfo, &_allocator);
 
 	//
+	// Setup misc
+	//
+	vkutil::descriptorallocator::init(_device);
+	vkutil::descriptorlayoutcache::init(_device);
+	vkutil::pipelinelayoutcache::init(_device);
+	vkinit::_maxSamplerAnisotropy = _gpuProperties.limits.maxSamplerAnisotropy;
+
+	//
 	// Spit out phsyical device properties
 	//
 	std::cout << "[Chosen Physical Device Properties]" << std::endl;
-	std::cout << "API_VERSION                 " << VK_API_VERSION_MAJOR(_gpuProperties.apiVersion) << "." << VK_API_VERSION_MINOR(_gpuProperties.apiVersion) << "." << VK_API_VERSION_PATCH(_gpuProperties.apiVersion) << "." << VK_API_VERSION_VARIANT(_gpuProperties.apiVersion) << std::endl;
-	std::cout << "DRIVER_VERSION              " << _gpuProperties.driverVersion << std::endl;
-	std::cout << "VENDOR_ID                   " << _gpuProperties.vendorID << std::endl;
-	std::cout << "DEVICE_ID                   " << _gpuProperties.deviceID << std::endl;
-	std::cout << "DEVICE_TYPE                 " << _gpuProperties.deviceType << std::endl;
-	std::cout << "DEVICE_NAME                 " << _gpuProperties.deviceName << std::endl;
-	std::cout << "MAX_IMAGE_DIMENSION_1D      " << _gpuProperties.limits.maxImageDimension1D << std::endl;
-	std::cout << "MAX_IMAGE_DIMENSION_2D      " << _gpuProperties.limits.maxImageDimension2D << std::endl;
-	std::cout << "MAX_IMAGE_DIMENSION_3D      " << _gpuProperties.limits.maxImageDimension3D << std::endl;
-	std::cout << "MAX_IMAGE_DIMENSION_CUBE    " << _gpuProperties.limits.maxImageDimensionCube << std::endl;
-	std::cout << "MAX_IMAGE_ARRAY_LAYERS      " << _gpuProperties.limits.maxImageArrayLayers << std::endl;
-	std::cout << "MAX_SAMPLER_ANISOTROPY      " << _gpuProperties.limits.maxSamplerAnisotropy << std::endl;
-	std::cout << "MAX_BOUND_DESCRIPTOR_SETS   " << _gpuProperties.limits.maxBoundDescriptorSets << std::endl;
-	std::cout << "MINIMUM_BUFFER_ALIGNMENT    " << _gpuProperties.limits.minUniformBufferOffsetAlignment << std::endl;
-	std::cout << "MAX_COLOR_ATTACHMENTS       " << _gpuProperties.limits.maxColorAttachments << std::endl;
+	std::cout << "API_VERSION                          " << VK_API_VERSION_MAJOR(_gpuProperties.apiVersion) << "." << VK_API_VERSION_MINOR(_gpuProperties.apiVersion) << "." << VK_API_VERSION_PATCH(_gpuProperties.apiVersion) << "." << VK_API_VERSION_VARIANT(_gpuProperties.apiVersion) << std::endl;
+	std::cout << "DRIVER_VERSION                       " << _gpuProperties.driverVersion << std::endl;
+	std::cout << "VENDOR_ID                            " << _gpuProperties.vendorID << std::endl;
+	std::cout << "DEVICE_ID                            " << _gpuProperties.deviceID << std::endl;
+	std::cout << "DEVICE_TYPE                          " << _gpuProperties.deviceType << std::endl;
+	std::cout << "DEVICE_NAME                          " << _gpuProperties.deviceName << std::endl;
+	std::cout << "MAX_IMAGE_DIMENSION_1D               " << _gpuProperties.limits.maxImageDimension1D << std::endl;
+	std::cout << "MAX_IMAGE_DIMENSION_2D               " << _gpuProperties.limits.maxImageDimension2D << std::endl;
+	std::cout << "MAX_IMAGE_DIMENSION_3D               " << _gpuProperties.limits.maxImageDimension3D << std::endl;
+	std::cout << "MAX_IMAGE_DIMENSION_CUBE             " << _gpuProperties.limits.maxImageDimensionCube << std::endl;
+	std::cout << "MAX_IMAGE_ARRAY_LAYERS               " << _gpuProperties.limits.maxImageArrayLayers << std::endl;
+	std::cout << "MAX_SAMPLER_ANISOTROPY               " << _gpuProperties.limits.maxSamplerAnisotropy << std::endl;
+	std::cout << "MAX_BOUND_DESCRIPTOR_SETS            " << _gpuProperties.limits.maxBoundDescriptorSets << std::endl;
+	std::cout << "MINIMUM_BUFFER_ALIGNMENT             " << _gpuProperties.limits.minUniformBufferOffsetAlignment << std::endl;
+	std::cout << "MAX_COLOR_ATTACHMENTS                " << _gpuProperties.limits.maxColorAttachments << std::endl;
+	std::cout << "MAX_DRAW_INDIRECT_COUNT              " << _gpuProperties.limits.maxDrawIndirectCount << std::endl;
+	std::cout << "MAX_DESCRIPTOR_SET_SAMPLED_IMAGES    " << _gpuProperties.limits.maxDescriptorSetSampledImages << std::endl;
+	std::cout << "MAX_DESCRIPTOR_SET_SAMPLERS          " << _gpuProperties.limits.maxDescriptorSetSamplers << std::endl;
+	std::cout << "MAX_SAMPLER_ALLOCATION_COUNT         " << _gpuProperties.limits.maxSamplerAllocationCount << std::endl;
 	std::cout << std::endl;
-
-	vkinit::_maxSamplerAnisotropy = _gpuProperties.limits.maxSamplerAnisotropy;
 }
 
 void VulkanEngine::initSwapchain()
@@ -1228,9 +1282,13 @@ void VulkanEngine::initCommands()
 		// Create picking command buffer  @NOTE: commandbufferallocateinfo just says we're gonna allocate 1 commandbuffer from the pool
 		VK_CHECK(vkAllocateCommandBuffers(_device, &cmdAllocInfo, &_frames[i].pickingCommandBuffer));
 
+		// Create indirect draw command buffer
+		_frames[i].indirectDrawCommandBuffer = createBuffer(sizeof(VkDrawIndexedIndirectCommand) * INSTANCE_PTR_MAX_CAPACITY, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+
 		// Add destroy command for cleanup
 		_mainDeletionQueue.pushFunction([=]() {
 			vkDestroyCommandPool(_device, _frames[i].commandPool, nullptr);
+			vmaDestroyBuffer(_allocator, _frames[i].indirectDrawCommandBuffer._buffer, _frames[i].indirectDrawCommandBuffer._allocation);
 			});
 	}
 
@@ -1596,7 +1654,31 @@ void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is 
 	VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo((float_t)numBloomMips, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
 	VK_CHECK(vkCreateSampler(_device, &samplerInfo, nullptr, &_bloomPostprocessImage.sampler));
 
+	//
+	// Postprocessing
+	// @TODO: @RESEARCH: doing this, where the descriptors are getting initialized every time
+	//                   the renderpass is getting created (which is necessary), does it cause
+	//                   a memory leak?  -Timo 2023/05/29
+	//
+	VkDescriptorImageInfo mainHDRImageInfo = {
+		.sampler = _mainImage.sampler,
+		.imageView = _mainImage.imageView,
+		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	};
+	VkDescriptorImageInfo bloomImageInfo = {
+		.sampler = _bloomPostprocessImage.sampler,
+		.imageView = _bloomPostprocessImage.imageView,
+		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	};
+	VkDescriptorSet postprocessingTextureSet;
+	vkutil::DescriptorBuilder::begin()
+		.bindImage(0, &mainHDRImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+		.bindImage(1, &bloomImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+		.build(postprocessingTextureSet, _postprocessSetLayout);
+	attachTextureSetToMaterial(postprocessingTextureSet, "postprocessMaterial");
+
 	_swapchainDependentDeletionQueue.pushFunction([=]() {
+
 		vkDestroySampler(_device, _bloomPostprocessImage.sampler, nullptr);
 		vkDestroyImageView(_device, _bloomPostprocessImage.imageView, nullptr);
 		vmaDestroyImage(_allocator, _bloomPostprocessImage.image._image, _bloomPostprocessImage.image._allocation);
@@ -1858,285 +1940,239 @@ void VulkanEngine::initSyncStructures()
 void VulkanEngine::initDescriptors()    // @TODO: don't destroy and then recreate descriptors when recreating the swapchain. Only pipelines (not even pipelinelayouts), framebuffers, and the corresponding image/imageviews/samplers need to get recreated.  -Timo
 {
 	//
-	// Create Descriptor Pool
+	// Materials for ImGui
 	//
-	std::vector<VkDescriptorPoolSize> sizes = {
-		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 10000 },
-		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 10000 },
-		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 10000 },
-		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 10000 },
-	};
-	VkDescriptorPoolCreateInfo poolInfo = {
-		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-		.flags = 0,
-		.maxSets = 10000,										// @NOTE: for the new/better descriptorpool, there NEEDS to be one for all of the information that will be recreated when the window is resized and then one that's different that will be just for shader inputs etc. bc afaik removing those descriptors isn't necessary.   @NOTE: I need a better descriptorpool allocator... @TODO: @FIXME: crate teh one that's in the vkguide extra chapter
-		.poolSizeCount = (uint32_t)sizes.size(),				//        @REPLY: and... I think only the pipelines (specifically the rasterizers in the pipelines which have the viewport & scissors fields) are the only things that need to get recreated upon resizing (and of course the textures that are backing up those pipelines), so perhaps a deallocation of the descriptorsets is needed only and then reallocate the necessary descriptorsets (maybe it means that the descriptorset needs to be destroyed too... Idk... I guess it all depends on what the vulkan spec requires eh!)
-		.pPoolSizes = sizes.data(),
-	};
-	vkCreateDescriptorPool(_device, &poolInfo, nullptr, &_descriptorPool);
+	_imguiData.textureLayerVisible   = ImGui_ImplVulkan_AddTexture(_loadedTextures["imguiTextureLayerVisible"].sampler, _loadedTextures["imguiTextureLayerVisible"].imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	_imguiData.textureLayerInvisible = ImGui_ImplVulkan_AddTexture(_loadedTextures["imguiTextureLayerInvisible"].sampler, _loadedTextures["imguiTextureLayerInvisible"].imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	_imguiData.textureLayerBuilder   = ImGui_ImplVulkan_AddTexture(_loadedTextures["imguiTextureLayerBuilder"].sampler, _loadedTextures["imguiTextureLayerBuilder"].imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	_imguiData.textureLayerCollision = ImGui_ImplVulkan_AddTexture(_loadedTextures["imguiTextureLayerCollision"].sampler, _loadedTextures["imguiTextureLayerCollision"].imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 	//
-	// Create Descriptor Set Layout for camera buffers
-	//
-	VkDescriptorSetLayoutBinding cameraBufferBinding          = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0);
-	VkDescriptorSetLayoutBinding shadingPropsBufferBinding    = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT, 1);
-	VkDescriptorSetLayoutBinding pbrIrradianceTextureBinding  = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 2);
-	VkDescriptorSetLayoutBinding pbrPrefilteredTextureBinding = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 3);
-	VkDescriptorSetLayoutBinding pbrBRDFLUTTextureBinding     = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 4);
-	VkDescriptorSetLayoutBinding shadowMap                    = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 5);
-	VkDescriptorSetLayoutBinding bindings[] = {
-		cameraBufferBinding,
-		shadingPropsBufferBinding,
-		pbrIrradianceTextureBinding,
-		pbrPrefilteredTextureBinding,
-		pbrBRDFLUTTextureBinding,
-		shadowMap,
-	};
-	VkDescriptorSetLayoutCreateInfo setInfo = {
-		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-		.pNext = nullptr,
-		.flags = 0,
-		.bindingCount = 6,
-		.pBindings = bindings,
-	};
-	vkCreateDescriptorSetLayout(_device, &setInfo, nullptr, &_globalSetLayout);
-
-	//
-	// Create Descriptor Set Layout for cascade view projections buffer
-	//
-	VkDescriptorSetLayoutBinding cascadeViewProjsBufferBinding = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT, 0);
-	VkDescriptorSetLayoutCreateInfo cascadeViewProjsSetInfo = {
-		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-		.pNext = nullptr,
-		.flags = 0,
-		.bindingCount = 1,
-		.pBindings = &cascadeViewProjsBufferBinding,
-	};
-	vkCreateDescriptorSetLayout(_device, &cascadeViewProjsSetInfo, nullptr, &_cascadeViewProjsSetLayout);
-
-	//
-	// Create Descriptor Set Layout for object buffer
-	//
-	VkDescriptorSetLayoutBinding objectBufferBinding = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_VERTEX_BIT, 0);
-	VkDescriptorSetLayoutCreateInfo setInfo2 = {
-		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-		.pNext = nullptr,
-		.flags = 0,
-		.bindingCount = 1,
-		.pBindings = &objectBufferBinding,
-	};
-	vkCreateDescriptorSetLayout(_device, &setInfo2, nullptr, &_objectSetLayout);
-
-	//
-	// Create Descriptor Set Layout for singletexture buffer
-	//
-	VkDescriptorSetLayoutBinding singleTextureBufferBinding = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 0);
-	VkDescriptorSetLayoutCreateInfo setInfo3 = {
-		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-		.pNext = nullptr,
-		.flags = 0,
-		.bindingCount = 1,
-		.pBindings = &singleTextureBufferBinding,
-	};
-	vkCreateDescriptorSetLayout(_device, &setInfo3, nullptr, &_singleTextureSetLayout);
-
-	//
-	// Create Descriptor Set Layout for postprocessing
-	//
-	VkDescriptorSetLayoutBinding postprocessingHDRMainBufferBinding = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 0);
-	VkDescriptorSetLayoutBinding postprocessingBloomBufferBinding = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 1);
-	VkDescriptorSetLayoutBinding postprocessingBufferBindings[] = {
-		postprocessingHDRMainBufferBinding,
-		postprocessingBloomBufferBinding,
-	};
-	VkDescriptorSetLayoutCreateInfo setInfo3p1 = {
-		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-		.pNext = nullptr,
-		.flags = 0,
-		.bindingCount = 2,
-		.pBindings = postprocessingBufferBindings
-	};
-	vkCreateDescriptorSetLayout(_device, &setInfo3p1, nullptr, &_postprocessSetLayout);
-
-	//
-	// Create Descriptor Set Layout for pbr textures set buffer
-	// @NOTE: these will be allocated and actual buffers created
-	//        on a material basis (i.e. it's not allocated here)
-	//
-	VkDescriptorSetLayoutBinding pbrColorMapBufferBinding = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 0);
-	VkDescriptorSetLayoutBinding pbrPhysicalDescriptorMapBufferBinding = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 1);
-	VkDescriptorSetLayoutBinding pbrNormalMapBufferBinding = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 2);
-	VkDescriptorSetLayoutBinding pbrAOMapBufferBinding = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 3);
-	VkDescriptorSetLayoutBinding pbrEmissiveMapBufferBinding = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 4);
-	VkDescriptorSetLayoutBinding pbrTexturesBufferBindings[] = {
-		pbrColorMapBufferBinding,
-		pbrPhysicalDescriptorMapBufferBinding,
-		pbrNormalMapBufferBinding,
-		pbrAOMapBufferBinding,
-		pbrEmissiveMapBufferBinding,
-	};
-	VkDescriptorSetLayoutCreateInfo setInfo4 = {
-		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-		.pNext = nullptr,
-		.flags = 0,
-		.bindingCount = 5,
-		.pBindings = pbrTexturesBufferBindings,
-	};
-	vkCreateDescriptorSetLayout(_device, &setInfo4, nullptr, &_pbrTexturesSetLayout);
-
-	//
-	// Create Descriptor Set Layout for pbr textures set buffer
-	// @NOTE: these will be allocated and actual buffers created
-	//        on a material basis (i.e. it's not allocated here)
-	//
-	VkDescriptorSetLayoutBinding pickingSelectedIdBufferBinding = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT, 0);
-	VkDescriptorSetLayoutCreateInfo setInfo5 = {
-		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-		.pNext = nullptr,
-		.flags = 0,
-		.bindingCount = 1,
-		.pBindings = &pickingSelectedIdBufferBinding,
-	};
-	vkCreateDescriptorSetLayout(_device, &setInfo5, nullptr, &_pickingReturnValueSetLayout);
-
-	//
-	// Create Descriptor Set Layout for skeletal animation joint matrices
-	// @NOTE: similar to the pbr textures set buffer, these skeletal joint
-	//        buffers will be created on a mesh basis (@TODO: actually, on
-	//        an animator basis that will own a pointer to a mesh)
-	//
-	VkDescriptorSetLayoutBinding skeletalAnimationBinding = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT, 0);
-	VkDescriptorSetLayoutCreateInfo setInfo6 = {
-		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-		.pNext = nullptr,
-		.flags = 0,
-		.bindingCount = 1,
-		.pBindings = &skeletalAnimationBinding,
-	};
-	vkCreateDescriptorSetLayout(_device, &setInfo6, nullptr, &_skeletalAnimationSetLayout);
-
-	//
-	// NOTE: The supposed guaranteed maximum number of bindable descriptor sets is 4... so here we are at 3.
-	// Start thinking/studying about what these descriptor sets really mean and how I can consolidate them...
-	// 
-	// Either way, it likely isn't a problem bc it's just the pbr shader that will have the maximum bindable descriptor
-	// sets so it could just be that it will be fine? Kitto. And I'm sure it will be just fine. Will just have to be
-	// careful... plus I haven't found a device that has that few allowed descriptor sets to be bound. The lowest I
-	// found was 32 even for intel hd 4000 it's 32... weird. And I'd think that that would for sure be 4 bc it's such
-	// a low-end chip.
-	// 
-	// Lmk know, future me!  -Timo
-	// 
-	// EDIT: I had a thought, I wonder if this talk about really low descriptor set binding sizes is just talking about the
-	//       Nintendo Smitch? Idk... should I even care about that thing?  -Timo
-	//
-
-	//
-	// Create buffers
+	// Create Descriptor Sets
 	//
 	for (size_t i = 0; i < FRAME_OVERLAP; i++)
 	{
-		// Create buffers
+		//
+		// Global
+		//
 		_frames[i].cameraBuffer = createBuffer(sizeof(GPUCameraData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 		_frames[i].pbrShadingPropsBuffer = createBuffer(sizeof(GPUPBRShadingProps), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
-		_frames[i].cascadeViewProjsBuffer = createBuffer(sizeof(GPUCascadeViewProjsData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
-		_frames[i].objectBuffer = createBuffer(sizeof(GPUObjectData) * RENDER_OBJECTS_MAX_CAPACITY, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
-		_frames[i].pickingSelectedIdBuffer = createBuffer(sizeof(GPUPickingSelectedIdData), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_TO_CPU);    // @NOTE: primary focus is to read from gpu, so gpu_to_cpu
-
-		// Allocate descriptor sets
-		VkDescriptorSetAllocateInfo allocInfo = {
-			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-			.pNext = nullptr,
-			.descriptorPool = _descriptorPool,
-			.descriptorSetCount = 1,
-			.pSetLayouts = &_globalSetLayout,
-		};
-		vkAllocateDescriptorSets(_device, &allocInfo, &_frames[i].globalDescriptor);
-
-		VkDescriptorSetAllocateInfo cascadeViewProjsAllocInfo = {
-			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-			.pNext = nullptr,
-			.descriptorPool = _descriptorPool,
-			.descriptorSetCount = 1,
-			.pSetLayouts = &_cascadeViewProjsSetLayout,
-		};
-		vkAllocateDescriptorSets(_device, &cascadeViewProjsAllocInfo, &_frames[i].cascadeViewProjsDescriptor);
-
-		VkDescriptorSetAllocateInfo objectSetAllocInfo = {
-			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-			.pNext = nullptr,
-			.descriptorPool = _descriptorPool,
-			.descriptorSetCount = 1,
-			.pSetLayouts = &_objectSetLayout,
-		};
-		vkAllocateDescriptorSets(_device, &objectSetAllocInfo, &_frames[i].objectDescriptor);
-
-		VkDescriptorSetAllocateInfo pickingReturnValueSetAllocInfo = {
-			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-			.pNext = nullptr,
-			.descriptorPool = _descriptorPool,
-			.descriptorSetCount = 1,
-			.pSetLayouts = &_pickingReturnValueSetLayout,
-		};
-		vkAllocateDescriptorSets(_device, &pickingReturnValueSetAllocInfo, &_frames[i].pickingReturnValueDescriptor);
-
-		// Point descriptor set to camera buffer
 		VkDescriptorBufferInfo cameraInfo = {
 			.buffer = _frames[i].cameraBuffer._buffer,
 			.offset = 0,
 			.range = sizeof(GPUCameraData),
 		};
-		VkDescriptorBufferInfo shadingPropsInfo = {
+		VkDescriptorBufferInfo pbrShadingPropsInfo = {
 			.buffer = _frames[i].pbrShadingPropsBuffer._buffer,
 			.offset = 0,
 			.range = sizeof(GPUPBRShadingProps),
 		};
+		VkDescriptorImageInfo irradianceImageInfo = {
+			.sampler = _pbrSceneTextureSet.irradianceCubemap.sampler,
+			.imageView = _pbrSceneTextureSet.irradianceCubemap.imageView,
+			.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		};
+		VkDescriptorImageInfo prefilteredImageInfo = {
+			.sampler = _pbrSceneTextureSet.prefilteredCubemap.sampler,
+			.imageView = _pbrSceneTextureSet.prefilteredCubemap.imageView,
+			.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		};
+		VkDescriptorImageInfo brdfLUTImageInfo = {
+			.sampler = _pbrSceneTextureSet.brdfLUTTexture.sampler,
+			.imageView = _pbrSceneTextureSet.brdfLUTTexture.imageView,
+			.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		};
+		VkDescriptorImageInfo shadowMapImageInfo = {
+			.sampler = _pbrSceneTextureSet.shadowMap.sampler,
+			.imageView = _pbrSceneTextureSet.shadowMap.imageView,
+			.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+		};
+
+		vkutil::DescriptorBuilder::begin()
+			.bindBuffer(0, &cameraInfo, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT)
+			.bindBuffer(1, &pbrShadingPropsInfo, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT)
+			.bindImage(2, &irradianceImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+			.bindImage(3, &prefilteredImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+			.bindImage(4, &brdfLUTImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+			.bindImage(5, &shadowMapImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+			.build(_frames[i].globalDescriptor, _globalSetLayout);
+
+		//
+		// Cascade Shadow View Projections
+		//
+		_frames[i].cascadeViewProjsBuffer = createBuffer(sizeof(GPUCascadeViewProjsData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 		VkDescriptorBufferInfo cascadeViewProjsBufferInfo = {
 			.buffer = _frames[i].cascadeViewProjsBuffer._buffer,
 			.offset = 0,
 			.range = sizeof(GPUCascadeViewProjsData),
 		};
+		vkutil::DescriptorBuilder::begin()
+			.bindBuffer(0, &cascadeViewProjsBufferInfo, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT)
+			.build(_frames[i].cascadeViewProjsDescriptor, _cascadeViewProjsSetLayout);
+
+		//
+		// Object Information
+		//
+		_frames[i].objectBuffer = createBuffer(sizeof(GPUObjectData) * RENDER_OBJECTS_MAX_CAPACITY, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 		VkDescriptorBufferInfo objectBufferInfo = {
 			.buffer = _frames[i].objectBuffer._buffer,
 			.offset = 0,
 			.range = sizeof(GPUObjectData) * RENDER_OBJECTS_MAX_CAPACITY,
 		};
+		vkutil::DescriptorBuilder::begin()
+			.bindBuffer(0, &objectBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_VERTEX_BIT)
+			.build(_frames[i].objectDescriptor, _objectSetLayout);
+
+		//
+		// Instance Pointers
+		//
+		_frames[i].instancePtrBuffer = createBuffer(sizeof(GPUInstancePointer) * INSTANCE_PTR_MAX_CAPACITY, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+		VkDescriptorBufferInfo instancePtrBufferInfo = {
+			.buffer = _frames[i].instancePtrBuffer._buffer,
+			.offset = 0,
+			.range = sizeof(GPUInstancePointer) * INSTANCE_PTR_MAX_CAPACITY,
+		};
+		vkutil::DescriptorBuilder::begin()
+			.bindBuffer(0, &instancePtrBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT)
+			.build(_frames[i].instancePtrDescriptor, _instancePtrSetLayout);
+
+		//
+		// Picking ID Capture
+		//
+		_frames[i].pickingSelectedIdBuffer = createBuffer(sizeof(GPUPickingSelectedIdData), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_TO_CPU);    // @NOTE: primary focus is to read from gpu, so gpu_to_cpu
 		VkDescriptorBufferInfo pickingSelectedIdBufferInfo = {
 			.buffer = _frames[i].pickingSelectedIdBuffer._buffer,
 			.offset = 0,
 			.range = sizeof(GPUPickingSelectedIdData),
 		};
-		VkWriteDescriptorSet cameraWrite = vkinit::writeDescriptorBuffer(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, _frames[i].globalDescriptor, &cameraInfo, 0);
-		VkWriteDescriptorSet shadingPropsWrite = vkinit::writeDescriptorBuffer(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, _frames[i].globalDescriptor, &shadingPropsInfo, 1);
-		VkWriteDescriptorSet cascadeViewProjsWrite = vkinit::writeDescriptorBuffer(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, _frames[i].cascadeViewProjsDescriptor, &cascadeViewProjsBufferInfo, 0);
-		VkWriteDescriptorSet objectWrite = vkinit::writeDescriptorBuffer(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, _frames[i].objectDescriptor, &objectBufferInfo, 0);
-		VkWriteDescriptorSet pickingSelectedIdWrite = vkinit::writeDescriptorBuffer(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, _frames[i].pickingReturnValueDescriptor, &pickingSelectedIdBufferInfo, 0);
-		VkWriteDescriptorSet setWrites[] = { cameraWrite, shadingPropsWrite, cascadeViewProjsWrite, objectWrite, pickingSelectedIdWrite };
-		vkUpdateDescriptorSets(_device, 5, setWrites, 0, nullptr);
-	}
+		vkutil::DescriptorBuilder::begin()
+			.bindBuffer(0, &pickingSelectedIdBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT)
+			.build(_frames[i].pickingReturnValueDescriptor, _pickingReturnValueSetLayout);
 
-	// Add destroy command for cleanup
-	_mainDeletionQueue.pushFunction([=]() {
-		vkDestroyDescriptorSetLayout(_device, _globalSetLayout, nullptr);
-		vkDestroyDescriptorSetLayout(_device, _cascadeViewProjsSetLayout, nullptr);
-		vkDestroyDescriptorSetLayout(_device, _objectSetLayout, nullptr);
-		vkDestroyDescriptorSetLayout(_device, _singleTextureSetLayout, nullptr);
-		vkDestroyDescriptorSetLayout(_device, _pbrTexturesSetLayout, nullptr);
-		vkDestroyDescriptorSetLayout(_device, _pickingReturnValueSetLayout, nullptr);
-		vkDestroyDescriptorSetLayout(_device, _skeletalAnimationSetLayout, nullptr);
-		vkDestroyDescriptorSetLayout(_device, _postprocessSetLayout, nullptr);
-		vkDestroyDescriptorPool(_device, _descriptorPool, nullptr);          // This deletes all of the descriptor sets
-
-		for (uint32_t i = 0; i < FRAME_OVERLAP; i++)
-		{
+		//
+		// Add destroy command for cleanup
+		//
+		_mainDeletionQueue.pushFunction([=]() {
 			vmaDestroyBuffer(_allocator, _frames[i].cameraBuffer._buffer, _frames[i].cameraBuffer._allocation);
 			vmaDestroyBuffer(_allocator, _frames[i].pbrShadingPropsBuffer._buffer, _frames[i].pbrShadingPropsBuffer._allocation);
 			vmaDestroyBuffer(_allocator, _frames[i].cascadeViewProjsBuffer._buffer, _frames[i].cascadeViewProjsBuffer._allocation);
 			vmaDestroyBuffer(_allocator, _frames[i].objectBuffer._buffer, _frames[i].objectBuffer._allocation);
+			vmaDestroyBuffer(_allocator, _frames[i].instancePtrBuffer._buffer, _frames[i].instancePtrBuffer._allocation);
 			vmaDestroyBuffer(_allocator, _frames[i].pickingSelectedIdBuffer._buffer, _frames[i].pickingSelectedIdBuffer._allocation);
-		}
 		});
+	}
+
+	//
+	// Single texture (i.e. skybox)
+	//
+	VkDescriptorImageInfo singleTextureImageInfo = {
+		.sampler = _loadedTextures["CubemapSkybox"].sampler,
+		.imageView = _loadedTextures["CubemapSkybox"].imageView,
+		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	};
+	VkDescriptorSet singleTextureSet;
+	vkutil::DescriptorBuilder::begin()
+		.bindImage(0, &singleTextureImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+		.build(singleTextureSet, _singleTextureSetLayout);
+	attachTextureSetToMaterial(singleTextureSet, "skyboxMaterial");
+
+	//
+	// All PBR Textures
+	//
+	AllocatedBuffer materialParamsBuffer = createBuffer(sizeof(PBRMaterialParam) * MAX_NUM_MATERIALS, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+
+	VkDescriptorImageInfo* textureImageInfos = new VkDescriptorImageInfo[MAX_NUM_MAPS];
+	for (size_t i = 0; i < MAX_NUM_MAPS; i++)
+		textureImageInfos[i] =
+			(i < vkglTF::Model::pbrTextureCollection.textures.size()) ?
+			vkinit::textureToDescriptorImageInfo(vkglTF::Model::pbrTextureCollection.textures[i]) :
+			vkinit::textureToDescriptorImageInfo(vkglTF::Model::pbrTextureCollection.textures[0]);
+
+	VkDescriptorBufferInfo materialParamsBufferInfo = {
+		.buffer = materialParamsBuffer._buffer,
+		.offset = 0,
+		.range = sizeof(PBRMaterialParam) * MAX_NUM_MATERIALS,
+	};
+
+	VkDescriptorSet allPBRTexturesDescriptorSet;
+	vkutil::DescriptorBuilder::begin()
+		.bindImageArray(0, MAX_NUM_MAPS, textureImageInfos, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+		.bindBuffer(1, &materialParamsBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT)
+		.build(allPBRTexturesDescriptorSet, _pbrTexturesSetLayout);
+	attachTextureSetToMaterial(allPBRTexturesDescriptorSet, "pbrMaterial");
+
+	//
+	// Copy over material information
+	//
+	void* materialParamsData;
+	vmaMapMemory(_allocator, materialParamsBuffer._allocation, &materialParamsData);
+	PBRMaterialParam* materialParamsSSBO = (PBRMaterialParam*)materialParamsData;
+	for (size_t i = 0; i < MAX_NUM_MATERIALS; i++)
+	{
+		size_t index = i;
+		if (index >= vkglTF::Model::pbrMaterialCollection.materials.size())
+			index = 0;
+
+		vkglTF::PBRMaterial* mat = vkglTF::Model::pbrMaterialCollection.materials[index];
+
+		PBRMaterialParam p = {
+			.colorMapIndex              = mat->texturePtr.colorMapIndex,
+			.physicalDescriptorMapIndex = mat->texturePtr.physicalDescriptorMapIndex,
+			.normalMapIndex             = mat->texturePtr.normalMapIndex,
+			.aoMapIndex                 = mat->texturePtr.aoMapIndex,
+			.emissiveMapIndex           = mat->texturePtr.emissiveMapIndex,
+		};
+
+		glm_vec4_copy(mat->emissiveFactor, p.emissiveFactor);
+		// To save space, availabilty and texture coordinates set are combined
+		// -1 = texture not used for this material, >= 0 texture used and index of texture coordinate set
+		p.colorTextureSet = mat->baseColorTexture != nullptr ? mat->texCoordSets.baseColor : -1;
+		p.normalTextureSet = mat->normalTexture != nullptr ? mat->texCoordSets.normal : -1;
+		p.occlusionTextureSet = mat->occlusionTexture != nullptr ? mat->texCoordSets.occlusion : -1;
+		p.emissiveTextureSet = mat->emissiveTexture != nullptr ? mat->texCoordSets.emissive : -1;
+		p.alphaMask = static_cast<float>(mat->alphaMode == vkglTF::PBRMaterial::ALPHAMODE_MASK);
+		p.alphaMaskCutoff = mat->alphaCutoff;
+
+		// TODO: glTF specs states that metallic roughness should be preferred, even if specular glossiness is present
+
+		if (mat->pbrWorkflows.metallicRoughness)
+		{
+			// Metallic roughness workflow
+			p.workflow = static_cast<float>(PBR_WORKFLOW_METALLIC_ROUGHNESS);
+			glm_vec4_copy(mat->baseColorFactor, p.baseColorFactor);
+			p.metallicFactor = mat->metallicFactor;
+			p.roughnessFactor = mat->roughnessFactor;
+			p.PhysicalDescriptorTextureSet = mat->metallicRoughnessTexture != nullptr ? mat->texCoordSets.metallicRoughness : -1;
+			p.colorTextureSet = mat->baseColorTexture != nullptr ? mat->texCoordSets.baseColor : -1;
+		}
+
+		if (mat->pbrWorkflows.specularGlossiness)
+		{
+			// Specular glossiness workflow
+			p.workflow = static_cast<float>(PBR_WORKFLOW_SPECULAR_GLOSSINESS);
+			p.PhysicalDescriptorTextureSet = mat->extension.specularGlossinessTexture != nullptr ? mat->texCoordSets.specularGlossiness : -1;
+			p.colorTextureSet = mat->extension.diffuseTexture != nullptr ? mat->texCoordSets.baseColor : -1;
+			glm_vec4_copy(mat->extension.diffuseFactor, p.diffuseFactor);
+			glm_vec4(mat->extension.specularFactor, 1.0f, p.specularFactor);
+		}
+
+		*materialParamsSSBO = p;
+
+		// Increment along, sir!
+		materialParamsSSBO++;
+	}
+	vmaUnmapMemory(_allocator, materialParamsBuffer._allocation);
+
+	//
+	// Joint Descriptor
+	//
+	vkglTF::Animator::initializeEmpty(this);
+
+	// Add cleanup procedure
+	_mainDeletionQueue.pushFunction([=]() {
+		vmaDestroyBuffer(_allocator, materialParamsBuffer._buffer, materialParamsBuffer._allocation);
+	});
 }
 
 void VulkanEngine::initPipelines()
@@ -2144,458 +2180,243 @@ void VulkanEngine::initPipelines()
 	//
 	// Load shader modules
 	//
-	VkShaderModule defaultLitVertShader,
-					defaultLitFragShader;
-	loadShaderModule("shader/pbr.vert.spv", &defaultLitVertShader);
-	loadShaderModule("shader/pbr_khr.frag.spv", &defaultLitFragShader);
-
-	VkShaderModule skyboxVertShader,
-					skyboxFragShader;
-	loadShaderModule("shader/skybox.vert.spv", &skyboxVertShader);
-	loadShaderModule("shader/skybox.frag.spv", &skyboxFragShader);
-
-	VkShaderModule pickingVertShader,
-					pickingFragShader;
-	loadShaderModule("shader/picking.vert.spv", &pickingVertShader);
-	loadShaderModule("shader/picking.frag.spv", &pickingFragShader);
-
-	VkShaderModule wireframeColorVertShader,
-					wireframeColorFragShader;
-	loadShaderModule("shader/pbr.vert.spv", &wireframeColorVertShader);
-	loadShaderModule("shader/color.frag.spv", &wireframeColorFragShader);
-
-	VkShaderModule debugPhysicsObjectVertShader,
+	/*VkShaderModule debugPhysicsObjectVertShader,
 					debugPhysicsObjectFragShader;
-	loadShaderModule("shader/debug_physics_object.vert.spv", &debugPhysicsObjectVertShader);
-	loadShaderModule("shader/debug_physics_object.frag.spv", &debugPhysicsObjectFragShader);
+	loadShaderModule("shader/debug_physics_object.vert.spv", debugPhysicsObjectVertShader);
+	loadShaderModule("shader/debug_physics_object.frag.spv", debugPhysicsObjectFragShader);*/
 
-	VkShaderModule shadowDepthPassVertShader,
-					shadowDepthPassFragShader;
-	loadShaderModule("shader/shadow_depthpass.vert.spv", &shadowDepthPassVertShader);
-	loadShaderModule("shader/shadow_depthpass.frag.spv", &shadowDepthPassFragShader);
 
-	VkShaderModule postprocessVertShader,
-				   postprocessFragShader;
-	loadShaderModule("shader/genbrdflut.vert.spv", &postprocessVertShader);
-	loadShaderModule("shader/postprocess.frag.spv", &postprocessFragShader);
 
-	//
+	// Common values
+	vkglTF::VertexInputDescription modelVertexDescription = vkglTF::Model::Vertex::getVertexDescription();
+	VkViewport screenspaceViewport = {
+		0.0f, 0.0f,
+		(float_t)_windowExtent.width, (float_t)_windowExtent.height,
+		0.0f, 1.0f,
+	};
+	VkRect2D screenspaceScissor = {
+		{ 0, 0 },
+		_windowExtent,
+	};
+
 	// Mesh Pipeline
-	//
-	VkPipelineLayoutCreateInfo meshPipelineLayoutInfo = vkinit::pipelineLayoutCreateInfo();
+	VkPipeline meshPipeline;
+	VkPipelineLayout meshPipelineLayout;
+	vkutil::pipelinebuilder::build(
+		{},
+		{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _pbrTexturesSetLayout, _skeletalAnimationSetLayout },
+		{
+			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/pbr.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/pbr_khr.frag.spv" },
+		},
+		modelVertexDescription.attributes,
+		modelVertexDescription.bindings,
+		vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+		screenspaceViewport,
+		screenspaceScissor,
+		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT),
+		{ vkinit::colorBlendAttachmentState() },
+		vkinit::multisamplingStateCreateInfo(),
+		vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL),
+		{},
+		_mainRenderPass,
+		meshPipeline,
+		meshPipelineLayout
+		);
+	attachPipelineToMaterial(meshPipeline, meshPipelineLayout, "pbrMaterial");
 
-	VkPushConstantRange pushConstant = {
-		.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-		.offset = 0,
-		.size = sizeof(PBRMaterialPushConstBlock)
-	};
-	meshPipelineLayoutInfo.pPushConstantRanges = &pushConstant;
-	meshPipelineLayoutInfo.pushConstantRangeCount = 1;
-
-	VkDescriptorSetLayout setLayouts[] = { _globalSetLayout, _objectSetLayout, _skeletalAnimationSetLayout, _pbrTexturesSetLayout };
-	meshPipelineLayoutInfo.pSetLayouts = setLayouts;
-	meshPipelineLayoutInfo.setLayoutCount = 4;
-
-	VkPipelineLayout _meshPipelineLayout;
-	VK_CHECK(vkCreatePipelineLayout(_device, &meshPipelineLayoutInfo, nullptr, &_meshPipelineLayout));
-
-	vkglTF::VertexInputDescription vertexDescription = vkglTF::Model::Vertex::getVertexDescription();
-
-	PipelineBuilder pipelineBuilder;
-	pipelineBuilder._shaderStages.clear();
-	pipelineBuilder._shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, defaultLitVertShader));
-	pipelineBuilder._shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, defaultLitFragShader));
-
-	pipelineBuilder._vertexInputInfo = vkinit::vertexInputStateCreateInfo();
-	pipelineBuilder._vertexInputInfo.pVertexAttributeDescriptions = vertexDescription.attributes.data();
-	pipelineBuilder._vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(vertexDescription.attributes.size());
-	pipelineBuilder._vertexInputInfo.pVertexBindingDescriptions = vertexDescription.bindings.data();
-	pipelineBuilder._vertexInputInfo.vertexBindingDescriptionCount = static_cast<uint32_t>(vertexDescription.bindings.size());
-
-	pipelineBuilder._inputAssembly = vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-
-	pipelineBuilder._viewport.x = 0.0f;
-	pipelineBuilder._viewport.y = 0.0f;
-	pipelineBuilder._viewport.width = (float_t)_windowExtent.width;
-	pipelineBuilder._viewport.height = (float_t)_windowExtent.height;
-	pipelineBuilder._viewport.minDepth = 0.0f;
-	pipelineBuilder._viewport.maxDepth = 1.0f;
-
-	pipelineBuilder._scissor.offset = { 0, 0 };
-	pipelineBuilder._scissor.extent = _windowExtent;
-
-	pipelineBuilder._rasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT);
-	pipelineBuilder._colorBlendAttachment.push_back(vkinit::colorBlendAttachmentState());
-	pipelineBuilder._multisampling = vkinit::multisamplingStateCreateInfo();
-	pipelineBuilder._pipelineLayout = _meshPipelineLayout;
-	pipelineBuilder._depthStencil = vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL);
-	pipelineBuilder._dynamicState = {    // @TODO: for now we'll have this, but make a "..." initializing function in the vkinit namespace, bc honestly you just need one param and then just make it an expanding list!
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-		.dynamicStateCount = 0,
-		.pDynamicStates = nullptr,
-	};
-
-	auto _meshPipeline = pipelineBuilder.buildPipeline(_device, _mainRenderPass);
-	createMaterial(_meshPipeline, _meshPipelineLayout, "pbrMaterial");
-
-	for (auto shaderStage : pipelineBuilder._shaderStages)
-		vkDestroyShaderModule(_device, shaderStage.module, nullptr);
-
-	//
 	// Skybox pipeline
-	//
-	VkPipelineLayoutCreateInfo skyboxPipelineLayoutInfo = meshPipelineLayoutInfo;
-	skyboxPipelineLayoutInfo.pPushConstantRanges = nullptr;
-	skyboxPipelineLayoutInfo.pushConstantRangeCount = 0;
+	VkPipeline skyboxPipeline;
+	VkPipelineLayout skyboxPipelineLayout;
+	vkutil::pipelinebuilder::build(
+		{},
+		{ _globalSetLayout, _singleTextureSetLayout },
+		{
+			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/skybox.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/skybox.frag.spv" },
+		},
+		modelVertexDescription.attributes,
+		modelVertexDescription.bindings,
+		vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+		screenspaceViewport,
+		screenspaceScissor,
+		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_FRONT_BIT),    // Bc we're rendering a box inside-out
+		{ vkinit::colorBlendAttachmentState() },
+		vkinit::multisamplingStateCreateInfo(),
+		vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_NEVER),
+		{},
+		_mainRenderPass,
+		skyboxPipeline,
+		skyboxPipelineLayout
+		);
+	attachPipelineToMaterial(skyboxPipeline, skyboxPipelineLayout, "skyboxMaterial");
 
-	VkDescriptorSetLayout setLayouts2[] = { _globalSetLayout, _singleTextureSetLayout };
-	skyboxPipelineLayoutInfo.pSetLayouts = setLayouts2;
-	skyboxPipelineLayoutInfo.setLayoutCount = 2;
-
-	VkPipelineLayout _skyboxPipelineLayout;
-	VK_CHECK(vkCreatePipelineLayout(_device, &skyboxPipelineLayoutInfo, nullptr, &_skyboxPipelineLayout));
-
-	pipelineBuilder._shaderStages.clear();
-	pipelineBuilder._shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, skyboxVertShader));
-	pipelineBuilder._shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, skyboxFragShader));
-
-	pipelineBuilder._rasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_FRONT_BIT);    // Bc we're rendering a box inside-out
-	pipelineBuilder._depthStencil = vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_NEVER);
-	pipelineBuilder._pipelineLayout = _skyboxPipelineLayout;		// @NOTE: EFFING DON'T FORGET THIS LINE BC THAT'S WHAT CAUSED ME A BUTT TON OF GRIEF!!!!!
-
-	auto _skyboxPipeline = pipelineBuilder.buildPipeline(_device, _mainRenderPass);
-	createMaterial(_skyboxPipeline, _skyboxPipelineLayout, "skyboxMaterial");
-
-	for (auto shaderStage : pipelineBuilder._shaderStages)
-		vkDestroyShaderModule(_device, shaderStage.module, nullptr);
-
-	//
 	// Picking pipeline
-	//
-	VkPipelineLayoutCreateInfo pickingPipelineLayoutInfo = skyboxPipelineLayoutInfo;
-	pickingPipelineLayoutInfo.pPushConstantRanges = nullptr;
-	pickingPipelineLayoutInfo.pushConstantRangeCount = 0;
+	VkPipeline pickingPipeline;
+	VkPipelineLayout pickingPipelineLayout;
+	vkutil::pipelinebuilder::build(
+		{},
+		{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _pickingReturnValueSetLayout, _skeletalAnimationSetLayout },
+		{
+			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/picking.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/picking.frag.spv" },
+		},
+		modelVertexDescription.attributes,
+		modelVertexDescription.bindings,
+		vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+		screenspaceViewport,
+		screenspaceScissor,
+		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT),
+		{ vkinit::colorBlendAttachmentState() },
+		vkinit::multisamplingStateCreateInfo(),
+		vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL),
+		{ VK_DYNAMIC_STATE_SCISSOR },
+		_mainRenderPass,
+		pickingPipeline,
+		pickingPipelineLayout
+		);
+	attachPipelineToMaterial(pickingPipeline, pickingPipelineLayout, "pickingMaterial");
 
-	VkDescriptorSetLayout setLayouts3[] = { _globalSetLayout, _objectSetLayout, _skeletalAnimationSetLayout, _pickingReturnValueSetLayout };
-	pickingPipelineLayoutInfo.pSetLayouts = setLayouts3;
-	pickingPipelineLayoutInfo.setLayoutCount = 4;
-
-	VkPipelineLayout _pickingPipelineLayout;
-	VK_CHECK(vkCreatePipelineLayout(_device, &pickingPipelineLayoutInfo, nullptr, &_pickingPipelineLayout));
-
-	pipelineBuilder._shaderStages.clear();
-	pipelineBuilder._shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, pickingVertShader));
-	pipelineBuilder._shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, pickingFragShader));
-
-	pipelineBuilder._rasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT);    // Bc we're rendering a box inside-out
-	pipelineBuilder._depthStencil = vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL);
-	pipelineBuilder._pipelineLayout = _pickingPipelineLayout;
-
-	std::array<VkDynamicState, 1> states = { VK_DYNAMIC_STATE_SCISSOR };		// We're using a dynamic scissor here so that we can just render a 1x1 pixel and read from it using an ssbo for picking
-	VkPipelineDynamicStateCreateInfo dynamicState = {
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-		.dynamicStateCount = static_cast<uint32_t>(states.size()),
-		.pDynamicStates = states.data(),
-	};
-	pipelineBuilder._dynamicState = dynamicState;
-
-	auto _pickingPipeline = pipelineBuilder.buildPipeline(_device, _pickingRenderPass);    // @NOTE: the changed renderpass bc this is for picking
-	createMaterial(_pickingPipeline, _pickingPipelineLayout, "pickingMaterial");
-
-	for (auto shaderStage : pipelineBuilder._shaderStages)
-		vkDestroyShaderModule(_device, shaderStage.module, nullptr);
-
-	//
 	// Wireframe color pipeline
-	//
-	VkPipelineLayoutCreateInfo wireframeColorPipelineLayoutInfo = pickingPipelineLayoutInfo;
+	VkPipeline wireframePipeline;
+	VkPipelineLayout wireframePipelineLayout;
+	vkutil::pipelinebuilder::build(
+		{
+			VkPushConstantRange{
+				.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+				.offset = 0,
+				.size = sizeof(ColorPushConstBlock)
+			}
+		},
+		{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _skeletalAnimationSetLayout },
+		{
+			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/wireframe_color.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/color.frag.spv" },
+		},
+		modelVertexDescription.attributes,
+		modelVertexDescription.bindings,
+		vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+		screenspaceViewport,
+		screenspaceScissor,
+		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_LINE, VK_CULL_MODE_BACK_BIT),
+		{ vkinit::colorBlendAttachmentState() },
+		vkinit::multisamplingStateCreateInfo(),
+		vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL),
+		{},
+		_mainRenderPass,
+		wireframePipeline,
+		wireframePipelineLayout
+		);
+	attachPipelineToMaterial(wireframePipeline, wireframePipelineLayout, "wireframeColorMaterial");
 
-	pushConstant = {
-		.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-		.offset = 0,
-		.size = sizeof(ColorPushConstBlock)
-	};
-	wireframeColorPipelineLayoutInfo.pPushConstantRanges = &pushConstant;
-	wireframeColorPipelineLayoutInfo.pushConstantRangeCount = 1;
+	VkPipeline wireframeBehindPipeline;
+	vkutil::pipelinebuilder::build(
+		{
+			VkPushConstantRange{
+				.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+				.offset = 0,
+				.size = sizeof(ColorPushConstBlock)
+			}
+		},
+		{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _skeletalAnimationSetLayout },
+		{
+			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/wireframe_color.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/color.frag.spv" },
+		},
+		modelVertexDescription.attributes,
+		modelVertexDescription.bindings,
+		vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+		screenspaceViewport,
+		screenspaceScissor,
+		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_LINE, VK_CULL_MODE_BACK_BIT),
+		{ vkinit::colorBlendAttachmentState() },
+		vkinit::multisamplingStateCreateInfo(),
+		vkinit::depthStencilCreateInfo(true, false, VK_COMPARE_OP_GREATER),
+		{},
+		_mainRenderPass,
+		wireframeBehindPipeline,
+		wireframePipelineLayout
+		);
+	attachPipelineToMaterial(wireframeBehindPipeline, wireframePipelineLayout, "wireframeColorBehindMaterial");
 
-	VkDescriptorSetLayout setLayouts4[] = { _globalSetLayout, _objectSetLayout, _skeletalAnimationSetLayout };
-	wireframeColorPipelineLayoutInfo.pSetLayouts = setLayouts4;
-	wireframeColorPipelineLayoutInfo.setLayoutCount = 3;
-
-	VkPipelineLayout _wireframeColorPipelineLayout;
-	VK_CHECK(vkCreatePipelineLayout(_device, &wireframeColorPipelineLayoutInfo, nullptr, &_wireframeColorPipelineLayout));
-
-	pipelineBuilder._shaderStages.clear();
-	pipelineBuilder._shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, wireframeColorVertShader));
-	pipelineBuilder._shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, wireframeColorFragShader));
-
-	pipelineBuilder._rasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_LINE, VK_CULL_MODE_BACK_BIT);    // Bc we're rendering a box inside-out
-	pipelineBuilder._depthStencil = vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL);
-	pipelineBuilder._pipelineLayout = _wireframeColorPipelineLayout;
-
-	VkPipelineDynamicStateCreateInfo noDynamicState = {
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-		.dynamicStateCount = 0,
-		.pDynamicStates = nullptr,
-	};
-	pipelineBuilder._dynamicState = noDynamicState;    // Turn off dynamic states
-
-	auto _wireframeColorPipeline = pipelineBuilder.buildPipeline(_device, _mainRenderPass);
-	createMaterial(_wireframeColorPipeline, _wireframeColorPipelineLayout, "wireframeColorMaterial");
-
-	pipelineBuilder._depthStencil = vkinit::depthStencilCreateInfo(true, false, VK_COMPARE_OP_GREATER);
-	auto _wireframeColorBehindPipeline = pipelineBuilder.buildPipeline(_device, _mainRenderPass);
-	createMaterial(_wireframeColorBehindPipeline, _wireframeColorPipelineLayout, "wireframeColorBehindMaterial");
-
-	for (auto shaderStage : pipelineBuilder._shaderStages)
-		vkDestroyShaderModule(_device, shaderStage.module, nullptr);
-
-	//
 	// Shadow Depth Pass pipeline
-	//
-	VkPipelineLayoutCreateInfo shadowDepthPassPipelineLayoutInfo = wireframeColorPipelineLayoutInfo;
+	auto shadowRasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE);
+	shadowRasterizer.depthClampEnable = VK_TRUE;
 
-	pushConstant = {
-		.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-		.offset = 0,
-		.size = sizeof(CascadeIndexPushConstBlock)
-	};
-	shadowDepthPassPipelineLayoutInfo.pPushConstantRanges = &pushConstant;
-	shadowDepthPassPipelineLayoutInfo.pushConstantRangeCount = 1;
+	VkPipeline shadowDepthPassPipeline;
+	VkPipelineLayout shadowDepthPassPipelineLayout;
+	vkutil::pipelinebuilder::build(
+		{
+			VkPushConstantRange{
+				.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+				.offset = 0,
+				.size = sizeof(CascadeIndexPushConstBlock)
+			}
+		},
+		{ _cascadeViewProjsSetLayout, _objectSetLayout, _instancePtrSetLayout, _pbrTexturesSetLayout, _skeletalAnimationSetLayout },
+		{
+			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/shadow_depthpass.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/shadow_depthpass.frag.spv" },
+		},
+		modelVertexDescription.attributes,
+		modelVertexDescription.bindings,
+		vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+		VkViewport{
+			0.0f, 0.0f,
+			(float_t)SHADOWMAP_DIMENSION, (float_t)SHADOWMAP_DIMENSION,
+			0.0f, 1.0f,
+		},
+		VkRect2D{
+			{ 0, 0 },
+			VkExtent2D{ SHADOWMAP_DIMENSION, SHADOWMAP_DIMENSION },
+		},
+		shadowRasterizer,
+		{},  // No color attachment for this pipeline
+		vkinit::multisamplingStateCreateInfo(),
+		vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL),
+		{},
+		_shadowRenderPass,
+		shadowDepthPassPipeline,
+		shadowDepthPassPipelineLayout
+		);
+	attachPipelineToMaterial(shadowDepthPassPipeline, shadowDepthPassPipelineLayout, "shadowDepthPassMaterial");
 
-	VkDescriptorSetLayout setLayouts6[] = { _cascadeViewProjsSetLayout, _objectSetLayout, _skeletalAnimationSetLayout, _pbrTexturesSetLayout };
-	shadowDepthPassPipelineLayoutInfo.pSetLayouts = setLayouts6;
-	shadowDepthPassPipelineLayoutInfo.setLayoutCount = 4;
-
-	VkPipelineLayout _shadowDepthPassPipelineLayout;
-	VK_CHECK(vkCreatePipelineLayout(_device, &shadowDepthPassPipelineLayoutInfo, nullptr, &_shadowDepthPassPipelineLayout));
-
-	pipelineBuilder._shaderStages.clear();
-	pipelineBuilder._shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, shadowDepthPassVertShader));
-	pipelineBuilder._shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, shadowDepthPassFragShader));
-
-	// Revert back to the vkglTF traditional tri-mesh models for the vertex input
-	pipelineBuilder._vertexInputInfo = vkinit::vertexInputStateCreateInfo();
-	pipelineBuilder._vertexInputInfo.pVertexAttributeDescriptions = vertexDescription.attributes.data();
-	pipelineBuilder._vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(vertexDescription.attributes.size());
-	pipelineBuilder._vertexInputInfo.pVertexBindingDescriptions = vertexDescription.bindings.data();
-	pipelineBuilder._vertexInputInfo.vertexBindingDescriptionCount = static_cast<uint32_t>(vertexDescription.bindings.size());
-
-	pipelineBuilder._inputAssembly = vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-
-	pipelineBuilder._viewport.x = 0.0f;
-	pipelineBuilder._viewport.y = 0.0f;
-	pipelineBuilder._viewport.width = (float_t)SHADOWMAP_DIMENSION;
-	pipelineBuilder._viewport.height = (float_t)SHADOWMAP_DIMENSION;
-	pipelineBuilder._viewport.minDepth = 0.0f;
-	pipelineBuilder._viewport.maxDepth = 1.0f;
-
-	pipelineBuilder._scissor.offset = { 0, 0 };
-	pipelineBuilder._scissor.extent = VkExtent2D{ SHADOWMAP_DIMENSION, SHADOWMAP_DIMENSION };
-
-	pipelineBuilder._rasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE);
-	pipelineBuilder._rasterizer.depthClampEnable = VK_TRUE;
-	pipelineBuilder._colorBlendAttachment.clear();  // No color attachment for this pipeline
-	pipelineBuilder._depthStencil = vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL);
-	pipelineBuilder._pipelineLayout = _shadowDepthPassPipelineLayout;
-
-	auto _shadowDepthPassPipeline = pipelineBuilder.buildPipeline(_device, _shadowRenderPass);
-	createMaterial(_shadowDepthPassPipeline, _shadowDepthPassPipelineLayout, "shadowDepthPassMaterial");
-
-	for (auto shaderStage : pipelineBuilder._shaderStages)
-		vkDestroyShaderModule(_device, shaderStage.module, nullptr);
-
-	//
 	// Postprocess pipeline
-	//
-	VkPipelineLayoutCreateInfo postprocessPipelineLayoutInfo = shadowDepthPassPipelineLayoutInfo;
+	VkPipeline postprocessPipeline;
+	VkPipelineLayout postprocessPipelineLayout;
+	vkutil::pipelinebuilder::build(
+		{},
+		{ _globalSetLayout, _postprocessSetLayout },
+		{
+			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/genbrdflut.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/postprocess.frag.spv" },
+		},
+		{},  // No triangles are actually streamed in
+		{},
+		vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+		screenspaceViewport,
+		screenspaceScissor,
+		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE),
+		{ vkinit::colorBlendAttachmentState() },
+		vkinit::multisamplingStateCreateInfo(),
+		vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_ALWAYS),
+		{},
+		_postprocessRenderPass,
+		postprocessPipeline,
+		postprocessPipelineLayout
+	);
+	attachPipelineToMaterial(postprocessPipeline, postprocessPipelineLayout, "postprocessMaterial");
 
-	pushConstant = {
-		.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-		.offset = 0,
-		.size = sizeof(CascadeIndexPushConstBlock)
-	};
-	postprocessPipelineLayoutInfo.pPushConstantRanges = &pushConstant;
-	postprocessPipelineLayoutInfo.pushConstantRangeCount = 1;
-
-	VkDescriptorSetLayout setLayouts7[] = { _globalSetLayout, _postprocessSetLayout };
-	postprocessPipelineLayoutInfo.pSetLayouts = setLayouts7;
-	postprocessPipelineLayoutInfo.setLayoutCount = 2;
-
-	VkPipelineLayout _postprocessPipelineLayout;
-	VK_CHECK(vkCreatePipelineLayout(_device, &postprocessPipelineLayoutInfo, nullptr, &_postprocessPipelineLayout));
-
-	pipelineBuilder._shaderStages.clear();
-	pipelineBuilder._shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, postprocessVertShader));
-	pipelineBuilder._shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, postprocessFragShader));
-
-	// Use empty vertex input
-	VkPipelineVertexInputStateCreateInfo emptyInputStateCI = {
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-	};
-	pipelineBuilder._vertexInputInfo = emptyInputStateCI;
-
-	pipelineBuilder._inputAssembly = vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-
-	pipelineBuilder._viewport.x = 0.0f;
-	pipelineBuilder._viewport.y = 0.0f;
-	pipelineBuilder._viewport.width = (float_t)_windowExtent.width;
-	pipelineBuilder._viewport.height = (float_t)_windowExtent.height;
-	pipelineBuilder._viewport.minDepth = 0.0f;
-	pipelineBuilder._viewport.maxDepth = 1.0f;
-
-	pipelineBuilder._scissor.offset = { 0, 0 };
-	pipelineBuilder._scissor.extent = _windowExtent;
-
-	pipelineBuilder._rasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE);
-	pipelineBuilder._colorBlendAttachment.push_back(vkinit::colorBlendAttachmentState());
-	pipelineBuilder._depthStencil = vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_ALWAYS);
-	pipelineBuilder._pipelineLayout = _postprocessPipelineLayout;
-
-	auto _postprocessPipeline = pipelineBuilder.buildPipeline(_device, _postprocessRenderPass);
-	createMaterial(_postprocessPipeline, _postprocessPipelineLayout, "postprocessMaterial");
-
-	for (auto shaderStage : pipelineBuilder._shaderStages)
-		vkDestroyShaderModule(_device, shaderStage.module, nullptr);
-
-	// Add destroy command for cleanup
+	// Destroy pipelines when recreating swapchain
 	_swapchainDependentDeletionQueue.pushFunction([=]() {
-		vkDestroyPipeline(_device, _meshPipeline, nullptr);
-		vkDestroyPipelineLayout(_device, _meshPipelineLayout, nullptr);    // @NOTE: pipelinelayouts don't have to get destroyed... but since we're not saving them anywhere, we're just destroying and recreating them anyway
-		vkDestroyPipeline(_device, _skyboxPipeline, nullptr);
-		vkDestroyPipelineLayout(_device, _skyboxPipelineLayout, nullptr);
-		vkDestroyPipeline(_device, _pickingPipeline, nullptr);
-		vkDestroyPipelineLayout(_device, _pickingPipelineLayout, nullptr);
-		vkDestroyPipeline(_device, _wireframeColorPipeline, nullptr);
-		vkDestroyPipeline(_device, _wireframeColorBehindPipeline, nullptr);
-		vkDestroyPipelineLayout(_device, _wireframeColorPipelineLayout, nullptr);
-		vkDestroyPipeline(_device, _shadowDepthPassPipeline, nullptr);
-		vkDestroyPipelineLayout(_device, _shadowDepthPassPipelineLayout, nullptr);
-		vkDestroyPipeline(_device, _postprocessPipeline, nullptr);
-		vkDestroyPipelineLayout(_device, _postprocessPipelineLayout, nullptr);
-		});
-
-	
-
-
-
-
-
-
-
-
-	//
-	// Update postprocessMaterial @FIXME: this shouldn't be right here.
-	//
-	{
-		Material* postprocessMaterial = getMaterial("postprocessMaterial");
-		VkDescriptorSetAllocateInfo allocInfo = {
-			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-			.pNext = nullptr,
-			.descriptorPool = _descriptorPool,
-			.descriptorSetCount = 1,
-			.pSetLayouts = &_postprocessSetLayout,
-		};
-		vkAllocateDescriptorSets(_device, &allocInfo, &postprocessMaterial->textureSet);
-
-		// Main HDR Buffer image
-		VkDescriptorImageInfo mainHDRImageDescriptor = {
-			.sampler = _mainImage.sampler,
-			.imageView = _mainImage.imageView,
-			.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-		};
-		VkDescriptorImageInfo bloomImageDescriptor = {
-			.sampler = _bloomPostprocessImage.sampler,
-			.imageView = _bloomPostprocessImage.imageView,
-			.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-		};
-		std::array<VkWriteDescriptorSet, 2> writeDescriptorSets = {
-			vkinit::writeDescriptorImage(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, postprocessMaterial->textureSet, &mainHDRImageDescriptor, 0),
-			vkinit::writeDescriptorImage(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, postprocessMaterial->textureSet, &bloomImageDescriptor, 1),
-		};
-		vkUpdateDescriptorSets(_device, static_cast<uint32_t>(writeDescriptorSets.size()), writeDescriptorSets.data(), 0, nullptr);
-	}
-}
-
-void VulkanEngine::initScene()    // @TODO: rename this to something better, bc all it's doing is allocating image descriptorsets... or even better is including this in maybe loadImages()?  -Timo 2022/10/24
-{
-	//
-	// Update defaultMaterial		@TODO: @FIXME: likely we should just have the material get updated with the textures on pipeline creation, not here... plus pipelines are recreated when the screen resizes too so it should be done then.
-	//
-	{
-		Material* texturedMaterial = getMaterial("pbrMaterial");
-		VkDescriptorSetAllocateInfo allocInfo = {
-			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-			.pNext = nullptr,
-			.descriptorPool = _descriptorPool,
-			.descriptorSetCount = 1,
-			.pSetLayouts = &_singleTextureSetLayout,
-		};
-		vkAllocateDescriptorSets(_device, &allocInfo, &texturedMaterial->textureSet);
-
-		VkDescriptorImageInfo imageBufferInfo = {
-			.sampler = _loadedTextures["WoodFloor057"].sampler,
-			.imageView = _loadedTextures["WoodFloor057"].imageView,
-			.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-		};
-		VkWriteDescriptorSet texture1 =
-			vkinit::writeDescriptorImage(
-				VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-				texturedMaterial->textureSet,
-				&imageBufferInfo,
-				0
-			);
-		vkUpdateDescriptorSets(_device, 1, &texture1, 0, nullptr);
-	}
-
-	//
-	// Update cubemapskybox material
-	//
-	{
-		Material& skyboxMaterial = *getMaterial("skyboxMaterial");
-		VkDescriptorSetAllocateInfo allocInfo = {
-			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-			.pNext = nullptr,
-			.descriptorPool = _descriptorPool,
-			.descriptorSetCount = 1,
-			.pSetLayouts = &_singleTextureSetLayout,
-		};
-		vkAllocateDescriptorSets(_device, &allocInfo, &skyboxMaterial.textureSet);
-
-		VkDescriptorImageInfo imageBufferInfo = {
-			.sampler = _loadedTextures["CubemapSkybox"].sampler,
-			.imageView = _loadedTextures["CubemapSkybox"].imageView,
-			.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-		};
-		VkWriteDescriptorSet texture1 =
-			vkinit::writeDescriptorImage(
-				VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-				skyboxMaterial.textureSet,
-				&imageBufferInfo,
-				0
-			);
-		vkUpdateDescriptorSets(_device, 1, &texture1, 0, nullptr);
-	}
-
-	//
-	// Materials for ImGui
-	//
-	_imguiData.textureLayerVisible   = ImGui_ImplVulkan_AddTexture(_loadedTextures["imguiTextureLayerVisible"].sampler, _loadedTextures["imguiTextureLayerVisible"].imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-	_imguiData.textureLayerInvisible = ImGui_ImplVulkan_AddTexture(_loadedTextures["imguiTextureLayerInvisible"].sampler, _loadedTextures["imguiTextureLayerInvisible"].imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-	_imguiData.textureLayerBuilder   = ImGui_ImplVulkan_AddTexture(_loadedTextures["imguiTextureLayerBuilder"].sampler, _loadedTextures["imguiTextureLayerBuilder"].imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-	_imguiData.textureLayerCollision = ImGui_ImplVulkan_AddTexture(_loadedTextures["imguiTextureLayerCollision"].sampler, _loadedTextures["imguiTextureLayerCollision"].imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		vkDestroyPipeline(_device, meshPipeline, nullptr);
+		vkDestroyPipeline(_device, skyboxPipeline, nullptr);
+		vkDestroyPipeline(_device, pickingPipeline, nullptr);
+		vkDestroyPipeline(_device, wireframePipeline, nullptr);
+		vkDestroyPipeline(_device, wireframeBehindPipeline, nullptr);
+		vkDestroyPipeline(_device, shadowDepthPassPipeline, nullptr);
+		vkDestroyPipeline(_device, postprocessPipeline, nullptr);
+	});
 }
 
 void VulkanEngine::generatePBRCubemaps()
@@ -2943,14 +2764,14 @@ void VulkanEngine::generatePBRCubemaps()
 
 		VkShaderModule filtercubeVertShader,
 						filtercubeFragShader;
-		loadShaderModule("shader/filtercube.vert.spv", &filtercubeVertShader);
+		vkutil::pipelinebuilder::loadShaderModule("shader/filtercube.vert.spv", filtercubeVertShader);
 		switch (target)
 		{
 		case IRRADIANCE:
-			loadShaderModule("shader/irradiancecube.frag.spv", &filtercubeFragShader);
+			vkutil::pipelinebuilder::loadShaderModule("shader/irradiancecube.frag.spv", filtercubeFragShader);
 			break;
 		case PREFILTEREDENV:
-			loadShaderModule("shader/prefilterenvmap.frag.spv", &filtercubeFragShader);
+			vkutil::pipelinebuilder::loadShaderModule("shader/prefilterenvmap.frag.spv", filtercubeFragShader);
 			break;
 		default:
 			filtercubeFragShader = VK_NULL_HANDLE;
@@ -3392,8 +3213,8 @@ void VulkanEngine::generateBRDFLUT()
 
 	VkShaderModule genBrdfLUTVertShader,
 					genBrdfLUTFragShader;
-	loadShaderModule("shader/genbrdflut.vert.spv", &genBrdfLUTVertShader);
-	loadShaderModule("shader/genbrdflut.frag.spv", &genBrdfLUTFragShader);
+	vkutil::pipelinebuilder::loadShaderModule("shader/genbrdflut.vert.spv", genBrdfLUTVertShader);
+	vkutil::pipelinebuilder::loadShaderModule("shader/genbrdflut.frag.spv", genBrdfLUTFragShader);
 
 	std::array<VkPipelineShaderStageCreateInfo, 2> shaderStages = {
 		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, genBrdfLUTVertShader),
@@ -3482,47 +3303,6 @@ void VulkanEngine::generateBRDFLUT()
 	auto tDiff = std::chrono::duration<double, std::milli>(tEnd - tStart).count();
 	std::cout << "[GENERATING BRDF LUT]" << std::endl
 		<< "execution duration: " << tDiff << " ms" << std::endl;
-}
-
-void VulkanEngine::attachPBRDescriptors()
-{
-	//
-	// @NOTE: the descriptor set for the _globalDescriptor (which holds the PBR descriptors)
-	// is already allocated, at this point you just need to write the imagedescriptors to
-	// the combined sampled texture bind point
-	//
-	VkDescriptorImageInfo irradianceDescriptor = {
-		.sampler = _pbrSceneTextureSet.irradianceCubemap.sampler,
-		.imageView = _pbrSceneTextureSet.irradianceCubemap.imageView,
-		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-	};
-	VkDescriptorImageInfo prefilteredDescriptor = {
-		.sampler = _pbrSceneTextureSet.prefilteredCubemap.sampler,
-		.imageView = _pbrSceneTextureSet.prefilteredCubemap.imageView,
-		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-	};
-	VkDescriptorImageInfo brdfLUTDescriptor = {
-		.sampler = _pbrSceneTextureSet.brdfLUTTexture.sampler,
-		.imageView = _pbrSceneTextureSet.brdfLUTTexture.imageView,
-		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-	};
-	VkDescriptorImageInfo shadowMapDescriptor = {
-		.sampler = _pbrSceneTextureSet.shadowMap.sampler,
-		.imageView = _pbrSceneTextureSet.shadowMap.imageView,
-		.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
-	};
-
-	// Write the descriptors for the images to the globaldescriptor
-	for (size_t i = 0; i < FRAME_OVERLAP; i++)
-	{
-		std::array<VkWriteDescriptorSet, 4> writeDescriptorSets = {
-			vkinit::writeDescriptorImage(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, _frames[i].globalDescriptor, &irradianceDescriptor, 2),
-			vkinit::writeDescriptorImage(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, _frames[i].globalDescriptor, &prefilteredDescriptor, 3),
-			vkinit::writeDescriptorImage(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, _frames[i].globalDescriptor, &brdfLUTDescriptor, 4),
-			vkinit::writeDescriptorImage(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, _frames[i].globalDescriptor, &shadowMapDescriptor, 5),
-		};
-		vkUpdateDescriptorSets(_device, static_cast<uint32_t>(writeDescriptorSets.size()), writeDescriptorSets.data(), 0, nullptr);
-	}
 }
 
 void VulkanEngine::initImgui()
@@ -3629,51 +3409,6 @@ FrameData& VulkanEngine::getCurrentFrame()
 	return _frames[_frameNumber % FRAME_OVERLAP];
 }
 
-bool VulkanEngine::loadShaderModule(const char* filePath, VkShaderModule* outShaderModule)
-{
-	std::cout << "[LOAD SHADER MODULE]" << std::endl;
-
-	// Open SPIRV file
-	std::ifstream file(filePath, std::ios::ate | std::ios::binary);
-	if (!file.is_open())
-	{
-		std::cerr << "ERROR: could not open file " << filePath << std::endl;
-		return false;
-	}
-
-	//
-	// Get the filesize and copy the whole thing into the correct sized buffer
-	//
-	size_t filesize = (size_t)file.tellg();
-	std::vector<uint32_t> buffer(filesize / sizeof(uint32_t));
-	file.seekg(0);
-	file.read((char*)buffer.data(), filesize);
-	file.close();
-
-	//
-	// Load the shader into Vulkan
-	//
-	VkShaderModuleCreateInfo createInfo = {};
-	createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-	createInfo.pNext = nullptr;
-	createInfo.codeSize = buffer.size() * sizeof(uint32_t);
-	createInfo.pCode = buffer.data();
-
-	// Error check
-	VkShaderModule shaderModule;
-	if (vkCreateShaderModule(_device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS)
-	{
-		std::cerr << "ERROR: could not create shader module for shader file " << filePath << std::endl;
-		return false;
-	}
-
-	// Successful shader creation!
-	*outShaderModule = shaderModule;
-
-	std::cout << "Successfully created shader module for shader file " << filePath << std::endl;
-	return true;
-}
-
 void VulkanEngine::loadMeshes()
 {
 #define MULTITHREAD_MESH_LOADING 1
@@ -3740,158 +3475,184 @@ void VulkanEngine::uploadCurrentFrameToGPU(const FrameData& currentFrame)
 	void* objectData;
 	vmaMapMemory(_allocator, currentFrame.objectBuffer._allocation, &objectData);
 	GPUObjectData* objectSSBO = (GPUObjectData*)objectData;    // @IMPROVE: perhaps multithread this? Or only update when the object moves?
-
 	for (size_t poolIndex : _roManager->_renderObjectsIndices)  // @NOTE: bc of the pool system these indices will be scattered, but that should work just fine
-	{
-		RenderObject& object = _roManager->_renderObjectPool[poolIndex];
-		glm_mat4_copy(object.transformMatrix, objectSSBO[poolIndex].modelMatrix);		// Another evil pointer trick I love... call me Dmitri the Evil
-	}
-
+		glm_mat4_copy(
+			_roManager->_renderObjectPool[poolIndex].transformMatrix,
+			objectSSBO[poolIndex].modelMatrix
+		);		// Another evil pointer trick I love... call me Dmitri the Evil
 	vmaUnmapMemory(_allocator, currentFrame.objectBuffer._allocation);
 }
 
-void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, size_t offset, size_t count, bool renderSkybox, bool materialOverride, VkPipelineLayout* overrideLayout, bool injectColorMapIntoMaterialOverride)
+void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, std::vector<size_t> onlyPoolIndices)
 {
 	//
-	// Render Skybox
-	// @TODO: fix this weird organization!!!
+	// Cull out render object indices that are not marked as visible
 	//
-	if (renderSkybox)
-	{
-		Material& skyboxMaterial = *getMaterial("skyboxMaterial");
-		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipeline);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipelineLayout, 1, 1, &skyboxMaterial.textureSet, 0, nullptr);
-
-		auto skybox = _roManager->getModel("Box", nullptr, [](){});
-		skybox->bind(cmd);
-		skybox->draw(cmd);
-	}
-
-	//
-	// Render all the renderobjects
-	//
-	Material& defaultMaterial = *getMaterial("pbrMaterial");    // @HACK: @TODO: currently, the way that the pipeline is getting used is by just hardcode using it in the draw commands for models... however, each model should get its pipeline set to this material instead (or whatever material its using... that's why we can't hardcode stuff!!!)   @TODO: create some kind of way to propagate the newly created pipeline to the primMat (calculated material in the gltf model) instead of using defaultMaterial directly.  -Timo
-	vkglTF::Model* lastModel = nullptr;
-	Material* lastMaterial = nullptr;
-	VkDescriptorSet* lastJointDescriptor = nullptr;
-
-	for (size_t i = offset; i < offset + count; i++)
+	std::vector<size_t> visibleIndices;
+	for (size_t i = 0; i < _roManager->_renderObjectsIndices.size(); i++)
 	{
 		size_t poolIndex = _roManager->_renderObjectsIndices[i];
 		RenderObject& object = _roManager->_renderObjectPool[poolIndex];
 
+		// See if render object itself is visible
 		if (!_roManager->_renderObjectLayersEnabled[(size_t)object.renderLayer])
-			continue;    // Ignore layers that are disabled
-
-		if (!object.model)	// @NOTE: Subdue a warning that a possible nullptr could be dereferenced
-		{
-			std::cerr << "ERROR: object model are NULL" << std::endl;
 			continue;
-		}
+		if (object.model == nullptr)
+			continue;
 
-		if (object.model != lastModel)
+		// Check to see if pool index is in wanted pool indices
+		if (!onlyPoolIndices.empty())
 		{
-			// Bind the new mesh
-			object.model->bind(cmd);
-			lastModel = object.model;
+			bool found = false;
+			for (size_t index : onlyPoolIndices)
+				if (index == poolIndex)
+				{
+					found = true;
+					break;
+				}
+			if (!found)
+				continue;  // Skip indices that are not part of the wanted "only render these pool indices"
 		}
 
-		//
-		// Render it out
-		//
-		object.model->draw(cmd, (uint32_t)poolIndex,
-			[&](vkglTF::Primitive* primitive, vkglTF::Node* node) {
-				//
-				// Apply all of the material properties
-				//
-				if (!materialOverride)
-				{
-					vkglTF::PBRMaterial& pbr = primitive->material;
-					Material& primMat = pbr.calculatedMaterial;
-			
-					if (lastMaterial != &primMat)
-					{
-						// Bind new material
-						vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipeline);
-						lastMaterial = &primMat;
-			
-						// Global data descriptor (set = 0)
-						vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
-			
-						// Object data descriptor (set = 1)
-						vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
-			
-						// PBR data descriptor    (set = 3)
-						vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 3, 1, &primMat.textureSet, 0, nullptr);
-			
-						// Undo flag for joint descriptor to force rebinding
-						lastJointDescriptor = nullptr;
-					}
-			
-					//
-					// PBR Material push constant data
-					//
-					PBRMaterialPushConstBlock pc = {};
-					glm_vec4_copy(pbr.emissiveFactor, pc.emissiveFactor);
-					// To save push constant space, availabilty and texture coordinates set are combined
-					// -1 = texture not used for this material, >= 0 texture used and index of texture coordinate set
-					pc.colorTextureSet = pbr.baseColorTexture != nullptr ? pbr.texCoordSets.baseColor : -1;
-					pc.normalTextureSet = pbr.normalTexture != nullptr ? pbr.texCoordSets.normal : -1;
-					pc.occlusionTextureSet = pbr.occlusionTexture != nullptr ? pbr.texCoordSets.occlusion : -1;
-					pc.emissiveTextureSet = pbr.emissiveTexture != nullptr ? pbr.texCoordSets.emissive : -1;
-					pc.alphaMask = static_cast<float>(pbr.alphaMode == vkglTF::PBRMaterial::ALPHAMODE_MASK);
-					pc.alphaMaskCutoff = pbr.alphaCutoff;
-			
-					// TODO: glTF specs states that metallic roughness should be preferred, even if specular glossiness is present
-			
-					if (pbr.pbrWorkflows.metallicRoughness)
-					{
-						// Metallic roughness workflow
-						pc.workflow = static_cast<float>(PBR_WORKFLOW_METALLIC_ROUGHNESS);
-						glm_vec4_copy(pbr.baseColorFactor, pc.baseColorFactor);
-						pc.metallicFactor = pbr.metallicFactor;
-						pc.roughnessFactor = pbr.roughnessFactor;
-						pc.PhysicalDescriptorTextureSet = pbr.metallicRoughnessTexture != nullptr ? pbr.texCoordSets.metallicRoughness : -1;
-						pc.colorTextureSet = pbr.baseColorTexture != nullptr ? pbr.texCoordSets.baseColor : -1;
-					}
-			
-					if (pbr.pbrWorkflows.specularGlossiness)
-					{
-						// Specular glossiness workflow
-						pc.workflow = static_cast<float>(PBR_WORKFLOW_SPECULAR_GLOSSINESS);
-						pc.PhysicalDescriptorTextureSet = pbr.extension.specularGlossinessTexture != nullptr ? pbr.texCoordSets.specularGlossiness : -1;
-						pc.colorTextureSet = pbr.extension.diffuseTexture != nullptr ? pbr.texCoordSets.baseColor : -1;
-						glm_vec4_copy(pbr.extension.diffuseFactor, pc.diffuseFactor);
-						glm_vec4(pbr.extension.specularFactor, 1.0f, pc.specularFactor);
-					}
-			
-					vkCmdPushConstants(cmd, defaultMaterial.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PBRMaterialPushConstBlock), &pc);
-				}
-				else if (injectColorMapIntoMaterialOverride)
-				{
-					// PBR data descriptor    (set = 3)
-					vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, *overrideLayout, 3, 1, &primitive->material.calculatedMaterial.textureSet, 0, nullptr);
-				}
+		// It's visible!!!!
+		visibleIndices.push_back(poolIndex);
+	}
 
-				//
-				// Apply joint properties
-				//
-				VkDescriptorSet* jointDescriptor =
-					object.animator ?
-					&object.animator->getUniformBuffer((size_t)node->mesh->animatorMeshId).descriptorSet :
-					vkglTF::Animator::getEmptyJointDescriptorSet();
-				if (lastJointDescriptor != jointDescriptor)
-				{
-					// Joint Descriptor (set = 2) (i.e. skeletal animations)
-					// 
-					// @NOTE: this doesn't have to be bound every primitive. Every mesh will
-					// have a single joint descriptor, hence having its own binding flag.
-					vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, (materialOverride) ? *overrideLayout : defaultMaterial.pipelineLayout, 2, 1, jointDescriptor, 0, nullptr);
-					lastJointDescriptor = jointDescriptor;
-				}
-			}
-		);
+	//
+	// Gather the number of times a model is drawn
+	//
+	struct ModelDrawCount
+	{
+		vkglTF::Model* model;
+		size_t drawCount;
+		size_t baseModelRenderObjectIndex;
+	};
+	std::vector<ModelDrawCount> mdcs;
+
+	vkglTF::Model* lastModel = nullptr;
+	for (size_t roIdx = 0; roIdx < visibleIndices.size(); roIdx++)
+	{
+		RenderObject& ro = _roManager->_renderObjectPool[visibleIndices[roIdx]];
+		if (ro.model == lastModel)
+		{
+			mdcs.back().drawCount++;
+		}
+		else
+		{
+			mdcs.push_back({
+				.model = ro.model,
+				.drawCount = 1,
+				.baseModelRenderObjectIndex = roIdx,
+				});
+			lastModel = ro.model;
+		}
+	}
+
+	//
+	// Gather each model's meshes and collate them into their own draw commands
+	//
+	std::vector<MeshCapturedInfo> meshDraws;
+	for (ModelDrawCount& mdc : mdcs)
+	{
+		uint32_t numMeshes = 0;
+		mdc.model->appendPrimitiveDraws(meshDraws, numMeshes);
+
+		for (size_t i = 0; i < numMeshes; i++)
+		{
+			// Tell each mesh to draw as many times as the model exists, thus
+			// collating the mesh draws inside the model drawing window.
+			meshDraws[meshDraws.size() - numMeshes + i].modelDrawCount = mdc.drawCount;
+			meshDraws[meshDraws.size() - numMeshes + i].baseModelRenderObjectIndex = mdc.baseModelRenderObjectIndex;
+			meshDraws[meshDraws.size() - numMeshes + i].meshNumInModel = numMeshes;
+		}
+	}
+
+	//
+	// Open up memory map for instance level data
+	//
+	void* instancePtrData;
+	vmaMapMemory(_allocator, currentFrame.instancePtrBuffer._allocation, &instancePtrData);
+	GPUInstancePointer* instancePtrSSBO = (GPUInstancePointer*)instancePtrData;
+
+	void* indirectDrawCommandsData;
+	vmaMapMemory(_allocator, currentFrame.indirectDrawCommandBuffer._allocation, &indirectDrawCommandsData);
+	VkDrawIndexedIndirectCommand* indirectDrawCommands = (VkDrawIndexedIndirectCommand*)indirectDrawCommandsData;
+
+	//
+	// Write indirect commands
+	//
+	std::vector<IndirectBatch> batches;
+	lastModel = nullptr;
+	size_t instanceID = 0;
+	size_t meshIndex = 0;
+	size_t baseModelRenderObjectIndex = 0;
+	for (MeshCapturedInfo& ib : meshDraws)
+	{
+		// Combine the mesh-level draw commands into model-level draw commands.
+		if (lastModel == ib.model)
+		{
+			batches.back().count += ib.modelDrawCount;
+		}
+		else
+		{
+			batches.push_back({
+				.model = ib.model,
+				.first = (uint32_t)instanceID,
+				.count = ib.modelDrawCount,  // @NOTE: since the meshes are collated, we need to draw each mesh the number of times the model is going to get drawn.
+				});
+
+			lastModel = ib.model;
+			meshIndex = 0;  // New model, so reset the mesh index counter.
+			baseModelRenderObjectIndex = ib.baseModelRenderObjectIndex;
+		}
+
+		// Create draw command for each mesh instance.
+		for (size_t modelIndex = 0; modelIndex < ib.modelDrawCount; modelIndex++)
+		{
+			*indirectDrawCommands = {
+				.indexCount = ib.meshIndexCount,
+				.instanceCount = 1,
+				.firstIndex = ib.meshFirstIndex,
+				.vertexOffset = 0,
+				.firstInstance = (uint32_t)instanceID++,
+			};
+			indirectDrawCommands++;
+
+			*instancePtrSSBO = _roManager->_renderObjectPool[visibleIndices[baseModelRenderObjectIndex + modelIndex]].calculatedModelInstances[meshIndex];
+			instancePtrSSBO++;
+		}
+
+		// Increment to the next mesh
+		meshIndex++;
+	}
+
+	// Cleanup and return
+	vmaUnmapMemory(_allocator, currentFrame.instancePtrBuffer._allocation);
+	vmaUnmapMemory(_allocator, currentFrame.indirectDrawCommandBuffer._allocation);
+	indirectBatches = batches;
+}
+
+void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, bool materialOverride)
+{
+	if (!materialOverride)
+	{
+		// Bind material
+		Material& defaultMaterial = *getMaterial("pbrMaterial");    // @HACK: @TODO: currently, the way that the pipeline is getting used is by just hardcode using it in the draw commands for models... however, each model should get its pipeline set to this material instead (or whatever material its using... that's why we can't hardcode stuff!!!)   @TODO: create some kind of way to propagate the newly created pipeline to the primMat (calculated material in the gltf model) instead of using defaultMaterial directly.  -Timo
+		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipeline);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 3, 1, &defaultMaterial.textureSet, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(), 0, nullptr);
+	}
+
+	// Iterate thru all the batches
+	uint32_t drawStride = sizeof(VkDrawIndexedIndirectCommand);
+	for (IndirectBatch& batch : indirectBatches)
+	{
+		VkDeviceSize indirectOffset = batch.first * drawStride;
+		batch.model->bind(cmd);
+		vkCmdDrawIndexedIndirect(cmd, currentFrame.indirectDrawCommandBuffer._buffer, indirectOffset, batch.count, drawStride);
 	}
 }
 
@@ -3901,7 +3662,7 @@ void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& curr
 	// Try to find the picked object
 	//
 	bool found = false;
-	size_t pickedROIndex = 0;
+	size_t pickedPoolIndex = 0;
 
 	for (size_t i = 0; i < _roManager->_renderObjectsIndices.size(); i++)
 	{
@@ -3909,7 +3670,7 @@ void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& curr
 		if (_movingMatrix.matrixToMove == &_roManager->_renderObjectPool[poolIndex].transformMatrix)
 		{
 			found = true;
-			pickedROIndex = i;  // @NOTE: this is not the pool index, but rather the index of the pool
+			pickedPoolIndex = poolIndex;
 			break;
 		}
 	}
@@ -3919,7 +3680,10 @@ void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& curr
 
 	//
 	// Render it with the wireframe color pipeline
+	// @BUG: recompacting and reuploading the picked pool index will overwrite the first mesh drawn's instance ptr information, so making a new system would be great, or not since this is just a debug feature.
 	//
+	compactRenderObjectsIntoDraws(currentFrame, {pickedPoolIndex});
+
 	constexpr size_t numRenders = 2;
 	std::string materialNames[numRenders] = {
 		"wireframeColorMaterial",
@@ -3935,19 +3699,17 @@ void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& curr
 		Material& material = *getMaterial(materialNames[i]);
 
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, material.pipeline);
-
-		// Global data descriptor             (set = 0)
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, material.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
-
-		// Object data descriptor             (set = 1)
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, material.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, material.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, material.pipelineLayout, 3, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(), 0, nullptr);
 
 		// Push constants
 		ColorPushConstBlock pc = {};
 		glm_vec4_copy(materialColors[i], pc.color);
 		vkCmdPushConstants(cmd, material.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ColorPushConstBlock), &pc);
 
-		renderRenderObjects(cmd, currentFrame, pickedROIndex, 1, false, true, &material.pipelineLayout, false);
+		renderRenderObjects(cmd, currentFrame, true);
 	}
 }
 
@@ -4574,58 +4336,4 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 	//
 	if (ImGui::GetIO().MousePos.x <= maxWindowWidth)
 		windowOffsetY += input::mouseScrollDelta[1] * scrollSpeed;
-}
-
-VkPipeline PipelineBuilder::buildPipeline(VkDevice device, VkRenderPass pass)
-{
-	VkPipelineViewportStateCreateInfo viewportState = {};
-	viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-	viewportState.pNext = nullptr;
-
-	viewportState.viewportCount = 1;
-	viewportState.pViewports = &_viewport;
-	viewportState.scissorCount = 1;
-	viewportState.pScissors = &_scissor;
-
-	VkPipelineColorBlendStateCreateInfo colorBlending = {};
-	colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-	colorBlending.pNext = nullptr;
-
-	colorBlending.logicOpEnable = VK_FALSE;
-	colorBlending.logicOp = VK_LOGIC_OP_COPY;
-	colorBlending.attachmentCount = static_cast<uint32_t>(_colorBlendAttachment.size());
-	colorBlending.pAttachments = _colorBlendAttachment.data();
-
-	//
-	// Build the actual pipeline
-	//
-	VkGraphicsPipelineCreateInfo pipelineInfo = {};
-	pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-	pipelineInfo.pNext = nullptr;
-
-	pipelineInfo.stageCount = static_cast<uint32_t>(_shaderStages.size());
-	pipelineInfo.pStages = _shaderStages.data();
-	pipelineInfo.pVertexInputState = &_vertexInputInfo;
-	pipelineInfo.pInputAssemblyState = &_inputAssembly;
-	pipelineInfo.pViewportState = &viewportState;
-	pipelineInfo.pRasterizationState = &_rasterizer;
-	pipelineInfo.pMultisampleState = &_multisampling;
-	pipelineInfo.pColorBlendState = &colorBlending;
-	pipelineInfo.layout = _pipelineLayout;
-	pipelineInfo.renderPass = pass;
-	pipelineInfo.subpass = 0;
-	pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
-	pipelineInfo.pDepthStencilState = &_depthStencil;
-	pipelineInfo.pDynamicState = &_dynamicState;
-
-	//
-	// Check for errors while creating gfx pipelines
-	//
-	VkPipeline newPipeline;
-	if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &newPipeline) != VK_SUCCESS)
-	{
-		std::cout << "FAILED: creating pipeline" << std::endl;
-		return VK_NULL_HANDLE;
-	}
-	return newPipeline;
 }

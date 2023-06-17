@@ -7,6 +7,10 @@
 RenderObject* RenderObjectManager::registerRenderObject(RenderObject renderObjectData)
 {
     // @NOTE: using a pool system bc of pointers losing information when stuff gets deleted.  -Timo 2022/11/06
+	// @NOTE: I think past me is talking about when a std::vector gets to a certain capacity, it
+	//        has to recreate a new array and insert all of the information into the array. Since
+	//        the array contains information that exists on the stack, it has to get moved, breaking
+	//        pointers and breaking my heart along the way.  -Timo 2023/05/27
 	if (_renderObjectsIndices.size() >= RENDER_OBJECTS_MAX_CAPACITY)
 	{
 		std::cerr << "[REGISTER RENDER OBJECT]" << std::endl
@@ -28,11 +32,34 @@ RenderObject* RenderObjectManager::registerRenderObject(RenderObject renderObjec
 		}
 	}
 
+	// Calculate instance pointers
+	renderObjectData.calculatedModelInstances.clear();
+	auto primitives = renderObjectData.model->getAllPrimitivesInOrder();
+	for (auto& primitive : primitives)
+		renderObjectData.calculatedModelInstances.push_back({
+			.objectID = (uint32_t)registerIndex,
+			.materialID = primitive->materialID,
+			.animatorNodeID = (uint32_t)primitive->animatorNodeReservedIndexPropagatedCopy,
+		});
+
 	// Register object
 	_renderObjectPool[registerIndex] = renderObjectData;
 	_renderObjectsIsRegistered[registerIndex] = true;
 	_renderObjectsIndices.push_back(registerIndex);
 
+	// Sort pool indices so that models are next to each other
+	std::sort(
+		_renderObjectsIndices.begin(),
+		_renderObjectsIndices.end(),
+		[&](size_t a, size_t b) {
+			return _renderObjectPool[a].model < _renderObjectPool[b].model;
+		}
+	);
+
+	for (bool* sendFlag : _sendInstancePtrDataToGPU_refs)
+		*sendFlag = true;
+
+	// Recalculate what indices animated render objects are at
 	recalculateAnimatorIndices();
 
 	return &_renderObjectPool[registerIndex];
@@ -51,6 +78,10 @@ void RenderObjectManager::unregisterRenderObject(RenderObject* objRegistration)
 			_renderObjectsIsRegistered[poolIndex] = false;
 			_renderObjectsIndices.erase(_renderObjectsIndices.begin() + indicesIndex);
 
+			for (bool* sendFlag : _sendInstancePtrDataToGPU_refs)
+				*sendFlag = true;
+
+			// Recalculate what indices animated render objects are at
 			recalculateAnimatorIndices();
 
 			return;

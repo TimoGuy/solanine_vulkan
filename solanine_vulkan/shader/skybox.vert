@@ -27,5 +27,5 @@ out gl_PerVertex
 void main()
 {
 	outUVW = inPos;
-	gl_Position = cameraData.projection * mat4(mat3(cameraData.view)) * vec4(inPos, 1.0);
+	gl_Position = cameraData.projection * mat4(mat3(cameraData.view)) * vec4(inPos * 10.0, 1.0);  // @HACK: the * 10.0 is to get past the near clip plane of the camera (since it's set to 1.0f)
 }

@@ -12,6 +12,7 @@ class RenderObjectManager;
 class Entity;
 class EntityManager;
 struct Camera;
+namespace vkglTF { struct Model; }
 
 struct CascadeIndexPushConstBlock
 {
@@ -55,6 +56,7 @@ struct FrameData
 	VkCommandPool commandPool;
 	VkCommandBuffer mainCommandBuffer;
 	VkCommandBuffer pickingCommandBuffer;
+	AllocatedBuffer indirectDrawCommandBuffer;
 
 	AllocatedBuffer cameraBuffer;
 	AllocatedBuffer pbrShadingPropsBuffer;
@@ -65,6 +67,9 @@ struct FrameData
 
 	AllocatedBuffer objectBuffer;
 	VkDescriptorSet objectDescriptor;
+
+	AllocatedBuffer instancePtrBuffer;
+	VkDescriptorSet instancePtrDescriptor;
 
 	AllocatedBuffer pickingSelectedIdBuffer;
 	VkDescriptorSet pickingReturnValueDescriptor;
@@ -199,10 +204,9 @@ public:
 	RenderObjectManager* _roManager;
 
 	std::unordered_map<std::string, Material> _materials;
-	Material* createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name);
+	Material* attachPipelineToMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name);
+	Material* attachTextureSetToMaterial(VkDescriptorSet textureSet, const std::string& name);
 	Material* getMaterial(const std::string& name);
-
-	
 
 	struct PBRSceneTextureSet    // @NOTE: these are the textures that are needed for any type of pbr scene (i.e. the irradiance, prefilter, and brdf maps)
 	{
@@ -218,12 +222,12 @@ public:
 	VkDescriptorSetLayout _globalSetLayout;
 	VkDescriptorSetLayout _cascadeViewProjsSetLayout;
 	VkDescriptorSetLayout _objectSetLayout;
+	VkDescriptorSetLayout _instancePtrSetLayout;
 	VkDescriptorSetLayout _singleTextureSetLayout;
 	VkDescriptorSetLayout _pbrTexturesSetLayout;
 	VkDescriptorSetLayout _pickingReturnValueSetLayout;
 	VkDescriptorSetLayout _skeletalAnimationSetLayout;    // @NOTE: for this one, descriptor sets are created inside of the vkglTFModels themselves, they're not global
 	VkDescriptorSetLayout _postprocessSetLayout;
-	VkDescriptorPool _descriptorPool;
 
 	AllocatedBuffer createBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
 	size_t padUniformBufferSize(size_t originalSize);    // @NOTE: this is unused, but it's useful for dynamic uniform buffers
@@ -245,10 +249,8 @@ private:
 	void initSyncStructures();
 	void initDescriptors();
 	void initPipelines();
-	void initScene();
 	void generatePBRCubemaps();
 	void generateBRDFLUT();
-	void attachPBRDescriptors();
 	void initImgui();
 
 	void recreateSwapchain();
@@ -256,12 +258,14 @@ private:
 	FrameData _frames[FRAME_OVERLAP];
 	FrameData& getCurrentFrame();
 
-	bool loadShaderModule(const char* filePath, VkShaderModule* outShaderModule);
-
 	void loadMeshes();
 
 	void uploadCurrentFrameToGPU(const FrameData& currentFrame);
-	void renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, size_t offset, size_t count, bool renderSkybox, bool materialOverride, VkPipelineLayout* overrideLayout, bool injectColorMapIntoMaterialOverride);
+	
+	std::vector<IndirectBatch> indirectBatches;
+
+	void compactRenderObjectsIntoDraws(const FrameData& currentFrame, std::vector<size_t> onlyPoolIndices);
+	void renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, bool materialOverride);
 	void renderPickedObject(VkCommandBuffer cmd, const FrameData& currentFrame);
 
 	//
@@ -288,22 +292,30 @@ public:
 
 	enum PBRWorkflows { PBR_WORKFLOW_METALLIC_ROUGHNESS = 0, PBR_WORKFLOW_SPECULAR_GLOSSINESS = 1 };
 
-	struct PBRMaterialPushConstBlock
+	struct PBRMaterialParam
 	{
-		vec4 baseColorFactor;
-		vec4 emissiveFactor;
-		vec4 diffuseFactor;
-		vec4 specularFactor;
-		float workflow;
-		int colorTextureSet;
-		int PhysicalDescriptorTextureSet;
-		int normalTextureSet;
-		int occlusionTextureSet;
-		int emissiveTextureSet;
-		float metallicFactor;
-		float roughnessFactor;
-		float alphaMask;
-		float alphaMaskCutoff;
+		// Texture map references
+		uint32_t colorMapIndex;
+		uint32_t physicalDescriptorMapIndex;
+		uint32_t normalMapIndex;
+		uint32_t aoMapIndex;
+		uint32_t emissiveMapIndex;
+
+		// Material properties
+		vec4    baseColorFactor;
+		vec4    emissiveFactor;
+		vec4    diffuseFactor;
+		vec4    specularFactor;
+		float_t workflow;
+		int32_t colorTextureSet;
+		int32_t PhysicalDescriptorTextureSet;
+		int32_t normalTextureSet;
+		int32_t occlusionTextureSet;
+		int32_t emissiveTextureSet;
+		float_t metallicFactor;
+		float_t roughnessFactor;
+		float_t alphaMask;
+		float_t alphaMaskCutoff;
 	};
 
 private:
@@ -356,23 +368,4 @@ private:
 
     friend class Entity;
 	friend Entity* scene::spinupNewObject(const std::string& objectName, VulkanEngine* engine, DataSerialized* ds);
-};
-
-
-class PipelineBuilder
-{
-public:
-	std::vector<VkPipelineShaderStageCreateInfo>       _shaderStages;
-	VkPipelineVertexInputStateCreateInfo               _vertexInputInfo;
-	VkPipelineInputAssemblyStateCreateInfo             _inputAssembly;
-	VkViewport                                         _viewport;
-	VkRect2D                                           _scissor;
-	VkPipelineRasterizationStateCreateInfo             _rasterizer;
-	std::vector<VkPipelineColorBlendAttachmentState>   _colorBlendAttachment;
-	VkPipelineMultisampleStateCreateInfo               _multisampling;
-	VkPipelineLayout                                   _pipelineLayout;
-	VkPipelineDepthStencilStateCreateInfo              _depthStencil;
-	VkPipelineDynamicStateCreateInfo                   _dynamicState;
-
-	VkPipeline buildPipeline(VkDevice device, VkRenderPass pass);
 };

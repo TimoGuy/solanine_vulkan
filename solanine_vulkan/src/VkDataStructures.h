@@ -3,6 +3,8 @@
 #include <vulkan/vulkan.h>
 #include <vma/vk_mem_alloc.h>
 
+namespace vkglTF { struct Model; }
+
 
 #define VK_CHECK(x)                                                    \
 	do                                                                 \
@@ -41,4 +43,21 @@ struct Material
 	VkDescriptorSet textureSet{ VK_NULL_HANDLE };   // Texture is defaulted to NULL
 	VkPipeline pipeline;                            // @NOTE: in the case of PBR MATERIAL, there is going to be one pipeline, one pipelinelayout and many many texture set descriptorsets for the PBR Material  -Timo
 	VkPipelineLayout pipelineLayout;
+};
+
+struct MeshCapturedInfo
+{
+	vkglTF::Model* model;
+	uint32_t meshIndexCount;
+	uint32_t meshFirstIndex;
+	uint32_t meshNumInModel;
+	uint32_t modelDrawCount;
+	uint32_t baseModelRenderObjectIndex;
+};
+
+struct IndirectBatch
+{
+	vkglTF::Model* model;
+	uint32_t first;
+	uint32_t count;
 };

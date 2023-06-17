@@ -14,6 +14,7 @@ layout (location = 2) out vec3 outNormal;
 layout (location = 3) out vec2 outUV0;
 layout (location = 4) out vec2 outUV1;
 layout (location = 5) out vec4 outColor0;
+layout (location = 6) out uint baseInstanceID;
 
 
 // Camera Props
@@ -38,14 +39,34 @@ layout(std140, set = 1, binding = 0) readonly buffer ObjectBuffer
 } objectBuffer;
 
 
+// Instance ID Pointers
+struct InstancePointer
+{
+	uint objectID;
+	uint materialID;
+	uint animatorNodeID;
+	uint pad;
+};
+
+layout(std140, set = 2, binding = 0) readonly buffer InstancePtrBuffer
+{
+	InstancePointer pointers[];
+} instancePtrBuffer;
+
+
 // Skeletal Animation/Skinning
 #define MAX_NUM_JOINTS 128
-layout (set = 2, binding = 0) uniform SkeletonAnimationNode
+struct SkeletonAnimationNode
 {
 	mat4 matrix;
 	mat4 jointMatrix[MAX_NUM_JOINTS];
 	float jointCount;
-} node;
+};
+
+layout (std140, set = 4, binding = 0) readonly buffer SkeletonAnimationNodeCollection
+{
+	SkeletonAnimationNode nodes[];
+} nodeCollection;
 
 
 void main()
@@ -53,25 +74,27 @@ void main()
 	//
 	// Skin mesh
 	//
-	mat4 modelMatrix = objectBuffer.objects[gl_BaseInstance].modelMatrix;
+	mat4 modelMatrix = objectBuffer.objects[instancePtrBuffer.pointers[gl_BaseInstance].objectID].modelMatrix;
+	uint animatorNodeID = instancePtrBuffer.pointers[gl_BaseInstance].animatorNodeID;
+	mat4 nodeMatrix = nodeCollection.nodes[animatorNodeID].matrix;
 	vec4 locPos;
-	if (node.jointCount > 0.0)
+	if (nodeCollection.nodes[animatorNodeID].jointCount > 0.0)
 	{
 		// Is skinned
 		mat4 skinMat =
-			inWeight0.x * node.jointMatrix[int(inJoint0.x)] +
-			inWeight0.y * node.jointMatrix[int(inJoint0.y)] +
-			inWeight0.z * node.jointMatrix[int(inJoint0.z)] +
-			inWeight0.w * node.jointMatrix[int(inJoint0.w)];
+			inWeight0.x * nodeCollection.nodes[animatorNodeID].jointMatrix[int(inJoint0.x)] +
+			inWeight0.y * nodeCollection.nodes[animatorNodeID].jointMatrix[int(inJoint0.y)] +
+			inWeight0.z * nodeCollection.nodes[animatorNodeID].jointMatrix[int(inJoint0.z)] +
+			inWeight0.w * nodeCollection.nodes[animatorNodeID].jointMatrix[int(inJoint0.w)];
 
-		locPos = modelMatrix * node.matrix * skinMat * vec4(inPos, 1.0);
-		outNormal = normalize(transpose(inverse(mat3(modelMatrix * node.matrix * skinMat))) * inNormal);
+		locPos = modelMatrix * nodeMatrix * skinMat * vec4(inPos, 1.0);
+		outNormal = normalize(transpose(inverse(mat3(modelMatrix * nodeMatrix * skinMat))) * inNormal);
 	}
 	else
 	{
 		// Not skinned
-		locPos = modelMatrix * node.matrix * vec4(inPos, 1.0);
-		outNormal = normalize(transpose(inverse(mat3(modelMatrix * node.matrix))) * inNormal);
+		locPos = modelMatrix * nodeMatrix * vec4(inPos, 1.0);
+		outNormal = normalize(transpose(inverse(mat3(modelMatrix * nodeMatrix))) * inNormal);
 	}
 
 	outWorldPos = locPos.xyz / locPos.w;
@@ -79,5 +102,6 @@ void main()
 	outUV1 = inUV1;
 	outColor0 = inColor0;
 	outViewPos = (cameraData.view * vec4(outWorldPos, 1.0)).xyz;
+	baseInstanceID = gl_BaseInstance;
 	gl_Position =  cameraData.projectionView * vec4(outWorldPos, 1.0);
 }

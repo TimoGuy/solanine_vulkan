@@ -54,7 +54,7 @@ namespace vkglTF
 		VkSamplerAddressMode addressModeW;
 	};
 
-	struct PBRMaterial    // @NOTE: this uses the vulkan engine's _pbrTexturesSetLayout as the base pipeline
+	struct PBRMaterial
 	{
 		enum AlphaMode { ALPHAMODE_OPAQUE, ALPHAMODE_MASK, ALPHAMODE_BLEND };
 		AlphaMode alphaMode = ALPHAMODE_OPAQUE;
@@ -93,8 +93,15 @@ namespace vkglTF
 			bool metallicRoughness = true;
 			bool specularGlossiness = false;
 		} pbrWorkflows;
-	
-		Material calculatedMaterial;    // @NOTE: this will contain the pbr pipeline, the pbr pipeline layout, and the texture descriptorset for this pbrmaterial instance
+
+		struct TexturePtr
+		{
+			uint32_t colorMapIndex = 0;
+			uint32_t physicalDescriptorMapIndex = 0;
+			uint32_t normalMapIndex = 0;
+			uint32_t aoMapIndex = 0;
+			uint32_t emissiveMapIndex = 0;
+		} texturePtr;
 	};
 
 	struct Primitive
@@ -102,10 +109,11 @@ namespace vkglTF
 		uint32_t firstIndex;
 		uint32_t indexCount;
 		uint32_t vertexCount;
-		PBRMaterial& material;
 		bool hasIndices;
 		BoundingBox bb;
-		Primitive(uint32_t firstIndex, uint32_t indexCount, uint32_t vertexCount, PBRMaterial& material);
+		uint32_t materialID;
+		size_t   animatorNodeReservedIndexPropagatedCopy;
+		Primitive(uint32_t firstIndex, uint32_t indexCount, uint32_t vertexCount, uint32_t materialID);
 		void setBoundingBox(vec3 min, vec3 max);
 	};
 
@@ -115,7 +123,7 @@ namespace vkglTF
 		BoundingBox bb;
 		BoundingBox aabb;
 
-		uint32_t animatorMeshId;
+		size_t animatorNodeReservedIndex;
 
 		Mesh();
 		~Mesh();
@@ -272,6 +280,16 @@ namespace vkglTF
 
 	struct Model
 	{
+		struct PBRTextureCollection
+		{
+			std::vector<Texture*> textures;
+		} static pbrTextureCollection;
+
+		struct PBRMaterialCollection
+		{
+			std::vector<PBRMaterial*> materials;
+		} static pbrMaterialCollection;
+
 		struct Vertex
 		{
 			vec3 pos;
@@ -343,12 +361,15 @@ namespace vkglTF
 		void loadFromFile(VulkanEngine* engine, std::string filename, float scale = 1.0f);
 		void bind(VkCommandBuffer commandBuffer);
 		void draw(VkCommandBuffer commandBuffer);
-		void draw(VkCommandBuffer commandBuffer, uint32_t transformID, std::function<void(Primitive* primitive, Node* node)>&& perPrimitiveFunction);    // You know, I wonder about the overhead of including a lambda per primitive
+		void draw(VkCommandBuffer commandBuffer, uint32_t& inOutInstanceID);
+		void appendPrimitiveDraws(std::vector<MeshCapturedInfo>& draws, uint32_t& appendedCount);
 	private:
-		void drawNode(Node* node, VkCommandBuffer commandBuffer, uint32_t transformID, std::function<void(Primitive* primitive, Node* node)>&& perPrimitiveFunction);
+		void drawNode(Node* node, VkCommandBuffer commandBuffer, uint32_t& inOutInstanceID);
+		void appendPrimitiveDrawNode(Node* node, std::vector<MeshCapturedInfo>& draws, uint32_t& appendedCount);
 		void calculateBoundingBox(Node* node, Node* parent);
 	public:
 		void getSceneDimensions();
+		std::vector<Primitive*> getAllPrimitivesInOrder();
 	private:
 		Node* findNode(Node* parent, uint32_t index);
 		Node* nodeFromIndex(uint32_t index);
@@ -358,6 +379,7 @@ namespace vkglTF
 	private:
 		VulkanEngine* engine;
 		StateMachine  animStateMachine;
+
 
 		friend struct Animator;
 	};
@@ -375,7 +397,7 @@ namespace vkglTF
 
 		static void initializeEmpty(VulkanEngine* engine);
 		static void destroyEmpty(VulkanEngine* engine);
-		static VkDescriptorSet* getEmptyJointDescriptorSet();  // For binding to represent a non-skinned mesh
+		static VkDescriptorSet* getGlobalAnimatorNodeCollectionDescriptorSet();  // For binding to represent a non-skinned mesh
 
 		void playAnimation(size_t maskIndex, uint32_t animationIndex, bool loop, float_t time = 0.0f);  // This is for direct control of the animation index
 		void update(const float_t& deltaTime);
@@ -393,36 +415,34 @@ namespace vkglTF
 		float_t                       twitchAngle;
 
 		void updateAnimation();
-		void updateJointMatrices(uint32_t animatorMeshId, vkglTF::Skin* skin, mat4& m);
+		void updateJointMatrices(size_t animatorNodeReservedIndex, vkglTF::Skin* skin, mat4& m);
 	public:
 		bool getJointMatrix(const std::string& jointName, mat4& out);
 	private:
 
-		struct UniformBuffer
-		{
-			AllocatedBuffer descriptorBuffer;
-			VkDescriptorSet descriptorSet;
-			void* mapped;
-		};
-		std::vector<UniformBuffer> uniformBuffers;
-
-		struct UniformBlock
+		struct GPUAnimatorNode
 		{
 			mat4 matrix;
 			mat4 jointMatrix[MAX_NUM_JOINTS]{};
 			float_t jointcount{ 0 };
 		};
-		std::vector<UniformBlock> uniformBlocks;
+		static GPUAnimatorNode uniformBlocks[];
+
+		struct AnimatorNodeCollectionBuffer
+		{
+			AllocatedBuffer buffer;
+			VkDescriptorSet descriptorSet;
+			GPUAnimatorNode* mapped;
+		};
+		static AnimatorNodeCollectionBuffer nodeCollectionBuffer;
+		static std::vector<size_t> reservedNodeCollectionIndices;
+
+		std::vector<size_t> myReservedNodeCollectionIndices;
 
 		tf::Taskflow calculateJointMatricesTaskflow;
 		tf::Executor taskflowExecutor;
 
-		// @SPECIAL: empty animator for empty joint descriptor sets
-		static UniformBuffer emptyUBuffer;
-		static UniformBlock  emptyUBlock;
 	public:
-		UniformBuffer& getUniformBuffer(size_t index);
-
 		friend struct Node;
 	};
 }

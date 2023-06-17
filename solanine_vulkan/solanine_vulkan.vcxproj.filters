@@ -84,6 +84,8 @@
     <None Include="shader\shadow_depthpass.vert">
       <Filter>Shader Files</Filter>
     </None>
+    <None Include="shader\wireframe_color.vert" />
+    <None Include="shader\postprocess.frag" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\imgui\imconfig.h">
@@ -212,6 +214,12 @@
     <ClInclude Include="src\HotswapResources.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\VkDescriptorBuilderUtil.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\VkPipelineBuilderUtil.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Main.cpp">
@@ -323,6 +331,12 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\HotswapResources.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\VkDescriptorBuilderUtil.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\VkPipelineBuilderUtil.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
