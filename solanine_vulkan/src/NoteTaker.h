@@ -25,7 +25,7 @@ private:
     RenderObjectManager* _rom;
 
     // Load Props
-    glm::mat4 _load_transform = glm::mat4(1.0f);
+    mat4 _load_transform = GLM_MAT4_IDENTITY_INIT;
 
     // Tweak Props
     std::string          _notes;

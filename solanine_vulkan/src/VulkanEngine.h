@@ -20,21 +20,20 @@ struct CascadeIndexPushConstBlock
 
 struct GPUPBRShadingProps
 {
-	glm::vec4 lightDir;
+	vec4 lightDir;
 	float_t exposure = 4.5f;
 	float_t gamma = 2.2f;
 	float_t prefilteredCubemapMipLevels;
 	float_t scaleIBLAmbient = 1.0f;
-	glm::vec4 cascadeSplits;
-	glm::mat4 cascadeViewProjMats[SHADOWMAP_CASCADES];
-	float_t zFarShadowZFarRatio;
+	vec4 cascadeSplits;
+	mat4 cascadeViewProjMats[SHADOWMAP_CASCADES];
 	float_t debugViewInputs = 0;
 	float_t debugViewEquation = 0;
 };
 
 struct GPUObjectData
 {
-	glm::mat4 modelMatrix;
+	mat4 modelMatrix;
 };
 
 struct GPUPickingSelectedIdData
@@ -45,7 +44,7 @@ struct GPUPickingSelectedIdData
 
 struct ColorPushConstBlock
 {
-	glm::vec4 color;
+	vec4 color;
 };
 
 struct FrameData
@@ -291,10 +290,10 @@ public:
 
 	struct PBRMaterialPushConstBlock
 	{
-		glm::vec4 baseColorFactor;
-		glm::vec4 emissiveFactor;
-		glm::vec4 diffuseFactor;
-		glm::vec4 specularFactor;
+		vec4 baseColorFactor;
+		vec4 emissiveFactor;
+		vec4 diffuseFactor;
+		vec4 specularFactor;
 		float workflow;
 		int colorTextureSet;
 		int PhysicalDescriptorTextureSet;
@@ -328,32 +327,18 @@ private:
 		float_t renderTimesMS[256 * 2];
 		float_t highestRenderTime = -1.0f;
 	} _debugStats;
-	bool _showCollisionDebugDraw = false;
 	void updateDebugStats(const float_t& deltaTime);
-
-	//
-	// Hot-swappable resources system
-	//
-	struct ResourceToWatch
-	{
-		std::filesystem::path path;
-		std::filesystem::file_time_type lastWriteTime;
-	};
-	std::vector<ResourceToWatch> resourcesToWatch;
-	void buildResourceList();
-	void checkIfResourceUpdatedThenHotswapRoutine();
-	void teardownResourceList();
 
 	//
 	// Moving matrices around
 	//
 	struct MovingMatrix
 	{
-		glm::mat4* matrixToMove = nullptr;
+		mat4* matrixToMove = nullptr;
 	} _movingMatrix;
 	void submitSelectedRenderObjectId(int32_t poolIndex);
 public:
-	glm::mat4* getMatrixToMove() { return _movingMatrix.matrixToMove; }
+	mat4* getMatrixToMove() { return _movingMatrix.matrixToMove; }
 private:
 
 	//

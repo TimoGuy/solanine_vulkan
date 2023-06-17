@@ -2,10 +2,10 @@
 
 #include <string>
 #include <SDL2/SDL.h>
+#include "PhysUtil.h"
 #include "ImportGLM.h"
 #include "InputManager.h"
 #include "RenderObject.h"
-#include "PhysicsEngine.h" // physutil::
 #include "VulkanEngine.h"  // VulkanEngine
 #include "Debug.h"
 
@@ -15,12 +15,17 @@
 //
 void SceneCamera::recalculateSceneCamera(GPUPBRShadingProps& pbrShadingProps)
 {
-	glm::mat4 view = glm::lookAt(gpuCameraData.cameraPosition, gpuCameraData.cameraPosition + facingDirection, { 0.0f, 1.0f, 0.0f });
-	glm::mat4 projection = glm::perspective(fov, aspect, zNear, zFar);
+	vec3 center;
+	glm_vec3_add(gpuCameraData.cameraPosition, facingDirection, center);
+	vec3 up = { 0.0f, 1.0f, 0.0f };
+	mat4 view;
+	glm_lookat(gpuCameraData.cameraPosition, center, up, view);
+	mat4 projection;
+	glm_perspective(fov, aspect, zNear, zFar, projection);
 	projection[1][1] *= -1.0f;
-	gpuCameraData.view = view;
-	gpuCameraData.projection = projection;
-	gpuCameraData.projectionView = projection * view;
+	glm_mat4_copy(view, gpuCameraData.view);
+	glm_mat4_copy(projection, gpuCameraData.projection);
+	glm_mat4_mul(projection, view, gpuCameraData.projectionView);
 
 	recalculateCascadeViewProjs(pbrShadingProps);
 }
@@ -54,68 +59,94 @@ void SceneCamera::recalculateCascadeViewProjs(GPUPBRShadingProps& pbrShadingProp
 	}
 
 	// Calculate orthographic projection matrix for each cascade
+	vec3 up = { 0.0f, 1.0f, 0.0f };
 	float_t lastSplitDist = 0.0;
 	for (uint32_t i = 0; i < SHADOWMAP_CASCADES; i++)
 	{
 		float_t splitDist = cascadeSplits[i];
 
-		glm::vec3 frustumCorners[8] = {
-			glm::vec3(-1.0f,  1.0f, -1.0f),
-			glm::vec3( 1.0f,  1.0f, -1.0f),
-			glm::vec3( 1.0f, -1.0f, -1.0f),
-			glm::vec3(-1.0f, -1.0f, -1.0f),
-			glm::vec3(-1.0f,  1.0f,  1.0f),
-			glm::vec3( 1.0f,  1.0f,  1.0f),
-			glm::vec3( 1.0f, -1.0f,  1.0f),
-			glm::vec3(-1.0f, -1.0f,  1.0f),
+		vec3 frustumCorners[8] = {
+			{ -1.0f,  1.0f, -1.0f },
+			{  1.0f,  1.0f, -1.0f },
+			{  1.0f, -1.0f, -1.0f },
+			{ -1.0f, -1.0f, -1.0f },
+			{ -1.0f,  1.0f,  1.0f },
+			{  1.0f,  1.0f,  1.0f },
+			{  1.0f, -1.0f,  1.0f },
+			{ -1.0f, -1.0f,  1.0f },
 		};
 
+		// Recreate inverse projectionview matrix with shadow zFar instead
+		mat4 invCam;
+		glm_perspective(fov, aspect, zNear, zFarShadow, invCam);
+		invCam[1][1] *= -1.0f;
+		glm_mat4_mul(invCam, gpuCameraData.view, invCam);
+		glm_mat4_inv(invCam, invCam);
+
 		// Project frustum corners into world space
-		glm::mat4 invCam = glm::inverse(gpuCameraData.projectionView);
 		for (uint32_t i = 0; i < 8; i++)
 		{
-			glm::vec4 invCorner = invCam * glm::vec4(frustumCorners[i], 1.0f);
-			frustumCorners[i] = invCorner / invCorner.w;
+			vec4 frustumCornerV4 = {
+				frustumCorners[i][0],
+				frustumCorners[i][1],
+				frustumCorners[i][2],
+				1.0f,
+			};
+			vec4 invCorner;
+			glm_mat4_mulv(invCam, frustumCornerV4, invCorner);
+			float_t w = invCorner[3];
+			glm_vec4_scale(invCorner, 1.0f / w, invCorner);
+			glm_vec4_copy3(invCorner, frustumCorners[i]);
 		}
 
 		for (uint32_t i = 0; i < 4; i++)
 		{
-			glm::vec3 dist = frustumCorners[i + 4] - frustumCorners[i];
-			frustumCorners[i + 4] = frustumCorners[i] + (dist * splitDist);
-			frustumCorners[i] = frustumCorners[i] + (dist * lastSplitDist);
+			vec3 dist;
+			glm_vec3_sub(frustumCorners[i + 4], frustumCorners[i], dist);
+			vec3 distSplitDist;
+			glm_vec3_scale(dist, splitDist, distSplitDist);
+			glm_vec3_add(frustumCorners[i], distSplitDist, frustumCorners[i + 4]);
+			vec3 distLastSplitDist;
+			glm_vec3_scale(dist, lastSplitDist, distLastSplitDist);
+			glm_vec3_add(frustumCorners[i], distLastSplitDist, frustumCorners[i]);
 		}
 
 		// Get frustum center
-		glm::vec3 frustumCenter = glm::vec3(0.0f);
+		vec3 frustumCenter = GLM_VEC3_ZERO_INIT;
 		for (uint32_t i = 0; i < 8; i++)
-			frustumCenter += frustumCorners[i];
-		frustumCenter /= 8.0f;
+			glm_vec3_add(frustumCenter, frustumCorners[i], frustumCenter);
+		glm_vec3_scale(frustumCenter, 1.0f / 8.0f, frustumCenter);
 
 		float_t radius = 0.0f;
 		for (uint32_t i = 0; i < 8; i++)
 		{
-			float_t distance = glm::length(frustumCorners[i] - frustumCenter);
-			radius = glm::max(radius, distance);
+			float_t distance = glm_vec3_distance(frustumCorners[i], frustumCenter);
+			radius = std::max(radius, distance);
 		}
 		radius = std::ceil(radius * 16.0f) / 16.0f;
 
-		glm::vec3 maxExtents = glm::vec3(radius);
-		glm::vec3 minExtents = -maxExtents;
+		vec3 maxExtents = { radius, radius, radius };
+		vec3 minExtents;
+		glm_vec3_negate_to(maxExtents, minExtents);
 
-		const glm::vec3& lightDir = -pbrShadingProps.lightDir;  // @NOTE: lightDir is direction from surface point to the direction of the light (optimized for shader), but we want the view direction of the light, which is the opposite
-		glm::mat4 lightViewMatrix = glm::lookAt(frustumCenter - lightDir * -minExtents.z, frustumCenter, glm::vec3(0.0f, 1.0f, 0.0f));
-		glm::mat4 lightOrthoMatrix = glm::ortho(minExtents.x, maxExtents.x, minExtents.y, maxExtents.y, 0.0f, maxExtents.z - minExtents.z);
+		vec3 lightDir;
+		glm_vec3_negate_to(pbrShadingProps.lightDir, lightDir);  // @NOTE: lightDir is direction from surface point to the direction of the light (optimized for shader), but we want the view direction of the light, which is the opposite
+
+		vec3 eye;
+		glm_vec3_scale(lightDir, -minExtents[2], eye);
+		glm_vec3_sub(frustumCenter, eye, eye);
+		mat4 lightViewMatrix;
+		glm_lookat(eye, frustumCenter, up, lightViewMatrix);
+		mat4 lightOrthoMatrix;
+		glm_ortho(minExtents[0], maxExtents[0], minExtents[1], maxExtents[1], 0.0f, maxExtents[2] - minExtents[2], lightOrthoMatrix);
 
 		// Store split distance and matrix in cascade
-		gpuCascadeViewProjsData.cascadeViewProjs[i] = lightOrthoMatrix * lightViewMatrix;
-		pbrShadingProps.cascadeViewProjMats[i] = gpuCascadeViewProjsData.cascadeViewProjs[i];
+		glm_mat4_mul(lightOrthoMatrix, lightViewMatrix, gpuCascadeViewProjsData.cascadeViewProjs[i]);
+		glm_mat4_copy(gpuCascadeViewProjsData.cascadeViewProjs[i], pbrShadingProps.cascadeViewProjMats[i]);
 		pbrShadingProps.cascadeSplits[i] = (nearClip + splitDist * clipRange) * -1.0f;
 
 		lastSplitDist = cascadeSplits[i];
 	}
-
-	// Update far plane ratio
-	pbrShadingProps.zFarShadowZFarRatio = zFarShadow / zFar;
 }
 
 //
@@ -173,8 +204,11 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 	if (changeEvent != CameraModeChangeEvent::NONE)
 	{
 		// Calculate orbit angles from the delta angle to focus position
-		const glm::vec3& fd = sceneCamera.facingDirection;
-		mainCamMode.orbitAngles = glm::vec2(-atan2f(fd.y, glm::length(glm::vec2(fd.x, fd.z))), atan2f(fd.x, fd.z));
+		vec3 fd;
+		glm_vec3_copy(sceneCamera.facingDirection, fd);
+		vec2 fd_xz = { fd[0], fd[2] };
+		mainCamMode.orbitAngles[0] = -atan2f(fd[1], glm_vec2_norm(fd_xz));
+		mainCamMode.orbitAngles[1] = atan2f(fd[0], fd[2]);
 
 		SDL_SetRelativeMouseMode(changeEvent == CameraModeChangeEvent::ENTER ? SDL_TRUE : SDL_FALSE);
 
@@ -192,69 +226,82 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 	if (mainCamMode.targetObject != nullptr)
 	{
 		// Update the focus position
-		glm::vec3 targetPosition = physutil::getPosition(mainCamMode.targetObject->transformMatrix);
+		vec4 pos;
+		mat4 rot;
+		vec3 sca;
+		glm_decompose(mainCamMode.targetObject->transformMatrix, pos, rot, sca);
+		vec3 targetPosition;
+		glm_vec4_copy3(pos, targetPosition);
 		if (mainCamMode.focusRadiusXZ > 0.0f || mainCamMode.focusRadiusY > 0.0f)
 		{
-			const glm::vec3 delta = mainCamMode.focusPosition - targetPosition;
+			vec3 delta;
+			glm_vec3_sub(mainCamMode.focusPosition, targetPosition, delta);
 
 			// XZ axes focusing
-			float_t distanceXZ = glm::length(glm::vec2(delta.x, delta.z));
+			vec2 delta_xz = { delta[0], delta[2] };
+			float_t distanceXZ = glm_vec2_norm(delta_xz);
 			float_t tXZ = 1.0f;
 			if (distanceXZ > 0.01f && mainCamMode.focusCentering > 0.0f)
-				tXZ = glm::pow(1.0f - mainCamMode.focusCentering, deltaTime);
+				tXZ = std::pow(1.0f - mainCamMode.focusCentering, deltaTime);
 			if (distanceXZ > mainCamMode.focusRadiusXZ)
-				tXZ = glm::min(tXZ, mainCamMode.focusRadiusXZ / distanceXZ);
-			
+				tXZ = std::min(tXZ, mainCamMode.focusRadiusXZ / distanceXZ);
+
 			// Y axis focusing
-			float_t distanceY = glm::length(delta.y);
+			float_t distanceY = std::abs(delta[1]);
 			float_t tY = 1.0f;
 			if (distanceY > 0.01f && mainCamMode.focusCentering > 0.0f)
-				tY = glm::pow(1.0f - mainCamMode.focusCentering, deltaTime);
+				tY = std::pow(1.0f - mainCamMode.focusCentering, deltaTime);
 			if (distanceY > mainCamMode.focusRadiusY)
-				tY = glm::min(tY, mainCamMode.focusRadiusY / distanceY);
+				tY = std::min(tY, mainCamMode.focusRadiusY / distanceY);
 
-			mainCamMode.focusPosition = targetPosition + delta * glm::vec3(tXZ, tY, tXZ);
+			vec3 focusingT = { tXZ, tY, tXZ };
+			glm_vec3_mul(delta, focusingT, focusingT);
+			glm_vec3_add(targetPosition, focusingT, mainCamMode.focusPosition);
 		}
 		else
-			mainCamMode.focusPosition = targetPosition;
+			glm_vec3_copy(targetPosition, mainCamMode.focusPosition);
 	}
-	const glm::vec3 worldUp = { 0.0f, 1.0f, 0.0f };
 
 	//
 	// Manual rotation via mouse input
 	//
-	if (allowInput && glm::length2((glm::vec2)input::mouseDelta) > 0.000001f)
-		mainCamMode.orbitAngles += glm::vec2(input::mouseDelta.y, -input::mouseDelta.x) * glm::radians(mainCamMode.sensitivity);
+	vec2 mouseDeltaFloatSwizzled = { input::mouseDelta[1], -input::mouseDelta[0] };
+	if (allowInput && glm_vec3_norm2(mouseDeltaFloatSwizzled) > 0.000001f)
+	{
+		vec2 sensitivityRadians = {
+			glm_rad(mainCamMode.sensitivity[0]),
+			glm_rad(mainCamMode.sensitivity[1]),
+		};
+		glm_vec2_muladd(mouseDeltaFloatSwizzled, sensitivityRadians, mainCamMode.orbitAngles);
+	}
 
 	//
 	// Recalculate camera
 	//
-	mainCamMode.orbitAngles.x = glm::clamp(mainCamMode.orbitAngles.x, glm::radians(-85.0f), glm::radians(85.0f));
-	glm::quat lookRotation = glm::quat(glm::vec3(mainCamMode.orbitAngles, 0.0f));
-	mainCamMode.calculatedLookDirection = lookRotation * glm::vec3(0, 0, 1);
+	mainCamMode.orbitAngles[0] = glm_clamp(mainCamMode.orbitAngles[0], glm_rad(-85.0f), glm_rad(85.0f));
+	vec3 lookRotationEuler = {
+		mainCamMode.orbitAngles[0],
+		mainCamMode.orbitAngles[1],
+		0.0f,
+	};
+	mat4 lookRotation;
+	glm_euler_zyx(lookRotationEuler, lookRotation);  // @NOTE: apparently these angles are extrinsic which is what is causing issues
+	vec3 forward = { 0.0f, 0.0f, 1.0f };
+	glm_mat4_mulv3(lookRotation, forward, 1.0f, mainCamMode.calculatedLookDirection);
 
-	const glm::vec3 focusPositionCooked = mainCamMode.focusPosition + mainCamMode.focusPositionOffset;
+	vec3 focusPositionCooked;
+	glm_vec3_add(mainCamMode.focusPosition, mainCamMode.focusPositionOffset, focusPositionCooked);
 	float_t lookDistance = mainCamMode.lookDistance;
-	btQuaternion lookRotationBt(lookRotation.x, lookRotation.y, lookRotation.z, lookRotation.w);
-	auto hitInfo =
-		PhysicsEngine::getInstance().boxcast(
-			btTransform(lookRotationBt, physutil::toVec3(focusPositionCooked)),
-			btTransform(lookRotationBt, physutil::toVec3(focusPositionCooked - mainCamMode.calculatedLookDirection * lookDistance)),
-			sceneCamera.boxCastExtents,
-			btBroadphaseProxy::DefaultFilter,
-			btBroadphaseProxy::StaticFilter | btBroadphaseProxy::KinematicFilter
-		);
-	// auto hitInfo = PhysicsEngine::getInstance().raycast(physutil::toVec3(focusPositionCooked), physutil::toVec3(focusPositionCooked - mainCamMode.calculatedLookDirection * lookDistance), btBroadphaseProxy::DefaultFilter, btBroadphaseProxy::StaticFilter | btBroadphaseProxy::KinematicFilter);
-	if (hitInfo.hasHit())
-		lookDistance *= hitInfo.m_closestHitFraction;
 
-	mainCamMode.calculatedCameraPosition = focusPositionCooked - mainCamMode.calculatedLookDirection * lookDistance;
+	vec3 calcLookDirectionScaled;
+	glm_vec3_scale(mainCamMode.calculatedLookDirection, lookDistance, calcLookDirectionScaled);
+	glm_vec3_sub(focusPositionCooked, calcLookDirectionScaled, mainCamMode.calculatedCameraPosition);
 
-	if (sceneCamera.facingDirection != mainCamMode.calculatedLookDirection ||
-		sceneCamera.gpuCameraData.cameraPosition != mainCamMode.calculatedCameraPosition)
+	if (glm_vec3_distance2(sceneCamera.facingDirection, mainCamMode.calculatedLookDirection) > 0.0f ||
+		glm_vec3_distance2(sceneCamera.gpuCameraData.cameraPosition, mainCamMode.calculatedCameraPosition) > 0.0f)
 	{
-		sceneCamera.facingDirection = mainCamMode.calculatedLookDirection;
-		sceneCamera.gpuCameraData.cameraPosition = mainCamMode.calculatedCameraPosition;
+		glm_vec3_copy(mainCamMode.calculatedLookDirection, sceneCamera.facingDirection);
+		glm_vec3_copy(mainCamMode.calculatedCameraPosition, sceneCamera.gpuCameraData.cameraPosition);
 		sceneCamera.recalculateSceneCamera(_engine->_pbrRendering.gpuSceneShadingProps);
 	}
 }
@@ -273,53 +320,69 @@ void Camera::updateFreeCam(const float_t& deltaTime, CameraModeChangeEvent chang
 					
 		if (freeCamMode.enabled)
 			SDL_GetMouseState(
-				&freeCamMode.savedMousePosition.x,
-				&freeCamMode.savedMousePosition.y
+				&freeCamMode.savedMousePosition[0],
+				&freeCamMode.savedMousePosition[1]
 			);
 		else
-			SDL_WarpMouseInWindow(_engine->_window, freeCamMode.savedMousePosition.x, freeCamMode.savedMousePosition.y);
+			SDL_WarpMouseInWindow(_engine->_window, freeCamMode.savedMousePosition[0], freeCamMode.savedMousePosition[1]);
 	}
 	
 	if (!freeCamMode.enabled)
 		return;
 
-	glm::vec2 mousePositionDeltaCooked = (glm::vec2)input::mouseDelta * freeCamMode.sensitivity;
+	vec2 mousePositionDeltaCooked = {
+		input::mouseDelta[0] * freeCamMode.sensitivity,
+		input::mouseDelta[1] * freeCamMode.sensitivity,
+	};
 
-	glm::vec2 inputToVelocity(0.0f);
-	inputToVelocity.x += input::keyLeftPressed ? -1.0f : 0.0f;
-	inputToVelocity.x += input::keyRightPressed ? 1.0f : 0.0f;
-	inputToVelocity.y += input::keyUpPressed ? 1.0f : 0.0f;
-	inputToVelocity.y += input::keyDownPressed ? -1.0f : 0.0f;
+	vec2 inputToVelocity = GLM_VEC2_ZERO_INIT;
+	inputToVelocity[0] += input::keyLeftPressed ? -1.0f : 0.0f;
+	inputToVelocity[0] += input::keyRightPressed ? 1.0f : 0.0f;
+	inputToVelocity[1] += input::keyUpPressed ? 1.0f : 0.0f;
+	inputToVelocity[1] += input::keyDownPressed ? -1.0f : 0.0f;
 
 	float_t worldUpVelocity = 0.0f;
 	worldUpVelocity += input::keyWorldUpPressed ? 1.0f : 0.0f;
 	worldUpVelocity += input::keyWorldDownPressed ? -1.0f : 0.0f;
 
-	if (glm::length(mousePositionDeltaCooked) > 0.0f || glm::length(inputToVelocity) > 0.0f || glm::abs(worldUpVelocity) > 0.0f)
+	if (glm_vec2_norm(mousePositionDeltaCooked) > 0.0f || glm_vec2_norm(inputToVelocity) > 0.0f || std::abs(worldUpVelocity) > 0.0f)
 	{
-		const glm::vec3 worldUp = { 0.0f, 1.0f, 0.0f };
+		vec3 worldUp = { 0.0f, 1.0f, 0.0f };
+		vec3 worldDown = { 0.0f, -1.0f, 0.0f };
 
 		// Update camera facing direction with mouse input
-		glm::vec3 newCamFacingDirection =
-			glm::rotate(
-				sceneCamera.facingDirection,
-				glm::radians(-mousePositionDeltaCooked.y),
-				glm::normalize(glm::cross(sceneCamera.facingDirection, worldUp))
-			);
-		if (glm::angle(newCamFacingDirection, worldUp) > glm::radians(5.0f) &&
-			glm::angle(newCamFacingDirection, -worldUp) > glm::radians(5.0f))
-			sceneCamera.facingDirection = newCamFacingDirection;
-		sceneCamera.facingDirection = glm::rotate(sceneCamera.facingDirection, glm::radians(-mousePositionDeltaCooked.x), worldUp);
+		vec3 facingDirectionRight;
+		glm_cross(sceneCamera.facingDirection, worldUp, facingDirectionRight);
+		glm_normalize(facingDirectionRight);
+		mat4 rotation = GLM_MAT4_IDENTITY_INIT;
+		glm_rotate(rotation, glm_rad(-mousePositionDeltaCooked[1]), facingDirectionRight);
+		vec3 newCamFacingDirection;
+		glm_mat4_mulv3(rotation, sceneCamera.facingDirection, 0.0f, newCamFacingDirection);
+
+		if (glm_vec3_angle(newCamFacingDirection, worldUp) > glm_rad(5.0f) &&
+			glm_vec3_angle(newCamFacingDirection, worldDown) > glm_rad(5.0f))
+			glm_vec3_copy(newCamFacingDirection, sceneCamera.facingDirection);
+
+		glm_mat4_identity(rotation);
+		glm_rotate(rotation, glm_rad(-mousePositionDeltaCooked[0]), worldUp);
+		glm_mat4_mulv3(rotation, sceneCamera.facingDirection, 0.0f, sceneCamera.facingDirection);
 
 		// Update camera position with keyboard input
-		float speedMultiplier = input::keyShiftPressed ? 50.0f : 25.0f;
-		inputToVelocity *= speedMultiplier * deltaTime;
+		float_t speedMultiplier = input::keyShiftPressed ? 50.0f : 25.0f;
+		glm_vec2_scale(inputToVelocity, speedMultiplier * deltaTime, inputToVelocity);
 		worldUpVelocity *= speedMultiplier * deltaTime;
 
-		sceneCamera.gpuCameraData.cameraPosition +=
-			inputToVelocity.y * sceneCamera.facingDirection +
-			inputToVelocity.x * glm::normalize(glm::cross(sceneCamera.facingDirection, worldUp)) +
-			glm::vec3(0.0f, worldUpVelocity, 0.0f);
+		vec3 facingDirectionScaled;
+		glm_vec3_scale(sceneCamera.facingDirection, inputToVelocity[1], facingDirectionScaled);
+		vec3 facingDirectionRightScaled;
+		glm_vec3_scale(facingDirectionRight, inputToVelocity[0], facingDirectionRightScaled);
+		vec3 upScaled = {
+			0.0f,
+			worldUpVelocity,
+			0.0f,
+		};
+		glm_vec3_add(facingDirectionScaled, facingDirectionRightScaled, facingDirectionScaled);
+		glm_vec3_addadd(facingDirectionScaled, upScaled, sceneCamera.gpuCameraData.cameraPosition);
 
 		// Recalculate camera
 		sceneCamera.recalculateSceneCamera(_engine->_pbrRendering.gpuSceneShadingProps);

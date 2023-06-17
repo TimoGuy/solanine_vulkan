@@ -6,7 +6,6 @@
 #include "VkBootstrap.h"
 #include "VkInitializers.h"
 #include "VkTextures.h"
-#include "GLSLToSPIRVHelper.h"
 #include "VkglTFModel.h"
 #include "AudioEngine.h"
 #include "PhysicsEngine.h"
@@ -14,11 +13,11 @@
 #include "RenderObject.h"
 #include "Entity.h"
 #include "EntityManager.h"
-#include "WindManager.h"
 #include "Camera.h"
 #include "SceneManagement.h"
 #include "DataSerialization.h"
 #include "Debug.h"
+#include "HotswapResources.h"
 #include "GlobalState.h"
 #include "imgui/imgui.h"
 #include "imgui/imgui_stdlib.h"
@@ -29,14 +28,6 @@
 
 
 constexpr uint64_t TIMEOUT_1_SEC = 1000000000;
-
-constexpr std::array<uint32_t, 5> BLOOM_BUFFER_HEIGHTS = {
-	512,
-	256,
-	128,
-	64,
-	32,
-};
 
 
 void VulkanEngine::init()
@@ -75,7 +66,7 @@ void VulkanEngine::init()
 	_camera = new Camera(this);
 
 #ifdef _DEVELOP
-	buildResourceList();
+	hotswapres::buildResourceList();
 #endif
 
 	initVulkan();
@@ -100,7 +91,7 @@ void VulkanEngine::init()
 
 	vkglTF::Animator::initializeEmpty(this);
 	AudioEngine::getInstance().initialize();
-	PhysicsEngine::getInstance().initialize(this);
+	physengine::initialize(_entityManager);
 	globalState::initGlobalState(_camera->sceneCamera);
 
 	SDL_ShowWindow(_window);
@@ -116,14 +107,14 @@ void VulkanEngine::run()
 	// Initialize Scene Camera
 	//
 	_camera->sceneCamera.aspect = (float_t)_windowExtent.width / (float_t)_windowExtent.height;
-	_camera->sceneCamera.boxCastExtents = {
-		_camera->sceneCamera.zNear * glm::tan(_camera->sceneCamera.fov * 0.5f) * _camera->sceneCamera.aspect,
-		_camera->sceneCamera.zNear * glm::tan(_camera->sceneCamera.fov * 0.5f),
-		_camera->sceneCamera.zNear * 0.5f,
-	};
+	_camera->sceneCamera.boxCastExtents[0] = _camera->sceneCamera.zNear * std::tan(_camera->sceneCamera.fov * 0.5f) * _camera->sceneCamera.aspect;
+	_camera->sceneCamera.boxCastExtents[1] = _camera->sceneCamera.zNear* std::tan(_camera->sceneCamera.fov * 0.5f);
+	_camera->sceneCamera.boxCastExtents[2] = _camera->sceneCamera.zNear * 0.5f;
 	
 	// @HARDCODED: Set the initial light direction
-	_pbrRendering.gpuSceneShadingProps.lightDir = glm::normalize(glm::vec4(0.432f, 0.864f, 0.259f, 0.0f));
+	vec4 lightDir = { 0.432f, 0.864f, 0.259f, 0.0f };
+	glm_vec4_normalize(lightDir);
+	glm_vec4_copy(lightDir, _pbrRendering.gpuSceneShadingProps.lightDir);
 
 	_camera->sceneCamera.recalculateSceneCamera(_pbrRendering.gpuSceneShadingProps);
 
@@ -137,19 +128,22 @@ void VulkanEngine::run()
 	float_t saveGlobalStateTime        = 45.0f;  // 45 seconds
 	float_t saveGlobalStateTimeElapsed = 0.0f;
 
-	while (isRunning)
-	{
 #ifdef _DEVELOP
-		// Routine to reload any resources when they're updated
-		// NOTE: We mayyyy have to move this to another thread, but it
-		//       really doesn't seem to be slowing anything down. We'll
-		//       see though  -Timo 2022/10/22
-		checkIfResourceUpdatedThenHotswapRoutine();
+	std::mutex* hotswapMutex = hotswapres::startResourceChecker(this, &_recreateSwapchain, _roManager);
 #endif
 
+	constexpr size_t numPerfs = 14;
+	uint64_t perfs[numPerfs];
+
+	while (isRunning)
+	{
+		perfs[0] = SDL_GetPerformanceCounter();
 		// Poll events from the window
 		input::processInput(&isRunning, &_isWindowMinimized);
+		perfs[0] = SDL_GetPerformanceCounter() - perfs[0];
 
+
+		perfs[1] = SDL_GetPerformanceCounter();
 		// Update time multiplier
 		static float_t timeScale = 1.0f;
 		if (input::onKeyLSBPress || input::onKeyRSBPress)
@@ -159,12 +153,20 @@ void VulkanEngine::run()
 				.message = "Set timescale to " + std::to_string(timeScale),
 			});
 		}
+		physengine::setTimeScale(timeScale);
+		perfs[1] = SDL_GetPerformanceCounter() - perfs[1];
 
+
+		perfs[2] = SDL_GetPerformanceCounter();
 		// Update DeltaTime
 		uint64_t currentFrame = SDL_GetPerformanceCounter();
 		const float_t deltaTime = (float_t)(currentFrame - lastFrame) * ticksFrequency;
+		const float_t scaledDeltaTime = deltaTime * timeScale;
 		lastFrame = currentFrame;
+		perfs[2] = SDL_GetPerformanceCounter() - perfs[2];
 
+
+		perfs[3] = SDL_GetPerformanceCounter();
 		// Stop anything from updating when window is minimized
 		// @NOTE: this prevents the VK_ERROR_DEVICE_LOST(-4) error
 		//        once the rendering code gets run while the window
@@ -175,29 +177,42 @@ void VulkanEngine::run()
 		if (_isWindowMinimized)
 			continue;
 
-		// Update physics
-		const float_t scaledDeltaTime = deltaTime * timeScale;
-		auto& entities = _entityManager->_entities;
-		PhysicsEngine::getInstance().update(scaledDeltaTime, &entities);
-
 		// Collect debug stats
 		updateDebugStats(deltaTime);
+		perfs[3] = SDL_GetPerformanceCounter() - perfs[3];
 
+
+		perfs[4] = SDL_GetPerformanceCounter();
 		// Update entities
 		_entityManager->update(scaledDeltaTime);
+		perfs[4] = SDL_GetPerformanceCounter() - perfs[4];
 
+
+		perfs[5] = SDL_GetPerformanceCounter();
 		// Update animators
 		_roManager->updateAnimators(scaledDeltaTime);
+		perfs[5] = SDL_GetPerformanceCounter() - perfs[5];
 
+
+		perfs[6] = SDL_GetPerformanceCounter();
 		// Late update (i.e. after animators are run)
 		_entityManager->lateUpdate(scaledDeltaTime);
+		perfs[6] = SDL_GetPerformanceCounter() - perfs[6];
 
+
+		perfs[7] = SDL_GetPerformanceCounter();
 		// Update camera
 		_camera->update(deltaTime);
+		perfs[7] = SDL_GetPerformanceCounter() - perfs[7];
 
+
+		perfs[8] = SDL_GetPerformanceCounter();
 		// Add/Remove requested entities
 		_entityManager->INTERNALaddRemoveRequestedEntities();
+		perfs[8] = SDL_GetPerformanceCounter() - perfs[8];
 
+
+		perfs[9] = SDL_GetPerformanceCounter();
 		// Update global state
 		saveGlobalStateTimeElapsed += deltaTime;
 		if (saveGlobalStateTimeElapsed > saveGlobalStateTime)
@@ -205,24 +220,59 @@ void VulkanEngine::run()
 			saveGlobalStateTimeElapsed = 0.0f;
 			globalState::launchAsyncWriteTask();
 		}
+		perfs[9] = SDL_GetPerformanceCounter() - perfs[9];
 
+
+		perfs[10] = SDL_GetPerformanceCounter();
 		// Update Audio Engine
 		AudioEngine::getInstance().update();
+		perfs[10] = SDL_GetPerformanceCounter() - perfs[10];
 
+
+		perfs[11] = SDL_GetPerformanceCounter();
+		//
 		// Render
+		//
+#ifdef _DEVELOP
+		std::lock_guard<std::mutex> lg(*hotswapMutex);
+#endif
+
 		if (_recreateSwapchain)
 			recreateSwapchain();
-		PhysicsEngine::getInstance().lazyRecreateDebugDrawBuffer();
+		perfs[11] = SDL_GetPerformanceCounter() - perfs[11];
 
+
+		perfs[12] = SDL_GetPerformanceCounter();
 		renderImGui(deltaTime);
+		perfs[12] = SDL_GetPerformanceCounter() - perfs[12];
+
+
+		perfs[13] = SDL_GetPerformanceCounter();
 		render();
+		perfs[13] = SDL_GetPerformanceCounter() - perfs[13];
+
+
+		//
+		// Calculate performance
+		//
+		if (input::keyCtrlPressed)
+		{
+			uint64_t totalPerf = 0;
+			for (size_t i = 0; i < numPerfs; i++)
+				totalPerf += perfs[i];
+
+			std::cout << "Performance:";
+			for (size_t i = 0; i < numPerfs; i++)
+				std::cout << "\t" << (perfs[i] * 100 / totalPerf) << "% (" << perfs[i] << ")";
+			std::cout << std::endl;
+		}
 	}
 }
 
 void VulkanEngine::cleanup()
 {
 #ifdef _DEVELOP
-	teardownResourceList();
+	hotswapres::flagStopRunning();
 #endif
 
 	if (_isInitialized)
@@ -232,7 +282,7 @@ void VulkanEngine::cleanup()
 		delete _entityManager;  // @NOTE: all entities must be deleted before the physicsengine can shut down
 
 		globalState::cleanupGlobalState();
-		PhysicsEngine::getInstance().cleanup();
+		physengine::cleanup();
 		AudioEngine::getInstance().cleanup();
 
 		delete _roManager;
@@ -250,6 +300,9 @@ void VulkanEngine::cleanup()
 
 		SDL_DestroyWindow(_window);
 
+#ifdef _DEVELOP
+		hotswapres::waitForShutdownAndTeardownResourceList();
+#endif
 	}
 }
 
@@ -367,8 +420,6 @@ void VulkanEngine::render()
 		uploadCurrentFrameToGPU(currentFrame);
 		renderRenderObjects(cmd, currentFrame, 0, _roManager->_renderObjectsIndices.size(), true, false, nullptr, false);
 		renderPickedObject(cmd, currentFrame);
-		if (_showCollisionDebugDraw)
-			PhysicsEngine::getInstance().renderDebugDraw(cmd, currentFrame.globalDescriptor);
 
 		// End renderpass
 		vkCmdEndRenderPass(cmd);
@@ -1525,10 +1576,11 @@ void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is 
 	//
 	// Create bloom image
 	//
-	uint32_t numBloomMips = static_cast<uint32_t>(BLOOM_BUFFER_HEIGHTS.size());
+	uint32_t numBloomMips = 5;
+	uint32_t startingBloomBufferHeight = _windowExtent.height / 2;
 	_bloomPostprocessImageExtent = {
-		.width = (uint32_t)((float_t)BLOOM_BUFFER_HEIGHTS[0] * (float_t)_windowExtent.width / (float_t)_windowExtent.height),
-		.height = BLOOM_BUFFER_HEIGHTS[0],
+		.width = (uint32_t)((float_t)startingBloomBufferHeight * (float_t)_windowExtent.width / (float_t)_windowExtent.height),
+		.height = startingBloomBufferHeight,
 	};
 	VkExtent3D bloomImgExtent = { _bloomPostprocessImageExtent.width, _bloomPostprocessImageExtent.height, 1 };
 	VkImageCreateInfo bloomImgInfo = vkinit::imageCreateInfo(VK_FORMAT_R16G16B16A16_SFLOAT, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, bloomImgExtent, numBloomMips);
@@ -2307,51 +2359,9 @@ void VulkanEngine::initPipelines()
 		vkDestroyShaderModule(_device, shaderStage.module, nullptr);
 
 	//
-	// Debug Physics Object pipeline
-	//
-	VkPipelineLayoutCreateInfo debugPhysicsObjectPipelineLayoutInfo = wireframeColorPipelineLayoutInfo;
-
-	debugPhysicsObjectPipelineLayoutInfo.pPushConstantRanges = nullptr;
-	debugPhysicsObjectPipelineLayoutInfo.pushConstantRangeCount = 0;
-
-	VkDescriptorSetLayout setLayouts5[] = { _globalSetLayout, _objectSetLayout };
-	debugPhysicsObjectPipelineLayoutInfo.pSetLayouts = setLayouts5;
-	debugPhysicsObjectPipelineLayoutInfo.setLayoutCount = 2;
-
-	VkPipelineLayout _debugPhysicsObjectPipelineLayout;
-	VK_CHECK(vkCreatePipelineLayout(_device, &debugPhysicsObjectPipelineLayoutInfo, nullptr, &_debugPhysicsObjectPipelineLayout));
-
-	auto attributes = PhysicsEngine::getInstance().getVertexAttributeDescriptions();
-	auto bindings = PhysicsEngine::getInstance().getVertexBindingDescriptions();
-
-	pipelineBuilder._shaderStages.clear();
-	pipelineBuilder._shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, debugPhysicsObjectVertShader));
-	pipelineBuilder._shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, debugPhysicsObjectFragShader));
-
-	pipelineBuilder._vertexInputInfo = vkinit::vertexInputStateCreateInfo();
-	pipelineBuilder._vertexInputInfo.pVertexAttributeDescriptions = attributes.data();
-	pipelineBuilder._vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributes.size());
-	pipelineBuilder._vertexInputInfo.pVertexBindingDescriptions = bindings.data();
-	pipelineBuilder._vertexInputInfo.vertexBindingDescriptionCount = static_cast<uint32_t>(bindings.size());
-
-	pipelineBuilder._inputAssembly = vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_LINE_LIST);
-
-	pipelineBuilder._rasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_LINE, VK_CULL_MODE_NONE);
-	pipelineBuilder._depthStencil = vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_NEVER);
-	pipelineBuilder._pipelineLayout = _debugPhysicsObjectPipelineLayout;
-
-	auto _debugPhysicsObjectPipeline = pipelineBuilder.buildPipeline(_device, _mainRenderPass);
-	createMaterial(_debugPhysicsObjectPipeline, _debugPhysicsObjectPipelineLayout, "debugPhysicsObjectMaterial");
-
-	for (auto shaderStage : pipelineBuilder._shaderStages)
-		vkDestroyShaderModule(_device, shaderStage.module, nullptr);
-
-	//
 	// Shadow Depth Pass pipeline
 	//
-	VkPipelineLayoutCreateInfo shadowDepthPassPipelineLayoutInfo = debugPhysicsObjectPipelineLayoutInfo;
+	VkPipelineLayoutCreateInfo shadowDepthPassPipelineLayoutInfo = wireframeColorPipelineLayoutInfo;
 
 	pushConstant = {
 		.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
@@ -2471,8 +2481,6 @@ void VulkanEngine::initPipelines()
 		vkDestroyPipeline(_device, _wireframeColorPipeline, nullptr);
 		vkDestroyPipeline(_device, _wireframeColorBehindPipeline, nullptr);
 		vkDestroyPipelineLayout(_device, _wireframeColorPipelineLayout, nullptr);
-		vkDestroyPipeline(_device, _debugPhysicsObjectPipeline, nullptr);
-		vkDestroyPipelineLayout(_device, _debugPhysicsObjectPipelineLayout, nullptr);
 		vkDestroyPipeline(_device, _shadowDepthPassPipeline, nullptr);
 		vkDestroyPipelineLayout(_device, _shadowDepthPassPipelineLayout, nullptr);
 		vkDestroyPipeline(_device, _postprocessPipeline, nullptr);
@@ -2842,14 +2850,14 @@ void VulkanEngine::generatePBRCubemaps()
 
 		struct PushBlockIrradiance
 		{
-			glm::mat4 mvp;
+			mat4 mvp;
 			float_t deltaPhi = (2.0f * float_t(M_PI)) / 180.0f;
 			float_t deltaTheta = (0.5f * float_t(M_PI)) / 64.0f;
 		} pushBlockIrradiance;
 
 		struct PushBlockPrefilterEnv
 		{
-			glm::mat4 mvp;
+			mat4 mvp;
 			float_t roughness;
 			uint32_t numSamples = 32u;
 		} pushBlockPrefilterEnv;
@@ -2990,14 +2998,29 @@ void VulkanEngine::generatePBRCubemaps()
 		renderPassBeginInfo.clearValueCount = 1;
 		renderPassBeginInfo.pClearValues = clearValues;
 
-		std::vector<glm::mat4> matrices = {
-			glm::rotate(glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f)), glm::radians(180.0f), glm::vec3(1.0f, 0.0f, 0.0f)),
-			glm::rotate(glm::rotate(glm::mat4(1.0f), glm::radians(-90.0f), glm::vec3(0.0f, 1.0f, 0.0f)), glm::radians(180.0f), glm::vec3(1.0f, 0.0f, 0.0f)),
-			glm::rotate(glm::mat4(1.0f), glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f)),
-			glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f)),
-			glm::rotate(glm::mat4(1.0f), glm::radians(180.0f), glm::vec3(1.0f, 0.0f, 0.0f)),
-			glm::rotate(glm::mat4(1.0f), glm::radians(180.0f), glm::vec3(0.0f, 0.0f, 1.0f)),
+		mat4 matrices[] = {
+			GLM_MAT4_IDENTITY_INIT,
+			GLM_MAT4_IDENTITY_INIT,
+			GLM_MAT4_IDENTITY_INIT,
+			GLM_MAT4_IDENTITY_INIT,
+			GLM_MAT4_IDENTITY_INIT,
+			GLM_MAT4_IDENTITY_INIT,
 		};
+
+		vec3 up      = { 0.0f, 1.0f, 0.0f };
+		vec3 right   = { 1.0f, 0.0f, 0.0f };
+		vec3 forward = { 0.0f, 0.0f, 1.0f };
+
+		glm_rotate(matrices[0], glm_rad(90.0f), up);
+		glm_rotate(matrices[0], glm_rad(180.0f), right);
+
+		glm_rotate(matrices[1], glm_rad(-90.0f), up);
+		glm_rotate(matrices[1], glm_rad(180.0f), right);
+		
+		glm_rotate(matrices[2], glm_rad(-90.0f), right);
+		glm_rotate(matrices[3], glm_rad(90.0f), right);
+		glm_rotate(matrices[4], glm_rad(180.0f), right);
+		glm_rotate(matrices[5], glm_rad(180.0f), forward);
 
 		VkViewport viewport{};
 		viewport.width = (float_t)dim;
@@ -3043,16 +3066,19 @@ void VulkanEngine::generatePBRCubemaps()
 					vkCmdBeginRenderPass(cmd, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
 					// Pass parameters for current pass using a push constant block
-					switch (target) {
-					case IRRADIANCE:
-						pushBlockIrradiance.mvp = glm::perspective((float_t)(M_PI / 2.0), 1.0f, 0.1f, 512.0f) * matrices[f];
-						vkCmdPushConstants(cmd, pipelinelayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushBlockIrradiance), &pushBlockIrradiance);
-						break;
-					case PREFILTEREDENV:
-						pushBlockPrefilterEnv.mvp = glm::perspective((float_t)(M_PI / 2.0), 1.0f, 0.1f, 512.0f) * matrices[f];
-						pushBlockPrefilterEnv.roughness = (float_t)m / (float_t)(numMips - 1);
-						vkCmdPushConstants(cmd, pipelinelayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushBlockPrefilterEnv), &pushBlockPrefilterEnv);
-						break;
+					mat4 perspective;
+					glm_perspective((float_t)(M_PI / 2.0), 1.0f, 0.1f, 512.0f, perspective);
+					switch (target)
+					{
+						case IRRADIANCE:
+							glm_mat4_mul(perspective, matrices[f], pushBlockIrradiance.mvp);
+							vkCmdPushConstants(cmd, pipelinelayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushBlockIrradiance), &pushBlockIrradiance);
+							break;
+						case PREFILTEREDENV:
+							glm_mat4_mul(perspective, matrices[f], pushBlockPrefilterEnv.mvp);
+							pushBlockPrefilterEnv.roughness = (float_t)m / (float_t)(numMips - 1);
+							vkCmdPushConstants(cmd, pipelinelayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushBlockPrefilterEnv), &pushBlockPrefilterEnv);
+							break;
 					};
 
 					vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
@@ -3579,11 +3605,9 @@ void VulkanEngine::recreateSwapchain()
 	_windowExtent.width = w;
 	_windowExtent.height = h;
 	_camera->sceneCamera.aspect = (float_t)w / (float_t)h;
-	_camera->sceneCamera.boxCastExtents = {
-		_camera->sceneCamera.zNear * glm::tan(_camera->sceneCamera.fov * 0.5f) * _camera->sceneCamera.aspect,
-		_camera->sceneCamera.zNear * glm::tan(_camera->sceneCamera.fov * 0.5f),
-		_camera->sceneCamera.zNear * 0.5f,
-	};
+	_camera->sceneCamera.boxCastExtents[0] = _camera->sceneCamera.zNear * std::tan(_camera->sceneCamera.fov * 0.5f) * _camera->sceneCamera.aspect;
+	_camera->sceneCamera.boxCastExtents[1] = _camera->sceneCamera.zNear * std::tan(_camera->sceneCamera.fov * 0.5f);
+	_camera->sceneCamera.boxCastExtents[2] = _camera->sceneCamera.zNear * 0.5f;
 
 	_swapchainDependentDeletionQueue.flush();
 
@@ -3720,7 +3744,7 @@ void VulkanEngine::uploadCurrentFrameToGPU(const FrameData& currentFrame)
 	for (size_t poolIndex : _roManager->_renderObjectsIndices)  // @NOTE: bc of the pool system these indices will be scattered, but that should work just fine
 	{
 		RenderObject& object = _roManager->_renderObjectPool[poolIndex];
-		objectSSBO[poolIndex].modelMatrix = object.transformMatrix;		// Another evil pointer trick I love... call me Dmitri the Evil
+		glm_mat4_copy(object.transformMatrix, objectSSBO[poolIndex].modelMatrix);		// Another evil pointer trick I love... call me Dmitri the Evil
 	}
 
 	vmaUnmapMemory(_allocator, currentFrame.objectBuffer._allocation);
@@ -3809,7 +3833,7 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 					// PBR Material push constant data
 					//
 					PBRMaterialPushConstBlock pc = {};
-					pc.emissiveFactor = pbr.emissiveFactor;
+					glm_vec4_copy(pbr.emissiveFactor, pc.emissiveFactor);
 					// To save push constant space, availabilty and texture coordinates set are combined
 					// -1 = texture not used for this material, >= 0 texture used and index of texture coordinate set
 					pc.colorTextureSet = pbr.baseColorTexture != nullptr ? pbr.texCoordSets.baseColor : -1;
@@ -3825,7 +3849,7 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 					{
 						// Metallic roughness workflow
 						pc.workflow = static_cast<float>(PBR_WORKFLOW_METALLIC_ROUGHNESS);
-						pc.baseColorFactor = pbr.baseColorFactor;
+						glm_vec4_copy(pbr.baseColorFactor, pc.baseColorFactor);
 						pc.metallicFactor = pbr.metallicFactor;
 						pc.roughnessFactor = pbr.roughnessFactor;
 						pc.PhysicalDescriptorTextureSet = pbr.metallicRoughnessTexture != nullptr ? pbr.texCoordSets.metallicRoughness : -1;
@@ -3838,8 +3862,8 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 						pc.workflow = static_cast<float>(PBR_WORKFLOW_SPECULAR_GLOSSINESS);
 						pc.PhysicalDescriptorTextureSet = pbr.extension.specularGlossinessTexture != nullptr ? pbr.texCoordSets.specularGlossiness : -1;
 						pc.colorTextureSet = pbr.extension.diffuseTexture != nullptr ? pbr.texCoordSets.baseColor : -1;
-						pc.diffuseFactor = pbr.extension.diffuseFactor;
-						pc.specularFactor = glm::vec4(pbr.extension.specularFactor, 1.0f);
+						glm_vec4_copy(pbr.extension.diffuseFactor, pc.diffuseFactor);
+						glm_vec4(pbr.extension.specularFactor, 1.0f, pc.specularFactor);
 					}
 			
 					vkCmdPushConstants(cmd, defaultMaterial.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PBRMaterialPushConstBlock), &pc);
@@ -3901,9 +3925,9 @@ void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& curr
 		"wireframeColorMaterial",
 		"wireframeColorBehindMaterial"
 	};
-	glm::vec4 materialColors[numRenders] = {
-		glm::vec4(1, 0.25, 1, 1),
-		glm::vec4(0.535, 0.13, 0.535, 1),
+	vec4 materialColors[numRenders] = {
+		{ 1, 0.25, 1, 1 },
+		{ 0.535, 0.13, 0.535, 1 },
 	};
 
 	for (size_t i = 0; i < numRenders; i++)
@@ -3919,9 +3943,8 @@ void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& curr
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, material.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
 
 		// Push constants
-		ColorPushConstBlock pc = {
-			.color = materialColors[i],
-		};	
+		ColorPushConstBlock pc = {};
+		glm_vec4_copy(materialColors[i], pc.color);
 		vkCmdPushConstants(cmd, material.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ColorPushConstBlock), &pc);
 
 		renderRenderObjects(cmd, currentFrame, pickedROIndex, 1, false, true, &material.pipelineLayout, false);
@@ -3950,110 +3973,6 @@ void VulkanEngine::updateDebugStats(const float_t& deltaTime)
 	_debugStats.renderTimesMS[_debugStats.renderTimesMSHeadIndex] =
 		_debugStats.renderTimesMS[_debugStats.renderTimesMSHeadIndex + _debugStats.renderTimesMSCount] =
 		renderTime;
-}
-
-void VulkanEngine::buildResourceList()
-{
-	std::vector<std::string> directories = {
-		"res",
-		"shader",
-	};
-	for (auto directory : directories)
-		for (const auto& entry : std::filesystem::recursive_directory_iterator(directory))
-		{
-			// Add the resource if it should be watched
-			const auto& path = entry.path();
-			if (std::filesystem::is_directory(path))
-				continue;		// Ignore directories
-			if (!path.has_extension())
-				continue;		// @NOTE: only allow resource files if they have an extension!  -Timo
-
-			if (path.extension().compare(".spv") == 0 ||
-				path.extension().compare(".log") == 0)
-				continue;		// @NOTE: ignore compiled SPIRV shader files, logs
-
-			ResourceToWatch resource = {
-				.path = path,
-				.lastWriteTime = std::filesystem::last_write_time(path),
-			};
-			resourcesToWatch.push_back(resource);
-
-			// Compile glsl shader if corresponding .spv file isn't up to date
-			const auto& ext = path.extension();
-			if (ext.compare(".vert") == 0 ||
-				ext.compare(".frag") == 0)		// @COPYPASTA
-			{
-				auto spvPath = path;
-				spvPath += ".spv";
-
-				if (!std::filesystem::exists(spvPath) ||
-					std::filesystem::last_write_time(spvPath) <= std::filesystem::last_write_time(path))
-				{
-					glslToSPIRVHelper::compileGLSLShaderToSPIRV(path);
-				}
-			}
-		}
-}
-
-void VulkanEngine::checkIfResourceUpdatedThenHotswapRoutine()
-{
-	for (auto& resource : resourcesToWatch)
-	{
-		/*try
-		{*/
-			const std::filesystem::file_time_type lastWriteTime = std::filesystem::last_write_time(resource.path);
-			if (resource.lastWriteTime == lastWriteTime)
-				continue;
-
-			//
-			// Reload the resource
-			//
-			std::cout << "[RELOAD HOTSWAPPABLE RESOURCE]" << std::endl
-				<< "Name: " << resource.path << std::endl;
-			resource.lastWriteTime = lastWriteTime;
-
-			if (!resource.path.has_extension())
-			{
-				std::cerr << "ERROR: file " << resource.path << " has no extension!" << std::endl;
-				continue;
-			}
-
-			//
-			// Find the extension and execute appropriate routine
-			//
-			const auto& ext = resource.path.extension();
-			if (ext.compare(".vert") == 0 ||
-				ext.compare(".frag") == 0)
-			{
-				// Compile the shader (GLSL -> SPIRV)
-				glslToSPIRVHelper::compileGLSLShaderToSPIRV(resource.path);
-
-				// Trip reloading the shaders (recreate swapchain flag)
-				_recreateSwapchain = true;
-				std::cout << "Recompile shader to SPIRV and trigger swapchain recreation SUCCESS" << std::endl;
-				continue;
-			}
-			else if (ext.compare(".gltf") == 0 ||
-					 ext.compare(".glb")  == 0)
-			{
-				_roManager->reloadModelAndTriggerCallbacks(this, resource.path.stem().string(), resource.path.string());
-				std::cout << "Sent message to model \"" << resource.path.stem().string() << "\" to reload." << std::endl;
-				continue;
-			}
-
-			// Nothing to do to the resource!
-			// That means there's no routine for this certain resource
-			std::cout << "WARNING: No routine for " << ext << " files!" << std::endl;
-		/*}
-		catch (...) { }*/   // Just continue on if you get the filesystem error
-	}
-}
-
-void VulkanEngine::teardownResourceList()
-{
-	// @NOTE: nothing is around to tear down!
-	//        There are just filesystem entries, so they only go until the lifetime
-	//        of the VulkanEngine object, so we don't need to tear that down!
 }
 #endif
 
@@ -4192,17 +4111,9 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 	//
 	static float_t gamestateInfoWindowHeight = 0.0f;
 	ImGui::SetNextWindowPos(ImVec2(_windowExtent.width * 0.5f + windowPadding, _windowExtent.height - gamestateInfoWindowHeight), ImGuiCond_Always);		// @NOTE: the ImGuiCond_Always means that this line will execute always, when set to once, this line will be ignored after the first time it's called
-	ImGui::Begin("##GameState Info", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs);
+	ImGui::Begin("##GameState Info", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
 	{
 		ImGui::Text(("Health: " + std::to_string(globalState::savedPlayerHealth) + " / " + std::to_string(globalState::savedPlayerMaxHealth)).c_str());
-
-		/*
-		ImGui::Text((std::format("{:.2f}", _debugStats.renderTimesMS[_debugStats.renderTimesMSHeadIndex]) + "ms").c_str());
-		ImGui::Text(("Frame : " + std::to_string(_frameNumber)).c_str());
-
-		ImGui::Text(("Render Times :     [0, " + std::format("{:.2f}", _debugStats.highestRenderTime) + "]").c_str());
-		ImGui::PlotHistogram("##Render Times Histogram", _debugStats.renderTimesMS, (int32_t)_debugStats.renderTimesMSCount, (int32_t)_debugStats.renderTimesMSHeadIndex, "", 0.0f, _debugStats.highestRenderTime, ImVec2(256, 24.0f));
-		*/
 
 		gamestateInfoWindowHeight = ImGui::GetWindowHeight();
 	}
@@ -4220,8 +4131,8 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 	ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight + windowOffsetY), ImGuiCond_Always);
 	ImGui::Begin("PBR Shading Properties", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
 	{
-		if (ImGui::DragFloat3("Light Direction", glm::value_ptr(_pbrRendering.gpuSceneShadingProps.lightDir)))
-			_pbrRendering.gpuSceneShadingProps.lightDir = glm::normalize(_pbrRendering.gpuSceneShadingProps.lightDir);
+		if (ImGui::DragFloat3("Light Direction", _pbrRendering.gpuSceneShadingProps.lightDir))
+			glm_normalize(_pbrRendering.gpuSceneShadingProps.lightDir);		
 
 		ImGui::DragFloat("Exposure", &_pbrRendering.gpuSceneShadingProps.exposure, 0.1f, 0.1f, 10.0f);
 		ImGui::DragFloat("Gamma", &_pbrRendering.gpuSceneShadingProps.gamma, 0.1f, 0.1f, 4.0f);
@@ -4273,7 +4184,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 				break;
 
 			case 3:
-				isLayerActive = _showCollisionDebugDraw;
+				isLayerActive = false;  // _showCollisionDebugDraw;
 				break;
 			}
 
@@ -4308,7 +4219,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 
 				case 3:
 					// Collision Layer debug draw toggle
-					_showCollisionDebugDraw = !_showCollisionDebugDraw;
+					// _showCollisionDebugDraw = !_showCollisionDebugDraw;
 					break;
 				}
 
@@ -4322,7 +4233,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 		}
 
 		accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
-		maxWindowWidth = glm::max(maxWindowWidth, ImGui::GetWindowWidth());
+		maxWindowWidth = std::max(maxWindowWidth, ImGui::GetWindowWidth());
 	}
 	ImGui::End();
 
@@ -4345,74 +4256,11 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 			ImGui::DragFloat("focusRadiusXZ", &_camera->mainCamMode.focusRadiusXZ, 1.0f, 0.0f);
 			ImGui::DragFloat("focusRadiusY", &_camera->mainCamMode.focusRadiusY, 1.0f, 0.0f);
 			ImGui::SliderFloat("focusCentering", &_camera->mainCamMode.focusCentering, 0.0f, 1.0f);
-			ImGui::DragFloat3("focusPositionOffset", &_camera->mainCamMode.focusPositionOffset.x);
+			ImGui::DragFloat3("focusPositionOffset", _camera->mainCamMode.focusPositionOffset);
 		}
 
 		accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
-		maxWindowWidth = glm::max(maxWindowWidth, ImGui::GetWindowWidth());
-	}
-	ImGui::End();
-
-	//
-	// Wind Manager
-	//
-	ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight + windowOffsetY), ImGuiCond_Always);
-	ImGui::Begin("Wind Manager", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
-	{
-		ImGui::DragFloat3("Wind Velocity", &windmgr::windVelocity.x);
-		ImGui::DragFloat("Wind check ray length", &windmgr::windCheckRayLength);
-		ImGui::Checkbox("DEBUG Render wind zones", &windmgr::debugRenderCollisionDataFlag);
-
-		if (ImGui::CollapsingHeader("Wind Zones", ImGuiTreeNodeFlags_DefaultOpen))
-		{
-			size_t wzIndex = 0;
-			for (auto& windZone : windmgr::windZones)
-			{
-				ImGui::Text(("Wind Zone #" + std::to_string(wzIndex)).c_str());
-				ImGui::DragFloat3(("Pos### POS Wind Zone #" + std::to_string(wzIndex)).c_str(), &windZone.position.x);
-
-				glm::vec3 eulerDegreesOfRotation = glm::degrees(glm::eulerAngles(windZone.rotation));
-				if (ImGui::DragFloat3(("Rot### ROT Wind Zone #" + std::to_string(wzIndex)).c_str(), &eulerDegreesOfRotation.x))
-					windZone.rotation = glm::quat(glm::radians(eulerDegreesOfRotation));
-				
-				ImGui::DragFloat3(("Sca### SCA Wind Zone #" + std::to_string(wzIndex)).c_str(), &windZone.halfExtents.x);
-
-				if (ImGui::TreeNode(("Finer Transform Controls### FTC Wind Zone #" + std::to_string(wzIndex)).c_str()))
-				{
-					glm::vec3 adjMinAABB(0.0f);
-					glm::vec3 adjMaxAABB(0.0f);
-
-					bool changed = false;
-					changed |= ImGui::DragFloat3(("Adjust Min AABB### FTC MINAABB Wind Zone #" + std::to_string(wzIndex)).c_str(), &adjMinAABB.x);
-					changed |= ImGui::DragFloat3(("Adjust Max AABB### FTC MAXAABB Wind Zone #" + std::to_string(wzIndex)).c_str(), &adjMaxAABB.x);
-					if (changed)
-					{
-						windZone.position    += (-adjMinAABB + adjMaxAABB) * 0.5f;
-						windZone.halfExtents += (adjMinAABB + adjMaxAABB) * 0.5f;
-					}
-
-					ImGui::TreePop();
-				}
-
-				if (ImGui::Button(("Delete!### DEL Wind Zone #" + std::to_string(wzIndex)).c_str()))
-				{
-					windmgr::windZones.erase(windmgr::windZones.begin() + wzIndex);
-					break;
-				}
-
-				ImGui::Separator();
-
-				wzIndex++;
-			}
-
-			if (ImGui::Button("Add new Wind Zone"))
-			{
-				windmgr::windZones.push_back({});
-			}
-		}
-
-		accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
-		maxWindowWidth = glm::max(maxWindowWidth, ImGui::GetWindowWidth());
+		maxWindowWidth = std::max(maxWindowWidth, ImGui::GetWindowWidth());
 	}
 	ImGui::End();
 
@@ -4508,7 +4356,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 
 
 		accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
-		maxWindowWidth = glm::max(maxWindowWidth, ImGui::GetWindowWidth());
+		maxWindowWidth = std::max(maxWindowWidth, ImGui::GetWindowWidth());
 	}
 	ImGui::End();
 
@@ -4520,28 +4368,29 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 		//
 		// Move the matrix via ImGuizmo
 		//
-		glm::mat4 projection = _camera->sceneCamera.gpuCameraData.projection;
+		mat4 projection;
+		glm_mat4_copy(_camera->sceneCamera.gpuCameraData.projection, projection);
 		projection[1][1] *= -1.0f;
 
 		static ImGuizmo::OPERATION manipulateOperation = ImGuizmo::OPERATION::TRANSLATE;
 		static ImGuizmo::MODE manipulateMode           = ImGuizmo::MODE::WORLD;
 
-		glm::vec3 snapValues(0.0f);
+		vec3 snapValues(0.0f);
 		if (input::keyCtrlPressed)
 			if (manipulateOperation == ImGuizmo::OPERATION::ROTATE)
-				snapValues = glm::vec3(45.0f);
+				snapValues[0] = snapValues[1] = snapValues[2] = 45.0f;
 			else
-				snapValues = glm::vec3(0.5f);
+				snapValues[0] = snapValues[1] = snapValues[2] = 0.5f;
 
 		bool matrixToMoveMoved =
 			ImGuizmo::Manipulate(
-				glm::value_ptr(_camera->sceneCamera.gpuCameraData.view),
-				glm::value_ptr(projection),
+				(const float_t*)_camera->sceneCamera.gpuCameraData.view,
+				(const float_t*)projection,
 				manipulateOperation,
 				manipulateMode,
-				glm::value_ptr(*_movingMatrix.matrixToMove),
+				(float_t*)*_movingMatrix.matrixToMove,
 				nullptr,
-				glm::value_ptr(snapValues)
+				(const float_t*)snapValues
 			);
 
 		//
@@ -4552,18 +4401,18 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 		{
 			if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen))
 			{
-				glm::vec3 position, eulerAngles, scale;
+				vec3 position, eulerAngles, scale;
 				ImGuizmo::DecomposeMatrixToComponents(
-					glm::value_ptr(*_movingMatrix.matrixToMove),
-					glm::value_ptr(position),
-					glm::value_ptr(eulerAngles),
-					glm::value_ptr(scale)
+					(const float_t*)* _movingMatrix.matrixToMove,
+					position,
+					eulerAngles,
+					scale
 				);
 
 				bool changed = false;
-				changed |= ImGui::DragFloat3("Pos##ASDFASDFASDFJAKSDFKASDHF", glm::value_ptr(position));
-				changed |= ImGui::DragFloat3("Rot##ASDFASDFASDFJAKSDFKASDHF", glm::value_ptr(eulerAngles));
-				changed |= ImGui::DragFloat3("Sca##ASDFASDFASDFJAKSDFKASDHF", glm::value_ptr(scale));
+				changed |= ImGui::DragFloat3("Pos##ASDFASDFASDFJAKSDFKASDHF", position);
+				changed |= ImGui::DragFloat3("Rot##ASDFASDFASDFJAKSDFKASDHF", eulerAngles);
+				changed |= ImGui::DragFloat3("Sca##ASDFASDFASDFJAKSDFKASDHF", scale);
 
 				if (changed)
 				{
@@ -4571,10 +4420,10 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 					// @TODO: Figure out when to invalidate the cache bc the euler angles will reset!
 					//        Or... maybe invalidating the cache isn't necessary for this window????
 					ImGuizmo::RecomposeMatrixFromComponents(
-						glm::value_ptr(position),
-						glm::value_ptr(eulerAngles),
-						glm::value_ptr(scale),
-						glm::value_ptr(*_movingMatrix.matrixToMove)
+						position,
+						eulerAngles,
+						scale,
+						(float_t*)*_movingMatrix.matrixToMove
 					);
 
 					matrixToMoveMoved = true;
@@ -4713,7 +4562,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 			}
 
 			accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
-			maxWindowWidth = glm::max(maxWindowWidth, ImGui::GetWindowWidth());
+			maxWindowWidth = std::max(maxWindowWidth, ImGui::GetWindowWidth());
 		}
 		ImGui::End();
 	}
@@ -4724,7 +4573,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 	// Scroll the left pane
 	//
 	if (ImGui::GetIO().MousePos.x <= maxWindowWidth)
-		windowOffsetY += input::mouseScrollDelta.y * scrollSpeed;
+		windowOffsetY += input::mouseScrollDelta[1] * scrollSpeed;
 }
 
 VkPipeline PipelineBuilder::buildPipeline(VkDevice device, VkRenderPass pass)

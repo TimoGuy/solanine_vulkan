@@ -1,14 +1,14 @@
 #include "ReplaySystem.h"
 
 
-void ReplayData::startRecording(const glm::vec3& startPosition, const float_t& startFacingDirectionRadians)
+void ReplayData::startRecording(vec3 startPosition, const float_t& startFacingDirectionRadians)
 {
-    this->startPosition = startPosition;
+    glm_vec3_copy(startPosition, this->startPosition);
     this->startFacingDirectionRadians = startFacingDirectionRadians;
     replayDataSteps.clear();
 }
 
-void ReplayData::recordStep(const glm::vec2& worldSpaceInput, const bool& onJumpButton)
+void ReplayData::recordStep(vec2 worldSpaceInput, const bool& onJumpButton)
 {
     if (replayDataSteps.size() &&
         replayDataSteps.back().worldSpaceInput == worldSpaceInput &&
@@ -21,30 +21,30 @@ void ReplayData::recordStep(const glm::vec2& worldSpaceInput, const bool& onJump
 
     // New step
     ReplayDataStep step = {
-        .worldSpaceInput = worldSpaceInput,
         .onJumpButton = onJumpButton,
         .numSteps = 1,
     };
+    glm_vec2_copy(worldSpaceInput, step.worldSpaceInput);
     replayDataSteps.push_back(step);
 }
 
-void ReplayData::playRecording(glm::vec3& outStartPosition, float_t& outStartFacingDirectionRadians)
+void ReplayData::playRecording(vec3& outStartPosition, float_t& outStartFacingDirectionRadians)
 {
-    outStartPosition = startPosition;
+    glm_vec3_copy(startPosition, outStartPosition);
     outStartFacingDirectionRadians = startFacingDirectionRadians;
 
     replayDataStepCurrentIndex = 0;
     replayDataStepInnerIndex = 0;
 }
 
-bool ReplayData::playRecordingStep(glm::vec2& outWorldSpaceInput, bool& outOnJumpButton)
+bool ReplayData::playRecordingStep(vec2& outWorldSpaceInput, bool& outOnJumpButton)
 {
     // Check if recording is finished
     if (replayDataStepCurrentIndex >= replayDataSteps.size())
         return true;
 
     // Assign the data to out
-    outWorldSpaceInput = replayDataSteps[replayDataStepCurrentIndex].worldSpaceInput;
+    glm_vec2_copy(replayDataSteps[replayDataStepCurrentIndex].worldSpaceInput, outWorldSpaceInput);
     outOnJumpButton = replayDataSteps[replayDataStepCurrentIndex].onJumpButton;
 
     // Increment counter

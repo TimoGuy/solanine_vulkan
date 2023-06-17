@@ -4,38 +4,25 @@
 #include <sstream>
 #include "DataSerialization.h"
 #include "VulkanEngine.h"
-#include "WindManager.h"
 #include "Camera.h"
 #include "Debug.h"
 #include "StringHelper.h"
 #include "GlobalState.h"
 
 #include "Player.h"
-#include "Yosemite.h"
-#include "Enemy.h"
 #include "NoteTaker.h"
-#include "Scollision.h"
-#include "MinecartSystem.h"
-#include "Leever.h"
+#include "VoxelField.h"
 
 
 // @PALETTE: where to add serialized names for the entities
 const std::vector<std::string> ENTITY_TYPE_NAMES = {
     ":player",
-    ":yosemite",
-    ":enemy",
     ":notetaker",
-    ":scollision",
-    ":minecart",
-    ":leever",
+    ":voxelfield",
 };
 const std::string Player::TYPE_NAME           = ENTITY_TYPE_NAMES[0];
-const std::string Yosemite::TYPE_NAME         = ENTITY_TYPE_NAMES[1];
-const std::string Enemy::TYPE_NAME            = ENTITY_TYPE_NAMES[2];
-const std::string NoteTaker::TYPE_NAME        = ENTITY_TYPE_NAMES[3];
-const std::string Scollision::TYPE_NAME       = ENTITY_TYPE_NAMES[4];
-const std::string MinecartSystem::TYPE_NAME   = ENTITY_TYPE_NAMES[5];
-const std::string Leever::TYPE_NAME           = ENTITY_TYPE_NAMES[6];
+const std::string NoteTaker::TYPE_NAME        = ENTITY_TYPE_NAMES[1];
+const std::string VoxelField::TYPE_NAME       = ENTITY_TYPE_NAMES[2];
 
 
 namespace scene
@@ -50,18 +37,10 @@ namespace scene
         Entity* ent = nullptr;
         if (objectName == Player::TYPE_NAME)
             ent = new Player(engine->_entityManager, engine->_roManager, engine->_camera, ds);
-        if (objectName == Yosemite::TYPE_NAME)
-            ent = new Yosemite(engine->_entityManager, engine->_roManager, ds);
-        if (objectName == Enemy::TYPE_NAME)
-            ent = new Enemy(engine->_entityManager, engine->_roManager, engine->_camera, ds);
         if (objectName == NoteTaker::TYPE_NAME)
             ent = new NoteTaker(engine->_entityManager, engine->_roManager, ds);
-        if (objectName == Scollision::TYPE_NAME)
-            ent = new Scollision(engine->_entityManager, engine->_roManager, ds);
-        if (objectName == MinecartSystem::TYPE_NAME)
-            ent = new MinecartSystem(engine, engine->_entityManager, engine->_roManager, ds);
-        if (objectName == Leever::TYPE_NAME)
-            ent = new Leever(engine->_entityManager, engine->_roManager, ds);
+        if (objectName == VoxelField::TYPE_NAME)
+            ent = new VoxelField(engine->_entityManager, engine->_roManager, ds);
 
         if (ent == nullptr)
         {
@@ -123,10 +102,7 @@ namespace scene
                 if (!newObjectType.empty())
                 {
                     auto dsCooked = ds.getSerializedData();
-                    if (newObjectType == ":windmanager")
-                        windmgr::loadWindZones(dsCooked);
-                    else
-                        success &= (spinupNewObject(newObjectType, engine, &dsCooked) != nullptr);
+                    success &= (spinupNewObject(newObjectType, engine, &dsCooked) != nullptr);
                 }
 
                 // New object
@@ -189,14 +165,6 @@ namespace scene
             return false;
         }
 
-        DataSerializer ds;
-        windmgr::dumpWindZones(ds);
-        outfile << ":windmanager" << '\n';
-        DataSerialized dsd = ds.getSerializedData();
-        while (dsd.getSerializedValuesCount() > 0)
-            outfile << dsd.loadString() << '\n';
-        outfile << '\n';  // Extra newline for readability
-
         for (auto ent : entities)
         {
             DataSerializer ds;
@@ -207,7 +175,11 @@ namespace scene
             DataSerialized dsd = ds.getSerializedData();
             size_t count = dsd.getSerializedValuesCount();
             for (size_t i = 0; i < count; i++)
-                outfile << dsd.loadString() << '\n';
+            {
+                std::string s;
+                dsd.loadString(s);
+                outfile << s << '\n';
+            }
 
             outfile << '\n';  // Extra newline for readability
         }

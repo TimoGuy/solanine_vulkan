@@ -4,6 +4,7 @@
 #include "Entity.h"
 #include "GenerateGUID.h"
 #include "DataSerialization.h"
+#include "PhysicsEngine.h"
 
 
 EntityManager::~EntityManager()
@@ -13,8 +14,24 @@ EntityManager::~EntityManager()
 		delete _entities[i];
 }
 
+void EntityManager::INTERNALphysicsUpdate(const float_t& physicsDeltaTime)
+{
+	std::lock_guard<std::mutex> lg(_entityCollectionMutex);
+
+	// @TODO: multithread this sucker!
+	for (auto it = _entities.begin(); it != _entities.end(); it++)
+	{
+		Entity* ent = *it;
+		if (ent->_enablePhysicsUpdate)
+			ent->physicsUpdate(physicsDeltaTime);
+	}
+}
+
 void EntityManager::update(const float_t& deltaTime)
 {
+	// Interpolate all physics objects
+	physengine::setPhysicsObjectInterpolation(physengine::getPhysicsAlpha());
+
 	// @TODO: multithread this sucker!
 	for (auto it = _entities.begin(); it != _entities.end(); it++)
 	{
@@ -64,6 +81,11 @@ void EntityManager::INTERNALdestroyEntity(Entity* entity)
 
 void EntityManager::INTERNALaddRemoveRequestedEntities()
 {
+	if (_entitiesToDestroyQueue.size() == 0 && _entitiesToAddQueue.size() == 0)
+		return;
+
+	std::lock_guard<std::mutex> lg(_entityCollectionMutex);
+
 	// Remove entities requested to be removed
 	_flushEntitiesToDestroyRoutine = true;
 
@@ -115,8 +137,10 @@ bool EntityManager::sendMessage(const std::string& guid, DataSerialized& message
 		return ent->processMessage(message);
 	}
 
+	std::string s;
+	message.loadString(s);  // @TODO: make message.tostring() so that you can see what message didn't go thru
 	std::cerr << "[ENTITY MGR SEND MESSAGE]" << std::endl
-		<< "WARNING: message \"" << message.loadString() << "\" was not sent bc there was no entity with guid " << guid << " found." << std::endl;  // @TODO: make message.tostring() so that you can see what message didn't go thru
+		<< "WARNING: message \"" << s << "\" was not sent bc there was no entity with guid " << guid << " found." << std::endl;
 
 	return false;
 }

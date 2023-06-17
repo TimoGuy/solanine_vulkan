@@ -36,7 +36,6 @@ layout (set = 0, binding = 1) uniform UBOParams
 	float scaleIBLAmbient;
 	vec4 cascadeSplits;
 	mat4 cascadeViewProjMat[SHADOW_MAP_CASCADE_COUNT];
-	float zFarShadowZFarRatio;
 	float debugViewInputs;
 	float debugViewEquation;
 } uboParams;
@@ -378,7 +377,7 @@ void main()
 	// Get shadow cascade index for the current fragment's view position
 	uint cascadeIndex = 0;
 	for (uint i = 0; i < SHADOW_MAP_CASCADE_COUNT - 1; i++)
-		if (inViewPos.z * uboParams.zFarShadowZFarRatio < uboParams.cascadeSplits[i])
+		if (inViewPos.z < uboParams.cascadeSplits[i])
 			cascadeIndex = i + 1;
 
 	// Depth compare for shadowing

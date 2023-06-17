@@ -143,9 +143,6 @@
     <ClInclude Include="src\Imports.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\PhysicsEngine.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="src\DataSerialization.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -159,9 +156,6 @@
       <Filter>Header Files\entity</Filter>
     </ClInclude>
     <ClInclude Include="src\Player.h">
-      <Filter>Header Files\entity</Filter>
-    </ClInclude>
-    <ClInclude Include="src\Yosemite.h">
       <Filter>Header Files\entity</Filter>
     </ClInclude>
     <ClInclude Include="src\VkDataStructures.h">
@@ -203,25 +197,19 @@
     <ClInclude Include="src\GlobalState.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\MovementHelper.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="src\Enemy.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="src\NoteTaker.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\Scollision.h">
+    <ClInclude Include="src\PhysUtil.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\WindManager.h">
+    <ClInclude Include="src\VoxelField.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\MinecartSystem.h">
+    <ClInclude Include="src\PhysicsEngine.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\Leever.h">
+    <ClInclude Include="src\HotswapResources.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -280,9 +268,6 @@
     <ClCompile Include="src\VulkanEngine.cpp">
       <Filter>Source Files\render_engine</Filter>
     </ClCompile>
-    <ClCompile Include="src\PhysicsEngine.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="src\DataSerialization.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -296,9 +281,6 @@
       <Filter>Source Files\entity</Filter>
     </ClCompile>
     <ClCompile Include="src\Player.cpp">
-      <Filter>Source Files\entity</Filter>
-    </ClCompile>
-    <ClCompile Include="src\Yosemite.cpp">
       <Filter>Source Files\entity</Filter>
     </ClCompile>
     <ClCompile Include="src\Debug.cpp">
@@ -328,25 +310,19 @@
     <ClCompile Include="src\GlobalState.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\MovementHelper.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="src\Enemy.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="src\NoteTaker.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\Scollision.cpp">
+    <ClCompile Include="src\PhysUtil.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\WindManager.cpp">
+    <ClCompile Include="src\VoxelField.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\MinecartSystem.cpp">
+    <ClCompile Include="src\PhysicsEngine.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\Leever.cpp">
+    <ClCompile Include="src\HotswapResources.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

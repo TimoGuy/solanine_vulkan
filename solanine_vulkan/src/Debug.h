@@ -1,5 +1,4 @@
 #pragma once
-
 #ifdef _DEVELOP
 
 #include <vector>
@@ -20,5 +19,4 @@ namespace debug
 	void pushDebugMessage(const DebugMessage& message);
 	void renderImguiDebugMessages(const float_t& windowWidth, const float_t& deltaTime);
 }
-
 #endif
