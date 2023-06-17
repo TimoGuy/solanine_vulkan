@@ -232,15 +232,23 @@ void processAttack(Player_XData* d)
 void processRelease(Player_XData* d)
 {
     if (d->materializedItem == nullptr)
-        return;
-
-    d->materializedItem = nullptr;  // Release the item off the handle.
-    // @TODO: leave the item on the ground if you wanna reattach or use or litter.
-    AudioEngine::getInstance().playSoundFromList({
-        "res/sfx/wip_Pl_IceBreaking00.wav",
-        "res/sfx/wip_Pl_IceBreaking01.wav",
-        "res/sfx/wip_Pl_IceBreaking02.wav",
-    });
+    {
+        // Cycle thru the available materializable items.
+        if (globalState::selectNextCanMaterializeScannableItemId())
+            AudioEngine::getInstance().playSound("res/sfx/wip_SYS_AppHome_Slide.wav");
+        textmesh::regenerateTextMeshMesh(d->uiMaterializeItem, getUIMaterializeItemText(d));
+    }
+    else
+    {
+        // Release the item off the handle.
+        d->materializedItem = nullptr;
+        // @TODO: leave the item on the ground if you wanna reattach or use or litter.
+        AudioEngine::getInstance().playSoundFromList({
+            "res/sfx/wip_Pl_IceBreaking00.wav",
+            "res/sfx/wip_Pl_IceBreaking01.wav",
+            "res/sfx/wip_Pl_IceBreaking02.wav",
+        });
+    }
     textmesh::regenerateTextMeshMesh(d->uiMaterializeItem, getUIMaterializeItemText(d));
 }
 
@@ -640,15 +648,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
 
     if (_data->inputFlagRelease)
     {
-        if (_data->materializedItem != nullptr)
-            processRelease(_data);
-        else
-        {
-            // Cycle thru the available materializable items.
-            if (globalState::selectNextCanMaterializeScannableItemId())
-                AudioEngine::getInstance().playSound("res/sfx/wip_SYS_AppHome_Slide.wav");
-            textmesh::regenerateTextMeshMesh(_data->uiMaterializeItem, getUIMaterializeItemText(_data));
-        }
+        processRelease(_data);
         _data->inputFlagRelease = false;
     }
 
