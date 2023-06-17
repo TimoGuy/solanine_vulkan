@@ -158,7 +158,6 @@ namespace vkglTF
 
 		void localMatrix(mat4& out);
 		void getMatrix(mat4& out);
-		void update(Animator* animator);
 		~Node();
 	};
 
@@ -421,7 +420,7 @@ namespace vkglTF
 
 		struct GPUAnimatorNode
 		{
-			mat4 matrix;
+			mat4 matrix = GLM_MAT4_IDENTITY_INIT;
 			mat4 jointMatrix[MAX_NUM_JOINTS]{};
 			float_t jointcount{ 0 };
 		};
@@ -436,6 +435,7 @@ namespace vkglTF
 		static AnimatorNodeCollectionBuffer nodeCollectionBuffer;
 		static std::vector<size_t> reservedNodeCollectionIndices;
 
+	public: // @NOCHECKIN this line
 		std::vector<size_t> myReservedNodeCollectionIndices;
 
 	public:

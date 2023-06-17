@@ -120,13 +120,6 @@ namespace vkglTF
 		}
 	}
 
-	void Node::update(Animator* animator)
-	{
-		mat4 m;
-		getMatrix(m);
-		animator->updateJointMatrices(animator->myReservedNodeCollectionIndices[mesh->animatorNodeReservedIndex], skin, m);
-	}
-
 	Node::~Node()
 	{
 		if (mesh)
@@ -2034,11 +2027,11 @@ namespace vkglTF
 		engine               = model->engine;
 		animStateMachineCopy = StateMachine(model->animStateMachine);  // Make a copy to play with here
 
-		size_t skinIdx = 0;
 		for (auto skin : model->skins)
 		{
 			GPUAnimatorNode newAnimatorNode = {};
-			skin->skeletonRoot->getMatrix(newAnimatorNode.matrix);
+			if (skin->skeletonRoot)
+				skin->skeletonRoot->getMatrix(newAnimatorNode.matrix);
 
 			// Reserve new node index
 			size_t reserveIndexCandidate = (reservedNodeCollectionIndices.back() + 1) % RENDER_OBJECTS_MAX_CAPACITY;
@@ -2059,8 +2052,9 @@ namespace vkglTF
 
 			reservedNodeCollectionIndices.push_back(reserveIndexCandidate);
 			myReservedNodeCollectionIndices.push_back(reserveIndexCandidate);
-			for (auto node : skin->joints)
-				node->mesh->animatorNodeReservedIndex = skinIdx++;
+			for (auto& node : model->linearNodes)
+				if (node->mesh && node->skin == skin)
+					node->mesh->animatorNodeReservedIndex = myReservedNodeCollectionIndices.size() - 1;
 			uniformBlocks[reserveIndexCandidate] = newAnimatorNode;
 
 			memcpy(nodeCollectionBuffer.mapped + reserveIndexCandidate, &newAnimatorNode, sizeof(GPUAnimatorNode));
@@ -2500,11 +2494,13 @@ namespace vkglTF
 		}
 		if (updated)
 		{
+			// Update the joint matrices.
 			for (size_t i = 0; i < model->skins.size(); i++)
 			{
 				auto& skin = model->skins[i];
-				mat4 m;
-				skin->skeletonRoot->getMatrix(m);
+				mat4 m = GLM_MAT4_IDENTITY_INIT;
+				if (skin->skeletonRoot)
+					skin->skeletonRoot->getMatrix(m);
 				updateJointMatrices(myReservedNodeCollectionIndices[i], skin, m);
 			}
 		}
@@ -2512,29 +2508,23 @@ namespace vkglTF
 
 	void Animator::updateJointMatrices(size_t animatorNodeReservedIndex, vkglTF::Skin* skin, mat4& m)
 	{
-		if (skin)
+		auto& uniformBlock = uniformBlocks[animatorNodeReservedIndex];
+		glm_mat4_copy(m, uniformBlock.matrix);
+
+		// Update join matrices
+		mat4 inverseTransform;
+		glm_mat4_inv(m, inverseTransform);
+		size_t numJoints = std::min((uint32_t)skin->joints.size(), MAX_NUM_JOINTS);
+		for (size_t i = 0; i < numJoints; i++)  // @TODO: make this multithreaded with a multithreaded for loop
 		{
-			auto& uniformBlock = uniformBlocks[animatorNodeReservedIndex];
-			glm_mat4_copy(m, uniformBlock.matrix);
-			// Update join matrices
-			mat4 inverseTransform;
-			glm_mat4_inv(m, inverseTransform);
-			size_t numJoints = std::min((uint32_t)skin->joints.size(), MAX_NUM_JOINTS);
-			for (size_t i = 0; i < numJoints; i++)  // @TODO: make this multithreaded with a multithreaded for loop
-			{
-				vkglTF::Node* jointNode = skin->joints[i];
-				mat4 jointMat;
-				jointNode->getMatrix(jointMat);
-				glm_mat4_mul(jointMat, skin->inverseBindMatrices[i].raw, jointMat);
-				glm_mat4_mul(inverseTransform, jointMat, uniformBlock.jointMatrix[i]);
-			}
-			uniformBlock.jointcount = (float)numJoints;
-			memcpy(nodeCollectionBuffer.mapped + animatorNodeReservedIndex, &uniformBlock, sizeof(GPUAnimatorNode));
+			vkglTF::Node* jointNode = skin->joints[i];
+			mat4 jointMat;
+			jointNode->getMatrix(jointMat);
+			glm_mat4_mul(jointMat, skin->inverseBindMatrices[i].raw, jointMat);
+			glm_mat4_mul(inverseTransform, jointMat, uniformBlock.jointMatrix[i]);
 		}
-		else
-		{
-			memcpy(nodeCollectionBuffer.mapped + animatorNodeReservedIndex, &m, sizeof(mat4));
-		}
+		uniformBlock.jointcount = (float)numJoints;
+		memcpy(nodeCollectionBuffer.mapped + animatorNodeReservedIndex, &uniformBlock, sizeof(GPUAnimatorNode));
 	}
 
 	bool Animator::getJointMatrix(const std::string& jointName, mat4& out)
