@@ -38,7 +38,12 @@ namespace globalState
             .type = WEAPON,
             .requiredMaterialsToMaterialize = {
                 { .harvestableItemId = 0, .quantity = 1 }
-            }
+            },
+            .weaponStats = {
+                .durability = 32,
+                .attackPower = 2,
+                .attackPowerWhenDulled = 1,
+            },
         },
         ScannableItemOption{
             .name = "TEST Slime girl",
@@ -46,7 +51,7 @@ namespace globalState
             .type = FOOD,
             .requiredMaterialsToMaterialize = {
                 { .harvestableItemId = 1, .quantity = 2 },
-            }
+            },
         },
     };
 

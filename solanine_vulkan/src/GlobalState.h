@@ -45,6 +45,13 @@ namespace globalState
         std::string modelName;
         AncientWeaponItemType type;
         std::vector<HarvestableItemWithQuantity> requiredMaterialsToMaterialize;
+
+        struct WeaponStats  // @NOTE: garbage values if this is not a weapon.
+        {
+            int32_t durability;
+            int32_t attackPower;
+            int32_t attackPowerWhenDulled;  // This is when durability hits 0.
+        } weaponStats;
     };
 
 

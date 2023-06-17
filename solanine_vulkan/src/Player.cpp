@@ -30,6 +30,7 @@ struct Player_XData
 
     textmesh::TextMesh* uiMaterializeItem;  // @NOTE: This is a debug ui thing. In the real thing, I'd really want there to be in the bottom right the ancient weapon handle pointing vertically with the materializing item in a wireframe with a mysterious blue hue at the end of the handle, and when the item does get materialized, it becomes a rendered version.
     globalState::ScannableItemOption* materializedItem = nullptr;
+    int32_t currentWeaponDurability;
 
     textmesh::TextMesh* uiStamina;
     struct StaminaData
@@ -183,6 +184,7 @@ void processAttack(Player_XData* d)
                 for (globalState::HarvestableItemWithQuantity& hiwq : sio->requiredMaterialsToMaterialize)
                     globalState::changeInventoryItemQtyByIndex(hiwq.harvestableItemId, -(int32_t)hiwq.quantity);  // Remove from inventory the materials needed.
                 d->materializedItem = sio;
+                d->currentWeaponDurability = d->materializedItem->weaponStats.durability;  // @NOTE: non-weapons will have garbage set as their durability. Just ignore.
                 AudioEngine::getInstance().playSound("res/sfx/wip_Pl_Kago_Ready.wav");
             }
             else
@@ -378,8 +380,10 @@ void processWazaUpdate(Player_XData* d, EntityManager* em, const float_t& physic
             std::vector<std::string> hitGuids;
             if (physengine::lineSegmentCast(pt1, pt2, hitscanLayer, true, hitGuids))
             {
-                // @TODO: @INCOMPLETE: @HARDCODE: dummy values
-                float_t attackLvl = 1;
+                float_t attackLvl =
+                    (float_t)(d->currentWeaponDurability > 0 ?
+                        d->materializedItem->weaponStats.attackPower :
+                        d->materializedItem->weaponStats.attackPowerWhenDulled);
 
                 // Successful hitscan!
                 for (auto& guid : hitGuids)
@@ -389,7 +393,17 @@ void processWazaUpdate(Player_XData* d, EntityManager* em, const float_t& physic
                     ds.dumpFloat(attackLvl);
                     DataSerialized dsd = ds.getSerializedData();
                     if (em->sendMessage(guid, dsd))
+                    {
                         playWazaHitSfx = true;
+
+                        // Take off some durability bc of successful hitscan.
+                        if (d->currentWeaponDurability > 0)
+                        {
+                            d->currentWeaponDurability--;
+                            if (d->currentWeaponDurability <= 0)
+                                pushPlayerNotification("Weapon has dulled!", d);
+                        }
+                    }
                 }
                 break;
             }
@@ -869,4 +883,5 @@ void Player::renderImGui()
     ImGui::DragFloat("attackTwitchAngleReturnSpeed", &_data->attackTwitchAngleReturnSpeed);
     ImGui::DragFloat3("uiMaterializeItem->renderPosition", _data->uiMaterializeItem->renderPosition);
     ImGui::DragFloat3("uiStamina->renderPosition", _data->uiStamina->renderPosition);
+    ImGui::InputInt("currentWeaponDurability", &_data->currentWeaponDurability);
 }
