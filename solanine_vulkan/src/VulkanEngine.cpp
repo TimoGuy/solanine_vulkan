@@ -371,7 +371,13 @@ void VulkanEngine::render()
 	perfs[14] = SDL_GetPerformanceCounter();
 	uploadCurrentFrameToGPU(currentFrame);
 	textmesh::uploadUICameraDataToGPU();
-	compactRenderObjectsIntoDraws(currentFrame, {});
+#ifdef _DEVELOP
+	std::vector<size_t> pickedPoolIndices = { 0 };
+	if (!searchForPickedObjectPoolIndex(pickedPoolIndices[0]))
+		pickedPoolIndices.clear();
+	std::vector<ModelWithIndirectDrawId> pickingIndirectDrawCommandIds;
+#endif
+	compactRenderObjectsIntoDraws(currentFrame, pickedPoolIndices, pickingIndirectDrawCommandIds);
 	perfs[14] = SDL_GetPerformanceCounter() - perfs[14];
 
 	//
@@ -477,7 +483,8 @@ void VulkanEngine::render()
 		////////////////
 
 		renderRenderObjects(cmd, currentFrame);
-		renderPickedObject(cmd, currentFrame);
+		if (!pickingIndirectDrawCommandIds.empty())
+			renderPickedObject(cmd, currentFrame, pickingIndirectDrawCommandIds);
 		if (showCollisionDebugDraw)
 			physengine::renderDebugVisualization(this, cmd);
 
@@ -3676,7 +3683,7 @@ void VulkanEngine::uploadCurrentFrameToGPU(const FrameData& currentFrame)
 	vmaUnmapMemory(_allocator, currentFrame.objectBuffer._allocation);
 }
 
-void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, std::vector<size_t> onlyPoolIndices)
+void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, std::vector<size_t> onlyPoolIndices, std::vector<ModelWithIndirectDrawId>& outIndirectDrawCommandIdsForPoolIndex)
 {
 	//
 	// Cull out render object indices that are not marked as visible
@@ -3692,20 +3699,6 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, 
 			continue;
 		if (object.model == nullptr)
 			continue;
-
-		// Check to see if pool index is in wanted pool indices
-		if (!onlyPoolIndices.empty())
-		{
-			bool found = false;
-			for (size_t index : onlyPoolIndices)
-				if (index == poolIndex)
-				{
-					found = true;
-					break;
-				}
-			if (!found)
-				continue;  // Skip indices that are not part of the wanted "only render these pool indices"
-		}
 
 		// It's visible!!!!
 		visibleIndices.push_back(poolIndex);
@@ -3807,12 +3800,25 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, 
 				.instanceCount = 1,
 				.firstIndex = ib.meshFirstIndex,
 				.vertexOffset = 0,
-				.firstInstance = (uint32_t)instanceID++,
+				.firstInstance = (uint32_t)instanceID,
 			};
 			indirectDrawCommands++;
 
-			*instancePtrSSBO = _roManager->_renderObjectPool[visibleIndices[baseModelRenderObjectIndex + modelIndex]].calculatedModelInstances[meshIndex];
+			GPUInstancePointer& gip = _roManager->_renderObjectPool[visibleIndices[baseModelRenderObjectIndex + modelIndex]].calculatedModelInstances[meshIndex];
+#ifdef _DEVELOP
+			if (!onlyPoolIndices.empty())
+				for (size_t index : onlyPoolIndices)
+					if (index == gip.objectID)
+					{
+						// Include this draw indirect command.
+						outIndirectDrawCommandIdsForPoolIndex.push_back({ ib.model, (uint32_t)instanceID });
+						break;
+					}
+#endif
+			*instancePtrSSBO = gip;
 			instancePtrSSBO++;
+
+			instanceID++;
 		}
 
 		// Increment to the next mesh
@@ -3837,34 +3843,27 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 	}
 }
 
-void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& currentFrame)
+bool VulkanEngine::searchForPickedObjectPoolIndex(size_t& outPoolIndex)
 {
-	//
-	// Try to find the picked object
-	//
-	bool found = false;
-	size_t pickedPoolIndex = 0;
-
 	for (size_t i = 0; i < _roManager->_renderObjectsIndices.size(); i++)
 	{
 		size_t poolIndex = _roManager->_renderObjectsIndices[i];
 		if (_movingMatrix.matrixToMove == &_roManager->_renderObjectPool[poolIndex].transformMatrix)
 		{
-			found = true;
-			pickedPoolIndex = poolIndex;
-			break;
+			outPoolIndex = poolIndex;
+			return true;
 		}
 	}
 
-	if (!found)
-		return;
+	return false;
+}
 
+void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& currentFrame, const std::vector<ModelWithIndirectDrawId>& indirectDrawCommandIds)
+{
 	//
 	// Render it with the wireframe color pipeline
 	// @BUG: recompacting and reuploading the picked pool index will overwrite the first mesh drawn's instance ptr information, so making a new system would be great, or not since this is just a debug feature.
 	//
-	compactRenderObjectsIntoDraws(currentFrame, {pickedPoolIndex});
-
 	constexpr size_t numRenders = 2;
 	std::string materialNames[numRenders] = {
 		"wireframeColorMaterial",
@@ -3890,7 +3889,14 @@ void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& curr
 		glm_vec4_copy(materialColors[i], pc.color);
 		vkCmdPushConstants(cmd, material.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ColorPushConstBlock), &pc);
 
-		renderRenderObjects(cmd, currentFrame);
+		// Render objects
+		uint32_t drawStride = sizeof(VkDrawIndexedIndirectCommand);
+		for (const ModelWithIndirectDrawId& mwidid : indirectDrawCommandIds)
+		{
+			VkDeviceSize indirectOffset = mwidid.indirectDrawId * drawStride;
+			mwidid.model->bind(cmd);
+			vkCmdDrawIndexedIndirect(cmd, currentFrame.indirectDrawCommandBuffer._buffer, indirectOffset, 1, drawStride);
+		}
 	}
 }
 

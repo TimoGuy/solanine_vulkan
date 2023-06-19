@@ -273,9 +273,23 @@ private:
 	
 	std::vector<IndirectBatch> indirectBatches;
 
-	void compactRenderObjectsIntoDraws(const FrameData& currentFrame, std::vector<size_t> onlyPoolIndices);
+	struct ModelWithIndirectDrawId
+	{
+		vkglTF::Model* model;
+		uint32_t indirectDrawId;
+	};
+
+	void compactRenderObjectsIntoDraws(
+		const FrameData& currentFrame,
+#ifdef _DEVELOP
+		std::vector<size_t> onlyPoolIndices,
+		std::vector<ModelWithIndirectDrawId>& outIndirectDrawCommandIdsForPoolIndex
+#endif
+		);
 	void renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame);
-	void renderPickedObject(VkCommandBuffer cmd, const FrameData& currentFrame);
+
+	bool searchForPickedObjectPoolIndex(size_t& outPoolIndex);
+	void renderPickedObject(VkCommandBuffer cmd, const FrameData& currentFrame, const std::vector<ModelWithIndirectDrawId>& indirectDrawCommandIds);
 
 public:
 	//

@@ -39,7 +39,10 @@ RenderObject* RenderObjectManager::registerRenderObject(RenderObject renderObjec
 		renderObjectData.calculatedModelInstances.push_back({
 			.objectID = (uint32_t)registerIndex,
 			.materialID = primitive->materialID,
-			.animatorNodeID = (uint32_t)(renderObjectData.animator == nullptr ? 0 : renderObjectData.animator->skinIndexToGlobalReservedNodeIndex(primitive->animatorSkinIndexPropagatedCopy)),
+			.animatorNodeID =
+				(uint32_t)(renderObjectData.animator == nullptr ?
+				0 :
+				renderObjectData.animator->skinIndexToGlobalReservedNodeIndex(primitive->animatorSkinIndexPropagatedCopy)),
 		});
 
 	// Register object
@@ -47,7 +50,7 @@ RenderObject* RenderObjectManager::registerRenderObject(RenderObject renderObjec
 	_renderObjectsIsRegistered[registerIndex] = true;
 	_renderObjectsIndices.push_back(registerIndex);
 
-	// Sort pool indices so that models are next to each other
+	// Sort pool indices so that models are next to each other (helps with model compacting in the rendering stage).
 	std::sort(
 		_renderObjectsIndices.begin(),
 		_renderObjectsIndices.end(),
