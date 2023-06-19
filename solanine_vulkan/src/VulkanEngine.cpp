@@ -417,7 +417,7 @@ void VulkanEngine::render()
 			CascadeIndexPushConstBlock pc = { i };
 			vkCmdPushConstants(cmd, shadowDepthPassMaterial.pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(CascadeIndexPushConstBlock), &pc);
 
-			renderRenderObjects(cmd, currentFrame, true);
+			renderRenderObjects(cmd, currentFrame);
 			
 			vkCmdEndRenderPass(cmd);
 		}
@@ -465,7 +465,18 @@ void VulkanEngine::render()
 		skybox->draw(cmd);
 		///////////////////
 
-		renderRenderObjects(cmd, currentFrame, false);
+		// Bind material
+		// @TODO: put this into its own function!
+		Material& defaultMaterial = *getMaterial("pbrMaterial");    // @HACK: @TODO: currently, the way that the pipeline is getting used is by just hardcode using it in the draw commands for models... however, each model should get its pipeline set to this material instead (or whatever material its using... that's why we can't hardcode stuff!!!)   @TODO: create some kind of way to propagate the newly created pipeline to the primMat (calculated material in the gltf model) instead of using defaultMaterial directly.  -Timo
+		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipeline);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 3, 1, &defaultMaterial.textureSet, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(), 0, nullptr);
+		////////////////
+
+		renderRenderObjects(cmd, currentFrame);
 		renderPickedObject(cmd, currentFrame);
 		if (showCollisionDebugDraw)
 			physengine::renderDebugVisualization(this, cmd);
@@ -826,7 +837,7 @@ void VulkanEngine::render()
 		std::cout << "[PICKING]" << std::endl
 			<< "set picking scissor to: x=" << scissor.offset.x << "  y=" << scissor.offset.y << "  w=" << scissor.extent.width << "  h=" << scissor.extent.height << std::endl;
 
-		renderRenderObjects(cmd, currentFrame, true);
+		renderRenderObjects(cmd, currentFrame);
 
 		// End renderpass
 		vkCmdEndRenderPass(cmd);
@@ -3814,20 +3825,8 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, 
 	indirectBatches = batches;
 }
 
-void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, bool materialOverride)
+void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame)
 {
-	if (!materialOverride)
-	{
-		// Bind material
-		Material& defaultMaterial = *getMaterial("pbrMaterial");    // @HACK: @TODO: currently, the way that the pipeline is getting used is by just hardcode using it in the draw commands for models... however, each model should get its pipeline set to this material instead (or whatever material its using... that's why we can't hardcode stuff!!!)   @TODO: create some kind of way to propagate the newly created pipeline to the primMat (calculated material in the gltf model) instead of using defaultMaterial directly.  -Timo
-		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipeline);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 3, 1, &defaultMaterial.textureSet, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(), 0, nullptr);
-	}
-
 	// Iterate thru all the batches
 	uint32_t drawStride = sizeof(VkDrawIndexedIndirectCommand);
 	for (IndirectBatch& batch : indirectBatches)
@@ -3891,7 +3890,7 @@ void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& curr
 		glm_vec4_copy(materialColors[i], pc.color);
 		vkCmdPushConstants(cmd, material.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ColorPushConstBlock), &pc);
 
-		renderRenderObjects(cmd, currentFrame, true);
+		renderRenderObjects(cmd, currentFrame);
 	}
 }
 

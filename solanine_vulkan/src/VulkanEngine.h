@@ -274,7 +274,7 @@ private:
 	std::vector<IndirectBatch> indirectBatches;
 
 	void compactRenderObjectsIntoDraws(const FrameData& currentFrame, std::vector<size_t> onlyPoolIndices);
-	void renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, bool materialOverride);
+	void renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame);
 	void renderPickedObject(VkCommandBuffer cmd, const FrameData& currentFrame);
 
 public:
