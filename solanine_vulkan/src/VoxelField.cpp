@@ -16,6 +16,7 @@ struct VoxelField_XData
     std::vector<vec3s> voxelOffsets;  // @NOCHECKIN
 
     physengine::VoxelFieldPhysicsData* vfpd = nullptr;
+    bool isPicked = false;
 };
 
 inline void    buildDefaultVoxelData(VoxelField_XData& data, const std::string& myGuid);
@@ -53,12 +54,17 @@ VoxelField::~VoxelField()
 
 void VoxelField::physicsUpdate(const float_t& physicsDeltaTime)
 {
-
+    if (_data->isPicked)
+    {
+        // @NOTE: this picked checking system, bc physicsupdate() runs outside of the render thread, could easily get out of sync, but as long as the render thread is >40fps it should be fine.
+        
+        std::cout << "PICKED ME! " << getGUID() << std::endl;
+        _data->isPicked = false;
+    }
 }
 
 void VoxelField::update(const float_t& deltaTime)
 {
-
 }
 
 void VoxelField::lateUpdate(const float_t& deltaTime)
@@ -126,6 +132,8 @@ void VoxelField::reportMoved(mat4* matrixMoved)
 void VoxelField::renderImGui()
 {
     ImGui::Text("Hello there!");
+
+    _data->isPicked = true;
 }
 
 
