@@ -5,11 +5,15 @@
 #include "RenderObject.h"
 #include "PhysicsEngine.h"
 #include "DataSerialization.h"
+#include "InputManager.h"
+#include "VulkanEngine.h"
+#include "Camera.h"
 #include "imgui/imgui.h"
 
 
 struct VoxelField_XData
 {
+    VulkanEngine* engine;
     RenderObjectManager* rom;
     vkglTF::Model* voxelModel;
     std::vector<RenderObject*> voxelRenderObjs;
@@ -17,6 +21,15 @@ struct VoxelField_XData
 
     physengine::VoxelFieldPhysicsData* vfpd = nullptr;
     bool isPicked = false;
+    
+    struct EditorState
+    {
+        bool editing = false;
+        bool isEditAnAppend = false;
+        ivec3 flatAxis = GLM_VEC3_ZERO_INIT;
+        ivec3 editStartPosition = GLM_VEC3_ZERO_INIT;
+        ivec3 editEndPosition = GLM_VEC3_ZERO_INIT;
+    } editorState;
 };
 
 inline void    buildDefaultVoxelData(VoxelField_XData& data, const std::string& myGuid);
@@ -24,12 +37,13 @@ inline void    assembleVoxelRenderObjects(VoxelField_XData& data, const std::str
 inline void    deleteVoxelRenderObjects(VoxelField_XData& data);
 
 
-VoxelField::VoxelField(EntityManager* em, RenderObjectManager* rom, DataSerialized* ds) : Entity(em, ds), _data(new VoxelField_XData())
+VoxelField::VoxelField(VulkanEngine* engine, EntityManager* em, RenderObjectManager* rom, DataSerialized* ds) : Entity(em, ds), _data(new VoxelField_XData())
 {
     Entity::_enablePhysicsUpdate = true;
     Entity::_enableUpdate = true;
     Entity::_enableLateUpdate = true;
 
+    _data->engine = engine;
     _data->rom = rom;
 
     if (ds)
@@ -52,14 +66,43 @@ VoxelField::~VoxelField()
     delete _data;
 }
 
+void raycastMouseToVoxel(VulkanEngine* engine, ivec3& outPickedBlock)
+{
+    // Setup linecast
+    ImGuiIO& io = ImGui::GetIO();
+	float_t xpos = io.MousePos.x;
+    float_t ypos = io.MousePos.y;
+	xpos /= (float_t)engine->_windowExtent.width;
+	ypos /= (float_t)engine->_windowExtent.height;
+	ypos = 1.0f - ypos;
+	xpos = xpos * 2.0f - 1.0f;
+	ypos = ypos * 2.0f - 1.0f;
+	vec3 linecastPt1, linecastPt2;
+    glm_vec3_copy(engine->_camera->sceneCamera.gpuCameraData.cameraPosition, linecastPt1);
+	engine->_camera->clipSpacePositionToWorldSpace(vec3{ xpos, ypos, 1.0f }, linecastPt2);
+
+    // Perform linecast
+    // @TODO: start here
+}
+
 void VoxelField::physicsUpdate(const float_t& physicsDeltaTime)
 {
-    if (_data->isPicked)
+    if (_data->isPicked)  // @NOTE: this picked checking system, bc physicsupdate() runs outside of the render thread, could easily get out of sync, but as long as the render thread is >40fps it should be fine.
     {
-        // @NOTE: this picked checking system, bc physicsupdate() runs outside of the render thread, could easily get out of sync, but as long as the render thread is >40fps it should be fine.
-        
-        
-        std::cout << "PICKED ME! " << getGUID() << std::endl;
+        if (!_data->editorState.editing)
+            if (input::keyCPressed)
+            {
+                _data->editorState.editing = true;
+                _data->editorState.isEditAnAppend = true;
+                raycastMouseToVoxel(_data->engine, _data->editorState.editStartPosition);
+            }
+            else if (input::keyXPressed)
+            {
+                _data->editorState.editing = true;
+                _data->editorState.isEditAnAppend = false;
+                raycastMouseToVoxel(_data->engine, _data->editorState.editStartPosition);
+            }
+
         _data->isPicked = false;
     }
 }

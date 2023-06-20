@@ -99,6 +99,7 @@ struct Camera
 	inline uint32_t getCameraMode() { return _cameraMode; }
 
 	void update(const float_t& deltaTime);
+	void clipSpacePositionToWorldSpace(vec3 clipSpacePosition, vec3& outWorldSpacePosition);
 
 private:
 	VulkanEngine* _engine;
