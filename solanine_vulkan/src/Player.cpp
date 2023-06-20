@@ -86,6 +86,9 @@ struct Player_XData
 
     vec3 worldSpaceInput = GLM_VEC3_ZERO_INIT;
     float_t gravityForce = 0.0f;
+#ifdef _DEVELOP
+    bool    disableInput = false;  // @DEBUG for level editor
+#endif
     bool    inputFlagJump = false;
     bool    inputFlagAttack = false;
     bool    inputFlagRelease = false;
@@ -594,12 +597,8 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         input[0] += input::keyRightPressed ?  1.0f : 0.0f;
         input[1] += input::keyUpPressed    ?  1.0f : 0.0f;
         input[1] += input::keyDownPressed  ? -1.0f : 0.0f;
-
-        if (_data->camera->freeCamMode.enabled || ImGui::GetIO().WantTextInput)  // @DEBUG: for the level editor
-        {
+        if (_data->disableInput)
             input[0] = input[1] = 0.0f;
-            _data->inputFlagJump = false;
-        }
 
         vec3 flatCameraFacingDirection = {
             _data->camera->sceneCamera.facingDirection[0],
@@ -715,6 +714,9 @@ std::string currentText;
 
 void Player::update(const float_t& deltaTime)
 {
+    // @DEBUG: for level editor
+    _data->disableInput = (_data->camera->freeCamMode.enabled || ImGui::GetIO().WantTextInput);
+
     //
     // Handle 'E' action
     //
@@ -723,7 +725,7 @@ void Player::update(const float_t& deltaTime)
         if (_data->prevIsGrounded && !textbox::isProcessingMessage())
         {
             interactionUIText->excludeFromBulkRender = false;
-            if (input::onKeyInteractPress)
+            if (!_data->disableInput && input::onKeyInteractPress)
             {
                 DataSerializer ds;
                 ds.dumpString("msg_commit_interaction");
@@ -744,9 +746,9 @@ void Player::update(const float_t& deltaTime)
     if (textbox::isProcessingMessage())
         return;
 
-    _data->inputFlagJump |= input::onKeyJumpPress;
-    _data->inputFlagAttack |= input::onLMBPress;
-    _data->inputFlagRelease |= input::onRMBPress;
+    _data->inputFlagJump |= !_data->disableInput && input::onKeyJumpPress;
+    _data->inputFlagAttack |= !_data->disableInput && input::onLMBPress;
+    _data->inputFlagRelease |= !_data->disableInput && input::onRMBPress;
 
     //
     // Update mask for animation

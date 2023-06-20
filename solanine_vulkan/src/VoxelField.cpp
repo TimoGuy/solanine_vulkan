@@ -58,6 +58,7 @@ void VoxelField::physicsUpdate(const float_t& physicsDeltaTime)
     {
         // @NOTE: this picked checking system, bc physicsupdate() runs outside of the render thread, could easily get out of sync, but as long as the render thread is >40fps it should be fine.
         
+        
         std::cout << "PICKED ME! " << getGUID() << std::endl;
         _data->isPicked = false;
     }
