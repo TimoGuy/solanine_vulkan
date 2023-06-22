@@ -2521,6 +2521,18 @@ namespace vkglTF
 		glm_mat4_inv(m, inverseTransform);
 		size_t numJoints = std::min((uint32_t)skin->joints.size(), MAX_NUM_JOINTS);
 
+		// @NOTE: did some performance testing, and here are the results:
+		//        Singlethreaded 100x: avg. 0.340738ms
+		//        Multithreaded 100x:  avg. 0.618805ms
+		//
+		//        So, obviously, do the singlethreaded workload (done with taskflow. Note that the recorded time is just executor.run().wait() section only for multithreaded).
+		// @NOTE: the cpu on my system is i9-7980xe (18 cores, 36 threads).
+#define MULTITHREADED_JOINT_MATRICES 0
+#if MULTITHREADED_JOINT_MATRICES
+		static tf::Executor executor;
+		tf::Taskflow taskflow;
+#endif
+
 #define PERF_TEST 0
 #if PERF_TEST
 		static double_t totalTime = 0.0;
@@ -2528,15 +2540,7 @@ namespace vkglTF
 		std::chrono::steady_clock::time_point timerS = std::chrono::high_resolution_clock::now();
 #endif
 
-		// @NOTE: did some performance testing, and here are the results:
-		//        Singlethreaded 100x: avg. 0.325904ms
-		//        Multithreaded 100x:  avg. 0.008183ms
-		//
-		//        So, obviously, do the multithreaded workload (more than 32x speed).
-		// @NOTE: the cpu on my system is i9-7980xe (18 cores, 36 threads).
-#define MULTITHREADED_JOINT_MATRICES 1
 #if MULTITHREADED_JOINT_MATRICES
-		static tf::Taskflow taskflow;
 		taskflow.for_each_index(0, (int32_t)numJoints, 1, [&](int32_t i) {
 #else
 		for (size_t i = 0; i < numJoints; i++)
@@ -2549,6 +2553,10 @@ namespace vkglTF
 			glm_mat4_mul(inverseTransform, jointMat, uniformBlock.jointMatrix[i]);
 #if MULTITHREADED_JOINT_MATRICES
 		});
+
+		timerS = std::chrono::high_resolution_clock::now();
+
+		executor.run(taskflow).wait();
 #else
 		}
 #endif
