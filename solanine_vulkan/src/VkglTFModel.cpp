@@ -15,6 +15,7 @@
 #include "VkInitializers.h"
 #include "StringHelper.h"
 #include <chrono>
+#include <taskflow/algorithm/for_each.hpp>
 
 
 namespace vkglTF
@@ -2519,14 +2520,48 @@ namespace vkglTF
 		mat4 inverseTransform;
 		glm_mat4_inv(m, inverseTransform);
 		size_t numJoints = std::min((uint32_t)skin->joints.size(), MAX_NUM_JOINTS);
-		for (size_t i = 0; i < numJoints; i++)  // @TODO: make this multithreaded with a multithreaded for loop
+
+#define PERF_TEST 0
+#if PERF_TEST
+		static double_t totalTime = 0.0;
+		static size_t times = 0;
+		std::chrono::steady_clock::time_point timerS = std::chrono::high_resolution_clock::now();
+#endif
+
+		// @NOTE: did some performance testing, and here are the results:
+		//        Singlethreaded 100x: avg. 0.325904ms
+		//        Multithreaded 100x:  avg. 0.008183ms
+		//
+		//        So, obviously, do the multithreaded workload (more than 32x speed).
+		// @NOTE: the cpu on my system is i9-7980xe (18 cores, 36 threads).
+#define MULTITHREADED_JOINT_MATRICES 1
+#if MULTITHREADED_JOINT_MATRICES
+		static tf::Taskflow taskflow;
+		taskflow.for_each_index(0, (int32_t)numJoints, 1, [&](int32_t i) {
+#else
+		for (size_t i = 0; i < numJoints; i++)
 		{
+#endif
 			vkglTF::Node* jointNode = skin->joints[i];
 			mat4 jointMat;
 			jointNode->getMatrix(jointMat);
 			glm_mat4_mul(jointMat, skin->inverseBindMatrices[i].raw, jointMat);
 			glm_mat4_mul(inverseTransform, jointMat, uniformBlock.jointMatrix[i]);
+#if MULTITHREADED_JOINT_MATRICES
+		});
+#else
 		}
+#endif
+
+#if PERF_TEST
+		totalTime += std::chrono::duration<double_t, std::milli>(std::chrono::high_resolution_clock::now() - timerS).count();
+		times++;
+		if (times >= 100)
+		{
+			std::cout << "Avg time over runs (ms): " << (totalTime / (double_t)times) << std::endl;
+		}
+#endif
+
 		uniformBlock.jointcount = (float)numJoints;
 		memcpy(nodeCollectionBuffer.mapped + globalNodeReservedIndex, &uniformBlock, sizeof(GPUAnimatorNode));
 	}

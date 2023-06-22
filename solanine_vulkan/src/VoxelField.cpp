@@ -26,9 +26,9 @@ struct VoxelField_XData
     {
         bool editing = false;
         bool isEditAnAppend = false;
-        ivec3 flatAxis = GLM_VEC3_ZERO_INIT;
-        ivec3 editStartPosition = GLM_VEC3_ZERO_INIT;
-        ivec3 editEndPosition = GLM_VEC3_ZERO_INIT;
+        ivec3 flatAxis = { 0, 0, 0 };
+        ivec3 editStartPosition = { 0, 0, 0 };
+        ivec3 editEndPosition = { 0, 0, 0 };
     } editorState;
 };
 
