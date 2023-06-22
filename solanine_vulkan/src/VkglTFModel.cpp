@@ -2521,7 +2521,7 @@ namespace vkglTF
 		glm_mat4_inv(m, inverseTransform);
 		size_t numJoints = std::min((uint32_t)skin->joints.size(), MAX_NUM_JOINTS);
 
-		// @NOTE: did some performance testing, and here are the results:
+		// @NOTE: did some performance testing, and here are the results (debug build):
 		//        Singlethreaded 100x: avg. 0.340738ms
 		//        Multithreaded 100x:  avg. 0.618805ms
 		//
