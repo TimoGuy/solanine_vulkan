@@ -511,12 +511,12 @@ namespace physengine
                 glm_ivec3_minv(boundsMin, ijk, boundsMin);
                 glm_ivec3_maxv(boundsMax, ijk, boundsMax);
             }
-
-        glm_ivec3_copy(ivec3{ -boundsMin[0], -boundsMin[1], -boundsMin[2] }, outOffset);
+        glm_ivec3_mul(boundsMin, ivec3{ -1, -1, -1 }, outOffset);
 
         // Set the new bounds to the smaller amount.
         ivec3 newSize;
-        glm_ivec3_sub(boundsMax, boundsMin, newSize);
+        glm_ivec3_add(boundsMax, ivec3{ 1, 1, 1 }, newSize);
+        glm_ivec3_sub(newSize, boundsMin, newSize);
 
         // @COPYPASTA
         // Create a new data grid with new bounds.
