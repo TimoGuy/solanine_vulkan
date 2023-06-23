@@ -468,7 +468,8 @@ namespace physengine
         glm_ivec3_maxv(ivec3{ (int32_t)vfpd.sizeX, (int32_t)vfpd.sizeY, (int32_t)vfpd.sizeZ }, ivec3{ boundsMax[0] + 1, boundsMax[1] + 1, boundsMax[2] + 1 }, newSize);
 
         glm_ivec3_minv(ivec3{ 0, 0, 0 }, boundsMin, outOffset);
-        glm_ivec3_sub(newSize, outOffset, newSize);  // Adds on the offset.
+        glm_ivec3_mul(outOffset, ivec3{ -1, -1, -1 }, outOffset);
+        glm_ivec3_add(newSize, outOffset, newSize);  // Adds on the offset.
 
         // Create a new data grid with new bounds.
         size_t arraySize = newSize[0] * newSize[1] * newSize[2];
