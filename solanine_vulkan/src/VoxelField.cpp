@@ -425,9 +425,52 @@ void VoxelField::dump(DataSerializer& ds)
     ds.dumpVec3(sizeXYZ);
 
     size_t totalSize = _data->vfpd->sizeX * _data->vfpd->sizeY * _data->vfpd->sizeZ;
+
+    //
+    // Write out voxel data.
+    //
+    struct VoxelDataChunk
+    {
+        int8_t count;
+        int8_t voxelType;
+    } chunk;
     std::string voxelDataStringified;
     for (size_t i = 0; i < totalSize; i++)
-        voxelDataStringified += (int8_t)_data->vfpd->voxelData[i];
+    {
+        int8_t currentVoxelType = (int8_t)_data->vfpd->voxelData[i];
+        if (i == 0)
+        {
+            // Start new chunk.
+            chunk.count = 1;
+            chunk.voxelType = currentVoxelType;
+        }
+        else
+        {
+            if (currentVoxelType == chunk.voxelType && chunk.count + 33 + 1 < 127)  // @NOTE: int8_t (char) has a limit of 127, but we're sticking to the printable range (which is 32-127, but 32 is Space, and 35 is '#' (treated like comments), so exclude those).
+                chunk.count++;
+            else
+            {
+                // Write chunk onto string.
+                int8_t writeCount = chunk.count + 33;
+                int8_t writeVoxelType = chunk.voxelType + 33;
+                writeCount = (writeCount >= '#' ? writeCount + 1 : writeCount);
+                writeVoxelType = (writeVoxelType >= '#' ? writeVoxelType + 1 : writeVoxelType);
+                voxelDataStringified += writeCount;
+                voxelDataStringified += writeVoxelType;
+
+                // Start new chunk.
+                chunk.count = 1;
+                chunk.voxelType = currentVoxelType;
+            }
+        }
+    }
+    // Write chunk onto string.
+    int8_t writeCount = chunk.count + 33;
+    int8_t writeVoxelType = chunk.voxelType + 33;
+    writeCount = (writeCount >= '#' ? writeCount + 1 : writeCount);
+    writeVoxelType = (writeVoxelType >= '#' ? writeVoxelType + 1 : writeVoxelType);
+    voxelDataStringified += writeCount;
+    voxelDataStringified += writeVoxelType;
     ds.dumpString(voxelDataStringified);
 }
 
@@ -443,9 +486,23 @@ void VoxelField::load(DataSerialized& ds)
     std::string load_voxelDataStringified;
     ds.loadString(load_voxelDataStringified);
 
+    //
+    // Load in voxel data.
+    //
     uint8_t*  load_voxelData = new uint8_t[totalSize];
-    for (size_t i = 0; i < totalSize; i++)
-        load_voxelData[i] = (uint8_t)load_voxelDataStringified[i];
+    size_t writeIndex = 0;
+    for (size_t i = 0; i < load_voxelDataStringified.length(); i += 2)
+    {
+        int8_t count = load_voxelDataStringified[i];  // Revert from printable ascii range to actual values.
+        int8_t voxelType = load_voxelDataStringified[i + 1];
+        count = (count >= '#' ? count - 1 : count);
+        voxelType = (voxelType >= '#' ? voxelType - 1 : voxelType);
+        count -= 33;
+        voxelType -= 33;
+        
+        for (size_t j = 0; j < count; j++)
+            load_voxelData[writeIndex++] = (uint8_t)voxelType;
+    }
 
     // Create Voxel Field Physics Data
     _data->vfpd = physengine::createVoxelField(getGUID(), load_size[0], load_size[1], load_size[2], load_voxelData);
