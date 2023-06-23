@@ -260,7 +260,7 @@ void drawVoxelEditingVisualization(VoxelField_XData* d)
     vec3 normal = { (float_t)d->editorState.flatAxis[0], (float_t)d->editorState.flatAxis[1], (float_t)d->editorState.flatAxis[2] };
     vec3 pt1 = { (float_t)d->editorState.editStartPosition[0], (float_t)d->editorState.editStartPosition[1], (float_t)d->editorState.editStartPosition[2] };
     glm_vec3_add(pt1, vec3{ 0.5f, 0.5f, 0.5f }, pt1);
-    glm_vec3_muladds(normal, 0.5f, pt1);
+    glm_vec3_muladds(normal, 0.5f - 0.001f, pt1);
     vec3 pt2;
     calculatePositionOnVoxelPlane(d->engine, d->vfpd, d->editorState.editStartPosition, d->editorState.flatAxis, pt2);
 
@@ -322,27 +322,33 @@ void VoxelField::physicsUpdate(const float_t& physicsDeltaTime)
                         if (glm_ivec3_distance2(_data->editorState.editStartPosition, _data->editorState.editEndPosition) == 0)
                         {
                             // Insert one sticking out
-                            ivec3 insertPos;
-                            glm_ivec3_add(_data->editorState.editStartPosition, _data->editorState.flatAxis, insertPos);
-                            setVoxelDataAtPositionNonDestructive(_data->vfpd, insertPos, 1);
+                            glm_ivec3_add(_data->editorState.editStartPosition, _data->editorState.flatAxis, _data->editorState.editStartPosition);
+                            glm_ivec3_add(_data->editorState.editEndPosition, _data->editorState.flatAxis, _data->editorState.editEndPosition);
                         }
-                        else
+
+                        // Resize the bounds if needed
+                        ivec3 editingBoundsMin, editingBoundsMax;
+                        glm_ivec3_minv(_data->editorState.editStartPosition, _data->editorState.editEndPosition, editingBoundsMin);
+                        glm_ivec3_maxv(_data->editorState.editStartPosition, _data->editorState.editEndPosition, editingBoundsMax);
+                        ivec3 offset;
+                        physengine::expandVoxelFieldBounds(*_data->vfpd, editingBoundsMin, editingBoundsMax, offset);
+                        glm_ivec3_add(_data->editorState.editStartPosition, offset, _data->editorState.editStartPosition);  // Change the edit positions to account for the offset.
+                        glm_ivec3_add(_data->editorState.editEndPosition, offset, _data->editorState.editEndPosition);
+
+                        // Create new voxels (for every spot that's empty) in range.
+                        int32_t x, y, z;
+                        for (x = _data->editorState.editStartPosition[0]; ; x = physutil::moveTowards(x, _data->editorState.editEndPosition[0], 1))
                         {
-                            // Create new voxels (for every spot that's empty) in range.
-                            int32_t x, y, z;
-                            for (x = _data->editorState.editStartPosition[0]; ; x = physutil::moveTowards(x, _data->editorState.editEndPosition[0], 1))
+                            for (y = _data->editorState.editStartPosition[1]; ; y = physutil::moveTowards(y, _data->editorState.editEndPosition[1], 1))
                             {
-                                for (y = _data->editorState.editStartPosition[1]; ; y = physutil::moveTowards(y, _data->editorState.editEndPosition[1], 1))
+                                for (z = _data->editorState.editStartPosition[2]; ; z = physutil::moveTowards(z, _data->editorState.editEndPosition[2], 1))
                                 {
-                                    for (z = _data->editorState.editStartPosition[2]; ; z = physutil::moveTowards(z, _data->editorState.editEndPosition[2], 1))
-                                    {
-                                        setVoxelDataAtPositionNonDestructive(_data->vfpd, ivec3{ x, y, z }, 1);
-                                        if (z == _data->editorState.editEndPosition[2]) break;
-                                    }
-                                    if (y == _data->editorState.editEndPosition[1]) break;
+                                    setVoxelDataAtPositionNonDestructive(_data->vfpd, ivec3{ x, y, z }, 1);
+                                    if (z == _data->editorState.editEndPosition[2]) break;
                                 }
-                                if (x == _data->editorState.editEndPosition[0]) break;
+                                if (y == _data->editorState.editEndPosition[1]) break;
                             }
+                            if (x == _data->editorState.editEndPosition[0]) break;
                         }
                     }
                     else
@@ -362,6 +368,11 @@ void VoxelField::physicsUpdate(const float_t& physicsDeltaTime)
                             }
                             if (x == _data->editorState.editEndPosition[0]) break;
                         }
+
+                        // @TODO: compact the size of the voxel field.
+                        // @TODO: adjust the transform of the voxel field.
+                        ivec3 _;
+                        physengine::shrinkVoxelFieldBoundsAuto(*_data->vfpd, _);
                     }
                 }
                 _data->editorState.editing = false;
@@ -473,13 +484,12 @@ void VoxelField::renderImGui()
 
 inline void buildDefaultVoxelData(VoxelField_XData& data, const std::string& myGuid)
 {
-    size_t sizeX = 8, sizeY = 8, sizeZ = 8;
+    size_t sizeX = 8, sizeY = 1, sizeZ = 8;
     uint8_t* vd = new uint8_t[sizeX * sizeY * sizeZ];
     for (size_t i = 0; i < sizeX; i++)
     for (size_t j = 0; j < sizeY; j++)
     for (size_t k = 0; k < sizeZ; k++)
-        vd[i * sizeY * sizeZ + j * sizeZ + k] = 0;  //1;
-    vd[0] = 1;
+        vd[i * sizeY * sizeZ + j * sizeZ + k] = 1;
     data.vfpd = physengine::createVoxelField(myGuid, sizeX, sizeY, sizeZ, vd);
 }
 

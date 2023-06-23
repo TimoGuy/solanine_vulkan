@@ -462,6 +462,94 @@ namespace physengine
         return true;
     }
 
+    void expandVoxelFieldBounds(VoxelFieldPhysicsData& vfpd, ivec3 boundsMin, ivec3 boundsMax, ivec3& outOffset)
+    {
+        ivec3 newSize;
+        glm_ivec3_maxv(ivec3{ (int32_t)vfpd.sizeX, (int32_t)vfpd.sizeY, (int32_t)vfpd.sizeZ }, ivec3{ boundsMax[0] + 1, boundsMax[1] + 1, boundsMax[2] + 1 }, newSize);
+
+        glm_ivec3_minv(ivec3{ 0, 0, 0 }, boundsMin, outOffset);
+        glm_ivec3_sub(newSize, outOffset, newSize);  // Adds on the offset.
+
+        // Create a new data grid with new bounds.
+        size_t arraySize = newSize[0] * newSize[1] * newSize[2];
+        uint8_t* newVD = new uint8_t[arraySize];
+        for (size_t i = 0; i < arraySize; i++)
+            newVD[i] = 0;  // Init the value to be empty.
+
+        for (size_t i = 0; i < vfpd.sizeX; i++)
+        for (size_t j = 0; j < vfpd.sizeY; j++)
+        for (size_t k = 0; k < vfpd.sizeZ; k++)
+        {
+            uint8_t data = vfpd.voxelData[i * vfpd.sizeY * vfpd.sizeZ + j * vfpd.sizeZ + k];
+            ivec3 newIJK;
+            glm_ivec3_add(ivec3{ (int32_t)i, (int32_t)j, (int32_t)k }, outOffset, newIJK);
+            newVD[newIJK[0] * newSize[1] * newSize[2] + newIJK[1] * newSize[2] + newIJK[2]] = data;
+        }
+        delete[] vfpd.voxelData;
+        vfpd.voxelData = newVD;
+
+        // Update size for voxel data structure.
+        vfpd.sizeX = (size_t)newSize[0];
+        vfpd.sizeY = (size_t)newSize[1];
+        vfpd.sizeZ = (size_t)newSize[2];
+
+        // Offset the transform.
+        glm_translate(vfpd.transform, vec3{ -(float_t)outOffset[0], -(float_t)outOffset[1], -(float_t)outOffset[2] });
+    }
+
+    void shrinkVoxelFieldBoundsAuto(VoxelFieldPhysicsData& vfpd, ivec3& outOffset)
+    {
+        ivec3 boundsMin = { vfpd.sizeX, vfpd.sizeY, vfpd.sizeZ };
+        ivec3 boundsMax = { 0, 0, 0 };
+        for (size_t i = 0; i < vfpd.sizeX; i++)
+        for (size_t j = 0; j < vfpd.sizeY; j++)
+        for (size_t k = 0; k < vfpd.sizeZ; k++)
+            if (getVoxelDataAtPosition(vfpd, i, j, k) != 0)
+            {
+                ivec3 ijk = { i, j, k };
+                glm_ivec3_minv(boundsMin, ijk, boundsMin);
+                glm_ivec3_maxv(boundsMax, ijk, boundsMax);
+            }
+
+        glm_ivec3_copy(ivec3{ -boundsMin[0], -boundsMin[1], -boundsMin[2] }, outOffset);
+
+        // Set the new bounds to the smaller amount.
+        ivec3 newSize;
+        glm_ivec3_sub(boundsMax, boundsMin, newSize);
+
+        // @COPYPASTA
+        // Create a new data grid with new bounds.
+        size_t arraySize = newSize[0] * newSize[1] * newSize[2];
+        uint8_t* newVD = new uint8_t[arraySize];
+        for (size_t i = 0; i < arraySize; i++)
+            newVD[i] = 0;  // Init the value to be empty.
+
+        for (size_t i = 0; i < vfpd.sizeX; i++)
+        for (size_t j = 0; j < vfpd.sizeY; j++)
+        for (size_t k = 0; k < vfpd.sizeZ; k++)
+        {
+            uint8_t data = vfpd.voxelData[i * vfpd.sizeY * vfpd.sizeZ + j * vfpd.sizeZ + k];
+            if (data == 0)
+                continue;  // Skip empty spaces (to also prevent inserting into out of bounds if shrinking the array).
+
+            ivec3 newIJK;
+            glm_ivec3_add(ivec3{ (int32_t)i, (int32_t)j, (int32_t)k }, outOffset, newIJK);
+            newVD[newIJK[0] * newSize[1] * newSize[2] + newIJK[1] * newSize[2] + newIJK[2]] = data;
+        }
+        delete[] vfpd.voxelData;
+        vfpd.voxelData = newVD;
+
+        // Update size for voxel data structure.
+        vfpd.sizeX = (size_t)newSize[0];
+        vfpd.sizeY = (size_t)newSize[1];
+        vfpd.sizeZ = (size_t)newSize[2];
+
+        // Offset the transform.
+        glm_translate(vfpd.transform, vec3{ -(float_t)outOffset[0], -(float_t)outOffset[1], -(float_t)outOffset[2] });
+
+        std::cout << "Shurnk to { " << vfpd.sizeX << ", " << vfpd.sizeY << ", " << vfpd.sizeZ << " }" << std::endl;
+    }
+
     //
     // Capsule pool
     //
