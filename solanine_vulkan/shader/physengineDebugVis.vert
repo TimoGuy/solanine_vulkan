@@ -13,7 +13,8 @@ layout(set = 0, binding = 0) uniform VisCameraBuffer
 
 layout(push_constant) uniform InstancePushConst
 {
-	vec4  color;
+	vec4  color1;
+	vec4  color2;
 	vec4  pt1;
 	vec4  pt2;
 	float capsuleRadius;
@@ -22,7 +23,7 @@ layout(push_constant) uniform InstancePushConst
 
 void main()
 {
-	outColor = instanceData.color.rgb;
+	outColor = (inPointSpace == 0 ? instanceData.color1.rgb : instanceData.color2.rgb);
 	vec3 position = inPos.xyz * instanceData.capsuleRadius + (inPointSpace == 0 ? instanceData.pt1.xyz : instanceData.pt2.xyz);
 	gl_Position = cameraData.projectionView * vec4(position, 1.0);
 }

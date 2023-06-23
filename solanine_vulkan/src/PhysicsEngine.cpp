@@ -58,7 +58,8 @@ namespace physengine
 
     struct GPUVisInstancePushConst
     {
-        vec4 color;
+        vec4 color1;
+        vec4 color2;
         vec4 pt1;  // Vec4's for padding.
         vec4 pt2;
         float_t capsuleRadius;
@@ -452,6 +453,15 @@ namespace physengine
             x >= vfpd.sizeX || y >= vfpd.sizeY || z >= vfpd.sizeZ)
             return 0;
         return vfpd.voxelData[(size_t)x * vfpd.sizeY * vfpd.sizeZ + (size_t)y * vfpd.sizeZ + (size_t)z];
+    }
+
+    bool setVoxelDataAtPosition(const VoxelFieldPhysicsData& vfpd, const int32_t& x, const int32_t& y, const int32_t& z, uint8_t data)
+    {
+        if (x < 0 || y < 0 || z < 0 ||
+            x >= vfpd.sizeX || y >= vfpd.sizeY || z >= vfpd.sizeZ)
+            return false;
+        vfpd.voxelData[(size_t)x * vfpd.sizeY * vfpd.sizeZ + (size_t)y * vfpd.sizeZ + (size_t)z] = data;
+        return true;
     }
 
     //
@@ -868,14 +878,7 @@ namespace physengine
     bool checkLineSegmentIntersectingCapsule(CapsulePhysicsData& cpd, vec3& pt1, vec3& pt2, std::string& outHitGuid)
     {
 #ifdef _DEVELOP
-        {
-            DebugVisLine dvl = {};
-            glm_vec3_copy(pt1, dvl.pt1);
-            glm_vec3_copy(pt2, dvl.pt2);
-
-            std::lock_guard<std::mutex> lg(mutateDebugVisLines);
-            debugVisLines.push_back(dvl);
-        }
+        drawDebugVisLine(pt1, pt2);
 #endif
 
         vec3 a_A, a_B;
@@ -938,6 +941,16 @@ namespace physengine
     }
 
 #ifdef _DEVELOP
+    void drawDebugVisLine(vec3 pt1, vec3 pt2)
+    {
+        DebugVisLine dvl = {};
+        glm_vec3_copy(pt1, dvl.pt1);
+        glm_vec3_copy(pt2, dvl.pt2);
+
+        std::lock_guard<std::mutex> lg(mutateDebugVisLines);
+        debugVisLines.push_back(dvl);
+    }
+
     void renderImguiPerformanceStats()
     {
         static const float_t perfTimeToMS = 1000.0f / (float_t)SDL_GetPerformanceFrequency();
@@ -969,7 +982,8 @@ namespace physengine
         {
             CapsulePhysicsData& cpd = capsulePool[capsuleIndices[i]];
             GPUVisInstancePushConst pc = {};
-            glm_vec4_copy(vec4{ 0.25f, 1.0f, 0.0f, 1.0f }, pc.color);
+            glm_vec4_copy(vec4{ 0.25f, 1.0f, 0.0f, 1.0f }, pc.color1);
+            glm_vec4_copy(pc.color1, pc.color2);
             glm_vec4(cpd.basePosition, 0.0f, pc.pt1);
             glm_vec4_add(pc.pt1, vec4{ 0.0f, cpd.radius, 0.0f, 0.0f }, pc.pt1);
             glm_vec4(cpd.basePosition, 0.0f, pc.pt2);
@@ -991,7 +1005,8 @@ namespace physengine
         for (DebugVisLine& dvl : visLinesCopy)
         {
             GPUVisInstancePushConst pc = {};
-            glm_vec4_copy(vec4{ 0.75f, 0.0f, 1.0f, 1.0f }, pc.color);
+            glm_vec4_copy(vec4{ 0.75f, 0.0f, 1.0f, 1.0f }, pc.color1);
+            glm_vec4_copy(vec4{ 0.0f, 0.75f, 1.0f, 1.0f }, pc.color2);
             glm_vec4(dvl.pt1, 0.0f, pc.pt1);
             glm_vec4(dvl.pt2, 0.0f, pc.pt2);
             vkCmdPushConstants(cmd, debugVisPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUVisInstancePushConst), &pc);

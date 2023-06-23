@@ -198,15 +198,6 @@ void Camera::update(const float_t& deltaTime)
 		_changeEvents[i] = CameraModeChangeEvent::NONE;
 }
 
-void Camera::clipSpacePositionToWorldSpace(vec3 clipSpacePosition, vec3& outWorldSpacePosition)
-{
-	mat4 invProjectionView;
-	glm_mat4_inv(sceneCamera.gpuCameraData.projectionView, invProjectionView);
-	vec4 result;
-	glm_mat4_mulv3(invProjectionView, clipSpacePosition, 1.0f, result);
-	glm_vec3_scale(result, 1.0f / result[3], outWorldSpacePosition);
-}
-
 void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent changeEvent)
 {
 	bool allowInput = true;

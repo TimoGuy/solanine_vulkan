@@ -31,6 +31,8 @@ namespace input
 		keyDPressed,
 		keyCPressed,
 		keyXPressed,
+		keyEscPressed,
+		keyEnterPressed,
 		onKeyJumpPress,
 		onKeyInteractPress,
 		onKeyF10Press,

@@ -60,6 +60,7 @@ namespace physengine
     VoxelFieldPhysicsData* createVoxelField(const std::string& entityGuid, const size_t& sizeX, const size_t& sizeY, const size_t& sizeZ, uint8_t* voxelData);
     bool destroyVoxelField(VoxelFieldPhysicsData* vfpd);
     uint8_t getVoxelDataAtPosition(const VoxelFieldPhysicsData& vfpd, const int32_t& x, const int32_t& y, const int32_t& z);
+    bool setVoxelDataAtPosition(const VoxelFieldPhysicsData& vfpd, const int32_t& x, const int32_t& y, const int32_t& z, uint8_t data);
 
     struct CapsulePhysicsData
     {
@@ -83,6 +84,8 @@ namespace physengine
     bool lineSegmentCast(vec3& pt1, vec3& pt2, size_t collisionLayer, bool getAllGuids, std::vector<std::string>& outHitGuid);
 
 #ifdef _DEVELOP
+    void drawDebugVisLine(vec3 pt1, vec3 pt2);
+
     void renderImguiPerformanceStats();
     void renderDebugVisualization(VulkanEngine* engine, VkCommandBuffer cmd);
 #endif
