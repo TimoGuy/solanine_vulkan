@@ -240,6 +240,10 @@ public:
 	AllocatedBuffer createBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
 	size_t padUniformBufferSize(size_t originalSize);    // @NOTE: this is unused, but it's useful for dynamic uniform buffers
 
+#ifdef _DEVELOP
+	bool generateCollisionDebugVisualization = false;
+#endif
+
 	// Upload context
 	UploadContext _uploadContext;
 	void immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function);

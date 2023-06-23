@@ -18,11 +18,7 @@ namespace physengine
 #endif
 
     void start(EntityManager* em);
-    void cleanup(
-#ifdef _DEVELOP
-        VulkanEngine* engine
-#endif
-    );
+    void cleanup();
 
     void setTimeScale(const float_t& timeScale);
     float_t getPhysicsAlpha();
@@ -87,6 +83,6 @@ namespace physengine
     void drawDebugVisLine(vec3 pt1, vec3 pt2);
 
     void renderImguiPerformanceStats();
-    void renderDebugVisualization(VulkanEngine* engine, VkCommandBuffer cmd);
+    void renderDebugVisualization(VkCommandBuffer cmd);
 #endif
 }

@@ -50,6 +50,7 @@ namespace physengine
     // Debug visualization
     // @INCOMPLETE: for now just have capsules and raycasts be visualized, since the 3d models for the voxel fields is an accurate visualization of it anyways.  -Timo 2023/06/13
     //
+    VulkanEngine* engine;
     struct GPUVisCameraData
     {
         mat4 projectionView;
@@ -83,7 +84,7 @@ namespace physengine
     std::vector<DebugVisLine> debugVisLines;
     std::mutex mutateDebugVisLines;
 
-    void initializeAndUploadBuffers(VulkanEngine* engine)
+    void initializeAndUploadBuffers()
     {
         static std::vector<DebugVisVertex> capsuleVertices = {
             // Bottom cap, y-plane circle.
@@ -206,11 +207,12 @@ namespace physengine
     VkDescriptorSet debugVisDescriptor;
     VkDescriptorSetLayout debugVisDescriptorLayout;
 
-    void initDebugVisDescriptors(VulkanEngine* engine)
+    void initDebugVisDescriptors(VulkanEngine* engineRef)
     {
+        engine = engineRef;
         if (!vertexBuffersInitialized)
         {
-            initializeAndUploadBuffers(engine);
+            initializeAndUploadBuffers();
             vertexBuffersInitialized = true;
         }
 
@@ -290,11 +292,7 @@ namespace physengine
         asyncRunner = new std::thread(runPhysicsEngineAsync);
     }
 
-    void cleanup(
-#ifdef _DEVELOP
-        VulkanEngine* engine
-#endif
-        )
+    void cleanup()
     {
         isAsyncRunnerRunning = false;
         asyncRunner->join();
@@ -878,7 +876,8 @@ namespace physengine
     bool checkLineSegmentIntersectingCapsule(CapsulePhysicsData& cpd, vec3& pt1, vec3& pt2, std::string& outHitGuid)
     {
 #ifdef _DEVELOP
-        drawDebugVisLine(pt1, pt2);
+        if (engine->generateCollisionDebugVisualization)
+            drawDebugVisLine(pt1, pt2);
 #endif
 
         vec3 a_A, a_B;
@@ -961,7 +960,7 @@ namespace physengine
         ImGui::Text(("[0, " + std::format("{:.2f}", perfStats.highestSimTime * perfTimeToMS) + "]").c_str());
     }
 
-    void renderDebugVisualization(VulkanEngine* engine, VkCommandBuffer cmd)
+    void renderDebugVisualization(VkCommandBuffer cmd)
     {
         GPUVisCameraData cd = {};
         glm_mat4_copy(engine->_camera->sceneCamera.gpuCameraData.projectionView, cd.projectionView);
@@ -977,24 +976,28 @@ namespace physengine
         const VkDeviceSize offsets[1] = { 0 };
 
         // Draw capsules
-        vkCmdBindVertexBuffers(cmd, 0, 1, &capsuleVisVertexBuffer._buffer, offsets);
-        for (size_t i = 0; i < numCapsCreated; i++)
+        if (engine->generateCollisionDebugVisualization)
         {
-            CapsulePhysicsData& cpd = capsulePool[capsuleIndices[i]];
-            GPUVisInstancePushConst pc = {};
-            glm_vec4_copy(vec4{ 0.25f, 1.0f, 0.0f, 1.0f }, pc.color1);
-            glm_vec4_copy(pc.color1, pc.color2);
-            glm_vec4(cpd.basePosition, 0.0f, pc.pt1);
-            glm_vec4_add(pc.pt1, vec4{ 0.0f, cpd.radius, 0.0f, 0.0f }, pc.pt1);
-            glm_vec4(cpd.basePosition, 0.0f, pc.pt2);
-            glm_vec4_add(pc.pt2, vec4{ 0.0f, cpd.radius + cpd.height, 0.0f, 0.0f }, pc.pt2);
-            pc.capsuleRadius = cpd.radius;
-            vkCmdPushConstants(cmd, debugVisPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUVisInstancePushConst), &pc);
+            vkCmdBindVertexBuffers(cmd, 0, 1, &capsuleVisVertexBuffer._buffer, offsets);
+            for (size_t i = 0; i < numCapsCreated; i++)
+            {
+                CapsulePhysicsData& cpd = capsulePool[capsuleIndices[i]];
+                GPUVisInstancePushConst pc = {};
+                glm_vec4_copy(vec4{ 0.25f, 1.0f, 0.0f, 1.0f }, pc.color1);
+                glm_vec4_copy(pc.color1, pc.color2);
+                glm_vec4(cpd.basePosition, 0.0f, pc.pt1);
+                glm_vec4_add(pc.pt1, vec4{ 0.0f, cpd.radius, 0.0f, 0.0f }, pc.pt1);
+                glm_vec4(cpd.basePosition, 0.0f, pc.pt2);
+                glm_vec4_add(pc.pt2, vec4{ 0.0f, cpd.radius + cpd.height, 0.0f, 0.0f }, pc.pt2);
+                pc.capsuleRadius = cpd.radius;
+                vkCmdPushConstants(cmd, debugVisPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUVisInstancePushConst), &pc);
 
-            vkCmdDraw(cmd, capsuleVisVertexCount, 1, 0, 0);
+                vkCmdDraw(cmd, capsuleVisVertexCount, 1, 0, 0);
+            }
         }
 
         // Draw lines
+        // @NOTE: draw all lines all the time, bc `generateCollisionDebugVisualization` controls creation of the lines (when doing a raycast only), not the drawing.
         std::vector<DebugVisLine> visLinesCopy;
         {
             // Copy debug vis lines so locking time is minimal.

@@ -186,29 +186,27 @@ bool calculatePositionOnVoxelPlane(VulkanEngine* engine, physengine::VoxelFieldP
 	vec3 linecastPt1, linecastPt2;
     calculateObjectSpaceCameraLinecastPoints(engine, vfpd, linecastPt1, linecastPt2);
 
-    vec3 linecastRayDelta;
-    glm_vec3_sub(linecastPt2, linecastPt1, linecastRayDelta);
-    glm_vec3_normalize(linecastRayDelta);
+    vec3 linecastRayDeltaNormalized;
+    glm_vec3_sub(linecastPt2, linecastPt1, linecastRayDeltaNormalized);
+    glm_vec3_normalize(linecastRayDeltaNormalized);
+
     vec3 osNormalFloat = { (float_t)osNormal[0], (float_t)osNormal[1], (float_t)osNormal[2] };
     glm_vec3_normalize(osNormalFloat);
-    float_t lookDotNormal = glm_vec3_dot(linecastRayDelta, osNormalFloat);
-    bool rayDirectionFacingAwayFromPlane = (lookDotNormal >= 0.0f);
+    float_t denom = glm_vec3_dot(osNormalFloat, linecastRayDeltaNormalized);
+    if (abs(denom) < 1e-6)
+        return false;  // Abort to prevent divide by zero.
 
-    vec3 poijpoij;
-    glm_vec3_sub(linecastPt1, vec3{ (float_t)osStartPosition[0], (float_t)osStartPosition[1], (float_t)osStartPosition[2] }, poijpoij);
-    glm_vec3_normalize(poijpoij);
-    float_t signedDistanceFromPlane = glm_vec3_dot(poijpoij, osNormalFloat);
-    bool rayOriginInFrontOfPlane = (signedDistanceFromPlane >= 0.0f);
+    vec3 planeOrigin = { osStartPosition[0] + 0.5f, osStartPosition[1] + 0.5f, osStartPosition[2] + 0.5f };
+    glm_vec3_muladds(osNormalFloat, 0.5f - 0.001f, planeOrigin);
 
-    if ((rayOriginInFrontOfPlane && rayDirectionFacingAwayFromPlane) ||
-        (!rayOriginInFrontOfPlane && !rayDirectionFacingAwayFromPlane))
-        return false;  // Impossible for an intersection. Abort.
+    vec3 rayOriginPlaneOriginDelta;
+    glm_vec3_sub(planeOrigin, linecastPt1, rayOriginPlaneOriginDelta);
+    float_t t = glm_vec3_dot(rayOriginPlaneOriginDelta, osNormalFloat) / denom;
+    if (t < 0.0f)
+        return false;  // No intersection occurred. Abort.
 
-    // Project linecast ray onto plane (not a test for intersection)
-    vec3 linecastRayDeltaProjectedOntoPlane;
-    glm_vec3_scale(linecastRayDelta, abs(signedDistanceFromPlane), linecastRayDeltaProjectedOntoPlane);
-    glm_vec3_add(linecastPt1, linecastRayDeltaProjectedOntoPlane, outProjectedPosition);
-
+    glm_vec3_copy(linecastPt1, outProjectedPosition);
+    glm_vec3_muladds(linecastRayDeltaNormalized, t, outProjectedPosition);
     return true;
 }
 
@@ -229,10 +227,14 @@ void VoxelField::physicsUpdate(const float_t& physicsDeltaTime)
         {
             // Draw debug visualization
             vec3 linePt1 = { (float_t)_data->editorState.editStartPosition[0], (float_t)_data->editorState.editStartPosition[1], (float_t)_data->editorState.editStartPosition[2] };
-            vec3 linePt2;
-            calculatePositionOnVoxelPlane(_data->engine, _data->vfpd, _data->editorState.editStartPosition, _data->editorState.flatAxis, linePt2);
+            static vec3 linePt2STATIC;
+            if (!input::keyCtrlPressed)
+            {
+                calculatePositionOnVoxelPlane(_data->engine, _data->vfpd, _data->editorState.editStartPosition, _data->editorState.flatAxis, linePt2STATIC);
+            }
             glm_mat4_mulv3(_data->vfpd->transform, linePt1, 1.0f, linePt1);
-            glm_mat4_mulv3(_data->vfpd->transform, linePt2, 1.0f, linePt2);
+            vec3 linePt2;
+            glm_mat4_mulv3(_data->vfpd->transform, linePt2STATIC, 1.0f, linePt2);
             physengine::drawDebugVisLine(linePt1, linePt2);
 
             if (input::keyEscPressed)
