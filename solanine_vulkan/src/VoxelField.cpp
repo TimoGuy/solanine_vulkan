@@ -219,30 +219,87 @@ bool setVoxelDataAtPositionNonDestructive(physengine::VoxelFieldPhysicsData* vfp
     return true;
 }
 
+void drawSquareForVoxel(mat4 vfpdTransform, vec3 pos, vec3 normal)
+{
+    vec3 normalAbs;
+    glm_vec3_abs(normal, normalAbs);
+
+    std::array<vec3, 4> vertices;
+    if (normalAbs[0] > 0.9f)
+    {
+        glm_vec3_add(pos, vec3{ 0.0f, -0.5f, -0.5f }, vertices[0]);
+        glm_vec3_add(pos, vec3{ 0.0f, -0.5f,  0.5f }, vertices[1]);
+        glm_vec3_add(pos, vec3{ 0.0f,  0.5f,  0.5f }, vertices[2]);
+        glm_vec3_add(pos, vec3{ 0.0f,  0.5f, -0.5f }, vertices[3]);
+    }
+    else if (normalAbs[1] > 0.9f)
+    {
+        glm_vec3_add(pos, vec3{ -0.5f, 0.0f, -0.5f }, vertices[0]);
+        glm_vec3_add(pos, vec3{ -0.5f, 0.0f,  0.5f }, vertices[1]);
+        glm_vec3_add(pos, vec3{  0.5f, 0.0f,  0.5f }, vertices[2]);
+        glm_vec3_add(pos, vec3{  0.5f, 0.0f, -0.5f }, vertices[3]);
+    }
+    else
+    {
+        glm_vec3_add(pos, vec3{ -0.5f, -0.5f, 0.0f }, vertices[0]);
+        glm_vec3_add(pos, vec3{ -0.5f,  0.5f, 0.0f }, vertices[1]);
+        glm_vec3_add(pos, vec3{  0.5f,  0.5f, 0.0f }, vertices[2]);
+        glm_vec3_add(pos, vec3{  0.5f, -0.5f, 0.0f }, vertices[3]);
+    }
+
+    for (size_t i = 0; i < vertices.size(); i++)
+        glm_mat4_mulv3(vfpdTransform, vertices[i], 1.0f, vertices[i]);
+    
+    for (size_t i = 0; i < vertices.size(); i++)
+        physengine::drawDebugVisLine(vertices[i], vertices[(i + 1) % vertices.size()]);
+}
+
+void drawVoxelEditingVisualization(VoxelField_XData* d)
+{
+    // Get start and end positions.
+    vec3 normal = { (float_t)d->editorState.flatAxis[0], (float_t)d->editorState.flatAxis[1], (float_t)d->editorState.flatAxis[2] };
+    vec3 pt1 = { (float_t)d->editorState.editStartPosition[0], (float_t)d->editorState.editStartPosition[1], (float_t)d->editorState.editStartPosition[2] };
+    glm_vec3_add(pt1, vec3{ 0.5f, 0.5f, 0.5f }, pt1);
+    glm_vec3_muladds(normal, 0.5f, pt1);
+    vec3 pt2;
+    calculatePositionOnVoxelPlane(d->engine, d->vfpd, d->editorState.editStartPosition, d->editorState.flatAxis, pt2);
+
+    // Iterate and draw all squares.
+    int32_t x, y, z;
+    for (x = (int32_t)floor(pt1[0]); ; x = physutil::moveTowards(x, (int32_t)floor(pt2[0]), 1))
+    {
+        for (y = (int32_t)floor(pt1[1]); ; y = physutil::moveTowards(y, (int32_t)floor(pt2[1]), 1))
+        {
+            for (z = (int32_t)floor(pt1[2]); ; z = physutil::moveTowards(z, (int32_t)floor(pt2[2]), 1))
+            {
+                vec3 drawPos = { x + 0.5f, y + 0.5f, z + 0.5f };
+                glm_vec3_muladds(normal, 0.5f, drawPos);
+                drawSquareForVoxel(d->vfpd->transform, drawPos, normal);
+                if (z == (int32_t)floor(pt2[2])) break;
+            }
+            if (y == (int32_t)floor(pt2[1])) break;
+        }
+        if (x == (int32_t)floor(pt2[0])) break;
+    }
+}
+
 void VoxelField::physicsUpdate(const float_t& physicsDeltaTime)
 {
     if (_data->isPicked)  // @NOTE: this picked checking system, bc physicsupdate() runs outside of the render thread, could easily get out of sync, but as long as the render thread is >40fps it should be fine.
     {
+        static bool prevCorXPressed = false;
+
         if (_data->editorState.editing)
         {
-            // Draw debug visualization
-            vec3 linePt1 = { (float_t)_data->editorState.editStartPosition[0], (float_t)_data->editorState.editStartPosition[1], (float_t)_data->editorState.editStartPosition[2] };
-            static vec3 linePt2STATIC;
-            if (!input::keyCtrlPressed)
-            {
-                calculatePositionOnVoxelPlane(_data->engine, _data->vfpd, _data->editorState.editStartPosition, _data->editorState.flatAxis, linePt2STATIC);
-            }
-            glm_mat4_mulv3(_data->vfpd->transform, linePt1, 1.0f, linePt1);
-            vec3 linePt2;
-            glm_mat4_mulv3(_data->vfpd->transform, linePt2STATIC, 1.0f, linePt2);
-            physengine::drawDebugVisLine(linePt1, linePt2);
+            drawVoxelEditingVisualization(_data);
 
+            // Commit interaction.
             if (input::keyEscPressed)
             {
                 // Exit editing with no changes
                 _data->editorState.editing = false;
             }
-            else if (input::keyEnterPressed)
+            else if (input::keyEnterPressed || (!prevCorXPressed && (input::keyCPressed || input::keyXPressed)))
             {
                 // Exit editing, saving changes
                 vec3 projectedPosition;
@@ -271,6 +328,7 @@ void VoxelField::physicsUpdate(const float_t& physicsDeltaTime)
                         }
                         else
                         {
+                            // Create new voxels (for every spot that's empty) in range.
                             int32_t x, y, z;
                             for (x = _data->editorState.editStartPosition[0]; ; x = physutil::moveTowards(x, _data->editorState.editEndPosition[0], 1))
                             {
@@ -289,14 +347,28 @@ void VoxelField::physicsUpdate(const float_t& physicsDeltaTime)
                     }
                     else
                     {
-
+                        // Delete all voxels in range.
+                        int32_t x, y, z;
+                        for (x = _data->editorState.editStartPosition[0]; ; x = physutil::moveTowards(x, _data->editorState.editEndPosition[0], 1))
+                        {
+                            for (y = _data->editorState.editStartPosition[1]; ; y = physutil::moveTowards(y, _data->editorState.editEndPosition[1], 1))
+                            {
+                                for (z = _data->editorState.editStartPosition[2]; ; z = physutil::moveTowards(z, _data->editorState.editEndPosition[2], 1))
+                                {
+                                    physengine::setVoxelDataAtPosition(*_data->vfpd, x, y, z, 0);
+                                    if (z == _data->editorState.editEndPosition[2]) break;
+                                }
+                                if (y == _data->editorState.editEndPosition[1]) break;
+                            }
+                            if (x == _data->editorState.editEndPosition[0]) break;
+                        }
                     }
                 }
                 _data->editorState.editing = false;
                 assembleVoxelRenderObjects(*_data, getGUID());
             }
         }
-        else
+        else if (!prevCorXPressed)
         {
             if (input::keyCPressed)
             {
@@ -320,6 +392,7 @@ void VoxelField::physicsUpdate(const float_t& physicsDeltaTime)
             }
         }
 
+        prevCorXPressed = input::keyCPressed || input::keyXPressed;
         _data->isPicked = false;
     }
 }

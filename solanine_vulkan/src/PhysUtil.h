@@ -11,7 +11,7 @@ namespace physutil
 	//        converting to cglm.  -Timo 2023/05/17
 
     // float_t smoothStep(float_t edge0, float_t edge1, float_t t);
-	// float_t moveTowards(float_t current, float_t target, float_t maxDistanceDelta);
+	float_t moveTowards(float_t current, float_t target, float_t maxDistanceDelta);
 	int32_t moveTowards(int32_t current, int32_t target, int32_t maxDistanceDelta);
 	// float_t moveTowardsAngle(float_t currentAngle, float_t targetAngle, float_t maxTurnDelta);
 	// glm::vec2 moveTowardsVec2(glm::vec2 current, glm::vec2 target, float_t maxDistanceDelta);

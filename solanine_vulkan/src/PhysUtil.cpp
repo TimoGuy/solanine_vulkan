@@ -12,11 +12,11 @@ namespace physutil
 	// 	return t * t * (3 - 2 * t);
 	// }
 
-	// float_t moveTowards(float_t current, float_t target, float_t maxDistanceDelta)
-	// {
-	// 	float_t delta = target - current;
-	// 	return (maxDistanceDelta >= std::abs(delta)) ? target : (current + copysignf(1.0f, delta) * maxDistanceDelta);
-	// }
+	float_t moveTowards(float_t current, float_t target, float_t maxDistanceDelta)
+	{
+		float_t delta = target - current;
+		return (maxDistanceDelta >= std::abs(delta)) ? target : (current + copysignf(1.0f, delta) * maxDistanceDelta);
+	}
 
 	int32_t moveTowards(int32_t current, int32_t target, int32_t maxDistanceDelta)
 	{
