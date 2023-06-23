@@ -425,8 +425,10 @@ void VoxelField::dump(DataSerializer& ds)
     ds.dumpVec3(sizeXYZ);
 
     size_t totalSize = _data->vfpd->sizeX * _data->vfpd->sizeY * _data->vfpd->sizeZ;
+    std::string voxelDataStringified;
     for (size_t i = 0; i < totalSize; i++)
-        ds.dumpFloat((float_t)_data->vfpd->voxelData[i]);
+        voxelDataStringified += (int8_t)_data->vfpd->voxelData[i];
+    ds.dumpString(voxelDataStringified);
 }
 
 void VoxelField::load(DataSerialized& ds)
@@ -438,13 +440,12 @@ void VoxelField::load(DataSerialized& ds)
     ds.loadVec3(load_size);
 
     size_t    totalSize      = (size_t)load_size[0] * (size_t)load_size[1] * (size_t)load_size[2];
+    std::string load_voxelDataStringified;
+    ds.loadString(load_voxelDataStringified);
+
     uint8_t*  load_voxelData = new uint8_t[totalSize];
     for (size_t i = 0; i < totalSize; i++)
-    {
-        float_t lf;
-        ds.loadFloat(lf);
-        load_voxelData[i] = (uint8_t)lf;
-    }
+        load_voxelData[i] = (uint8_t)load_voxelDataStringified[i];
 
     // Create Voxel Field Physics Data
     _data->vfpd = physengine::createVoxelField(getGUID(), load_size[0], load_size[1], load_size[2], load_voxelData);
