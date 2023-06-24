@@ -2456,7 +2456,7 @@ void VulkanEngine::initPipelines()
 		vkinit::multisamplingStateCreateInfo(),
 		vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL),
 		{ VK_DYNAMIC_STATE_SCISSOR },
-		_mainRenderPass,
+		_pickingRenderPass,
 		pickingPipeline,
 		pickingPipelineLayout
 		);
