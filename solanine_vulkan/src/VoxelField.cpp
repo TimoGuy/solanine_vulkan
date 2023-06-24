@@ -602,7 +602,7 @@ inline void assembleVoxelRenderObjects(VoxelField_XData& data, const std::string
                         }
                     }
                     if (!withinRange)
-                        continue;  // Skip evaluating this voxel bc the render object should already exist here.  @TEST @NOCHECKIN
+                        continue;  // Skip evaluating this voxel bc the render object should already exist here.
                 }
 
                 vec3s ijk_0_5 = { i + 0.5f, j + 0.5f, k + 0.5f };
