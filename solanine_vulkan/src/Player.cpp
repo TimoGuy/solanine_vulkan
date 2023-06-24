@@ -75,8 +75,7 @@ struct Player_XData
     AttackWaza* currentWaza = nullptr;
     float_t     wazaTimer = 0.0f;  // Used for timing chains and hitscans.
     size_t      wazaCurrentHitScanIdx = 1;  // 0th hitscan node is ignored.
-    float_t     wazaHitTimescale;
-    bool        applyWazaHitTimescale = false;
+    float_t     wazaHitTimescale = 1.0f;
 
     // Notifications
     struct Notification

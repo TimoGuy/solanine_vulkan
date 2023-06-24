@@ -4033,6 +4033,10 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 
 		ImGui::Separator();
 
+		ImGui::Text(("Timescale: " + std::to_string(globalState::timescale)).c_str());
+
+		ImGui::Separator();
+
 		ImGui::Text("Render Times");
 		ImGui::Text((std::format("{:.2f}", _debugStats.renderTimesMS[_debugStats.renderTimesMSHeadIndex]) + "ms").c_str());
 		ImGui::PlotHistogram("##Render Times Histogram", _debugStats.renderTimesMS, (int32_t)_debugStats.renderTimesMSCount, (int32_t)_debugStats.renderTimesMSHeadIndex, "", 0.0f, _debugStats.highestRenderTime, ImVec2(256, 24.0f));
