@@ -3661,9 +3661,16 @@ void VulkanEngine::uploadCurrentFrameToGPU(const FrameData& currentFrame)
 	vmaMapMemory(_allocator, currentFrame.pbrShadingPropsBuffer._allocation, &data);
 	memcpy(data, &_pbrRendering.gpuSceneShadingProps, sizeof(GPUPBRShadingProps));
 	vmaUnmapMemory(_allocator, currentFrame.pbrShadingPropsBuffer._allocation);
+}
+
+void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, std::vector<size_t> onlyPoolIndices, std::vector<ModelWithIndirectDrawId>& outIndirectDrawCommandIdsForPoolIndex)
+{
+	std::lock_guard<std::mutex> lg(_roManager->renderObjectIndicesAndPoolMutex);
 
 	//
-	// Fill in object data
+	// Fill in object data into current frame object buffer
+	// @NOTE: this kinda makes more sense to do this in `uploadCurrentFrameToGPU()`,
+	//        however, that would require applying multiple lock guards, and would make the program slower.
 	//
 	void* objectData;
 	vmaMapMemory(_allocator, currentFrame.objectBuffer._allocation, &objectData);
@@ -3674,10 +3681,7 @@ void VulkanEngine::uploadCurrentFrameToGPU(const FrameData& currentFrame)
 			objectSSBO[poolIndex].modelMatrix
 		);		// Another evil pointer trick I love... call me Dmitri the Evil
 	vmaUnmapMemory(_allocator, currentFrame.objectBuffer._allocation);
-}
 
-void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, std::vector<size_t> onlyPoolIndices, std::vector<ModelWithIndirectDrawId>& outIndirectDrawCommandIdsForPoolIndex)
-{
 	//
 	// Cull out render object indices that are not marked as visible
 	//

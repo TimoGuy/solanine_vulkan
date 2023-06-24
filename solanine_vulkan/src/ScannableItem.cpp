@@ -36,18 +36,22 @@ ScannableItem::ScannableItem(EntityManager* em, RenderObjectManager* rom, DataSe
     if (ds)
         load(*ds);
 
-    _data->renderObj =
-        _data->rom->registerRenderObject({
-            .model = _data->rom->getModel(globalState::getAncientWeaponItemByIndex(_data->scannableItemId)->modelName, this, []() {}),
-            .renderLayer = RenderLayer::VISIBLE,
-            .attachedEntityGuid = getGUID(),
-            });
+    _data->rom->registerRenderObject({
+            {
+                .model = _data->rom->getModel(globalState::getAncientWeaponItemByIndex(_data->scannableItemId)->modelName, this, []() {}),
+                .renderLayer = RenderLayer::VISIBLE,
+                .attachedEntityGuid = getGUID(),
+            }
+        },
+        { &_data->renderObj }
+    );
+
     glm_translate(_data->renderObj->transformMatrix, _data->position);
 }
 
 ScannableItem::~ScannableItem()
 {
-    _data->rom->unregisterRenderObject(_data->renderObj);
+    _data->rom->unregisterRenderObject({ _data->renderObj });
     _data->rom->removeModelCallbacks(this);
 
     delete _data;
@@ -86,15 +90,18 @@ void ScannableItem::update(const float_t& deltaTime)
     if (_data->requestChangeItemModel)
     {
         // @BUG: validation error occurs right here... though, it'd just for development so not too much of a concern.
-        _data->rom->unregisterRenderObject(_data->renderObj);
+        _data->rom->unregisterRenderObject({ _data->renderObj });
         _data->rom->removeModelCallbacks(this);
 
-        _data->renderObj =
         _data->rom->registerRenderObject({
-            .model = _data->rom->getModel(globalState::getAncientWeaponItemByIndex(_data->scannableItemId)->modelName, this, []() {}),
-            .renderLayer = RenderLayer::VISIBLE,
-            .attachedEntityGuid = getGUID(),
-            });
+                {
+                    .model = _data->rom->getModel(globalState::getAncientWeaponItemByIndex(_data->scannableItemId)->modelName, this, []() {}),
+                    .renderLayer = RenderLayer::VISIBLE,
+                    .attachedEntityGuid = getGUID(),
+                }
+            },
+            { &_data->renderObj }
+        );
 
         _data->requestChangeItemModel = false;
     }

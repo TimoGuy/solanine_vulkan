@@ -4,51 +4,59 @@
 #include "VkglTFModel.h"
 
 
-RenderObject* RenderObjectManager::registerRenderObject(RenderObject renderObjectData)
+bool RenderObjectManager::registerRenderObject(std::vector<RenderObject> inRenderObjectDatas, std::vector<RenderObject**> outRenderObjectDatas)
 {
-    // @NOTE: using a pool system bc of pointers losing information when stuff gets deleted.  -Timo 2022/11/06
+	// @NOTE: using a pool system bc of pointers losing information when stuff gets deleted.  -Timo 2022/11/06
 	// @NOTE: I think past me is talking about when a std::vector gets to a certain capacity, it
 	//        has to recreate a new array and insert all of the information into the array. Since
 	//        the array contains information that exists on the stack, it has to get moved, breaking
 	//        pointers and breaking my heart along the way.  -Timo 2023/05/27
-	if (_renderObjectsIndices.size() >= RENDER_OBJECTS_MAX_CAPACITY)
+	if (_renderObjectsIndices.size() + inRenderObjectDatas.size() > RENDER_OBJECTS_MAX_CAPACITY)
 	{
 		std::cerr << "[REGISTER RENDER OBJECT]" << std::endl
-			<< "ERROR: trying to register render object when capacity is at maximum." << std::endl
+			<< "ERROR: trying to register render object when capacity will overflow maximum." << std::endl
 			<< "       Current capacity: " << _renderObjectsIndices.size() << std::endl
-			<< "       Maximum capacity: " << _renderObjectPool.size() << std::endl;
-		return nullptr;
+			<< "       Maximum capacity: " << _renderObjectPool.size() << std::endl
+			<< "       Amount requesting to register: " << inRenderObjectDatas.size() << std::endl;
+		return false;
 	}
 
-	// Find next open spot in pool
-	// @COPYPASTA
-	size_t registerIndex = 0;
-	for (size_t i = 0; i < _renderObjectsIsRegistered.size(); i++)
+	std::lock_guard<std::mutex> lg(renderObjectIndicesAndPoolMutex);
+
+	// Register each render object in the batch.
+	for (size_t i = 0; i < inRenderObjectDatas.size(); i++)
 	{
-		if (!_renderObjectsIsRegistered[i])
+		size_t registerIndex = 0;
+		for (size_t i = 0; i < _renderObjectsIsRegistered.size(); i++)
 		{
-			registerIndex = i;
-			break;
+			if (!_renderObjectsIsRegistered[i])
+			{
+				registerIndex = i;
+				break;
+			}
 		}
+
+		// Calculate instance pointers
+		RenderObject& renderObjectData = inRenderObjectDatas[i];
+		renderObjectData.calculatedModelInstances.clear();
+		auto primitives = renderObjectData.model->getAllPrimitivesInOrder();
+		for (auto& primitive : primitives)
+			renderObjectData.calculatedModelInstances.push_back({
+				.objectID = (uint32_t)registerIndex,
+				.materialID = primitive->materialID,
+				.animatorNodeID =
+					(uint32_t)(renderObjectData.animator == nullptr ?
+					0 :
+					renderObjectData.animator->skinIndexToGlobalReservedNodeIndex(primitive->animatorSkinIndexPropagatedCopy)),
+				});
+
+		// Register object
+		_renderObjectPool[registerIndex] = renderObjectData;
+		_renderObjectsIsRegistered[registerIndex] = true;
+		_renderObjectsIndices.push_back(registerIndex);
+
+		*outRenderObjectDatas[i] = &_renderObjectPool[registerIndex];
 	}
-
-	// Calculate instance pointers
-	renderObjectData.calculatedModelInstances.clear();
-	auto primitives = renderObjectData.model->getAllPrimitivesInOrder();
-	for (auto& primitive : primitives)
-		renderObjectData.calculatedModelInstances.push_back({
-			.objectID = (uint32_t)registerIndex,
-			.materialID = primitive->materialID,
-			.animatorNodeID =
-				(uint32_t)(renderObjectData.animator == nullptr ?
-				0 :
-				renderObjectData.animator->skinIndexToGlobalReservedNodeIndex(primitive->animatorSkinIndexPropagatedCopy)),
-		});
-
-	// Register object
-	_renderObjectPool[registerIndex] = renderObjectData;
-	_renderObjectsIsRegistered[registerIndex] = true;
-	_renderObjectsIndices.push_back(registerIndex);
 
 	// Sort pool indices so that models are next to each other (helps with model compacting in the rendering stage).
 	std::sort(
@@ -65,36 +73,44 @@ RenderObject* RenderObjectManager::registerRenderObject(RenderObject renderObjec
 	// Recalculate what indices animated render objects are at
 	recalculateAnimatorIndices();
 
-	return &_renderObjectPool[registerIndex];
+	return true;
 }
 
-void RenderObjectManager::unregisterRenderObject(RenderObject* objRegistration)
+void RenderObjectManager::unregisterRenderObject(std::vector<RenderObject*> objRegistrations)
 {
-	// @COPYPASTA
-	size_t indicesIndex = 0;
-	for (size_t poolIndex : _renderObjectsIndices)
+	std::lock_guard<std::mutex> lg(renderObjectIndicesAndPoolMutex);
+
+	for (RenderObject* objRegistration : objRegistrations)
 	{
-		auto& rod = _renderObjectPool[poolIndex];
-		if (&rod == objRegistration)
+		// Iterate thru each object registration, unregistering it.
+		bool found = false;
+		size_t indicesIndex = 0;
+		for (size_t poolIndex : _renderObjectsIndices)
 		{
-			// Unregister object
-			_renderObjectsIsRegistered[poolIndex] = false;
-			_renderObjectsIndices.erase(_renderObjectsIndices.begin() + indicesIndex);
+			auto& rod = _renderObjectPool[poolIndex];
+			if (&rod == objRegistration)
+			{
+				// Unregister object
+				_renderObjectsIsRegistered[poolIndex] = false;
+				_renderObjectsIndices.erase(_renderObjectsIndices.begin() + indicesIndex);
 
-			for (bool* sendFlag : _sendInstancePtrDataToGPU_refs)
-				*sendFlag = true;
+				for (bool* sendFlag : _sendInstancePtrDataToGPU_refs)
+					*sendFlag = true;
 
-			// Recalculate what indices animated render objects are at
-			recalculateAnimatorIndices();
+				// Recalculate what indices animated render objects are at
+				recalculateAnimatorIndices();
 
-			return;
+				found = true;
+				break;
+			}
+
+			indicesIndex++;
 		}
 
-		indicesIndex++;
+		if (!found)
+			std::cerr << "[UNREGISTER RENDER OBJECT]" << std::endl
+				<< "ERROR: render object " << objRegistration << " was not found. Nothing unregistered." << std::endl;
 	}
-
-	std::cerr << "[UNREGISTER RENDER OBJECT]" << std::endl
-		<< "ERROR: render object " << objRegistration << " was not found. Nothing unregistered." << std::endl;
 }
 
 #ifdef _DEVELOP

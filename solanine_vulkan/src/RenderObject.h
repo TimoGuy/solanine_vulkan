@@ -5,6 +5,7 @@
 #include <string>
 #include <functional>
 #include <unordered_map>
+#include <mutex>
 #include <vma/vk_mem_alloc.h>
 #include "ImportGLM.h"
 #include "Settings.h"
@@ -42,8 +43,8 @@ struct RenderObject
 class RenderObjectManager
 {
 public:
-	RenderObject* registerRenderObject(RenderObject renderObjectData);
-	void unregisterRenderObject(RenderObject* objRegistration);
+	bool registerRenderObject(std::vector<RenderObject> inRenderObjectDatas, std::vector<RenderObject**> outRenderObjectDatas);
+	void unregisterRenderObject(std::vector<RenderObject*> objRegistrations);
 
 #ifdef _DEVELOP
 	vkglTF::Model* getModel(const std::string& name, void* owner, std::function<void()>&& reloadCallback);  // This is to support model hot-reloading via a callback lambda
@@ -56,6 +57,8 @@ public:
 private:
 	RenderObjectManager(VmaAllocator& allocator);
 	~RenderObjectManager();
+
+	std::mutex renderObjectIndicesAndPoolMutex;  // For locking control of the render object pool and indices.
 
 	std::vector<bool*> _sendInstancePtrDataToGPU_refs;
 

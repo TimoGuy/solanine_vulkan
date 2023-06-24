@@ -507,30 +507,28 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
     };
 
     vkglTF::Model* characterModel = _data->rom->getModel("SlimeGirl", this, [](){});
-    _data->characterRenderObj =
-        _data->rom->registerRenderObject({
-            .model = characterModel,
-            .animator = new vkglTF::Animator(characterModel, animatorCallbacks),
-            .renderLayer = RenderLayer::VISIBLE,
-            .attachedEntityGuid = getGUID(),
-            });
-    // transformMatrix = glm::translate(GLM_MAT4_IDENTITY_INIT, _data->position) * glm::toMat4(glm::quat(vec3(0, _data->facingDirection, 0))) * glm::scale(GLM_MAT4_IDENTITY_INIT, vec3(_data->modelSize)),
-
     vkglTF::Model* handleModel = _data->rom->getModel("Handle", this, [](){});
-    _data->handleRenderObj =
-        _data->rom->registerRenderObject({
-            .model = handleModel,
-            .renderLayer = RenderLayer::VISIBLE,
-            .attachedEntityGuid = getGUID(),
-            });
-
     vkglTF::Model* weaponModel = _data->rom->getModel("WingWeapon", this, [](){});
-    _data->weaponRenderObj =
-        _data->rom->registerRenderObject({
-            .model = weaponModel,
-            .renderLayer = RenderLayer::INVISIBLE,
-            .attachedEntityGuid = getGUID(),
-            });
+    _data->rom->registerRenderObject({
+            {
+                .model = characterModel,
+                .animator = new vkglTF::Animator(characterModel, animatorCallbacks),
+                .renderLayer = RenderLayer::VISIBLE,
+                .attachedEntityGuid = getGUID(),
+            },
+            {
+                .model = handleModel,
+                .renderLayer = RenderLayer::VISIBLE,
+                .attachedEntityGuid = getGUID(),
+            },
+            {
+                .model = weaponModel,
+                .renderLayer = RenderLayer::INVISIBLE,
+                .attachedEntityGuid = getGUID(),
+            },
+        },
+        { &_data->characterRenderObj, &_data->handleRenderObj, &_data->weaponRenderObj }
+    );
 
     _data->camera->mainCamMode.setMainCamTargetObject(_data->characterRenderObj);  // @NOTE: I believe that there should be some kind of main camera system that targets the player by default but when entering different volumes etc. the target changes depending.... essentially the system needs to be more built out imo
 
@@ -567,9 +565,7 @@ Player::~Player()
     }
 
     delete _data->characterRenderObj->animator;
-    _data->rom->unregisterRenderObject(_data->characterRenderObj);
-    _data->rom->unregisterRenderObject(_data->handleRenderObj);
-    _data->rom->unregisterRenderObject(_data->weaponRenderObj);
+    _data->rom->unregisterRenderObject({ _data->characterRenderObj, _data->handleRenderObj, _data->weaponRenderObj });
     _data->rom->removeModelCallbacks(this);
 
     physengine::destroyCapsule(_data->cpd);

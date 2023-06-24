@@ -556,6 +556,8 @@ inline void assembleVoxelRenderObjects(VoxelField_XData& data, const std::string
     deleteVoxelRenderObjects(data);
 
     // Check for if voxel is filled and not surrounded
+    std::vector<RenderObject> inROs;
+    std::vector<RenderObject**> outRORefs;
     for (int32_t i = 0; i < data.vfpd->sizeX; i++)
     for (int32_t j = 0; j < data.vfpd->sizeY; j++)
     for (int32_t k = 0; k < data.vfpd->sizeZ; k++)
@@ -571,26 +573,28 @@ inline void assembleVoxelRenderObjects(VoxelField_XData& data, const std::string
                 !physengine::getVoxelDataAtPosition(*data.vfpd, i, j, k - 1))
             {
                 vec3s ijk_0_5 = { i + 0.5f, j + 0.5f, k + 0.5f };
-                RenderObject* newRO =
-                    data.rom->registerRenderObject({
-                        .model = data.voxelModel,
-                        .renderLayer = RenderLayer::VISIBLE,
-                        .attachedEntityGuid = attachedEntityGuid,
-                    });
-                glm_mat4_copy(data.vfpd->transform, newRO->transformMatrix);
-                glm_translate(newRO->transformMatrix, ijk_0_5.raw);
+                RenderObject newRO = {
+                    .model = data.voxelModel,
+                    .renderLayer = RenderLayer::VISIBLE,
+                    .attachedEntityGuid = attachedEntityGuid,
+                };
+                glm_mat4_copy(data.vfpd->transform, newRO.transformMatrix);
+                glm_translate(newRO.transformMatrix, ijk_0_5.raw);
 
-                data.voxelRenderObjs.push_back(newRO);
+                inROs.push_back(newRO);
+                data.voxelRenderObjs.push_back(nullptr);
                 data.voxelOffsets.push_back(ijk_0_5);  // @NOCHECKIN: error with adding vec3's
             }
         }
     }
+    for (size_t i = 0; i < data.voxelRenderObjs.size(); i++)
+        outRORefs.push_back(&data.voxelRenderObjs[i]);
+    data.rom->registerRenderObject(inROs, outRORefs);
 }
 
 inline void deleteVoxelRenderObjects(VoxelField_XData& data)
 {
-    for (auto& v : data.voxelRenderObjs)
-        data.rom->unregisterRenderObject(v);
+    data.rom->unregisterRenderObject(data.voxelRenderObjs);
     data.voxelRenderObjs.clear();
     data.voxelOffsets.clear();
 }

@@ -40,12 +40,15 @@ HarvestableItem::HarvestableItem(EntityManager* em, RenderObjectManager* rom, Da
     if (ds)
         load(*ds);
 
-    _data->renderObj =
-        _data->rom->registerRenderObject({
-            .model = _data->rom->getModel(globalState::getHarvestableItemByIndex(_data->harvestableItemId)->modelName, this, []() {}),
-            .renderLayer = RenderLayer::VISIBLE,
-            .attachedEntityGuid = getGUID(),
-            });
+    _data->rom->registerRenderObject({
+            {
+                .model = _data->rom->getModel(globalState::getHarvestableItemByIndex(_data->harvestableItemId)->modelName, this, []() {}),
+                .renderLayer = RenderLayer::VISIBLE,
+                .attachedEntityGuid = getGUID(),
+            }
+        },
+        { &_data->renderObj }
+    );
     glm_translate(_data->renderObj->transformMatrix, _data->position);
 
     _data->cpd = physengine::createCapsule(getGUID(), 1.0f, 0.0f);
@@ -64,7 +67,7 @@ HarvestableItem::~HarvestableItem()
 
     physengine::destroyCapsule(_data->cpd);  // @DEBUG
 
-    _data->rom->unregisterRenderObject(_data->renderObj);
+    _data->rom->unregisterRenderObject({ _data->renderObj });
     _data->rom->removeModelCallbacks(this);
 
     delete _data;
@@ -105,15 +108,18 @@ void HarvestableItem::update(const float_t& deltaTime)
     {
         // @BUG: validation error occurs right here... though, it'd just for development so not too much of a concern.
         // @COPYPASTA
-        _data->rom->unregisterRenderObject(_data->renderObj);
+        _data->rom->unregisterRenderObject({ _data->renderObj });
         _data->rom->removeModelCallbacks(this);
 
-        _data->renderObj =
-            _data->rom->registerRenderObject({
-                .model = _data->rom->getModel(globalState::getHarvestableItemByIndex(_data->harvestableItemId)->modelName, this, []() {}),
-                .renderLayer = RenderLayer::VISIBLE,
-                .attachedEntityGuid = getGUID(),
-                });
+        _data->rom->registerRenderObject({
+                {
+                    .model = _data->rom->getModel(globalState::getHarvestableItemByIndex(_data->harvestableItemId)->modelName, this, []() {}),
+                    .renderLayer = RenderLayer::VISIBLE,
+                    .attachedEntityGuid = getGUID(),
+                }
+            },
+            { &_data->renderObj }
+        );
 
         _data->requestChangeItemModel = false;
     }
