@@ -105,7 +105,7 @@ struct Player_XData
 
 void pushPlayerNotification(const std::string& message, Player_XData* d)
 {
-    AudioEngine::getInstance().playSound("wip_bonk.ogg");
+    AudioEngine::getInstance().playSound("res/sfx/wip_bonk.ogg");
     d->notification.showMessageTimer = d->notification.showMessageTime;
 
     // Lazyload the message textmesh. (@NOTE: no multithreading so no locks required)
