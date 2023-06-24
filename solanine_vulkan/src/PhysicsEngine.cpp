@@ -18,6 +18,7 @@
 #include <format>
 #include "PhysUtil.h"
 #include "EntityManager.h"
+#include "GlobalState.h"
 #include "imgui/imgui.h"
 #include "imgui/implot.h"
 
@@ -28,8 +29,8 @@ namespace physengine
     // Physics engine works
     //
     constexpr float_t physicsDeltaTime = 0.025f;    // 40fps. This seemed to be the sweet spot. 25/30fps would be inconsistent for getting smaller platform jumps with the dash move. 50fps felt like too many physics calculations all at once. 40fps seems right, striking a balance.  -Timo 2023/01/26
-    constexpr float_t oneOverPhysicsDeltaTimeInMS = 1.0f / (physicsDeltaTime * 1000.0f);
-    float_t timeScale = 1.0f;
+    constexpr float_t physicsDeltaTimeInMS = physicsDeltaTime * 1000.0f;
+    constexpr float_t oneOverPhysicsDeltaTimeInMS = 1.0f / physicsDeltaTimeInMS;
 
     void runPhysicsEngineAsync();
     EntityManager* entityManager;
@@ -306,22 +307,15 @@ namespace physengine
 #endif
     }
 
-    void INTERNALsetTimeScale(const float_t& timeScale)
-    {
-        physengine::timeScale = timeScale;
-    }
-
     float_t getPhysicsAlpha()
     {
-        return (SDL_GetTicks64() - lastTick) * oneOverPhysicsDeltaTimeInMS;
+        return (SDL_GetTicks64() - lastTick) * oneOverPhysicsDeltaTimeInMS * globalState::timescale;
     }
 
     void tick();
 
     void runPhysicsEngineAsync()
     {
-        constexpr uint64_t physicsDeltaTimeInMS = physicsDeltaTime * 1000.0f;
-
         while (isAsyncRunnerRunning)
         {
             lastTick = SDL_GetTicks64();
@@ -342,7 +336,7 @@ namespace physengine
             //         if the timescale slows down, then the tick rate should also slow down
             //         proportionate to the timescale.  -Timo 2023/06/10
             tick();
-            entityManager->INTERNALphysicsUpdate(physicsDeltaTime * timeScale);
+            entityManager->INTERNALphysicsUpdate(physicsDeltaTime);  // @NOTE: if timescale changes, then the system just waits longer/shorter.
 
 #ifdef _DEVELOP
             {
@@ -375,13 +369,14 @@ namespace physengine
             // Wait for remaining time
             uint64_t endingTime = SDL_GetTicks64();
             uint64_t timeDiff = endingTime - lastTick;
-            if (timeDiff > physicsDeltaTimeInMS)
+            uint64_t physicsDeltaTimeInMSScaled = physicsDeltaTimeInMS / globalState::timescale;
+            if (timeDiff > physicsDeltaTimeInMSScaled)
             {
-                std::cerr << "ERROR: physics engine is running too slowly. (" << (timeDiff - physicsDeltaTimeInMS) << "ns behind)" << std::endl;
+                std::cerr << "ERROR: physics engine is running too slowly. (" << (timeDiff - physicsDeltaTimeInMSScaled) << "ns behind)" << std::endl;
             }
             else
             {
-                SDL_Delay((uint32_t)(physicsDeltaTimeInMS - timeDiff));
+                SDL_Delay((uint32_t)(physicsDeltaTimeInMSScaled - timeDiff));
             }
         }
     }

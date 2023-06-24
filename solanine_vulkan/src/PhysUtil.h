@@ -20,7 +20,7 @@ namespace physutil
     // vec3 getPosition(const mat4& transform);
 	// glm::quat getRotation(const mat4& transform);
 	// vec3 getScale(const mat4& transform);
-    // float_t lerp(const float_t& a, const float_t& b, const float_t& t);
+    float_t lerp(const float_t& a, const float_t& b, const float_t& t);
     // vec3 lerp(vec3 a, vec3 b, vec3 t);
     // bool matrixEquals(const mat4& m1, const mat4& m2, float epsilon = 0.0001f);
 }

@@ -108,6 +108,10 @@ struct DeletionQueue
 class VulkanEngine
 {
 public:
+	void init();
+	void run();
+	void cleanup();
+
 	bool _isInitialized{ false };
 	uint32_t _frameNumber{ 0 };
 
@@ -192,11 +196,6 @@ public:
 
 	// VMA Lib Allocator
 	VmaAllocator _allocator;
-
-
-	void init();
-	void run();
-	void cleanup();
 
 	void render();		// @TODO: Why is this public?
 
@@ -346,7 +345,6 @@ public:
 	};
 
 private:
-
 	//
 	// Entities
 	//

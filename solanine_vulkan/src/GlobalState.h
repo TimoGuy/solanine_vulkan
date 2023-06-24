@@ -20,6 +20,8 @@ namespace globalState
     extern std::string playerGUID;
     extern vec3* playerPositionRef;
 
+    extern float_t timescale;
+
     enum AncientWeaponItemType
     {
         WEAPON,

@@ -75,6 +75,8 @@ struct Player_XData
     AttackWaza* currentWaza = nullptr;
     float_t     wazaTimer = 0.0f;  // Used for timing chains and hitscans.
     size_t      wazaCurrentHitScanIdx = 1;  // 0th hitscan node is ignored.
+    float_t     wazaHitTimescale;
+    bool        applyWazaHitTimescale = false;
 
     // Notifications
     struct Notification
@@ -424,7 +426,10 @@ void processWazaUpdate(Player_XData* d, EntityManager* em, const float_t& physic
 
     // Play sound if an attack waza landed.
     if (playWazaHitSfx)
+    {
         AudioEngine::getInstance().playSound("res/sfx/wip_EnemyHit_Critical.wav");
+        d->wazaHitTimescale = 0.5f;
+    }
 
     // End waza if duration has passed.
     if (d->wazaTimer >= d->currentWaza->duration)
@@ -758,6 +763,15 @@ void Player::update(const float_t& deltaTime)
     // Update twitch angle
     _data->characterRenderObj->animator->setTwitchAngle(_data->attackTwitchAngle);
     _data->attackTwitchAngle = glm_lerp(_data->attackTwitchAngle, 0.0f, std::abs(_data->attackTwitchAngle) * _data->attackTwitchAngleReturnSpeed * 60.0f * deltaTime);
+
+    // Update time scale with waza hit
+    if (_data->wazaHitTimescale < 1.0f)
+    {
+        _data->wazaHitTimescale = physutil::lerp(_data->wazaHitTimescale, 1.0f, deltaTime / 0.5f);
+        if (_data->wazaHitTimescale > 0.999f)
+            _data->wazaHitTimescale = 1.0f;
+        globalState::timescale = _data->wazaHitTimescale;
+    }
 }
 
 void Player::lateUpdate(const float_t& deltaTime)

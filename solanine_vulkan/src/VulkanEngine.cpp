@@ -147,15 +147,13 @@ void VulkanEngine::run()
 
 		perfs[1] = SDL_GetPerformanceCounter();
 		// Update time multiplier
-		static float_t timeScale = 1.0f;
 		if (input::onKeyLSBPress || input::onKeyRSBPress)
 		{
-			timeScale *= input::onKeyLSBPress ? 0.5f : 2.0f;
+			globalState::timescale *= input::onKeyLSBPress ? 0.5f : 2.0f;
 			debug::pushDebugMessage({
-				.message = "Set timescale to " + std::to_string(timeScale),
+				.message = "Set timescale to " + std::to_string(globalState::timescale),
 			});
 		}
-		physengine::INTERNALsetTimeScale(timeScale);
 		perfs[1] = SDL_GetPerformanceCounter() - perfs[1];
 
 
@@ -163,7 +161,7 @@ void VulkanEngine::run()
 		// Update DeltaTime
 		uint64_t currentFrame = SDL_GetPerformanceCounter();
 		const float_t deltaTime = (float_t)(currentFrame - lastFrame) * ticksFrequency;
-		const float_t scaledDeltaTime = deltaTime * timeScale;
+		const float_t scaledDeltaTime = deltaTime * globalState::timescale;
 		lastFrame = currentFrame;
 		perfs[2] = SDL_GetPerformanceCounter() - perfs[2];
 

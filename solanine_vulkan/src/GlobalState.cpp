@@ -20,6 +20,8 @@ namespace globalState
     std::string playerGUID = "";
     vec3* playerPositionRef = nullptr;
 
+    float_t timescale = 1.0f;
+
     SceneCamera* sceneCameraRef = nullptr;
 
     // Harvestable items (e.g. materials, raw ores, etc.)

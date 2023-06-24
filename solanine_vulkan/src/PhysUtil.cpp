@@ -114,10 +114,10 @@ namespace physutil
 	// 	return scale;
 	// }
 
-	// float_t lerp(const float_t& a, const float_t& b, const float_t& t)
-	// {
-	// 	return ((1.0f - t) * a) + (t * b);
-	// }
+	float_t lerp(const float_t& a, const float_t& b, const float_t& t)
+	{
+		return ((1.0f - t) * a) + (t * b);
+	}
 
 	// vec3 lerp(vec3 a, vec3 b, vec3 t)
 	// {
