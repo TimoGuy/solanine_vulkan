@@ -589,12 +589,12 @@ inline void assembleVoxelRenderObjects(VoxelField_XData& data, const std::string
     }
     for (size_t i = 0; i < data.voxelRenderObjs.size(); i++)
         outRORefs.push_back(&data.voxelRenderObjs[i]);
-    data.rom->registerRenderObject(inROs, outRORefs);
+    data.rom->registerRenderObjects(inROs, outRORefs);
 }
 
 inline void deleteVoxelRenderObjects(VoxelField_XData& data)
 {
-    data.rom->unregisterRenderObject(data.voxelRenderObjs);
+    data.rom->unregisterRenderObjects(data.voxelRenderObjs);
     data.voxelRenderObjs.clear();
     data.voxelOffsets.clear();
 }

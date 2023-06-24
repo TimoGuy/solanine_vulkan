@@ -36,7 +36,7 @@ ScannableItem::ScannableItem(EntityManager* em, RenderObjectManager* rom, DataSe
     if (ds)
         load(*ds);
 
-    _data->rom->registerRenderObject({
+    _data->rom->registerRenderObjects({
             {
                 .model = _data->rom->getModel(globalState::getAncientWeaponItemByIndex(_data->scannableItemId)->modelName, this, []() {}),
                 .renderLayer = RenderLayer::VISIBLE,
@@ -51,7 +51,7 @@ ScannableItem::ScannableItem(EntityManager* em, RenderObjectManager* rom, DataSe
 
 ScannableItem::~ScannableItem()
 {
-    _data->rom->unregisterRenderObject({ _data->renderObj });
+    _data->rom->unregisterRenderObjects({ _data->renderObj });
     _data->rom->removeModelCallbacks(this);
 
     delete _data;
@@ -90,10 +90,10 @@ void ScannableItem::update(const float_t& deltaTime)
     if (_data->requestChangeItemModel)
     {
         // @BUG: validation error occurs right here... though, it'd just for development so not too much of a concern.
-        _data->rom->unregisterRenderObject({ _data->renderObj });
+        _data->rom->unregisterRenderObjects({ _data->renderObj });
         _data->rom->removeModelCallbacks(this);
 
-        _data->rom->registerRenderObject({
+        _data->rom->registerRenderObjects({
                 {
                     .model = _data->rom->getModel(globalState::getAncientWeaponItemByIndex(_data->scannableItemId)->modelName, this, []() {}),
                     .renderLayer = RenderLayer::VISIBLE,

@@ -4,7 +4,7 @@
 #include "VkglTFModel.h"
 
 
-bool RenderObjectManager::registerRenderObject(std::vector<RenderObject> inRenderObjectDatas, std::vector<RenderObject**> outRenderObjectDatas)
+bool RenderObjectManager::registerRenderObjects(std::vector<RenderObject> inRenderObjectDatas, std::vector<RenderObject**> outRenderObjectDatas)
 {
 	// @NOTE: using a pool system bc of pointers losing information when stuff gets deleted.  -Timo 2022/11/06
 	// @NOTE: I think past me is talking about when a std::vector gets to a certain capacity, it
@@ -76,7 +76,7 @@ bool RenderObjectManager::registerRenderObject(std::vector<RenderObject> inRende
 	return true;
 }
 
-void RenderObjectManager::unregisterRenderObject(std::vector<RenderObject*> objRegistrations)
+void RenderObjectManager::unregisterRenderObjects(std::vector<RenderObject*> objRegistrations)
 {
 	std::lock_guard<std::mutex> lg(renderObjectIndicesAndPoolMutex);
 

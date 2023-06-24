@@ -43,8 +43,8 @@ struct RenderObject
 class RenderObjectManager
 {
 public:
-	bool registerRenderObject(std::vector<RenderObject> inRenderObjectDatas, std::vector<RenderObject**> outRenderObjectDatas);
-	void unregisterRenderObject(std::vector<RenderObject*> objRegistrations);
+	bool registerRenderObjects(std::vector<RenderObject> inRenderObjectDatas, std::vector<RenderObject**> outRenderObjectDatas);
+	void unregisterRenderObjects(std::vector<RenderObject*> objRegistrations);
 
 #ifdef _DEVELOP
 	vkglTF::Model* getModel(const std::string& name, void* owner, std::function<void()>&& reloadCallback);  // This is to support model hot-reloading via a callback lambda

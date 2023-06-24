@@ -509,7 +509,7 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
     vkglTF::Model* characterModel = _data->rom->getModel("SlimeGirl", this, [](){});
     vkglTF::Model* handleModel = _data->rom->getModel("Handle", this, [](){});
     vkglTF::Model* weaponModel = _data->rom->getModel("WingWeapon", this, [](){});
-    _data->rom->registerRenderObject({
+    _data->rom->registerRenderObjects({
             {
                 .model = characterModel,
                 .animator = new vkglTF::Animator(characterModel, animatorCallbacks),
@@ -565,7 +565,7 @@ Player::~Player()
     }
 
     delete _data->characterRenderObj->animator;
-    _data->rom->unregisterRenderObject({ _data->characterRenderObj, _data->handleRenderObj, _data->weaponRenderObj });
+    _data->rom->unregisterRenderObjects({ _data->characterRenderObj, _data->handleRenderObj, _data->weaponRenderObj });
     _data->rom->removeModelCallbacks(this);
 
     physengine::destroyCapsule(_data->cpd);

@@ -40,7 +40,7 @@ HarvestableItem::HarvestableItem(EntityManager* em, RenderObjectManager* rom, Da
     if (ds)
         load(*ds);
 
-    _data->rom->registerRenderObject({
+    _data->rom->registerRenderObjects({
             {
                 .model = _data->rom->getModel(globalState::getHarvestableItemByIndex(_data->harvestableItemId)->modelName, this, []() {}),
                 .renderLayer = RenderLayer::VISIBLE,
@@ -67,7 +67,7 @@ HarvestableItem::~HarvestableItem()
 
     physengine::destroyCapsule(_data->cpd);  // @DEBUG
 
-    _data->rom->unregisterRenderObject({ _data->renderObj });
+    _data->rom->unregisterRenderObjects({ _data->renderObj });
     _data->rom->removeModelCallbacks(this);
 
     delete _data;
@@ -108,10 +108,10 @@ void HarvestableItem::update(const float_t& deltaTime)
     {
         // @BUG: validation error occurs right here... though, it'd just for development so not too much of a concern.
         // @COPYPASTA
-        _data->rom->unregisterRenderObject({ _data->renderObj });
+        _data->rom->unregisterRenderObjects({ _data->renderObj });
         _data->rom->removeModelCallbacks(this);
 
-        _data->rom->registerRenderObject({
+        _data->rom->registerRenderObjects({
                 {
                     .model = _data->rom->getModel(globalState::getHarvestableItemByIndex(_data->harvestableItemId)->modelName, this, []() {}),
                     .renderLayer = RenderLayer::VISIBLE,

@@ -73,7 +73,7 @@ Beanbag::Beanbag(EntityManager* em, RenderObjectManager* rom, DataSerialized* ds
     if (ds)
         load(*ds);
 
-    _data->rom->registerRenderObject({
+    _data->rom->registerRenderObjects({
             {
                 .model = _data->rom->getModel("Dummy", this, []() {}),
                 .renderLayer = RenderLayer::VISIBLE,
@@ -92,7 +92,7 @@ Beanbag::~Beanbag()
 {
     physengine::destroyCapsule(_data->cpd);
 
-    _data->rom->unregisterRenderObject({ _data->renderObj });
+    _data->rom->unregisterRenderObjects({ _data->renderObj });
     _data->rom->removeModelCallbacks(this);
 
     delete _data;
@@ -110,10 +110,10 @@ void Beanbag::update(const float_t& deltaTime)
     {
         // @BUG: validation error occurs right here... though, it'd just for development so not too much of a concern.
         // @COPYPASTA
-        _data->rom->unregisterRenderObject({ _data->renderObj });
+        _data->rom->unregisterRenderObjects({ _data->renderObj });
         _data->rom->removeModelCallbacks(this);
 
-        _data->rom->registerRenderObject({
+        _data->rom->registerRenderObjects({
                 {
                     .model = _data->rom->getModel("Dummy", this, []() {}),
                     .renderLayer = RenderLayer::VISIBLE,
