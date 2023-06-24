@@ -155,7 +155,7 @@ void VulkanEngine::run()
 				.message = "Set timescale to " + std::to_string(timeScale),
 			});
 		}
-		physengine::setTimeScale(timeScale);
+		physengine::INTERNALsetTimeScale(timeScale);
 		perfs[1] = SDL_GetPerformanceCounter() - perfs[1];
 
 

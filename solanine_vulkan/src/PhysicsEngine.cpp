@@ -306,7 +306,7 @@ namespace physengine
 #endif
     }
 
-    void setTimeScale(const float_t& timeScale)
+    void INTERNALsetTimeScale(const float_t& timeScale)
     {
         physengine::timeScale = timeScale;
     }

@@ -20,7 +20,7 @@ namespace physengine
     void start(EntityManager* em);
     void cleanup();
 
-    void setTimeScale(const float_t& timeScale);
+    void INTERNALsetTimeScale(const float_t& timeScale);
     float_t getPhysicsAlpha();
 
     struct VoxelFieldPhysicsData
