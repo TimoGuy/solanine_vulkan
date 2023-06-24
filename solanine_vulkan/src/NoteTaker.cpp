@@ -13,18 +13,21 @@ NoteTaker::NoteTaker(EntityManager* em, RenderObjectManager* rom, DataSerialized
         load(*ds);
 
     vkglTF::Model* model = _rom->getModel("NotesIcon", this, [](){});
-    _renderObj =
-        _rom->registerRenderObject({
-            .model = model,
-            .renderLayer = RenderLayer::BUILDER,
-            .attachedEntityGuid = getGUID(),
-        });
+    _rom->registerRenderObjects({
+            {
+                .model = model,
+                .renderLayer = RenderLayer::BUILDER,
+                .attachedEntityGuid = getGUID(),
+            }
+        },
+        { &_renderObj }
+    );
     glm_mat4_copy(_load_transform, _renderObj->transformMatrix);
 }
 
 NoteTaker::~NoteTaker()
 {
-    _rom->unregisterRenderObject(_renderObj);
+    _rom->unregisterRenderObjects({ _renderObj });
     _rom->removeModelCallbacks(this);
 }
 

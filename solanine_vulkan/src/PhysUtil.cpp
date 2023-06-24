@@ -1,5 +1,6 @@
 #include "PhysUtil.h"
 
+#include <cmath>
 #include <algorithm>
 
 
@@ -11,17 +12,24 @@ namespace physutil
 	// 	return t * t * (3 - 2 * t);
 	// }
 
-	// float_t moveTowards(float_t current, float_t target, float_t maxDistanceDelta)
-	// {
-	// 	float_t delta = target - current;
-	// 	return (maxDistanceDelta >= std::abs(delta)) ? target : (current + copysignf(1.0f, delta) * maxDistanceDelta);
-	// }
+	float_t moveTowards(float_t current, float_t target, float_t maxDistanceDelta)
+	{
+		float_t delta = target - current;
+		return (maxDistanceDelta >= std::abs(delta)) ? target : (current + copysignf(1.0f, delta) * maxDistanceDelta);
+	}
 
-	// glm::i64 moveTowards(glm::i64 current, glm::i64 target, glm::i64 maxDistanceDelta)
-	// {
-	// 	glm::i64 delta = target - current;
-	// 	return (maxDistanceDelta >= glm::abs(delta)) ? target : (current + glm::sign(delta) * maxDistanceDelta);
-	// }
+	int32_t moveTowards(int32_t current, int32_t target, int32_t maxDistanceDelta)
+	{
+		int32_t delta = target - current;
+		if (maxDistanceDelta >= abs(delta))
+			return target;
+		else if (delta == 0)
+			return current;
+		else if (delta < 0)
+			return current - maxDistanceDelta;
+		else
+			return current + maxDistanceDelta;
+	}
 
 	// float_t moveTowardsAngle(float_t currentAngle, float_t targetAngle, float_t maxTurnDelta)
 	// {

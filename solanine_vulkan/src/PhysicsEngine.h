@@ -18,11 +18,7 @@ namespace physengine
 #endif
 
     void start(EntityManager* em);
-    void cleanup(
-#ifdef _DEVELOP
-        VulkanEngine* engine
-#endif
-    );
+    void cleanup();
 
     void setTimeScale(const float_t& timeScale);
     float_t getPhysicsAlpha();
@@ -60,6 +56,9 @@ namespace physengine
     VoxelFieldPhysicsData* createVoxelField(const std::string& entityGuid, const size_t& sizeX, const size_t& sizeY, const size_t& sizeZ, uint8_t* voxelData);
     bool destroyVoxelField(VoxelFieldPhysicsData* vfpd);
     uint8_t getVoxelDataAtPosition(const VoxelFieldPhysicsData& vfpd, const int32_t& x, const int32_t& y, const int32_t& z);
+    bool setVoxelDataAtPosition(const VoxelFieldPhysicsData& vfpd, const int32_t& x, const int32_t& y, const int32_t& z, uint8_t data);
+    void expandVoxelFieldBounds(VoxelFieldPhysicsData& vfpd, ivec3 boundsMin, ivec3 boundsMax, ivec3& outOffset);
+    void shrinkVoxelFieldBoundsAuto(VoxelFieldPhysicsData& vfpd, ivec3& outOffset);
 
     struct CapsulePhysicsData
     {
@@ -83,7 +82,9 @@ namespace physengine
     bool lineSegmentCast(vec3& pt1, vec3& pt2, size_t collisionLayer, bool getAllGuids, std::vector<std::string>& outHitGuid);
 
 #ifdef _DEVELOP
+    void drawDebugVisLine(vec3 pt1, vec3 pt2);
+
     void renderImguiPerformanceStats();
-    void renderDebugVisualization(VulkanEngine* engine, VkCommandBuffer cmd);
+    void renderDebugVisualization(VkCommandBuffer cmd);
 #endif
 }

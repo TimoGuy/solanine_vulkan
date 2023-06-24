@@ -89,6 +89,8 @@
     <None Include="shader\sdf.frag" />
     <None Include="shader\sdf.vert" />
     <None Include="shader\color_textbox_bg.frag" />
+    <None Include="shader\physengineDebugVis.frag" />
+    <None Include="shader\physengineDebugVis.vert" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\imgui\imconfig.h">

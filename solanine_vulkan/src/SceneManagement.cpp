@@ -49,7 +49,7 @@ namespace scene
         if (objectName == NoteTaker::TYPE_NAME)
             ent = new NoteTaker(engine->_entityManager, engine->_roManager, ds);
         if (objectName == VoxelField::TYPE_NAME)
-            ent = new VoxelField(engine->_entityManager, engine->_roManager, ds);
+            ent = new VoxelField(engine, engine->_entityManager, engine->_roManager, ds);
         if (objectName == ScannableItem::TYPE_NAME)
             ent = new ScannableItem(engine->_entityManager, engine->_roManager, ds);
         if (objectName == HarvestableItem::TYPE_NAME)

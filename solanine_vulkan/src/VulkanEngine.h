@@ -240,6 +240,10 @@ public:
 	AllocatedBuffer createBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
 	size_t padUniformBufferSize(size_t originalSize);    // @NOTE: this is unused, but it's useful for dynamic uniform buffers
 
+#ifdef _DEVELOP
+	bool generateCollisionDebugVisualization = false;
+#endif
+
 	// Upload context
 	UploadContext _uploadContext;
 	void immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function);
@@ -273,9 +277,23 @@ private:
 	
 	std::vector<IndirectBatch> indirectBatches;
 
-	void compactRenderObjectsIntoDraws(const FrameData& currentFrame, std::vector<size_t> onlyPoolIndices);
-	void renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, bool materialOverride);
-	void renderPickedObject(VkCommandBuffer cmd, const FrameData& currentFrame);
+	struct ModelWithIndirectDrawId
+	{
+		vkglTF::Model* model;
+		uint32_t indirectDrawId;
+	};
+
+	void compactRenderObjectsIntoDraws(
+		const FrameData& currentFrame,
+#ifdef _DEVELOP
+		std::vector<size_t> onlyPoolIndices,
+		std::vector<ModelWithIndirectDrawId>& outIndirectDrawCommandIdsForPoolIndex
+#endif
+		);
+	void renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame);
+
+	bool searchForPickedObjectPoolIndex(size_t& outPoolIndex);
+	void renderPickedObject(VkCommandBuffer cmd, const FrameData& currentFrame, const std::vector<ModelWithIndirectDrawId>& indirectDrawCommandIds);
 
 public:
 	//

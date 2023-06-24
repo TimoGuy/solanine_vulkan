@@ -50,6 +50,7 @@ namespace physengine
     // Debug visualization
     // @INCOMPLETE: for now just have capsules and raycasts be visualized, since the 3d models for the voxel fields is an accurate visualization of it anyways.  -Timo 2023/06/13
     //
+    VulkanEngine* engine;
     struct GPUVisCameraData
     {
         mat4 projectionView;
@@ -58,7 +59,8 @@ namespace physengine
 
     struct GPUVisInstancePushConst
     {
-        vec4 color;
+        vec4 color1;
+        vec4 color2;
         vec4 pt1;  // Vec4's for padding.
         vec4 pt2;
         float_t capsuleRadius;
@@ -82,7 +84,7 @@ namespace physengine
     std::vector<DebugVisLine> debugVisLines;
     std::mutex mutateDebugVisLines;
 
-    void initializeAndUploadBuffers(VulkanEngine* engine)
+    void initializeAndUploadBuffers()
     {
         static std::vector<DebugVisVertex> capsuleVertices = {
             // Bottom cap, y-plane circle.
@@ -205,11 +207,12 @@ namespace physengine
     VkDescriptorSet debugVisDescriptor;
     VkDescriptorSetLayout debugVisDescriptorLayout;
 
-    void initDebugVisDescriptors(VulkanEngine* engine)
+    void initDebugVisDescriptors(VulkanEngine* engineRef)
     {
+        engine = engineRef;
         if (!vertexBuffersInitialized)
         {
-            initializeAndUploadBuffers(engine);
+            initializeAndUploadBuffers();
             vertexBuffersInitialized = true;
         }
 
@@ -289,11 +292,7 @@ namespace physengine
         asyncRunner = new std::thread(runPhysicsEngineAsync);
     }
 
-    void cleanup(
-#ifdef _DEVELOP
-        VulkanEngine* engine
-#endif
-        )
+    void cleanup()
     {
         isAsyncRunnerRunning = false;
         asyncRunner->join();
@@ -452,6 +451,104 @@ namespace physengine
             x >= vfpd.sizeX || y >= vfpd.sizeY || z >= vfpd.sizeZ)
             return 0;
         return vfpd.voxelData[(size_t)x * vfpd.sizeY * vfpd.sizeZ + (size_t)y * vfpd.sizeZ + (size_t)z];
+    }
+
+    bool setVoxelDataAtPosition(const VoxelFieldPhysicsData& vfpd, const int32_t& x, const int32_t& y, const int32_t& z, uint8_t data)
+    {
+        if (x < 0 || y < 0 || z < 0 ||
+            x >= vfpd.sizeX || y >= vfpd.sizeY || z >= vfpd.sizeZ)
+            return false;
+        vfpd.voxelData[(size_t)x * vfpd.sizeY * vfpd.sizeZ + (size_t)y * vfpd.sizeZ + (size_t)z] = data;
+        return true;
+    }
+
+    void expandVoxelFieldBounds(VoxelFieldPhysicsData& vfpd, ivec3 boundsMin, ivec3 boundsMax, ivec3& outOffset)
+    {
+        ivec3 newSize;
+        glm_ivec3_maxv(ivec3{ (int32_t)vfpd.sizeX, (int32_t)vfpd.sizeY, (int32_t)vfpd.sizeZ }, ivec3{ boundsMax[0] + 1, boundsMax[1] + 1, boundsMax[2] + 1 }, newSize);
+
+        glm_ivec3_minv(ivec3{ 0, 0, 0 }, boundsMin, outOffset);
+        glm_ivec3_mul(outOffset, ivec3{ -1, -1, -1 }, outOffset);
+        glm_ivec3_add(newSize, outOffset, newSize);  // Adds on the offset.
+
+        // Create a new data grid with new bounds.
+        size_t arraySize = newSize[0] * newSize[1] * newSize[2];
+        uint8_t* newVD = new uint8_t[arraySize];
+        for (size_t i = 0; i < arraySize; i++)
+            newVD[i] = 0;  // Init the value to be empty.
+
+        for (size_t i = 0; i < vfpd.sizeX; i++)
+        for (size_t j = 0; j < vfpd.sizeY; j++)
+        for (size_t k = 0; k < vfpd.sizeZ; k++)
+        {
+            uint8_t data = vfpd.voxelData[i * vfpd.sizeY * vfpd.sizeZ + j * vfpd.sizeZ + k];
+            ivec3 newIJK;
+            glm_ivec3_add(ivec3{ (int32_t)i, (int32_t)j, (int32_t)k }, outOffset, newIJK);
+            newVD[newIJK[0] * newSize[1] * newSize[2] + newIJK[1] * newSize[2] + newIJK[2]] = data;
+        }
+        delete[] vfpd.voxelData;
+        vfpd.voxelData = newVD;
+
+        // Update size for voxel data structure.
+        vfpd.sizeX = (size_t)newSize[0];
+        vfpd.sizeY = (size_t)newSize[1];
+        vfpd.sizeZ = (size_t)newSize[2];
+
+        // Offset the transform.
+        glm_translate(vfpd.transform, vec3{ -(float_t)outOffset[0], -(float_t)outOffset[1], -(float_t)outOffset[2] });
+    }
+
+    void shrinkVoxelFieldBoundsAuto(VoxelFieldPhysicsData& vfpd, ivec3& outOffset)
+    {
+        ivec3 boundsMin = { vfpd.sizeX, vfpd.sizeY, vfpd.sizeZ };
+        ivec3 boundsMax = { 0, 0, 0 };
+        for (size_t i = 0; i < vfpd.sizeX; i++)
+        for (size_t j = 0; j < vfpd.sizeY; j++)
+        for (size_t k = 0; k < vfpd.sizeZ; k++)
+            if (getVoxelDataAtPosition(vfpd, i, j, k) != 0)
+            {
+                ivec3 ijk = { i, j, k };
+                glm_ivec3_minv(boundsMin, ijk, boundsMin);
+                glm_ivec3_maxv(boundsMax, ijk, boundsMax);
+            }
+        glm_ivec3_mul(boundsMin, ivec3{ -1, -1, -1 }, outOffset);
+
+        // Set the new bounds to the smaller amount.
+        ivec3 newSize;
+        glm_ivec3_add(boundsMax, ivec3{ 1, 1, 1 }, newSize);
+        glm_ivec3_sub(newSize, boundsMin, newSize);
+
+        // @COPYPASTA
+        // Create a new data grid with new bounds.
+        size_t arraySize = newSize[0] * newSize[1] * newSize[2];
+        uint8_t* newVD = new uint8_t[arraySize];
+        for (size_t i = 0; i < arraySize; i++)
+            newVD[i] = 0;  // Init the value to be empty.
+
+        for (size_t i = 0; i < vfpd.sizeX; i++)
+        for (size_t j = 0; j < vfpd.sizeY; j++)
+        for (size_t k = 0; k < vfpd.sizeZ; k++)
+        {
+            uint8_t data = vfpd.voxelData[i * vfpd.sizeY * vfpd.sizeZ + j * vfpd.sizeZ + k];
+            if (data == 0)
+                continue;  // Skip empty spaces (to also prevent inserting into out of bounds if shrinking the array).
+
+            ivec3 newIJK;
+            glm_ivec3_add(ivec3{ (int32_t)i, (int32_t)j, (int32_t)k }, outOffset, newIJK);
+            newVD[newIJK[0] * newSize[1] * newSize[2] + newIJK[1] * newSize[2] + newIJK[2]] = data;
+        }
+        delete[] vfpd.voxelData;
+        vfpd.voxelData = newVD;
+
+        // Update size for voxel data structure.
+        vfpd.sizeX = (size_t)newSize[0];
+        vfpd.sizeY = (size_t)newSize[1];
+        vfpd.sizeZ = (size_t)newSize[2];
+
+        // Offset the transform.
+        glm_translate(vfpd.transform, vec3{ -(float_t)outOffset[0], -(float_t)outOffset[1], -(float_t)outOffset[2] });
+
+        std::cout << "Shurnk to { " << vfpd.sizeX << ", " << vfpd.sizeY << ", " << vfpd.sizeZ << " }" << std::endl;
     }
 
     //
@@ -868,14 +965,8 @@ namespace physengine
     bool checkLineSegmentIntersectingCapsule(CapsulePhysicsData& cpd, vec3& pt1, vec3& pt2, std::string& outHitGuid)
     {
 #ifdef _DEVELOP
-        {
-            DebugVisLine dvl = {};
-            glm_vec3_copy(pt1, dvl.pt1);
-            glm_vec3_copy(pt2, dvl.pt2);
-
-            std::lock_guard<std::mutex> lg(mutateDebugVisLines);
-            debugVisLines.push_back(dvl);
-        }
+        if (engine->generateCollisionDebugVisualization)
+            drawDebugVisLine(pt1, pt2);
 #endif
 
         vec3 a_A, a_B;
@@ -938,6 +1029,16 @@ namespace physengine
     }
 
 #ifdef _DEVELOP
+    void drawDebugVisLine(vec3 pt1, vec3 pt2)
+    {
+        DebugVisLine dvl = {};
+        glm_vec3_copy(pt1, dvl.pt1);
+        glm_vec3_copy(pt2, dvl.pt2);
+
+        std::lock_guard<std::mutex> lg(mutateDebugVisLines);
+        debugVisLines.push_back(dvl);
+    }
+
     void renderImguiPerformanceStats()
     {
         static const float_t perfTimeToMS = 1000.0f / (float_t)SDL_GetPerformanceFrequency();
@@ -948,7 +1049,7 @@ namespace physengine
         ImGui::Text(("[0, " + std::format("{:.2f}", perfStats.highestSimTime * perfTimeToMS) + "]").c_str());
     }
 
-    void renderDebugVisualization(VulkanEngine* engine, VkCommandBuffer cmd)
+    void renderDebugVisualization(VkCommandBuffer cmd)
     {
         GPUVisCameraData cd = {};
         glm_mat4_copy(engine->_camera->sceneCamera.gpuCameraData.projectionView, cd.projectionView);
@@ -964,23 +1065,28 @@ namespace physengine
         const VkDeviceSize offsets[1] = { 0 };
 
         // Draw capsules
-        vkCmdBindVertexBuffers(cmd, 0, 1, &capsuleVisVertexBuffer._buffer, offsets);
-        for (size_t i = 0; i < numCapsCreated; i++)
+        if (engine->generateCollisionDebugVisualization)
         {
-            CapsulePhysicsData& cpd = capsulePool[capsuleIndices[i]];
-            GPUVisInstancePushConst pc = {};
-            glm_vec4_copy(vec4{ 0.25f, 1.0f, 0.0f, 1.0f }, pc.color);
-            glm_vec4(cpd.basePosition, 0.0f, pc.pt1);
-            glm_vec4_add(pc.pt1, vec4{ 0.0f, cpd.radius, 0.0f, 0.0f }, pc.pt1);
-            glm_vec4(cpd.basePosition, 0.0f, pc.pt2);
-            glm_vec4_add(pc.pt2, vec4{ 0.0f, cpd.radius + cpd.height, 0.0f, 0.0f }, pc.pt2);
-            pc.capsuleRadius = cpd.radius;
-            vkCmdPushConstants(cmd, debugVisPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUVisInstancePushConst), &pc);
+            vkCmdBindVertexBuffers(cmd, 0, 1, &capsuleVisVertexBuffer._buffer, offsets);
+            for (size_t i = 0; i < numCapsCreated; i++)
+            {
+                CapsulePhysicsData& cpd = capsulePool[capsuleIndices[i]];
+                GPUVisInstancePushConst pc = {};
+                glm_vec4_copy(vec4{ 0.25f, 1.0f, 0.0f, 1.0f }, pc.color1);
+                glm_vec4_copy(pc.color1, pc.color2);
+                glm_vec4(cpd.basePosition, 0.0f, pc.pt1);
+                glm_vec4_add(pc.pt1, vec4{ 0.0f, cpd.radius, 0.0f, 0.0f }, pc.pt1);
+                glm_vec4(cpd.basePosition, 0.0f, pc.pt2);
+                glm_vec4_add(pc.pt2, vec4{ 0.0f, cpd.radius + cpd.height, 0.0f, 0.0f }, pc.pt2);
+                pc.capsuleRadius = cpd.radius;
+                vkCmdPushConstants(cmd, debugVisPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUVisInstancePushConst), &pc);
 
-            vkCmdDraw(cmd, capsuleVisVertexCount, 1, 0, 0);
+                vkCmdDraw(cmd, capsuleVisVertexCount, 1, 0, 0);
+            }
         }
 
         // Draw lines
+        // @NOTE: draw all lines all the time, bc `generateCollisionDebugVisualization` controls creation of the lines (when doing a raycast only), not the drawing.
         std::vector<DebugVisLine> visLinesCopy;
         {
             // Copy debug vis lines so locking time is minimal.
@@ -991,7 +1097,8 @@ namespace physengine
         for (DebugVisLine& dvl : visLinesCopy)
         {
             GPUVisInstancePushConst pc = {};
-            glm_vec4_copy(vec4{ 0.75f, 0.0f, 1.0f, 1.0f }, pc.color);
+            glm_vec4_copy(vec4{ 0.75f, 0.0f, 1.0f, 1.0f }, pc.color1);
+            glm_vec4_copy(vec4{ 0.0f, 0.75f, 1.0f, 1.0f }, pc.color2);
             glm_vec4(dvl.pt1, 0.0f, pc.pt1);
             glm_vec4(dvl.pt2, 0.0f, pc.pt2);
             vkCmdPushConstants(cmd, debugVisPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUVisInstancePushConst), &pc);

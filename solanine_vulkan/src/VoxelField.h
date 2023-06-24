@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Entity.h"
+class VulkanEngine;
 class EntityManager;
 class RenderObjectManager;
 struct VoxelField_XData;
@@ -12,7 +13,7 @@ public:
     static const std::string TYPE_NAME;
     std::string getTypeName() { return TYPE_NAME; };
 
-    VoxelField(EntityManager* em, RenderObjectManager* rom, DataSerialized* ds);
+    VoxelField(VulkanEngine* engine, EntityManager* em, RenderObjectManager* rom, DataSerialized* ds);
     ~VoxelField();
 
     void physicsUpdate(const float_t& physicsDeltaTime);

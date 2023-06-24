@@ -197,20 +197,6 @@ namespace textbox
 
     void update(const float_t& unscaledDeltaTime)
     {
-        if (input::onKeyF8Press)
-        {
-            // @DEBUG: add in a message.
-            sendTextboxMessage({
-                .texts = {
-                    "Hello there girlie.",
-                    "Let me massage you there.",
-                    "AUUUGHHHH!!! The Finish!",
-                },
-                .useEndingQuery = false,
-            });
-            return;
-        }
-
         if (myText == nullptr)
             return;
 

@@ -32,8 +32,6 @@
 
 
 constexpr uint64_t TIMEOUT_1_SEC = 1000000000;
-bool showCollisionDebugDraw = false;
-
 
 void VulkanEngine::init()
 {
@@ -290,11 +288,7 @@ void VulkanEngine::cleanup()
 		vkDeviceWaitIdle(_device);
 
 		globalState::cleanupGlobalState();
-		physengine::cleanup(
-#ifdef _DEVELOP
-			this
-#endif
-		);
+		physengine::cleanup();
 		AudioEngine::getInstance().cleanup();
 
 		delete _entityManager;
@@ -371,7 +365,13 @@ void VulkanEngine::render()
 	perfs[14] = SDL_GetPerformanceCounter();
 	uploadCurrentFrameToGPU(currentFrame);
 	textmesh::uploadUICameraDataToGPU();
-	compactRenderObjectsIntoDraws(currentFrame, {});
+#ifdef _DEVELOP
+	std::vector<size_t> pickedPoolIndices = { 0 };
+	if (!searchForPickedObjectPoolIndex(pickedPoolIndices[0]))
+		pickedPoolIndices.clear();
+	std::vector<ModelWithIndirectDrawId> pickingIndirectDrawCommandIds;
+#endif
+	compactRenderObjectsIntoDraws(currentFrame, pickedPoolIndices, pickingIndirectDrawCommandIds);
 	perfs[14] = SDL_GetPerformanceCounter() - perfs[14];
 
 	//
@@ -417,7 +417,7 @@ void VulkanEngine::render()
 			CascadeIndexPushConstBlock pc = { i };
 			vkCmdPushConstants(cmd, shadowDepthPassMaterial.pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(CascadeIndexPushConstBlock), &pc);
 
-			renderRenderObjects(cmd, currentFrame, true);
+			renderRenderObjects(cmd, currentFrame);
 			
 			vkCmdEndRenderPass(cmd);
 		}
@@ -465,10 +465,21 @@ void VulkanEngine::render()
 		skybox->draw(cmd);
 		///////////////////
 
-		renderRenderObjects(cmd, currentFrame, false);
-		renderPickedObject(cmd, currentFrame);
-		if (showCollisionDebugDraw)
-			physengine::renderDebugVisualization(this, cmd);
+		// Bind material
+		// @TODO: put this into its own function!
+		Material& defaultMaterial = *getMaterial("pbrMaterial");    // @HACK: @TODO: currently, the way that the pipeline is getting used is by just hardcode using it in the draw commands for models... however, each model should get its pipeline set to this material instead (or whatever material its using... that's why we can't hardcode stuff!!!)   @TODO: create some kind of way to propagate the newly created pipeline to the primMat (calculated material in the gltf model) instead of using defaultMaterial directly.  -Timo
+		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipeline);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 3, 1, &defaultMaterial.textureSet, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(), 0, nullptr);
+		////////////////
+
+		renderRenderObjects(cmd, currentFrame);
+		if (!pickingIndirectDrawCommandIds.empty())
+			renderPickedObject(cmd, currentFrame, pickingIndirectDrawCommandIds);
+		physengine::renderDebugVisualization(cmd);
 
 		// End renderpass
 		vkCmdEndRenderPass(cmd);
@@ -826,7 +837,7 @@ void VulkanEngine::render()
 		std::cout << "[PICKING]" << std::endl
 			<< "set picking scissor to: x=" << scissor.offset.x << "  y=" << scissor.offset.y << "  w=" << scissor.extent.width << "  h=" << scissor.extent.height << std::endl;
 
-		renderRenderObjects(cmd, currentFrame, true);
+		renderRenderObjects(cmd, currentFrame);
 
 		// End renderpass
 		vkCmdEndRenderPass(cmd);
@@ -3650,9 +3661,16 @@ void VulkanEngine::uploadCurrentFrameToGPU(const FrameData& currentFrame)
 	vmaMapMemory(_allocator, currentFrame.pbrShadingPropsBuffer._allocation, &data);
 	memcpy(data, &_pbrRendering.gpuSceneShadingProps, sizeof(GPUPBRShadingProps));
 	vmaUnmapMemory(_allocator, currentFrame.pbrShadingPropsBuffer._allocation);
+}
+
+void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, std::vector<size_t> onlyPoolIndices, std::vector<ModelWithIndirectDrawId>& outIndirectDrawCommandIdsForPoolIndex)
+{
+	std::lock_guard<std::mutex> lg(_roManager->renderObjectIndicesAndPoolMutex);
 
 	//
-	// Fill in object data
+	// Fill in object data into current frame object buffer
+	// @NOTE: this kinda makes more sense to do this in `uploadCurrentFrameToGPU()`,
+	//        however, that would require applying multiple lock guards, and would make the program slower.
 	//
 	void* objectData;
 	vmaMapMemory(_allocator, currentFrame.objectBuffer._allocation, &objectData);
@@ -3663,10 +3681,7 @@ void VulkanEngine::uploadCurrentFrameToGPU(const FrameData& currentFrame)
 			objectSSBO[poolIndex].modelMatrix
 		);		// Another evil pointer trick I love... call me Dmitri the Evil
 	vmaUnmapMemory(_allocator, currentFrame.objectBuffer._allocation);
-}
 
-void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, std::vector<size_t> onlyPoolIndices)
-{
 	//
 	// Cull out render object indices that are not marked as visible
 	//
@@ -3681,20 +3696,6 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, 
 			continue;
 		if (object.model == nullptr)
 			continue;
-
-		// Check to see if pool index is in wanted pool indices
-		if (!onlyPoolIndices.empty())
-		{
-			bool found = false;
-			for (size_t index : onlyPoolIndices)
-				if (index == poolIndex)
-				{
-					found = true;
-					break;
-				}
-			if (!found)
-				continue;  // Skip indices that are not part of the wanted "only render these pool indices"
-		}
 
 		// It's visible!!!!
 		visibleIndices.push_back(poolIndex);
@@ -3796,12 +3797,25 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, 
 				.instanceCount = 1,
 				.firstIndex = ib.meshFirstIndex,
 				.vertexOffset = 0,
-				.firstInstance = (uint32_t)instanceID++,
+				.firstInstance = (uint32_t)instanceID,
 			};
 			indirectDrawCommands++;
 
-			*instancePtrSSBO = _roManager->_renderObjectPool[visibleIndices[baseModelRenderObjectIndex + modelIndex]].calculatedModelInstances[meshIndex];
+			GPUInstancePointer& gip = _roManager->_renderObjectPool[visibleIndices[baseModelRenderObjectIndex + modelIndex]].calculatedModelInstances[meshIndex];
+#ifdef _DEVELOP
+			if (!onlyPoolIndices.empty())
+				for (size_t index : onlyPoolIndices)
+					if (index == gip.objectID)
+					{
+						// Include this draw indirect command.
+						outIndirectDrawCommandIdsForPoolIndex.push_back({ ib.model, (uint32_t)instanceID });
+						break;
+					}
+#endif
+			*instancePtrSSBO = gip;
 			instancePtrSSBO++;
+
+			instanceID++;
 		}
 
 		// Increment to the next mesh
@@ -3814,20 +3828,8 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, 
 	indirectBatches = batches;
 }
 
-void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, bool materialOverride)
+void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame)
 {
-	if (!materialOverride)
-	{
-		// Bind material
-		Material& defaultMaterial = *getMaterial("pbrMaterial");    // @HACK: @TODO: currently, the way that the pipeline is getting used is by just hardcode using it in the draw commands for models... however, each model should get its pipeline set to this material instead (or whatever material its using... that's why we can't hardcode stuff!!!)   @TODO: create some kind of way to propagate the newly created pipeline to the primMat (calculated material in the gltf model) instead of using defaultMaterial directly.  -Timo
-		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipeline);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 3, 1, &defaultMaterial.textureSet, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(), 0, nullptr);
-	}
-
 	// Iterate thru all the batches
 	uint32_t drawStride = sizeof(VkDrawIndexedIndirectCommand);
 	for (IndirectBatch& batch : indirectBatches)
@@ -3838,34 +3840,27 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 	}
 }
 
-void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& currentFrame)
+bool VulkanEngine::searchForPickedObjectPoolIndex(size_t& outPoolIndex)
 {
-	//
-	// Try to find the picked object
-	//
-	bool found = false;
-	size_t pickedPoolIndex = 0;
-
 	for (size_t i = 0; i < _roManager->_renderObjectsIndices.size(); i++)
 	{
 		size_t poolIndex = _roManager->_renderObjectsIndices[i];
 		if (_movingMatrix.matrixToMove == &_roManager->_renderObjectPool[poolIndex].transformMatrix)
 		{
-			found = true;
-			pickedPoolIndex = poolIndex;
-			break;
+			outPoolIndex = poolIndex;
+			return true;
 		}
 	}
 
-	if (!found)
-		return;
+	return false;
+}
 
+void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& currentFrame, const std::vector<ModelWithIndirectDrawId>& indirectDrawCommandIds)
+{
 	//
 	// Render it with the wireframe color pipeline
 	// @BUG: recompacting and reuploading the picked pool index will overwrite the first mesh drawn's instance ptr information, so making a new system would be great, or not since this is just a debug feature.
 	//
-	compactRenderObjectsIntoDraws(currentFrame, {pickedPoolIndex});
-
 	constexpr size_t numRenders = 2;
 	std::string materialNames[numRenders] = {
 		"wireframeColorMaterial",
@@ -3891,7 +3886,14 @@ void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& curr
 		glm_vec4_copy(materialColors[i], pc.color);
 		vkCmdPushConstants(cmd, material.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ColorPushConstBlock), &pc);
 
-		renderRenderObjects(cmd, currentFrame, true);
+		// Render objects
+		uint32_t drawStride = sizeof(VkDrawIndexedIndirectCommand);
+		for (const ModelWithIndirectDrawId& mwidid : indirectDrawCommandIds)
+		{
+			VkDeviceSize indirectOffset = mwidid.indirectDrawId * drawStride;
+			mwidid.model->bind(cmd);
+			vkCmdDrawIndexedIndirect(cmd, currentFrame.indirectDrawCommandBuffer._buffer, indirectOffset, 1, drawStride);
+		}
 	}
 }
 
@@ -4126,7 +4128,7 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 				break;
 
 			case 3:
-				isLayerActive = showCollisionDebugDraw;
+				isLayerActive = generateCollisionDebugVisualization;
 				break;
 			}
 
@@ -4161,7 +4163,7 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 
 				case 3:
 					// Collision Layer debug draw toggle
-					showCollisionDebugDraw = !showCollisionDebugDraw;
+					generateCollisionDebugVisualization = !generateCollisionDebugVisualization;
 					break;
 				}
 
