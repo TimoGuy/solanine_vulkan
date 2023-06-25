@@ -549,9 +549,84 @@ void VoxelField::reportMoved(mat4* matrixMoved)
     }
 }
 
+bool isOutsideLightGrid(ivec3 position)
+{
+    return false;  // @INCOMPLETE.
+}
+
+float_t shootRayForLightBuilding(ivec3 origin, ivec3 delta, bool enableCheckForStaggeredBlocks)
+{
+    ivec3 nextPosition;
+    glm_ivec3_add(origin, delta, nextPosition);
+    if (isOutsideLightGrid(nextPosition))
+        return 1.0f;
+
+    ivec3 deltaAbs;
+    glm_ivec3_abs(delta, deltaAbs);
+    int32_t manhattanDistance = deltaAbs[0] + deltaAbs[1] + deltaAbs[2];
+    if (manhattanDistance == 1)
+    {
+        // Cardinal direction ray
+        if (enableCheckForStaggeredBlocks)  // @NOTE: this is the only situation where you can get blocked by staggered blocks: as a cardinal direction ray.
+        {
+
+        }
+
+        // Recurse, recurse!
+        return shootRayForLightBuilding(nextPosition, delta, true);
+    }
+    else if (manhattanDistance == 2)
+    {
+        // Edge direction ray
+    }
+    else if (manhattanDistance == 3)
+    {
+        // Corner direction ray
+    }
+    else
+    {
+        std::cerr << "ERROR: ray for light building is incorrect. Manhattan distance: " << manhattanDistance << std::endl;
+    }
+}
+
 void buildLighting()
 {
-    // @TODO: stub
+    // FOREACH position in the lightgrid
+    ivec3 position;
+    {
+        // Cardinal directions.
+        shootRayForLightBuilding(position, ivec3{  1,  0,  0 }, false);
+        shootRayForLightBuilding(position, ivec3{ -1,  0,  0 }, false);
+        shootRayForLightBuilding(position, ivec3{  0,  1,  0 }, false);
+        shootRayForLightBuilding(position, ivec3{  0, -1,  0 }, false);
+        shootRayForLightBuilding(position, ivec3{  0,  0,  1 }, false);
+        shootRayForLightBuilding(position, ivec3{  0,  0, -1 }, false);
+
+        // Edge directions.
+        shootRayForLightBuilding(position, ivec3{  1,  1,  0 }, false);
+        shootRayForLightBuilding(position, ivec3{ -1,  1,  0 }, false);
+        shootRayForLightBuilding(position, ivec3{  0,  1,  1 }, false);
+        shootRayForLightBuilding(position, ivec3{  0,  1, -1 }, false);
+        shootRayForLightBuilding(position, ivec3{  1, -1,  0 }, false);
+        shootRayForLightBuilding(position, ivec3{ -1, -1,  0 }, false);
+        shootRayForLightBuilding(position, ivec3{  0, -1,  1 }, false);
+        shootRayForLightBuilding(position, ivec3{  0, -1, -1 }, false);
+        shootRayForLightBuilding(position, ivec3{  1,  0,  1 }, false);
+        shootRayForLightBuilding(position, ivec3{ -1,  0,  1 }, false);
+        shootRayForLightBuilding(position, ivec3{  1,  0, -1 }, false);
+        shootRayForLightBuilding(position, ivec3{ -1,  0, -1 }, false);
+
+        // Corner directions.
+        shootRayForLightBuilding(position, ivec3{  1,  1,  1 }, false);
+        shootRayForLightBuilding(position, ivec3{ -1,  1,  1 }, false);
+        shootRayForLightBuilding(position, ivec3{  1,  1, -1 }, false);
+        shootRayForLightBuilding(position, ivec3{ -1,  1, -1 }, false);
+        shootRayForLightBuilding(position, ivec3{  1, -1,  1 }, false);
+        shootRayForLightBuilding(position, ivec3{ -1, -1,  1 }, false);
+        shootRayForLightBuilding(position, ivec3{  1, -1, -1 }, false);
+        shootRayForLightBuilding(position, ivec3{ -1, -1, -1 }, false);
+
+    }
 }
 
 void VoxelField::renderImGui()
