@@ -31,6 +31,7 @@ struct VoxelField_XData
         ivec3 editStartPosition = { 0, 0, 0 };
         ivec3 editEndPosition = { 0, 0, 0 };
     } editorState;
+    bool isLightingDirty = true;  // True unless built lighting was loaded in automatically.
 };
 
 inline void buildDefaultVoxelData(VoxelField_XData& data, const std::string& myGuid);
@@ -389,7 +390,10 @@ void VoxelField::physicsUpdate(const float_t& physicsDeltaTime)
                 _data->editorState.editing = false;
 
                 if (!dirtyPositions.empty())
+                {
                     assembleVoxelRenderObjects(*_data, getGUID(), dirtyPositions);
+                    _data->isLightingDirty = true;
+                }
             }
         }
         else if (!prevCorXPressed)
@@ -545,9 +549,19 @@ void VoxelField::reportMoved(mat4* matrixMoved)
     }
 }
 
+void buildLighting()
+{
+    // @TODO: stub
+}
+
 void VoxelField::renderImGui()
 {
     ImGui::Text("Hello there!");
+    if (_data->isLightingDirty && ImGui::Button("Build Lighting (Baking, essentially)"))
+    {
+        buildLighting();
+        _data->isLightingDirty = false;
+    }
 
     _data->isPicked = true;
 }
