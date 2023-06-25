@@ -557,11 +557,16 @@ void buildLighting()
 void VoxelField::renderImGui()
 {
     ImGui::Text("Hello there!");
-    if (_data->isLightingDirty && ImGui::Button("Build Lighting (Baking, essentially)"))
+    if (_data->isLightingDirty)
     {
-        buildLighting();
-        _data->isLightingDirty = false;
+        if (ImGui::Button("Build Lighting (Baking, essentially)"))
+        {
+            buildLighting();
+            _data->isLightingDirty = false;
+        }
     }
+    else
+        ImGui::Text("Lighting up to date.");
 
     _data->isPicked = true;
 }
