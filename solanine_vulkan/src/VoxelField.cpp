@@ -557,6 +557,7 @@ void buildLighting()
 void VoxelField::renderImGui()
 {
     ImGui::Text("Hello there!");
+
     if (_data->isLightingDirty)
     {
         if (ImGui::Button("Build Lighting (Baking, essentially)"))
