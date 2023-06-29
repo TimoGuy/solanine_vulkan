@@ -569,7 +569,7 @@ struct RayCacheDataStructure
     }
 };
 
-float_t shootRayForLightBuilding(VoxelField_XData* d, std::mutex& accessRayResultCacheMutex, float_t*& rayResultCache, ivec3 origin, ivec3 delta, bool enableCheckForStaggeredBlocks)
+float_t shootRayForLightBuilding(VoxelField_XData* d, float_t*& rayResultCache, ivec3 origin, ivec3 delta, bool enableCheckForStaggeredBlocks)
 {
     if (isOutsideLightGrid(d->vfpd, origin))
         return 1.0f;  // @NOTE: checking whether outside the light grid is definitely less expensive than doing a cache search, especially if the cache is large.
@@ -672,7 +672,7 @@ float_t shootRayForLightBuilding(VoxelField_XData* d, std::mutex& accessRayResul
             rayResult = 0.0f;  // Blocked w/ no hole to "slide" thru.
         else
             // Recurse, recurse!
-            rayResult = shootRayForLightBuilding(d, accessRayResultCacheMutex, rayResultCache, nextPosition, delta, true);  // Enable checking for staggered blocks.
+            rayResult = shootRayForLightBuilding(d, rayResultCache, nextPosition, delta, true);  // Enable checking for staggered blocks.
     }
     else if (manhattanDistance == 2 || manhattanDistance == 3)
     {
@@ -698,28 +698,28 @@ float_t shootRayForLightBuilding(VoxelField_XData* d, std::mutex& accessRayResul
                         axes[ii++] = i;
 
                 float_t totalLight = 0.0f;
-                totalLight += shootRayForLightBuilding(d, accessRayResultCacheMutex, rayResultCache, nextPosition, delta, true);
+                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, delta, true);
 
                 ivec3 deltaOneDirection;
                 glm_ivec3_zero(deltaOneDirection);
                 deltaOneDirection[axes[0]] = delta[axes[0]];
-                totalLight += shootRayForLightBuilding(d, accessRayResultCacheMutex, rayResultCache, nextPosition, deltaOneDirection, true);
+                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, deltaOneDirection, true);
 
                 glm_ivec3_zero(deltaOneDirection);
                 deltaOneDirection[axes[1]] = delta[axes[1]];
-                totalLight += shootRayForLightBuilding(d, accessRayResultCacheMutex, rayResultCache, nextPosition, deltaOneDirection, true);
+                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, deltaOneDirection, true);
                 rayResult = totalLight / 3.0f;
             }
             else if (manhattanDistance == 3)  // Corner case
             {
                 float_t totalLight = 0.0f;
-                totalLight += shootRayForLightBuilding(d, accessRayResultCacheMutex, rayResultCache, nextPosition, delta, true);
-                totalLight += shootRayForLightBuilding(d, accessRayResultCacheMutex, rayResultCache, nextPosition, ivec3{ delta[0], 0, 0 }, true);
-                totalLight += shootRayForLightBuilding(d, accessRayResultCacheMutex, rayResultCache, nextPosition, ivec3{ 0, delta[1], 0 }, true);
-                totalLight += shootRayForLightBuilding(d, accessRayResultCacheMutex, rayResultCache, nextPosition, ivec3{ 0, 0, delta[2] }, true);
-                totalLight += shootRayForLightBuilding(d, accessRayResultCacheMutex, rayResultCache, nextPosition, ivec3{ delta[0], delta[1], 0 }, true);
-                totalLight += shootRayForLightBuilding(d, accessRayResultCacheMutex, rayResultCache, nextPosition, ivec3{ 0, delta[1], delta[2] }, true);
-                totalLight += shootRayForLightBuilding(d, accessRayResultCacheMutex, rayResultCache, nextPosition, ivec3{ delta[0], 0, delta[2] }, true);
+                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, delta, true);
+                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, ivec3{ delta[0], 0, 0 }, true);
+                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, ivec3{ 0, delta[1], 0 }, true);
+                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, ivec3{ 0, 0, delta[2] }, true);
+                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, ivec3{ delta[0], delta[1], 0 }, true);
+                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, ivec3{ 0, delta[1], delta[2] }, true);
+                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, ivec3{ delta[0], 0, delta[2] }, true);
                 rayResult = totalLight / 7.0f;
             }
         }
@@ -750,7 +750,6 @@ void buildLighting(VoxelField_XData* d)
     size_t debug_log_currentGridCellId = 0;
     std::mutex buildLightingMutex;
 
-    std::mutex accessRayResultCacheMutex;
     size_t cacheSize = 3 * 3 * 3 * totalGridCells;
     float_t* rayResultCache = new float_t[cacheSize];
     for (size_t i = 0; i < cacheSize; i++)
@@ -774,41 +773,41 @@ void buildLighting(VoxelField_XData* d)
             debug_log_currentGridCellId == (size_t)(totalGridCells * 0.8f) ||
             debug_log_currentGridCellId == (size_t)(totalGridCells * 0.9f));
 
-        taskflow.emplace([&lightgrid, &buildLightingMutex, &accessRayResultCacheMutex, &rayResultCache, showStatusMessage, debug_log_currentGridCellId, d, i, j, k, lightgridX, lightgridY, lightgridZ, totalGridCells]() {
+        taskflow.emplace([&lightgrid, &buildLightingMutex, &rayResultCache, showStatusMessage, debug_log_currentGridCellId, d, i, j, k, lightgridX, lightgridY, lightgridZ, totalGridCells]() {
             ivec3 position = { (int32_t)i - 1, (int32_t)j - 1, (int32_t)k - 1 };  // Subtract 1 to better fit into the voxel grid space.
             float_t totalLight = 0.0f;
 
             // Cardinal directions.
-            totalLight += shootRayForLightBuilding(d, accessRayResultCacheMutex, rayResultCache, position, ivec3{  1,  0,  0 }, false);
-            totalLight += shootRayForLightBuilding(d, accessRayResultCacheMutex, rayResultCache, position, ivec3{ -1,  0,  0 }, false);
-            totalLight += shootRayForLightBuilding(d, accessRayResultCacheMutex, rayResultCache, position, ivec3{  0,  1,  0 }, false);
-            totalLight += shootRayForLightBuilding(d, accessRayResultCacheMutex, rayResultCache, position, ivec3{  0, -1,  0 }, false);
-            totalLight += shootRayForLightBuilding(d, accessRayResultCacheMutex, rayResultCache, position, ivec3{  0,  0,  1 }, false);
-            totalLight += shootRayForLightBuilding(d, accessRayResultCacheMutex, rayResultCache, position, ivec3{  0,  0, -1 }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{  1,  0,  0 }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{ -1,  0,  0 }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{  0,  1,  0 }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{  0, -1,  0 }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{  0,  0,  1 }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{  0,  0, -1 }, false);
 
             // Edge directions.
-            totalLight += shootRayForLightBuilding(d, accessRayResultCacheMutex, rayResultCache, position, ivec3{  1,  1,  0 }, false);
-            totalLight += shootRayForLightBuilding(d, accessRayResultCacheMutex, rayResultCache, position, ivec3{ -1,  1,  0 }, false);
-            totalLight += shootRayForLightBuilding(d, accessRayResultCacheMutex, rayResultCache, position, ivec3{  0,  1,  1 }, false);
-            totalLight += shootRayForLightBuilding(d, accessRayResultCacheMutex, rayResultCache, position, ivec3{  0,  1, -1 }, false);
-            totalLight += shootRayForLightBuilding(d, accessRayResultCacheMutex, rayResultCache, position, ivec3{  1, -1,  0 }, false);
-            totalLight += shootRayForLightBuilding(d, accessRayResultCacheMutex, rayResultCache, position, ivec3{ -1, -1,  0 }, false);
-            totalLight += shootRayForLightBuilding(d, accessRayResultCacheMutex, rayResultCache, position, ivec3{  0, -1,  1 }, false);
-            totalLight += shootRayForLightBuilding(d, accessRayResultCacheMutex, rayResultCache, position, ivec3{  0, -1, -1 }, false);
-            totalLight += shootRayForLightBuilding(d, accessRayResultCacheMutex, rayResultCache, position, ivec3{  1,  0,  1 }, false);
-            totalLight += shootRayForLightBuilding(d, accessRayResultCacheMutex, rayResultCache, position, ivec3{ -1,  0,  1 }, false);
-            totalLight += shootRayForLightBuilding(d, accessRayResultCacheMutex, rayResultCache, position, ivec3{  1,  0, -1 }, false);
-            totalLight += shootRayForLightBuilding(d, accessRayResultCacheMutex, rayResultCache, position, ivec3{ -1,  0, -1 }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{  1,  1,  0 }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{ -1,  1,  0 }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{  0,  1,  1 }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{  0,  1, -1 }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{  1, -1,  0 }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{ -1, -1,  0 }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{  0, -1,  1 }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{  0, -1, -1 }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{  1,  0,  1 }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{ -1,  0,  1 }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{  1,  0, -1 }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{ -1,  0, -1 }, false);
 
             // Corner directions.
-            totalLight += shootRayForLightBuilding(d, accessRayResultCacheMutex, rayResultCache, position, ivec3{  1,  1,  1 }, false);
-            totalLight += shootRayForLightBuilding(d, accessRayResultCacheMutex, rayResultCache, position, ivec3{ -1,  1,  1 }, false);
-            totalLight += shootRayForLightBuilding(d, accessRayResultCacheMutex, rayResultCache, position, ivec3{  1,  1, -1 }, false);
-            totalLight += shootRayForLightBuilding(d, accessRayResultCacheMutex, rayResultCache, position, ivec3{ -1,  1, -1 }, false);
-            totalLight += shootRayForLightBuilding(d, accessRayResultCacheMutex, rayResultCache, position, ivec3{  1, -1,  1 }, false);
-            totalLight += shootRayForLightBuilding(d, accessRayResultCacheMutex, rayResultCache, position, ivec3{ -1, -1,  1 }, false);
-            totalLight += shootRayForLightBuilding(d, accessRayResultCacheMutex, rayResultCache, position, ivec3{  1, -1, -1 }, false);
-            totalLight += shootRayForLightBuilding(d, accessRayResultCacheMutex, rayResultCache, position, ivec3{ -1, -1, -1 }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{  1,  1,  1 }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{ -1,  1,  1 }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{  1,  1, -1 }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{ -1,  1, -1 }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{  1, -1,  1 }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{ -1, -1,  1 }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{  1, -1, -1 }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{ -1, -1, -1 }, false);
 
             totalLight /= 26.0f;
             lightgrid[i * lightgridY * lightgridZ + j * lightgridZ + k] = totalLight;
