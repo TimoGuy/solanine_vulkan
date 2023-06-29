@@ -14,7 +14,8 @@ layout (location = 2) out vec3 outNormal;
 layout (location = 3) out vec2 outUV0;
 layout (location = 4) out vec2 outUV1;
 layout (location = 5) out vec4 outColor0;
-layout (location = 6) out uint baseInstanceID;
+layout (location = 6) out vec3 voxelFieldLightingGridPos;
+layout (location = 7) out uint baseInstanceID;
 
 
 // Camera Props
@@ -45,7 +46,7 @@ struct InstancePointer
 	uint objectID;
 	uint materialID;
 	uint animatorNodeID;
-	uint pad;
+	uint voxelFieldLightingGridID;
 };
 
 layout(std140, set = 2, binding = 0) readonly buffer InstancePtrBuffer
@@ -67,6 +68,18 @@ layout (std140, set = 4, binding = 0) readonly buffer SkeletonAnimationNodeColle
 {
 	SkeletonAnimationNode nodes[];
 } nodeCollection;
+
+
+// Voxel field lighting grid Transforms
+struct VoxelFieldLightingGrid
+{
+	mat4 transform;  // @TODO: @INCOMPLETE: create the buffer for this!!!!
+};
+
+layout(std140, set = 5, binding = 0) readonly buffer VoxelFieldLightingGridBuffer
+{
+	VoxelFieldLightingGrid gridTransforms[];
+} lightingGridBuffer;
 
 
 void main()
@@ -102,6 +115,7 @@ void main()
 	outUV1 = inUV1;
 	outColor0 = inColor0;
 	outViewPos = (cameraData.view * vec4(outWorldPos, 1.0)).xyz;
+	voxelFieldLightingGridPos = (lightingGridBuffer.gridTransforms[instancePtrBuffer.pointers[gl_BaseInstance].voxelFieldLightingGridID].transform * vec4(outWorldPos, 1.0)).xyz;
 	baseInstanceID = gl_BaseInstance;
 	gl_Position =  cameraData.projectionView * vec4(outWorldPos, 1.0);
 }
