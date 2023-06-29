@@ -556,60 +556,28 @@ bool isOutsideLightGrid(physengine::VoxelFieldPhysicsData* vfpd, ivec3 position)
         position[0] >= vfpd->sizeX + 2 || position[1] >= vfpd->sizeY + 2 || position[2] >= vfpd->sizeZ + 2);
 }
 
-// Reference: https://stackoverflow.com/questions/19195183/how-to-properly-hash-the-custom-struct
-template <class T>
-inline void hash_combine(size_t& s, const T& v)
-{
-  std::hash<T> h;
-  s ^= h(v) + 0x9e3779b9 + (s << 6) + (s >> 2);
-}
-
 struct RayCacheDataStructure
 {
     int32_t originX, originY, originZ;
     int32_t deltaX, deltaY, deltaZ;
-    
-    // Functions to allow unordered map
-    bool operator==(const RayCacheDataStructure& other) const
-    {
-        return (originX == other.originX &&
-            originY == other.originY &&
-            originZ == other.originZ &&
-            deltaX == other.deltaX &&
-            deltaY == other.deltaY &&
-            deltaZ == other.deltaZ);
-    }
 
-    size_t hash() const
+    size_t toIndex(size_t lightgridX, size_t lightgridY, size_t lightgridZ)
     {
-        size_t res = 0;
-        hash_combine(res, originX);
-        hash_combine(res, originY);
-        hash_combine(res, originZ);
-        hash_combine(res, deltaX);
-        hash_combine(res, deltaY);
-        hash_combine(res, deltaZ);
-        return res;
+        size_t originType = (originX + 1) * lightgridY * lightgridZ + (originY + 1) * lightgridZ + (originZ + 1);
+        size_t deltaType = (deltaX + 1) * 3 * 3 + (deltaY + 1) * 3 + (deltaZ + 1);
+        return originType * 3 * 3 * 3 + deltaType;
     }
 };
 
-struct RayCacheDataStructureHash
-{
-    size_t operator()(const RayCacheDataStructure &k) const
-    {
-        return k.hash();
-    }
-};
-
-float_t shootRayForLightBuilding(VoxelField_XData* d, std::mutex& accessRayResultCacheMutex, std::unordered_map<RayCacheDataStructure, float_t, RayCacheDataStructureHash>& rayResultCache, ivec3 origin, ivec3 delta, bool enableCheckForStaggeredBlocks)
+float_t shootRayForLightBuilding(VoxelField_XData* d, std::mutex& accessRayResultCacheMutex, float_t*& rayResultCache, ivec3 origin, ivec3 delta, bool enableCheckForStaggeredBlocks)
 {
     if (isOutsideLightGrid(d->vfpd, origin))
         return 1.0f;  // @NOTE: checking whether outside the light grid is definitely less expensive than doing a cache search, especially if the cache is large.
 
-    RayCacheDataStructure rcds;
+    size_t cacheIndex;
     if (enableCheckForStaggeredBlocks)  // @NOTE: since `enableCheckForStaggeredBlocks` is used only during the first step, the cache for this data is useless for other rays bc it's only gonna be used once. Hence it being a flag of whether to use the cache or not.
     {
-        rcds = {
+        RayCacheDataStructure rcds = {
             .originX = origin[0],
             .originY = origin[1],
             .originZ = origin[2],
@@ -617,12 +585,11 @@ float_t shootRayForLightBuilding(VoxelField_XData* d, std::mutex& accessRayResul
             .deltaY = delta[1],
             .deltaZ = delta[2],
         };
-        {
-            // Access cache to see if result has already been calculated.
-            std::lock_guard<std::mutex> lg(accessRayResultCacheMutex);
-            if (rayResultCache.find(rcds) != rayResultCache.end())
-                return rayResultCache[rcds];
-        }
+        cacheIndex = rcds.toIndex(d->vfpd->sizeX + 3, d->vfpd->sizeY + 3, d->vfpd->sizeZ + 3);
+
+        float_t cacheResult = rayResultCache[cacheIndex];
+        if (cacheResult >= 0.0f)
+            return cacheResult;
     }
 
     ivec3 nextPosition;
@@ -765,8 +732,7 @@ float_t shootRayForLightBuilding(VoxelField_XData* d, std::mutex& accessRayResul
     // Insert result into cache
     if (enableCheckForStaggeredBlocks)  // @COPYPASTA: @NOTE: since `enableCheckForStaggeredBlocks` is used only during the first step, the cache for this data is useless for other rays bc it's only gonna be used once. Hence it being a flag of whether to use the cache or not.
     {
-        std::lock_guard<std::mutex> lg(accessRayResultCacheMutex);
-        rayResultCache[rcds] = rayResult;
+        rayResultCache[cacheIndex] = rayResult;
     }
     return rayResult;
 }
@@ -785,7 +751,10 @@ void buildLighting(VoxelField_XData* d)
     std::mutex buildLightingMutex;
 
     std::mutex accessRayResultCacheMutex;
-    std::unordered_map<RayCacheDataStructure, float_t, RayCacheDataStructureHash> rayResultCache;
+    size_t cacheSize = 3 * 3 * 3 * totalGridCells;
+    float_t* rayResultCache = new float_t[cacheSize];
+    for (size_t i = 0; i < cacheSize; i++)
+        rayResultCache[i] = -1.0f;
 
     tf::Taskflow taskflow;
     tf::Executor executor;
