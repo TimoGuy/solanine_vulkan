@@ -174,6 +174,7 @@ vec3 getNormal()
 
 float getVoxelFieldLightmapScaleIBLAmbient()
 {
+	// return 1.0;
 	return texture(voxelFieldLightmaps[instancePtrBuffer.pointers[baseInstanceID].voxelFieldLightingGridID], voxelFieldLightingGridPos).x;
 }
 
@@ -285,13 +286,13 @@ void main()
 	// outFragColor = vec4(voxelFieldLightingGridPos, 1.0);
 	// return;
 
-	// float amb = getVoxelFieldLightmapScaleIBLAmbient();
-	// amb = clamp(amb * 2.0, 0.0, 1.0);
-	// amb = clamp(amb * 2.0 - 1.0, 0.0, 1.0);
-	// outFragColor = vec4(vec3(amb), 1.0);
-	// return;
+	float amb = getVoxelFieldLightmapScaleIBLAmbient();
+	amb = clamp(amb * 2.0, 0.0, 1.0);
+	amb = clamp(amb * 2.0 - 1.0, 0.0, 1.0);
+	outFragColor = vec4(vec3(amb), 1.0);
+	return;
 
-	MaterialParam material = materialCollection.params[instancePtrBuffer.pointers[baseInstanceID].materialID];  // @TODO: figure out how to use the different material things. 
+	MaterialParam material = materialCollection.params[instancePtrBuffer.pointers[baseInstanceID].materialID];  // @TODO: figure out how to use the different material things.
 
 	float perceptualRoughness;
 	float metallic;
