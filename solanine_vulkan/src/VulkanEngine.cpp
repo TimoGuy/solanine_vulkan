@@ -361,6 +361,7 @@ void VulkanEngine::render()
 	// Upload current frame to GPU and compact into draw calls
 	//
 	perfs[14] = SDL_GetPerformanceCounter();
+	recreateVoxelLightingDescriptor();
 	uploadCurrentFrameToGPU(currentFrame);
 	textmesh::uploadUICameraDataToGPU();
 #ifdef _DEVELOP
@@ -472,6 +473,7 @@ void VulkanEngine::render()
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 3, 1, &defaultMaterial.textureSet, 0, nullptr);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(), 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 5, 1, &_voxelFieldLightingGridTextureSet.descriptor, 0, nullptr);
 		////////////////
 
 		renderRenderObjects(cmd, currentFrame);
@@ -933,15 +935,32 @@ void VulkanEngine::loadImages()
 		VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_UNORM, empty.image._image, VK_IMAGE_ASPECT_COLOR_BIT, empty.image._mipLevels);
 		vkCreateImageView(_device, &imageInfo, nullptr, &empty.imageView);
 
-		VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(empty.image._mipLevels), VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+		VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(empty.image._mipLevels), VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
 		vkCreateSampler(_device, &samplerInfo, nullptr, &empty.sampler);
 
 		_mainDeletionQueue.pushFunction([=]() {
 			vkDestroySampler(_device, empty.sampler, nullptr);
 			vkDestroyImageView(_device, empty.imageView, nullptr);
-			});
+		});
 
 		_loadedTextures["empty"] = empty;
+	}
+	{
+		Texture empty;
+		vkutil::loadImage3DFromFile(*this, { "res/textures/empty.png" }, VK_FORMAT_R8G8B8A8_UNORM, empty.image);
+
+		VkImageViewCreateInfo imageInfo = vkinit::imageview3DCreateInfo(VK_FORMAT_R8G8B8A8_UNORM, empty.image._image, VK_IMAGE_ASPECT_COLOR_BIT, empty.image._mipLevels);
+		vkCreateImageView(_device, &imageInfo, nullptr, &empty.imageView);
+
+		VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(empty.image._mipLevels), VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
+		vkCreateSampler(_device, &samplerInfo, nullptr, &empty.sampler);
+
+		_mainDeletionQueue.pushFunction([=]() {
+			vkDestroySampler(_device, empty.sampler, nullptr);
+			vkDestroyImageView(_device, empty.imageView, nullptr);
+		});
+
+		_loadedTextures["empty3d"] = empty;
 	}
 
 	// Load woodFloor057
@@ -1091,6 +1110,62 @@ void VulkanEngine::loadImages()
 	//
 	// @TODO: add a thing to destroy all the loaded images from _loadedTextures hashmap
 	//
+}
+
+void VulkanEngine::initVoxelLightingDescriptor()
+{
+	_voxelFieldLightingGridTextureSet.textures.resize(1, _loadedTextures["empty3d"]);
+	_voxelFieldLightingGridTextureSet.transforms.resize(1);
+	glm_mat4_identity(_voxelFieldLightingGridTextureSet.transforms[0].transform);
+
+	// Prop up the transforms buffer
+	_voxelFieldLightingGridTextureSet.transformsBuffer = createBuffer(sizeof(VoxelFieldLightingGridTextureSet::GPUTransform) * MAX_NUM_VOXEL_FIELD_LIGHTMAPS, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+
+	_mainDeletionQueue.pushFunction([=]() {
+		vmaDestroyBuffer(_allocator, _voxelFieldLightingGridTextureSet.transformsBuffer._buffer, _voxelFieldLightingGridTextureSet.transformsBuffer._allocation);
+	});
+
+	// Setup initial descriptor set and layout.
+	_voxelFieldLightingGridTextureSet.flagRecreateTextureSet = true;
+	recreateVoxelLightingDescriptor();
+}
+
+void VulkanEngine::recreateVoxelLightingDescriptor()
+{
+	// Upload transforms.
+	void* data;
+	vmaMapMemory(_allocator, _voxelFieldLightingGridTextureSet.transformsBuffer._allocation, &data);
+	memcpy(
+		data,
+		_voxelFieldLightingGridTextureSet.transforms.data(),
+		sizeof(VoxelFieldLightingGridTextureSet::GPUTransform) * std::min(MAX_NUM_VOXEL_FIELD_LIGHTMAPS, _voxelFieldLightingGridTextureSet.transforms.size())
+	);
+	vmaUnmapMemory(_allocator, _voxelFieldLightingGridTextureSet.transformsBuffer._allocation);
+
+	// Check if need to reupload images.
+	if (!_voxelFieldLightingGridTextureSet.flagRecreateTextureSet)
+		return;  // No changes detected. Abort.
+
+	// Reupload images.
+	VkDescriptorImageInfo* lightgridImageInfos = new VkDescriptorImageInfo[MAX_NUM_VOXEL_FIELD_LIGHTMAPS];  // @COPYPASTA
+	for (size_t i = 0; i < MAX_NUM_VOXEL_FIELD_LIGHTMAPS; i++)  // @TODO: make this an expandable array.
+		lightgridImageInfos[i] =
+			(i < _voxelFieldLightingGridTextureSet.textures.size()) ?
+			vkinit::textureToDescriptorImageInfo(&_voxelFieldLightingGridTextureSet.textures[i]) :
+			vkinit::textureToDescriptorImageInfo(&_voxelFieldLightingGridTextureSet.textures[0]);
+
+	VkDescriptorBufferInfo transformsBufferInfo = {
+		.buffer = _voxelFieldLightingGridTextureSet.transformsBuffer._buffer,
+		.offset = 0,
+		.range = sizeof(VoxelFieldLightingGridTextureSet::GPUTransform) * MAX_NUM_VOXEL_FIELD_LIGHTMAPS,
+	};
+
+	vkutil::DescriptorBuilder::begin()
+		.bindBuffer(0, &transformsBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_VERTEX_BIT)
+		.bindImageArray(1, MAX_NUM_VOXEL_FIELD_LIGHTMAPS, lightgridImageInfos, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+		.build(_voxelFieldLightingGridTextureSet.descriptor, _voxelFieldLightingGridTextureSet.layout);
+
+	_voxelFieldLightingGridTextureSet.flagRecreateTextureSet = false;
 }
 
 Material* VulkanEngine::attachPipelineToMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name)
@@ -2258,7 +2333,7 @@ void VulkanEngine::initDescriptors()    // @TODO: don't destroy and then recreat
 	//
 	AllocatedBuffer materialParamsBuffer = createBuffer(sizeof(PBRMaterialParam) * MAX_NUM_MATERIALS, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
-	VkDescriptorImageInfo* textureImageInfos = new VkDescriptorImageInfo[MAX_NUM_MAPS];
+	VkDescriptorImageInfo* textureImageInfos = new VkDescriptorImageInfo[MAX_NUM_MAPS];  // @TODO: make this an expandable array.
 	for (size_t i = 0; i < MAX_NUM_MAPS; i++)
 		textureImageInfos[i] =
 			(i < vkglTF::Model::pbrTextureCollection.textures.size()) ?
@@ -2341,6 +2416,11 @@ void VulkanEngine::initDescriptors()    // @TODO: don't destroy and then recreat
 	vmaUnmapMemory(_allocator, materialParamsBuffer._allocation);
 
 	//
+	// Voxel Field Lightgrids Descriptor Set
+	//
+	initVoxelLightingDescriptor();
+
+	//
 	// Joint Descriptor
 	//
 	vkglTF::Animator::initializeEmpty(this);
@@ -2387,7 +2467,7 @@ void VulkanEngine::initPipelines()
 	VkPipelineLayout meshPipelineLayout;
 	vkutil::pipelinebuilder::build(
 		{},
-		{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _pbrTexturesSetLayout, _skeletalAnimationSetLayout },
+		{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _pbrTexturesSetLayout, _skeletalAnimationSetLayout, _voxelFieldLightingGridTextureSet.layout },
 		{
 			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/pbr.vert.spv" },
 			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/pbr_khr.frag.spv" },

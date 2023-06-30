@@ -282,6 +282,9 @@ float textureProj(vec4 shadowCoord, vec2 offset, uint cascadeIndex)
 
 void main()
 {
+	// outFragColor = vec4(voxelFieldLightingGridPos, 1.0);
+	// return;
+
 	MaterialParam material = materialCollection.params[instancePtrBuffer.pointers[baseInstanceID].materialID];  // @TODO: figure out how to use the different material things. 
 
 	float perceptualRoughness;

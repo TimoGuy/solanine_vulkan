@@ -1,7 +1,10 @@
 #include "VoxelField.h"
 
+#include <stb_image_write.h>
 #include "Imports.h"
 #include "VkglTFModel.h"
+#include "VkTextures.h"
+#include "VkInitializers.h"
 #include "RenderObject.h"
 #include "PhysicsEngine.h"
 #include "PhysUtil.h"
@@ -21,6 +24,8 @@ struct VoxelField_XData
     std::vector<RenderObject*> voxelRenderObjs;
     std::vector<vec3s> voxelOffsets;  // @NOCHECKIN
 
+    size_t lightgridId = 0;  // If 0, then that means there is no light grid created.
+
     physengine::VoxelFieldPhysicsData* vfpd = nullptr;
     bool isPicked = false;
     
@@ -38,6 +43,7 @@ struct VoxelField_XData
 inline void buildDefaultVoxelData(VoxelField_XData& data, const std::string& myGuid);
 inline void assembleVoxelRenderObjects(VoxelField_XData& data, const std::string& attachedEntityGuid, std::vector<ivec3s> dirtyPositions);
 inline void deleteVoxelRenderObjects(VoxelField_XData& data, std::vector<ivec3s> dirtyPositions);
+void triggerLoadLightingIfExists(VoxelField_XData& d, const std::string& guid);
 
 
 VoxelField::VoxelField(VulkanEngine* engine, EntityManager* em, RenderObjectManager* rom, DataSerialized* ds) : Entity(em, ds), _data(new VoxelField_XData())
@@ -60,6 +66,7 @@ VoxelField::VoxelField(VulkanEngine* engine, EntityManager* em, RenderObjectMana
 
     _data->voxelModel = _data->rom->getModel("DevBoxWood", this, [](){});
     assembleVoxelRenderObjects(*_data, getGUID(), {});
+    triggerLoadLightingIfExists(*_data, getGUID());
 }
 
 VoxelField::~VoxelField()
@@ -67,6 +74,79 @@ VoxelField::~VoxelField()
     deleteVoxelRenderObjects(*_data, {});
     physengine::destroyVoxelField(_data->vfpd);
     delete _data;
+}
+
+void triggerLoadLightingIfExists(VoxelField_XData& d, const std::string& guid)
+{
+    std::string folder = "res/textures/generated_voxelfield_lightgrids/vf_" + guid;
+    if (!std::filesystem::exists(folder) ||
+        !std::filesystem::is_directory(folder))
+    {
+        std::cerr << "ERROR: could not find directory with baked lighting: \"" << folder << "\"" << std::endl;
+        return;
+    }
+
+    std::map<int32_t, std::filesystem::path> imageSliceIndexToFilename;
+    for (const auto& entry : std::filesystem::directory_iterator(folder))
+    {
+        const auto& path = entry.path();
+        if (std::filesystem::is_directory(path))
+            continue;
+        if (!path.has_extension())
+            continue;
+        if (path.extension().compare(".png") != 0)
+            continue;
+        if (!path.has_stem())
+            continue;
+
+        int32_t sliceIndex = std::stoi(path.stem());  // @UNSAFE: this could crash here.
+        imageSliceIndexToFilename[sliceIndex] = path;
+    }
+
+    std::vector<std::string> fnamesStrings;
+    for (auto it = imageSliceIndexToFilename.begin(); it != imageSliceIndexToFilename.end(); it++)
+        fnamesStrings.push_back(it->second.string());  // @NOTE: a copy of the string needs to be saved from the path or else running .c_str() will have its rug pulled out from under it as soon as the scope exits.
+
+    std::vector<const char*> fnames;
+    for (auto& str : fnamesStrings)
+        fnames.push_back(str.c_str());  // @UNSAFE: this could crash here.
+
+    //
+    // Create 3D texture
+    //
+    Texture lightgridTexture;
+    if (!vkutil::loadImage3DFromFile(*d.engine, fnames, VK_FORMAT_R8G8B8A8_UNORM, lightgridTexture.image))
+    {
+        std::cerr << "ERROR: loading image failed. Aborting." << std::endl;
+        return;
+    }
+
+    VkImageViewCreateInfo imageInfo = vkinit::imageview3DCreateInfo(VK_FORMAT_R8G8B8A8_UNORM, lightgridTexture.image._image, VK_IMAGE_ASPECT_COLOR_BIT, lightgridTexture.image._mipLevels);
+    vkCreateImageView(d.engine->_device, &imageInfo, nullptr, &lightgridTexture.imageView);
+
+    VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(lightgridTexture.image._mipLevels), VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
+    vkCreateSampler(d.engine->_device, &samplerInfo, nullptr, &lightgridTexture.sampler);
+
+    d.engine->_mainDeletionQueue.pushFunction([=]() {
+        vkDestroySampler(d.engine->_device, lightgridTexture.sampler, nullptr);
+        vkDestroyImageView(d.engine->_device, lightgridTexture.imageView, nullptr);
+    });
+
+    d.engine->_loadedTextures["vf_lightgrid_" + guid] = lightgridTexture;
+
+    if (d.lightgridId == 0)
+    {
+        d.lightgridId = d.engine->_voxelFieldLightingGridTextureSet.textures.size();
+        d.engine->_voxelFieldLightingGridTextureSet.textures.push_back(lightgridTexture);
+        d.engine->_voxelFieldLightingGridTextureSet.transforms.resize(d.engine->_voxelFieldLightingGridTextureSet.textures.size());
+
+        for (auto& ro : d.voxelRenderObjs)
+            for (auto& inst : ro->calculatedModelInstances)
+                inst.voxelFieldLightingGridID = d.lightgridId;
+    }
+    else
+        d.engine->_voxelFieldLightingGridTextureSet.textures[d.lightgridId] = lightgridTexture;
+    d.engine->_voxelFieldLightingGridTextureSet.flagRecreateTextureSet = true;
 }
 
 void calculateObjectSpaceCameraLinecastPoints(VulkanEngine* engine, physengine::VoxelFieldPhysicsData* vfpd, vec3& outLinecastPt1, vec3& outLinecastPt2)
@@ -432,7 +512,22 @@ void VoxelField::update(const float_t& deltaTime)
 
 void VoxelField::lateUpdate(const float_t& deltaTime)
 {
+    // Update lightgrid transforms
+    if (_data->lightgridId > 0)
+    {
+        size_t lightgridX = _data->vfpd->sizeX + 3;
+        size_t lightgridY = _data->vfpd->sizeY + 3;
+        size_t lightgridZ = _data->vfpd->sizeZ + 3;
 
+        mat4 newTrans = GLM_MAT4_IDENTITY_INIT;
+        glm_scale(newTrans, vec3{ 1.0f / lightgridX, 1.0f / lightgridY, 1.0f / lightgridZ });
+        glm_translate(newTrans, vec3{ 1.5f, 1.5f, 1.5f });
+
+        mat4 invTransform;
+        glm_mat4_inv(_data->vfpd->interpolTransform, invTransform);
+        glm_mat4_mul(newTrans, invTransform, newTrans);
+        glm_mat4_copy(newTrans, _data->engine->_voxelFieldLightingGridTextureSet.transforms[_data->lightgridId].transform);
+    }
 }
 
 void VoxelField::dump(DataSerializer& ds)
@@ -737,7 +832,7 @@ float_t shootRayForLightBuilding(VoxelField_XData* d, float_t*& rayResultCache, 
     return rayResult;
 }
 
-void buildLighting(VoxelField_XData* d)
+void buildLighting(VoxelField_XData* d, const std::string& guid)
 {
     std::cout << "START BUILDING LIGHTING" << std::endl;
     size_t lightgridX = d->vfpd->sizeX + 3;
@@ -758,6 +853,9 @@ void buildLighting(VoxelField_XData* d)
     tf::Taskflow taskflow;
     tf::Executor executor;
 
+    //
+    // Execute ray queries for building lighting.
+    //
     for (size_t i = 0; i < lightgridX; i++)
     for (size_t j = 0; j < lightgridY; j++)
     for (size_t k = 0; k < lightgridZ; k++)
@@ -810,7 +908,7 @@ void buildLighting(VoxelField_XData* d)
             totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{ -1, -1, -1 }, false);
 
             totalLight /= 26.0f;
-            lightgrid[i * lightgridY * lightgridZ + j * lightgridZ + k] = totalLight;
+            lightgrid[k * lightgridY * lightgridX + j * lightgridX + i] = totalLight;  // Use this layout so that rows are contiguous for image saving.
 
             if (showStatusMessage)
             {
@@ -823,9 +921,42 @@ void buildLighting(VoxelField_XData* d)
 
     executor.run(taskflow).wait();
 
+    //
+    // Save lightgrid information to file
+    //
+    std::string folder = "res/textures/generated_voxelfield_lightgrids/vf_" + guid;
+    std::filesystem::create_directories(folder);
+    for (size_t k = 0; k < lightgridZ; k++)
+    {
+        int32_t channels = 4;
+        uint8_t* imgData = new uint8_t[channels * lightgridX * lightgridY];
+        for (size_t i = 0; i < lightgridX; i++)
+        for (size_t j = 0; j < lightgridY; j++)
+        {
+            float_t lightValue = lightgrid[k * lightgridY * lightgridX + j * lightgridX + i];
+            uint8_t lightValueInt = lightValue * 255.0f;
+            size_t pos = j * lightgridX * channels + i * channels;
+            imgData[pos + 0] = lightValueInt;
+            imgData[pos + 1] = lightValueInt;
+            imgData[pos + 2] = lightValueInt;
+            imgData[pos + 3] = 255;
+        }
+
+        stbi_write_png(
+            (folder + "/" + std::to_string(k) + ".png").c_str(),
+            (int32_t)lightgridX,
+            (int32_t)lightgridY,
+            channels,
+            imgData,
+            channels * lightgridX * sizeof(uint8_t)
+        );
+    }
+
     AudioEngine::getInstance().playSound("res/sfx/wip_draw_weapon.ogg");
 
     std::cout << "FINISHED BUILDING LIGHTING" << std::endl;
+
+    triggerLoadLightingIfExists(*d, guid);
 }
 
 void VoxelField::renderImGui()
@@ -836,7 +967,7 @@ void VoxelField::renderImGui()
     {
         if (ImGui::Button("Build Lighting (Baking, essentially)"))
         {
-            buildLighting(_data);
+            buildLighting(_data, getGUID());
             _data->isLightingDirty = false;
         }
     }
@@ -917,6 +1048,11 @@ inline void assembleVoxelRenderObjects(VoxelField_XData& data, const std::string
     for (size_t i = startRenderObjectIndex; i < data.voxelRenderObjs.size(); i++)
         outRORefs.push_back(&data.voxelRenderObjs[i]);
     data.rom->registerRenderObjects(inROs, outRORefs);
+
+    // Assign the correct light grid id.
+    for (RenderObject** ro : outRORefs)
+        for (auto& inst : (*ro)->calculatedModelInstances)
+            inst.voxelFieldLightingGridID = data.lightgridId;
 }
 
 inline void deleteVoxelRenderObjects(VoxelField_XData& data, std::vector<ivec3s> dirtyPositions)

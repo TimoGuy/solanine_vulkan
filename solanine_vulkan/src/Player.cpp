@@ -534,6 +534,14 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
         { &_data->characterRenderObj, &_data->handleRenderObj, &_data->weaponRenderObj }
     );
 
+    // @HARDCODED: there should be a sensing algorithm to know which lightgrid to assign itself to.
+    for (auto& inst : _data->characterRenderObj->calculatedModelInstances)
+        inst.voxelFieldLightingGridID = 1;
+    for (auto& inst : _data->handleRenderObj->calculatedModelInstances)
+        inst.voxelFieldLightingGridID = 1;
+    for (auto& inst : _data->weaponRenderObj->calculatedModelInstances)
+        inst.voxelFieldLightingGridID = 1;
+
     _data->camera->mainCamMode.setMainCamTargetObject(_data->characterRenderObj);  // @NOTE: I believe that there should be some kind of main camera system that targets the player by default but when entering different volumes etc. the target changes depending.... essentially the system needs to be more built out imo
 
     _data->cpd = physengine::createCapsule(getGUID(), 0.5f, 1.0f);  // Total height is 2, but r*2 is subtracted to get the capsule height (i.e. the line segment length that the capsule rides along)
