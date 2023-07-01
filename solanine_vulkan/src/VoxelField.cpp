@@ -719,9 +719,10 @@ float_t shootRayForLightBuilding(VoxelField_XData* d, float_t*& rayResultCache, 
             return cacheResult;
     }
 
-    ivec3 nextPosition;
-    glm_ivec3_add(originInt, deltaInt, nextPosition);
+    ivec3 nextPositionInt;
+    glm_ivec3_add(originInt, deltaInt, nextPositionInt);
     float_t rayResult = 0.0f;
+    vec3 nextPosition = { (float_t)nextPositionInt[0], (float_t)nextPositionInt[1], (float_t)nextPositionInt[2] };
     
     vec3 originFloat = { originInt[0], originInt[1], originInt[2] };
     vec3 halfDelta = { deltaInt[0] * 0.5f, deltaInt[1] * 0.5f, deltaInt[2] * 0.5f };
@@ -800,7 +801,7 @@ float_t shootRayForLightBuilding(VoxelField_XData* d, float_t*& rayResultCache, 
             rayResult = 0.0f;  // Blocked w/ no hole to "slide" thru.
         else
             // Recurse, recurse!
-            rayResult = shootRayForLightBuilding(d, rayResultCache, nextPosition, deltaInt, true);  // Enable checking for staggered blocks.
+            rayResult = shootRayForLightBuilding(d, rayResultCache, nextPosition, delta, true);  // Enable checking for staggered blocks.
     }
     else if (manhattanDistance == 2 || manhattanDistance == 3)
     {
@@ -826,18 +827,18 @@ float_t shootRayForLightBuilding(VoxelField_XData* d, float_t*& rayResultCache, 
                         axes[ii++] = i;
 
                 float_t totalLight = 0.0f;
-                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, deltaInt, true);
+                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, delta, true);
 
-#define OLD_METHOD_WITH_RAY_MULTIPLICATION 0
+#define OLD_METHOD_WITH_RAY_MULTIPLICATION 1
 #if OLD_METHOD_WITH_RAY_MULTIPLICATION
                 ivec3 deltaOneDirection;
                 glm_ivec3_zero(deltaOneDirection);
                 deltaOneDirection[axes[0]] = deltaInt[axes[0]];
-                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, deltaOneDirection, true);
+                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, vec3{ (float_t)deltaOneDirection[0], (float_t)deltaOneDirection[1], (float_t)deltaOneDirection[2] }, true);
 
                 glm_ivec3_zero(deltaOneDirection);
                 deltaOneDirection[axes[1]] = deltaInt[axes[1]];
-                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, deltaOneDirection, true);
+                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, vec3{ (float_t)deltaOneDirection[0], (float_t)deltaOneDirection[1], (float_t)deltaOneDirection[2] }, true);
                 rayResult = totalLight / 3.0f;
 #else
                 rayResult = totalLight;
@@ -846,14 +847,14 @@ float_t shootRayForLightBuilding(VoxelField_XData* d, float_t*& rayResultCache, 
             else if (manhattanDistance == 3)  // Corner case
             {
                 float_t totalLight = 0.0f;
-                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, deltaInt, true);
+                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, delta, true);
 #if OLD_METHOD_WITH_RAY_MULTIPLICATION
-                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, ivec3{ deltaInt[0], 0, 0 }, true);
-                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, ivec3{ 0, deltaInt[1], 0 }, true);
-                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, ivec3{ 0, 0, deltaInt[2] }, true);
-                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, ivec3{ deltaInt[0], deltaInt[1], 0 }, true);
-                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, ivec3{ 0, deltaInt[1], deltaInt[2] }, true);
-                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, ivec3{ deltaInt[0], 0, deltaInt[2] }, true);
+                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, vec3{ (float_t)deltaInt[0], 0.0f, 0.0f }, true);
+                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, vec3{ 0.0f, (float_t)deltaInt[1], 0.0f }, true);
+                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, vec3{ 0.0f, 0.0f, (float_t)deltaInt[2] }, true);
+                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, vec3{ (float_t)deltaInt[0], (float_t)deltaInt[1], 0.0f }, true);
+                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, vec3{ 0.0f, (float_t)deltaInt[1], (float_t)deltaInt[2] }, true);
+                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, vec3{ (float_t)deltaInt[0], 0.0f, (float_t)deltaInt[2] }, true);
                 rayResult = totalLight / 7.0f;
 #else
                 rayResult = totalLight;
@@ -938,9 +939,9 @@ void buildLighting(VoxelField_XData* d, const std::string& guid)
                 // Check to see if should do hemisphere or sphere.
                 bool useSphere = true;
                 vec3 hemisphereNormal = GLM_VEC3_ZERO_INIT;
-                if (occludedVoxels.size() == 4 || occludedVoxels.size() == 2 || occludedVoxels.size() == 1)
+                if (occludedVoxels.size() == 4 || occludedVoxels.size() == 3 || occludedVoxels.size() == 2 || occludedVoxels.size() == 1)
                 {
-                    // Check if wall (n=4), edge (n=2), or corner (n=1). Do hemisphere if so.
+                    // Check if wall (n=4), kinda-wall-elbow-thing (n=3), edge (n=2), or corner (n=1). Do hemisphere if so.
                     bool xAxisSame = true;
                     bool yAxisSame = true;
                     bool zAxisSame = true;
@@ -997,7 +998,7 @@ void buildLighting(VoxelField_XData* d, const std::string& guid)
                     vec3s{ -1.0f, -1.0f, -1.0f },
                 };
 
-                size_t iterations = 100;
+                size_t iterations = 1000;
                 for (size_t iteration = 0; iteration < iterations; iteration++)
                 {
                     vec3 jitter = {
