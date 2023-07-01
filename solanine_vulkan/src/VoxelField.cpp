@@ -896,23 +896,6 @@ void buildLighting(VoxelField_XData* d, const std::string& guid)
     tf::Taskflow taskflow;
     tf::Executor executor;
 
-#if NEW_LIGHT_BUILDING_METHOD
-    std::vector<vec3s> directionsToTest;
-    for (size_t i = 0; i < 2000; i++)  // Uniform random distribution on a sphere (https://www.bogotobogo.com/Algorithms/uniform_distribution_sphere.php)
-    {
-        float_t theta = 2.0f * M_PI * randomFloat();
-        float_t phi = std::acosf(2.0f * randomFloat() - 1.0f);
-
-        vec3s direction = {
-            std::cosf(theta) * std::sinf(phi),
-            std::sinf(theta) * std::sinf(phi),
-            std::cosf(phi)
-        };
-        glm_vec3_normalize(direction.raw);
-        directionsToTest.push_back(direction);
-    }
-#endif
-
     //
     // Execute ray queries for building lighting.
     //
@@ -931,7 +914,7 @@ void buildLighting(VoxelField_XData* d, const std::string& guid)
             debug_log_currentGridCellId == (size_t)(totalGridCells * 0.8f) ||
             debug_log_currentGridCellId == (size_t)(totalGridCells * 0.9f));
 
-        taskflow.emplace([&lightgrid, &buildLightingMutex, &rayResultCache, &directionsToTest, showStatusMessage, debug_log_currentGridCellId, d, i, j, k, lightgridX, lightgridY, lightgridZ, totalGridCells]() {
+        taskflow.emplace([&lightgrid, &buildLightingMutex, &rayResultCache, showStatusMessage, debug_log_currentGridCellId, d, i, j, k, lightgridX, lightgridY, lightgridZ, totalGridCells]() {
             vec3 position = { i - 1.0f, j - 1.0f, k - 1.0f };  // Subtract 1 to better fit into the voxel grid space.
             float_t totalLight = 0.0f;
 
@@ -982,28 +965,74 @@ void buildLighting(VoxelField_XData* d, const std::string& guid)
                     }
                 }
 
-                size_t numRaysShot = 0;
-                for (vec3s direction : directionsToTest)
+                std::vector<vec3s> directionsToTest = {
+                    // Cardinal directions.
+                    vec3s{  1.0f,  0.0f,  0.0f },
+                    vec3s{ -1.0f,  0.0f,  0.0f },
+                    vec3s{  0.0f,  1.0f,  0.0f },
+                    vec3s{  0.0f, -1.0f,  0.0f },
+                    vec3s{  0.0f,  0.0f,  1.0f },
+                    vec3s{  0.0f,  0.0f, -1.0f },
+                    // Edge directions.
+                    vec3s{  1.0f,  1.0f,  0.0f },
+                    vec3s{ -1.0f,  1.0f,  0.0f },
+                    vec3s{  0.0f,  1.0f,  1.0f },
+                    vec3s{  0.0f,  1.0f, -1.0f },
+                    vec3s{  1.0f, -1.0f,  0.0f },
+                    vec3s{ -1.0f, -1.0f,  0.0f },
+                    vec3s{  0.0f, -1.0f,  1.0f },
+                    vec3s{  0.0f, -1.0f, -1.0f },
+                    vec3s{  1.0f,  0.0f,  1.0f },
+                    vec3s{ -1.0f,  0.0f,  1.0f },
+                    vec3s{  1.0f,  0.0f, -1.0f },
+                    vec3s{ -1.0f,  0.0f, -1.0f },
+                    // Corner directions.
+                    vec3s{  1.0f,  1.0f,  1.0f },
+                    vec3s{ -1.0f,  1.0f,  1.0f },
+                    vec3s{  1.0f,  1.0f, -1.0f },
+                    vec3s{ -1.0f,  1.0f, -1.0f },
+                    vec3s{  1.0f, -1.0f,  1.0f },
+                    vec3s{ -1.0f, -1.0f,  1.0f },
+                    vec3s{  1.0f, -1.0f, -1.0f },
+                    vec3s{ -1.0f, -1.0f, -1.0f },
+                };
+
+                size_t iterations = 100;
+                for (size_t iteration = 0; iteration < iterations; iteration++)
                 {
+                    vec3 jitter = {
+                        randomFloat() - 0.5f,  // [-0.5, 0.5] random float.
+                        randomFloat() - 0.5f,
+                        randomFloat() - 0.5f
+                    };
 
-                    vec3 directionNormalized;
-                    if (!useSphere && glm_vec3_dot(direction.raw, hemisphereNormal) < 0.0f)
-                        glm_vec3_negate_to(direction.raw, directionNormalized);
-                    
-                    // Scale the direction to align with voxels.
-                    vec3 deltaAbs;
-                    glm_vec3_abs(directionNormalized, deltaAbs);
-                    float_t maxVector = glm_vec3_max(deltaAbs);
+                    float_t iterationTotalLight = 0.0f;
+                    size_t numRaysShot = 0;
+                    for (vec3s direction : directionsToTest)
+                    {
+                        vec3 jitteredDirectionNormalized;
+                        glm_vec3_add(direction.raw, jitter, jitteredDirectionNormalized);
+                        glm_vec3_normalize(jitteredDirectionNormalized);
 
-                    vec3 deltaScaled;
-                    glm_vec3_scale(directionNormalized, 1.0f / maxVector, deltaScaled);  // Instead of normalizing, sets the abs of the longest axis to 1.0 for iterating thru the voxel grid with integer-like iterations.
+                        if (!useSphere && glm_vec3_dot(jitteredDirectionNormalized, hemisphereNormal) < 0.0f)
+                            glm_vec3_negate(jitteredDirectionNormalized);
+                        
+                        // Scale the direction to align with voxels.
+                        vec3 deltaAbs;
+                        glm_vec3_abs(jitteredDirectionNormalized, deltaAbs);
+                        float_t maxVector = glm_vec3_max(deltaAbs);
 
-                    totalLight += shootRayForLightBuilding(d, rayResultCache, position, deltaScaled, false);
-                    numRaysShot++;
+                        vec3 deltaJitteredAndScaled;
+                        glm_vec3_scale(jitteredDirectionNormalized, 1.0f / maxVector, deltaJitteredAndScaled);  // Instead of normalizing, sets the abs of the longest axis to 1.0 for iterating thru the voxel grid with integer-like iterations.
+
+                        iterationTotalLight += shootRayForLightBuilding(d, rayResultCache, position, deltaJitteredAndScaled, false);
+                        numRaysShot++;
+                    }
+
+                    if (numRaysShot > 0)
+                        totalLight += iterationTotalLight / (float_t)numRaysShot;
                 }
-
-                if (numRaysShot > 0)
-                    totalLight /= (float_t)numRaysShot;
+                totalLight /= iterations;
             }
 #else
             // Cardinal directions.
