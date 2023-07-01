@@ -651,6 +651,20 @@ bool isOutsideLightGrid(physengine::VoxelFieldPhysicsData* vfpd, ivec3 position)
         position[0] >= vfpd->sizeX + 2 || position[1] >= vfpd->sizeY + 2 || position[2] >= vfpd->sizeZ + 2);
 }
 
+#define NEW_LIGHT_BUILDING_METHOD 1
+#if NEW_LIGHT_BUILDING_METHOD
+#include <SDL2/SDL.h>
+
+float_t randomFloat()
+{
+    static thread_local uint32_t seed = SDL_GetTicks64();
+    // PCG_Hash function from https://www.youtube.com/watch?v=5_RAHZQCPjE
+    uint32_t state = seed * 747796405u + 2891336453u;
+    uint32_t word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    seed = (word >> 22u) ^ word;
+    return (float_t)seed / (float_t)std::numeric_limits<uint32_t>::max();
+}
+#else
 struct RayCacheDataStructure
 {
     int32_t originX, originY, originZ;
@@ -663,22 +677,40 @@ struct RayCacheDataStructure
         return originType * 3 * 3 * 3 + deltaType;
     }
 };
+#endif
 
-float_t shootRayForLightBuilding(VoxelField_XData* d, float_t*& rayResultCache, ivec3 origin, ivec3 delta, bool enableCheckForStaggeredBlocks)
+float_t shootRayForLightBuilding(VoxelField_XData* d, float_t*& rayResultCache, vec3 origin, vec3 delta, bool enableCheckForStaggeredBlocks)
 {
-    if (isOutsideLightGrid(d->vfpd, origin))
+    ivec3 originInt = { floor(origin[0]), floor(origin[1]), floor(origin[2]) };
+
+    if (isOutsideLightGrid(d->vfpd, originInt))
         return 1.0f;  // @NOTE: checking whether outside the light grid is definitely less expensive than doing a cache search, especially if the cache is large.
+
+#if NEW_LIGHT_BUILDING_METHOD
+    // Test whether the ray passes thru blocked territory
+    vec3 testPosition;
+    glm_vec3_scale(delta, 0.5f, testPosition);  // @NOTE: @CHECK: maybe not the best "raycast", just testing at the halfway point.
+    glm_vec3_add(origin, testPosition, testPosition);
+    if (physengine::getVoxelDataAtPosition(*d->vfpd, floor(testPosition[0]), floor(testPosition[1]), floor(testPosition[2])) != 0)
+        return 0.0f;  // Blocked.
+
+    // Goto the next iteration of shooting light since not occluded.
+    vec3 nextPosition;
+    glm_vec3_add(origin, delta, nextPosition);
+    return shootRayForLightBuilding(d, rayResultCache, nextPosition, delta, false);
+#else
+    ivec3 deltaInt = { floor(delta[0]), floor(delta[1]), floor(delta[2]) };
 
     size_t cacheIndex;
     if (enableCheckForStaggeredBlocks)  // @NOTE: since `enableCheckForStaggeredBlocks` is used only during the first step, the cache for this data is useless for other rays bc it's only gonna be used once. Hence it being a flag of whether to use the cache or not.
     {
         RayCacheDataStructure rcds = {
-            .originX = origin[0],
-            .originY = origin[1],
-            .originZ = origin[2],
-            .deltaX = delta[0],
-            .deltaY = delta[1],
-            .deltaZ = delta[2],
+            .originX = originInt[0],
+            .originY = originInt[1],
+            .originZ = originInt[2],
+            .deltaX = deltaInt[0],
+            .deltaY = deltaInt[1],
+            .deltaZ = deltaInt[2],
         };
         cacheIndex = rcds.toIndex(d->vfpd->sizeX + 3, d->vfpd->sizeY + 3, d->vfpd->sizeZ + 3);
 
@@ -688,14 +720,15 @@ float_t shootRayForLightBuilding(VoxelField_XData* d, float_t*& rayResultCache, 
     }
 
     ivec3 nextPosition;
-    glm_ivec3_add(origin, delta, nextPosition);
+    glm_ivec3_add(originInt, deltaInt, nextPosition);
     float_t rayResult = 0.0f;
     
-    vec3 originFloat = { origin[0], origin[1], origin[2] };
-    vec3 halfDelta = { delta[0] * 0.5f, delta[1] * 0.5f, delta[2] * 0.5f };
+    vec3 originFloat = { originInt[0], originInt[1], originInt[2] };
+    vec3 halfDelta = { deltaInt[0] * 0.5f, deltaInt[1] * 0.5f, deltaInt[2] * 0.5f };
+
 
     ivec3 deltaAbs;
-    glm_ivec3_abs(delta, deltaAbs);
+    glm_ivec3_abs(deltaInt, deltaAbs);
     int32_t manhattanDistance = deltaAbs[0] + deltaAbs[1] + deltaAbs[2];
     if (manhattanDistance == 1)
     {
@@ -714,7 +747,7 @@ float_t shootRayForLightBuilding(VoxelField_XData* d, float_t*& rayResultCache, 
         size_t axes[2];  // Get the non-normal axes to change.
         size_t ii = 0;
         for (size_t i = 0; i < 3; i++)
-            if (delta[i] == 0)
+            if (deltaInt[i] == 0)
                 axes[ii++] = i;
 
         vec3 testPosition;
@@ -767,7 +800,7 @@ float_t shootRayForLightBuilding(VoxelField_XData* d, float_t*& rayResultCache, 
             rayResult = 0.0f;  // Blocked w/ no hole to "slide" thru.
         else
             // Recurse, recurse!
-            rayResult = shootRayForLightBuilding(d, rayResultCache, nextPosition, delta, true);  // Enable checking for staggered blocks.
+            rayResult = shootRayForLightBuilding(d, rayResultCache, nextPosition, deltaInt, true);  // Enable checking for staggered blocks.
     }
     else if (manhattanDistance == 2 || manhattanDistance == 3)
     {
@@ -789,33 +822,42 @@ float_t shootRayForLightBuilding(VoxelField_XData* d, float_t*& rayResultCache, 
                 size_t axes[2];  // Get the non-zero axes.
                 size_t ii = 0;
                 for (size_t i = 0; i < 3; i++)
-                    if (delta[i] != 0)
+                    if (deltaInt[i] != 0)
                         axes[ii++] = i;
 
                 float_t totalLight = 0.0f;
-                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, delta, true);
+                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, deltaInt, true);
 
+#define OLD_METHOD_WITH_RAY_MULTIPLICATION 0
+#if OLD_METHOD_WITH_RAY_MULTIPLICATION
                 ivec3 deltaOneDirection;
                 glm_ivec3_zero(deltaOneDirection);
-                deltaOneDirection[axes[0]] = delta[axes[0]];
+                deltaOneDirection[axes[0]] = deltaInt[axes[0]];
                 totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, deltaOneDirection, true);
 
                 glm_ivec3_zero(deltaOneDirection);
-                deltaOneDirection[axes[1]] = delta[axes[1]];
+                deltaOneDirection[axes[1]] = deltaInt[axes[1]];
                 totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, deltaOneDirection, true);
                 rayResult = totalLight / 3.0f;
+#else
+                rayResult = totalLight;
+#endif
             }
             else if (manhattanDistance == 3)  // Corner case
             {
                 float_t totalLight = 0.0f;
-                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, delta, true);
-                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, ivec3{ delta[0], 0, 0 }, true);
-                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, ivec3{ 0, delta[1], 0 }, true);
-                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, ivec3{ 0, 0, delta[2] }, true);
-                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, ivec3{ delta[0], delta[1], 0 }, true);
-                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, ivec3{ 0, delta[1], delta[2] }, true);
-                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, ivec3{ delta[0], 0, delta[2] }, true);
+                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, deltaInt, true);
+#if OLD_METHOD_WITH_RAY_MULTIPLICATION
+                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, ivec3{ deltaInt[0], 0, 0 }, true);
+                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, ivec3{ 0, deltaInt[1], 0 }, true);
+                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, ivec3{ 0, 0, deltaInt[2] }, true);
+                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, ivec3{ deltaInt[0], deltaInt[1], 0 }, true);
+                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, ivec3{ 0, deltaInt[1], deltaInt[2] }, true);
+                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, ivec3{ deltaInt[0], 0, deltaInt[2] }, true);
                 rayResult = totalLight / 7.0f;
+#else
+                rayResult = totalLight;
+#endif
             }
         }
     }
@@ -830,6 +872,7 @@ float_t shootRayForLightBuilding(VoxelField_XData* d, float_t*& rayResultCache, 
         rayResultCache[cacheIndex] = rayResult;
     }
     return rayResult;
+#endif
 }
 
 void buildLighting(VoxelField_XData* d, const std::string& guid)
@@ -872,42 +915,159 @@ void buildLighting(VoxelField_XData* d, const std::string& guid)
             debug_log_currentGridCellId == (size_t)(totalGridCells * 0.9f));
 
         taskflow.emplace([&lightgrid, &buildLightingMutex, &rayResultCache, showStatusMessage, debug_log_currentGridCellId, d, i, j, k, lightgridX, lightgridY, lightgridZ, totalGridCells]() {
-            ivec3 position = { (int32_t)i - 1, (int32_t)j - 1, (int32_t)k - 1 };  // Subtract 1 to better fit into the voxel grid space.
+            vec3 position = { i - 1.0f, j - 1.0f, k - 1.0f };  // Subtract 1 to better fit into the voxel grid space.
             float_t totalLight = 0.0f;
 
+#if NEW_LIGHT_BUILDING_METHOD
+            std::vector<ivec3s> occludedVoxels;
+            for (size_t occludeI = 0; occludeI < 2; occludeI++)
+            for (size_t occludeJ = 0; occludeJ < 2; occludeJ++)
+            for (size_t occludeK = 0; occludeK < 2; occludeK++)
+            {
+                vec3 testPosition = {
+                    position[0] + occludeI - 0.5f,
+                    position[1] + occludeJ - 0.5f,
+                    position[2] + occludeK - 0.5f,
+                };
+                if (physengine::getVoxelDataAtPosition(*d->vfpd, floor(testPosition[0]), floor(testPosition[1]), floor(testPosition[2])) != 0)
+                    occludedVoxels.push_back(ivec3s{ (int32_t)occludeI, (int32_t)occludeJ, (int32_t)occludeK });
+            }
+            
+            if (occludedVoxels.size() < 8)  // If all the surrounding voxels are occluded, then no need to shoot any rays.
+            {
+                // Check to see if should do hemisphere or sphere.
+                bool useSphere = true;
+                vec3 hemisphereNormal = GLM_VEC3_ZERO_INIT;
+                if (occludedVoxels.size() == 4 || occludedVoxels.size() == 2 || occludedVoxels.size() == 1)
+                {
+                    // Check if wall (n=4), edge (n=2), or corner (n=1). Do hemisphere if so.
+                    bool xAxisSame = true;
+                    bool yAxisSame = true;
+                    bool zAxisSame = true;
+                    for (size_t x = 1; x < occludedVoxels.size(); x++)
+                    {
+                        if (occludedVoxels[0].x != occludedVoxels[x].x) xAxisSame = false;
+                        if (occludedVoxels[0].y != occludedVoxels[x].y) yAxisSame = false;
+                        if (occludedVoxels[0].z != occludedVoxels[x].z) zAxisSame = false;
+                    }
+
+                    if (xAxisSame || yAxisSame || zAxisSame)
+                    {
+                        // Confirmed to be a wall. Get normal.
+                        vec3 averagePosition = GLM_VEC3_ZERO_INIT;
+                        for (ivec3s v : occludedVoxels)
+                            glm_vec3_add(averagePosition, vec3{ (float_t)v.x - 0.5f, (float_t)v.y - 0.5f, (float_t)v.z - 0.5f }, averagePosition);
+                        glm_vec3_scale(averagePosition, 1.0f / (float_t)occludedVoxels.size(), averagePosition);
+                        glm_vec3_sub(vec3{ 0.0f, 0.0f, 0.0f }, averagePosition, hemisphereNormal);
+                        glm_vec3_normalize(hemisphereNormal);
+
+                        useSphere = false;
+                    }
+                }
+
+                std::vector<vec3s> directionsToTest = {
+                    // Cardinal directions.
+                    vec3s{  1.0f,  0.0f,  0.0f },
+                    vec3s{ -1.0f,  0.0f,  0.0f },
+                    vec3s{  0.0f,  1.0f,  0.0f },
+                    vec3s{  0.0f, -1.0f,  0.0f },
+                    vec3s{  0.0f,  0.0f,  1.0f },
+                    vec3s{  0.0f,  0.0f, -1.0f },
+                    // Edge directions.
+                    vec3s{  1.0f,  1.0f,  0.0f },
+                    vec3s{ -1.0f,  1.0f,  0.0f },
+                    vec3s{  0.0f,  1.0f,  1.0f },
+                    vec3s{  0.0f,  1.0f, -1.0f },
+                    vec3s{  1.0f, -1.0f,  0.0f },
+                    vec3s{ -1.0f, -1.0f,  0.0f },
+                    vec3s{  0.0f, -1.0f,  1.0f },
+                    vec3s{  0.0f, -1.0f, -1.0f },
+                    vec3s{  1.0f,  0.0f,  1.0f },
+                    vec3s{ -1.0f,  0.0f,  1.0f },
+                    vec3s{  1.0f,  0.0f, -1.0f },
+                    vec3s{ -1.0f,  0.0f, -1.0f },
+                    // Corner directions.
+                    vec3s{  1.0f,  1.0f,  1.0f },
+                    vec3s{ -1.0f,  1.0f,  1.0f },
+                    vec3s{  1.0f,  1.0f, -1.0f },
+                    vec3s{ -1.0f,  1.0f, -1.0f },
+                    vec3s{  1.0f, -1.0f,  1.0f },
+                    vec3s{ -1.0f, -1.0f,  1.0f },
+                    vec3s{  1.0f, -1.0f, -1.0f },
+                    vec3s{ -1.0f, -1.0f, -1.0f },
+                };
+
+                size_t iterations = 100;
+                for (size_t iteration = 0; iteration < iterations; iteration++)
+                {
+                    vec3 jitter = {
+                        randomFloat() - 0.5f,  // [-0.5, 0.5] random float.
+                        randomFloat() - 0.5f,
+                        randomFloat() - 0.5f
+                    };
+
+                    float_t iterationTotalLight = 0.0f;
+                    size_t numRaysShot = 0;
+                    for (vec3s direction : directionsToTest)
+                    {
+                        vec3 jitteredDirectionNormalized;
+                        glm_vec3_add(direction.raw, jitter, jitteredDirectionNormalized);
+                        glm_vec3_normalize(jitteredDirectionNormalized);
+
+                        if (!useSphere && glm_vec3_dot(jitteredDirectionNormalized, hemisphereNormal) < 0.0f)
+                            glm_vec3_negate(jitteredDirectionNormalized);
+                        
+                        // Scale the direction to align with voxels.
+                        vec3 deltaAbs;
+                        glm_vec3_abs(jitteredDirectionNormalized, deltaAbs);
+                        float_t maxVector = glm_vec3_max(deltaAbs);
+
+                        vec3 deltaJitteredAndScaled;
+                        glm_vec3_scale(jitteredDirectionNormalized, 1.0f / maxVector, deltaJitteredAndScaled);  // Instead of normalizing, sets the abs of the longest axis to 1.0 for iterating thru the voxel grid with integer-like iterations.
+
+                        iterationTotalLight += shootRayForLightBuilding(d, rayResultCache, position, deltaJitteredAndScaled, false);
+                        numRaysShot++;
+                    }
+
+                    if (numRaysShot > 0)
+                        totalLight += iterationTotalLight / (float_t)numRaysShot;
+                }
+                totalLight /= iterations;
+            }
+#else
             // Cardinal directions.
-            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{  1,  0,  0 }, false);
-            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{ -1,  0,  0 }, false);
-            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{  0,  1,  0 }, false);
-            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{  0, -1,  0 }, false);
-            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{  0,  0,  1 }, false);
-            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{  0,  0, -1 }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{  1.0f,  0.0f,  0.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{ -1.0f,  0.0f,  0.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{  0.0f,  1.0f,  0.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{  0.0f, -1.0f,  0.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{  0.0f,  0.0f,  1.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{  0.0f,  0.0f, -1.0f }, false);
 
             // Edge directions.
-            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{  1,  1,  0 }, false);
-            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{ -1,  1,  0 }, false);
-            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{  0,  1,  1 }, false);
-            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{  0,  1, -1 }, false);
-            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{  1, -1,  0 }, false);
-            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{ -1, -1,  0 }, false);
-            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{  0, -1,  1 }, false);
-            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{  0, -1, -1 }, false);
-            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{  1,  0,  1 }, false);
-            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{ -1,  0,  1 }, false);
-            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{  1,  0, -1 }, false);
-            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{ -1,  0, -1 }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{  1.0f,  1.0f,  0.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{ -1.0f,  1.0f,  0.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{  0.0f,  1.0f,  1.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{  0.0f,  1.0f, -1.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{  1.0f, -1.0f,  0.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{ -1.0f, -1.0f,  0.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{  0.0f, -1.0f,  1.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{  0.0f, -1.0f, -1.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{  1.0f,  0.0f,  1.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{ -1.0f,  0.0f,  1.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{  1.0f,  0.0f, -1.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{ -1.0f,  0.0f, -1.0f }, false);
 
             // Corner directions.
-            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{  1,  1,  1 }, false);
-            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{ -1,  1,  1 }, false);
-            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{  1,  1, -1 }, false);
-            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{ -1,  1, -1 }, false);
-            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{  1, -1,  1 }, false);
-            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{ -1, -1,  1 }, false);
-            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{  1, -1, -1 }, false);
-            totalLight += shootRayForLightBuilding(d, rayResultCache, position, ivec3{ -1, -1, -1 }, false);
-
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{  1.0f,  1.0f,  1.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{ -1.0f,  1.0f,  1.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{  1.0f,  1.0f, -1.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{ -1.0f,  1.0f, -1.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{  1.0f, -1.0f,  1.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{ -1.0f, -1.0f,  1.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{  1.0f, -1.0f, -1.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{ -1.0f, -1.0f, -1.0f }, false);
             totalLight /= 26.0f;
+#endif
             lightgrid[k * lightgridY * lightgridX + j * lightgridX + i] = totalLight;  // Use this layout so that rows are contiguous for image saving.
 
             if (showStatusMessage)
@@ -963,16 +1123,12 @@ void VoxelField::renderImGui()
 {
     ImGui::Text("Hello there!");
 
-    if (_data->isLightingDirty)
+    if (_data->isLightingDirty && ImGui::Button("Build Lighting (Baking, essentially)") ||
+        !_data->isLightingDirty && ImGui::Button("Despite lighting up to date, Build Lighting anyway"))
     {
-        if (ImGui::Button("Build Lighting (Baking, essentially)"))
-        {
-            buildLighting(_data, getGUID());
-            _data->isLightingDirty = false;
-        }
+        buildLighting(_data, getGUID());
+        _data->isLightingDirty = false;
     }
-    else
-        ImGui::Text("Lighting up to date.");
 
     _data->isPicked = true;
 }
