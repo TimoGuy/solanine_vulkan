@@ -73,7 +73,7 @@ layout (std140, set = 4, binding = 0) readonly buffer SkeletonAnimationNodeColle
 // Voxel field lighting grid Transforms
 struct VoxelFieldLightingGrid
 {
-	mat4 transform;  // @TODO: @INCOMPLETE: create the buffer for this!!!!
+	mat4 transform;
 };
 
 layout(std140, set = 5, binding = 0) readonly buffer VoxelFieldLightingGridBuffer

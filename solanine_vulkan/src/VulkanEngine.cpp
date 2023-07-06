@@ -2692,6 +2692,11 @@ void VulkanEngine::initPipelines()
 void VulkanEngine::generatePBRCubemaps()
 {
 	//
+	// Before generating the pbr cubemaps, render out the procedural skybox into the texture to be made into the prefilter and irradiance cubemaps
+	//
+	// @TODO: implement this!!!! @INCOMPLETE
+
+	//
 	// @NOTE: this function was copied and very slightly modified from Sascha Willem's Vulkan-glTF-PBR example.
 	//
 
