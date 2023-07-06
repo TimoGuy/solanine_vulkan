@@ -117,7 +117,7 @@ void VulkanEngine::run()
 	_camera->sceneCamera.boxCastExtents[2] = _camera->sceneCamera.zNear * 0.5f;
 	
 	// @HARDCODED: Set the initial light direction
-	vec4 lightDir = { 0.273897f, 0.255802f, 0.960134f, 0.0f };
+	vec4 lightDir = { 0.144958f, 0.849756f, 0.506855f, 0.0f };
 	glm_vec4_normalize(lightDir);
 	glm_vec4_copy(lightDir, _pbrRendering.gpuSceneShadingProps.lightDir);
 
