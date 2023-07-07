@@ -106,6 +106,8 @@ void VulkanEngine::init()
 constexpr size_t numPerfs = 15;
 uint64_t perfs[numPerfs];
 
+vec4 lightDir = { 0.144958f, 0.849756f, 0.506855f, 0.0f };
+
 void VulkanEngine::run()
 {
 	//
@@ -117,7 +119,6 @@ void VulkanEngine::run()
 	_camera->sceneCamera.boxCastExtents[2] = _camera->sceneCamera.zNear * 0.5f;
 	
 	// @HARDCODED: Set the initial light direction
-	vec4 lightDir = { 0.144958f, 0.849756f, 0.506855f, 0.0f };
 	glm_vec4_normalize(lightDir);
 	glm_vec4_copy(lightDir, _pbrRendering.gpuSceneShadingProps.lightDir);
 
@@ -2692,102 +2693,6 @@ void VulkanEngine::initPipelines()
 void VulkanEngine::generatePBRCubemaps()
 {
 	//
-	// Before generating the pbr cubemaps, render out the procedural skybox into the texture to be made into the prefilter and irradiance cubemaps
-	//
-	// @TODO: implement this!!!! @INCOMPLETE
-
-	// Init renderpass
-	{
-		Texture proceduralSkyboxTexture;
-		uint32_t textureSize = 512;
-
-		auto tStart = std::chrono::high_resolution_clock::now();
-
-		// Create image, imageview, and sampler.
-		proceduralSkyboxTexture.image._mipLevels = 1;
-		VkImageCreateInfo imageInfo =
-			vkinit::imageCubemapCreateInfo(
-				VK_FORMAT_R32G32B32A32_SFLOAT,
-				VK_IMAGE_USAGE_SAMPLED_BIT,  // @TODO: make this compatible to be written to by a framebuffer.
-				VkExtent3D{ textureSize, textureSize, 1 },
-				proceduralSkyboxTexture.image._mipLevels
-			);
-		VmaAllocationCreateInfo imageAllocInfo = {
-			.usage = VMA_MEMORY_USAGE_GPU_ONLY,
-		};
-		vmaCreateImage(_allocator, &imageInfo, &imageAllocInfo, &proceduralSkyboxTexture.image._image, &proceduralSkyboxTexture.image._allocation, nullptr);
-
-		VkImageViewCreateInfo imageViewInfo = vkinit::imageviewCubemapCreateInfo(VK_FORMAT_R32G32B32A32_SFLOAT, proceduralSkyboxTexture.image._image, VK_IMAGE_ASPECT_COLOR_BIT, proceduralSkyboxTexture.image._mipLevels);
-		vkCreateImageView(_device, &imageViewInfo, nullptr, &proceduralSkyboxTexture.imageView);
-
-		VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(proceduralSkyboxTexture.image._mipLevels), VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
-		vkCreateSampler(_device, &samplerInfo, nullptr, &proceduralSkyboxTexture.sampler);
-
-		_loadedTextures["CubemapSkybox"] = proceduralSkyboxTexture;
-
-		_mainDeletionQueue.pushFunction([=]() {
-			vkDestroySampler(_device, proceduralSkyboxTexture.sampler, nullptr);
-			vkDestroyImageView(_device, proceduralSkyboxTexture.imageView, nullptr);
-		});
-
-		// Create Renderpass
-
-
-		// Create Framebuffer
-
-		// Create Pipeline
-		vkglTF::VertexInputDescription modelVertexDescription = vkglTF::Model::Vertex::getVertexDescription();
-
-		VkPipeline skyboxPipeline;
-		VkPipelineLayout skyboxPipelineLayout;
-		vkutil::pipelinebuilder::build(
-			{},
-			{ _globalSetLayout, _singleTextureSetLayout },
-			{
-				{ VK_SHADER_STAGE_VERTEX_BIT, "shader/skybox.vert.spv" },
-				{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/skybox.frag.spv" },
-			},
-			modelVertexDescription.attributes,
-			modelVertexDescription.bindings,
-			vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
-			VkViewport{
-				0.0f, 0.0f,
-				(float_t)textureSize, (float_t)textureSize,
-				0.0f, 1.0f,
-			},
-			VkRect2D{
-				{ 0, 0 },
-				{ textureSize, textureSize }
-			},
-			vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_FRONT_BIT),    // Bc we're rendering a box inside-out
-			{ vkinit::colorBlendAttachmentState() },
-			vkinit::multisamplingStateCreateInfo(),
-			vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_NEVER),
-			{},
-			_mainRenderPass,
-			skyboxPipeline,
-			skyboxPipelineLayout
-		);
-
-		// Render onto cubemap
-		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxPipeline);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxPipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxPipelineLayout, 1, 1, &skyboxMaterial.textureSet, 0, nullptr);
-
-		auto skybox = _roManager->getModel("Box", nullptr, [](){});
-		skybox->bind(cmd);
-		skybox->draw(cmd);
-	}
-	// @TODO: NOTE: DELETE THIS!!!!!! IT ISNT GONNNA BE USED BC THE `ENVIRONMENT` TARGET WAS ADDED INTO THE FOR LOOP!
-
-
-
-
-
-
-
-
-	//
 	// @NOTE: this function was copied and very slightly modified from Sascha Willem's Vulkan-glTF-PBR example.
 	//
 
@@ -3044,7 +2949,9 @@ void VulkanEngine::generatePBRCubemaps()
 		struct PushBlockEnvironment
 		{
 			mat4 mvp;
-			// @TODO: put in other params for the push block.
+			vec3 lightDir;
+			float_t sunRadius;
+			float_t sunAlpha;
 		} pushBlockEnvironment;
 
 		struct PushBlockIrradiance
@@ -3149,7 +3056,6 @@ void VulkanEngine::generatePBRCubemaps()
 		switch (target)
 		{
 		case ENVIRONMENT:
-			// @TODO: implement the fragment shader for here!
 			vkutil::pipelinebuilder::loadShaderModule("shader/skyboxfiltercube.frag.spv", filtercubeFragShader);
 			break;
 		case IRRADIANCE:
@@ -3278,6 +3184,9 @@ void VulkanEngine::generatePBRCubemaps()
 					{
 					case ENVIRONMENT:
 						glm_mat4_mul(perspective, matrices[f], pushBlockEnvironment.mvp);
+						glm_vec3_copy(lightDir, pushBlockEnvironment.lightDir);
+						pushBlockEnvironment.sunRadius = 0.15f;
+						pushBlockEnvironment.sunAlpha = 1.0f;
 						vkCmdPushConstants(cmd, pipelinelayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushBlockEnvironment), &pushBlockEnvironment);
 						break;
 					case IRRADIANCE:
