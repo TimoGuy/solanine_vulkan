@@ -22,7 +22,7 @@ struct GPUInstancePointer
 	uint32_t objectID;
 	uint32_t materialID;
 	uint32_t animatorNodeID;
-	uint32_t pad;
+	uint32_t voxelFieldLightingGridID;
 };
 
 enum class RenderLayer

@@ -48,6 +48,7 @@ bool RenderObjectManager::registerRenderObjects(std::vector<RenderObject> inRend
 					(uint32_t)(renderObjectData.animator == nullptr ?
 					0 :
 					renderObjectData.animator->skinIndexToGlobalReservedNodeIndex(primitive->animatorSkinIndexPropagatedCopy)),
+				.voxelFieldLightingGridID = 0,  // @NOTE: the default lightmap is blank 1.0f with identity transform, so set 0 to use the default lightmap.
 				});
 
 		// Register object

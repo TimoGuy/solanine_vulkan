@@ -1,13 +1,17 @@
 #include "VoxelField.h"
 
+#include <stb_image_write.h>
 #include "Imports.h"
 #include "VkglTFModel.h"
+#include "VkTextures.h"
+#include "VkInitializers.h"
 #include "RenderObject.h"
 #include "PhysicsEngine.h"
 #include "PhysUtil.h"
 #include "DataSerialization.h"
 #include "InputManager.h"
 #include "VulkanEngine.h"
+#include "AudioEngine.h"
 #include "Camera.h"
 #include "imgui/imgui.h"
 
@@ -20,6 +24,8 @@ struct VoxelField_XData
     std::vector<RenderObject*> voxelRenderObjs;
     std::vector<vec3s> voxelOffsets;  // @NOCHECKIN
 
+    size_t lightgridId = 0;  // If 0, then that means there is no light grid created.
+
     physengine::VoxelFieldPhysicsData* vfpd = nullptr;
     bool isPicked = false;
     
@@ -31,11 +37,13 @@ struct VoxelField_XData
         ivec3 editStartPosition = { 0, 0, 0 };
         ivec3 editEndPosition = { 0, 0, 0 };
     } editorState;
+    bool isLightingDirty = true;  // True unless built lighting was loaded in automatically.
 };
 
 inline void buildDefaultVoxelData(VoxelField_XData& data, const std::string& myGuid);
 inline void assembleVoxelRenderObjects(VoxelField_XData& data, const std::string& attachedEntityGuid, std::vector<ivec3s> dirtyPositions);
 inline void deleteVoxelRenderObjects(VoxelField_XData& data, std::vector<ivec3s> dirtyPositions);
+void triggerLoadLightingIfExists(VoxelField_XData& d, const std::string& guid);
 
 
 VoxelField::VoxelField(VulkanEngine* engine, EntityManager* em, RenderObjectManager* rom, DataSerialized* ds) : Entity(em, ds), _data(new VoxelField_XData())
@@ -58,6 +66,7 @@ VoxelField::VoxelField(VulkanEngine* engine, EntityManager* em, RenderObjectMana
 
     _data->voxelModel = _data->rom->getModel("DevBoxWood", this, [](){});
     assembleVoxelRenderObjects(*_data, getGUID(), {});
+    triggerLoadLightingIfExists(*_data, getGUID());
 }
 
 VoxelField::~VoxelField()
@@ -65,6 +74,79 @@ VoxelField::~VoxelField()
     deleteVoxelRenderObjects(*_data, {});
     physengine::destroyVoxelField(_data->vfpd);
     delete _data;
+}
+
+void triggerLoadLightingIfExists(VoxelField_XData& d, const std::string& guid)
+{
+    std::string folder = "res/textures/generated_voxelfield_lightgrids/vf_" + guid;
+    if (!std::filesystem::exists(folder) ||
+        !std::filesystem::is_directory(folder))
+    {
+        std::cerr << "ERROR: could not find directory with baked lighting: \"" << folder << "\"" << std::endl;
+        return;
+    }
+
+    std::map<int32_t, std::filesystem::path> imageSliceIndexToFilename;
+    for (const auto& entry : std::filesystem::directory_iterator(folder))
+    {
+        const auto& path = entry.path();
+        if (std::filesystem::is_directory(path))
+            continue;
+        if (!path.has_extension())
+            continue;
+        if (path.extension().compare(".png") != 0)
+            continue;
+        if (!path.has_stem())
+            continue;
+
+        int32_t sliceIndex = std::stoi(path.stem());  // @UNSAFE: this could crash here.
+        imageSliceIndexToFilename[sliceIndex] = path;
+    }
+
+    std::vector<std::string> fnamesStrings;
+    for (auto it = imageSliceIndexToFilename.begin(); it != imageSliceIndexToFilename.end(); it++)
+        fnamesStrings.push_back(it->second.string());  // @NOTE: a copy of the string needs to be saved from the path or else running .c_str() will have its rug pulled out from under it as soon as the scope exits.
+
+    std::vector<const char*> fnames;
+    for (auto& str : fnamesStrings)
+        fnames.push_back(str.c_str());  // @UNSAFE: this could crash here.
+
+    //
+    // Create 3D texture
+    //
+    Texture lightgridTexture;
+    if (!vkutil::loadImage3DFromFile(*d.engine, fnames, VK_FORMAT_R8G8B8A8_UNORM, lightgridTexture.image))
+    {
+        std::cerr << "ERROR: loading image failed. Aborting." << std::endl;
+        return;
+    }
+
+    VkImageViewCreateInfo imageInfo = vkinit::imageview3DCreateInfo(VK_FORMAT_R8G8B8A8_UNORM, lightgridTexture.image._image, VK_IMAGE_ASPECT_COLOR_BIT, lightgridTexture.image._mipLevels);
+    vkCreateImageView(d.engine->_device, &imageInfo, nullptr, &lightgridTexture.imageView);
+
+    VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(lightgridTexture.image._mipLevels), VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
+    vkCreateSampler(d.engine->_device, &samplerInfo, nullptr, &lightgridTexture.sampler);
+
+    d.engine->_mainDeletionQueue.pushFunction([=]() {
+        vkDestroySampler(d.engine->_device, lightgridTexture.sampler, nullptr);
+        vkDestroyImageView(d.engine->_device, lightgridTexture.imageView, nullptr);
+    });
+
+    d.engine->_loadedTextures["vf_lightgrid_" + guid] = lightgridTexture;
+
+    if (d.lightgridId == 0)
+    {
+        d.lightgridId = d.engine->_voxelFieldLightingGridTextureSet.textures.size();
+        d.engine->_voxelFieldLightingGridTextureSet.textures.push_back(lightgridTexture);
+        d.engine->_voxelFieldLightingGridTextureSet.transforms.resize(d.engine->_voxelFieldLightingGridTextureSet.textures.size());
+
+        for (auto& ro : d.voxelRenderObjs)
+            for (auto& inst : ro->calculatedModelInstances)
+                inst.voxelFieldLightingGridID = d.lightgridId;
+    }
+    else
+        d.engine->_voxelFieldLightingGridTextureSet.textures[d.lightgridId] = lightgridTexture;
+    d.engine->_voxelFieldLightingGridTextureSet.flagRecreateTextureSet = true;
 }
 
 void calculateObjectSpaceCameraLinecastPoints(VulkanEngine* engine, physengine::VoxelFieldPhysicsData* vfpd, vec3& outLinecastPt1, vec3& outLinecastPt2)
@@ -389,7 +471,10 @@ void VoxelField::physicsUpdate(const float_t& physicsDeltaTime)
                 _data->editorState.editing = false;
 
                 if (!dirtyPositions.empty())
+                {
                     assembleVoxelRenderObjects(*_data, getGUID(), dirtyPositions);
+                    _data->isLightingDirty = true;
+                }
             }
         }
         else if (!prevCorXPressed)
@@ -427,7 +512,22 @@ void VoxelField::update(const float_t& deltaTime)
 
 void VoxelField::lateUpdate(const float_t& deltaTime)
 {
+    // Update lightgrid transforms
+    if (_data->lightgridId > 0)
+    {
+        size_t lightgridX = _data->vfpd->sizeX + 3;
+        size_t lightgridY = _data->vfpd->sizeY + 3;
+        size_t lightgridZ = _data->vfpd->sizeZ + 3;
 
+        mat4 newTrans = GLM_MAT4_IDENTITY_INIT;
+        glm_scale(newTrans, vec3{ 1.0f / lightgridX, 1.0f / lightgridY, 1.0f / lightgridZ });
+        glm_translate(newTrans, vec3{ 1.5f, 1.5f, 1.5f });
+
+        mat4 invTransform;
+        glm_mat4_inv(_data->vfpd->interpolTransform, invTransform);
+        glm_mat4_mul(newTrans, invTransform, newTrans);
+        glm_mat4_copy(newTrans, _data->engine->_voxelFieldLightingGridTextureSet.transforms[_data->lightgridId].transform);
+    }
 }
 
 void VoxelField::dump(DataSerializer& ds)
@@ -545,9 +645,491 @@ void VoxelField::reportMoved(mat4* matrixMoved)
     }
 }
 
+bool isOutsideLightGrid(physengine::VoxelFieldPhysicsData* vfpd, ivec3 position)
+{
+    return (position[0] < -1 || position[1] < -1 || position[2] < -1 ||
+        position[0] >= vfpd->sizeX + 2 || position[1] >= vfpd->sizeY + 2 || position[2] >= vfpd->sizeZ + 2);
+}
+
+#define NEW_LIGHT_BUILDING_METHOD 1
+#if NEW_LIGHT_BUILDING_METHOD
+#include <SDL2/SDL.h>
+
+float_t randomFloat()
+{
+    static thread_local uint32_t seed = SDL_GetTicks64();
+    // PCG_Hash function from https://www.youtube.com/watch?v=5_RAHZQCPjE
+    uint32_t state = seed * 747796405u + 2891336453u;
+    uint32_t word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    seed = (word >> 22u) ^ word;
+    return (float_t)seed / (float_t)std::numeric_limits<uint32_t>::max();
+}
+#else
+struct RayCacheDataStructure
+{
+    int32_t originX, originY, originZ;
+    int32_t deltaX, deltaY, deltaZ;
+
+    size_t toIndex(size_t lightgridX, size_t lightgridY, size_t lightgridZ)
+    {
+        size_t originType = (originX + 1) * lightgridY * lightgridZ + (originY + 1) * lightgridZ + (originZ + 1);
+        size_t deltaType = (deltaX + 1) * 3 * 3 + (deltaY + 1) * 3 + (deltaZ + 1);
+        return originType * 3 * 3 * 3 + deltaType;
+    }
+};
+#endif
+
+float_t shootRayForLightBuilding(VoxelField_XData* d, float_t*& rayResultCache, vec3 origin, vec3 delta, bool enableCheckForStaggeredBlocks)
+{
+    ivec3 originInt = { floor(origin[0]), floor(origin[1]), floor(origin[2]) };
+
+    if (isOutsideLightGrid(d->vfpd, originInt))
+        return 1.0f;  // @NOTE: checking whether outside the light grid is definitely less expensive than doing a cache search, especially if the cache is large.
+
+#if NEW_LIGHT_BUILDING_METHOD
+    // Test whether the ray passes thru blocked territory
+    vec3 testPosition;
+    glm_vec3_scale(delta, 0.5f, testPosition);  // @NOTE: @CHECK: maybe not the best "raycast", just testing at the halfway point.
+    glm_vec3_add(origin, testPosition, testPosition);
+    if (physengine::getVoxelDataAtPosition(*d->vfpd, floor(testPosition[0]), floor(testPosition[1]), floor(testPosition[2])) != 0)
+        return 0.0f;  // Blocked.
+
+    // Goto the next iteration of shooting light since not occluded.
+    vec3 nextPosition;
+    glm_vec3_add(origin, delta, nextPosition);
+    return shootRayForLightBuilding(d, rayResultCache, nextPosition, delta, false);
+#else
+    ivec3 deltaInt = { floor(delta[0]), floor(delta[1]), floor(delta[2]) };
+
+    size_t cacheIndex;
+    if (enableCheckForStaggeredBlocks)  // @NOTE: since `enableCheckForStaggeredBlocks` is used only during the first step, the cache for this data is useless for other rays bc it's only gonna be used once. Hence it being a flag of whether to use the cache or not.
+    {
+        RayCacheDataStructure rcds = {
+            .originX = originInt[0],
+            .originY = originInt[1],
+            .originZ = originInt[2],
+            .deltaX = deltaInt[0],
+            .deltaY = deltaInt[1],
+            .deltaZ = deltaInt[2],
+        };
+        cacheIndex = rcds.toIndex(d->vfpd->sizeX + 3, d->vfpd->sizeY + 3, d->vfpd->sizeZ + 3);
+
+        float_t cacheResult = rayResultCache[cacheIndex];
+        if (cacheResult >= 0.0f)
+            return cacheResult;
+    }
+
+    ivec3 nextPositionInt;
+    glm_ivec3_add(originInt, deltaInt, nextPositionInt);
+    float_t rayResult = 0.0f;
+    vec3 nextPosition = { (float_t)nextPositionInt[0], (float_t)nextPositionInt[1], (float_t)nextPositionInt[2] };
+    
+    vec3 originFloat = { originInt[0], originInt[1], originInt[2] };
+    vec3 halfDelta = { deltaInt[0] * 0.5f, deltaInt[1] * 0.5f, deltaInt[2] * 0.5f };
+
+
+    ivec3 deltaAbs;
+    glm_ivec3_abs(deltaInt, deltaAbs);
+    int32_t manhattanDistance = deltaAbs[0] + deltaAbs[1] + deltaAbs[2];
+    if (manhattanDistance == 1)
+    {
+        //
+        // Cardinal direction ray
+        //
+        bool nwBlocked = false,
+            neBlocked = false,
+            swBlocked = false,
+            seBlocked = false;
+        vec2 nw = { -0.5f,  0.5f };
+        vec2 ne = {  0.5f,  0.5f };
+        vec2 sw = { -0.5f, -0.5f };
+        vec2 se = {  0.5f, -0.5f };
+        
+        size_t axes[2];  // Get the non-normal axes to change.
+        size_t ii = 0;
+        for (size_t i = 0; i < 3; i++)
+            if (deltaInt[i] == 0)
+                axes[ii++] = i;
+
+        vec3 testPosition;
+        if (enableCheckForStaggeredBlocks)  // @NOTE: this is the only situation where you can get blocked by staggered blocks: as a cardinal direction ray.
+        {
+            // Count previous "passing" blocks as blockable blocks too.
+            glm_vec3_sub(originFloat, halfDelta, testPosition);
+            testPosition[axes[0]] = nw[0];
+            testPosition[axes[1]] = nw[1];
+            nwBlocked |= physengine::getVoxelDataAtPosition(*d->vfpd, floor(testPosition[0]), floor(testPosition[1]), floor(testPosition[2])) != 0;
+            
+            glm_vec3_sub(originFloat, halfDelta, testPosition);
+            testPosition[axes[0]] = ne[0];
+            testPosition[axes[1]] = ne[1];
+            neBlocked |= physengine::getVoxelDataAtPosition(*d->vfpd, floor(testPosition[0]), floor(testPosition[1]), floor(testPosition[2])) != 0;
+            
+            glm_vec3_sub(originFloat, halfDelta, testPosition);
+            testPosition[axes[0]] = sw[0];
+            testPosition[axes[1]] = sw[1];
+            swBlocked |= physengine::getVoxelDataAtPosition(*d->vfpd, floor(testPosition[0]), floor(testPosition[1]), floor(testPosition[2])) != 0;
+            
+            glm_vec3_sub(originFloat, halfDelta, testPosition);
+            testPosition[axes[0]] = se[0];
+            testPosition[axes[1]] = se[1];
+            seBlocked |= physengine::getVoxelDataAtPosition(*d->vfpd, floor(testPosition[0]), floor(testPosition[1]), floor(testPosition[2])) != 0;
+        }
+
+        // Check next blocks as blockable blocks.
+        glm_vec3_add(originFloat, halfDelta, testPosition);
+        testPosition[axes[0]] = nw[0];
+        testPosition[axes[1]] = nw[1];
+        nwBlocked |= physengine::getVoxelDataAtPosition(*d->vfpd, floor(testPosition[0]), floor(testPosition[1]), floor(testPosition[2])) != 0;
+        
+        glm_vec3_add(originFloat, halfDelta, testPosition);
+        testPosition[axes[0]] = ne[0];
+        testPosition[axes[1]] = ne[1];
+        neBlocked |= physengine::getVoxelDataAtPosition(*d->vfpd, floor(testPosition[0]), floor(testPosition[1]), floor(testPosition[2])) != 0;
+        
+        glm_vec3_add(originFloat, halfDelta, testPosition);
+        testPosition[axes[0]] = sw[0];
+        testPosition[axes[1]] = sw[1];
+        swBlocked |= physengine::getVoxelDataAtPosition(*d->vfpd, floor(testPosition[0]), floor(testPosition[1]), floor(testPosition[2])) != 0;
+        
+        glm_vec3_add(originFloat, halfDelta, testPosition);
+        testPosition[axes[0]] = se[0];
+        testPosition[axes[1]] = se[1];
+        seBlocked |= physengine::getVoxelDataAtPosition(*d->vfpd, floor(testPosition[0]), floor(testPosition[1]), floor(testPosition[2])) != 0;
+
+        if (nwBlocked && neBlocked && swBlocked && seBlocked)
+            rayResult = 0.0f;  // Blocked w/ no hole to "slide" thru.
+        else
+            // Recurse, recurse!
+            rayResult = shootRayForLightBuilding(d, rayResultCache, nextPosition, delta, true);  // Enable checking for staggered blocks.
+    }
+    else if (manhattanDistance == 2 || manhattanDistance == 3)
+    {
+        //
+        // Edge/Corner direction ray
+        // @NOTE: because this ray is traversing thru edges/corners of the voxels,
+        //        light leak is physically possible, so don't check adjacent voxels
+        //        or "sliding".
+        //
+        vec3 testPosition;
+        glm_vec3_add(originFloat, halfDelta, testPosition);
+        if (physengine::getVoxelDataAtPosition(*d->vfpd, floor(testPosition[0]), floor(testPosition[1]), floor(testPosition[2])) != 0)
+            rayResult = 0.0f;  // Exit bc blocked.
+        else
+        {
+            // Recurse, recurse!
+            if (manhattanDistance == 2)  // Edge case
+            {
+                size_t axes[2];  // Get the non-zero axes.
+                size_t ii = 0;
+                for (size_t i = 0; i < 3; i++)
+                    if (deltaInt[i] != 0)
+                        axes[ii++] = i;
+
+                float_t totalLight = 0.0f;
+                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, delta, true);
+
+#define OLD_METHOD_WITH_RAY_MULTIPLICATION 1
+#if OLD_METHOD_WITH_RAY_MULTIPLICATION
+                ivec3 deltaOneDirection;
+                glm_ivec3_zero(deltaOneDirection);
+                deltaOneDirection[axes[0]] = deltaInt[axes[0]];
+                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, vec3{ (float_t)deltaOneDirection[0], (float_t)deltaOneDirection[1], (float_t)deltaOneDirection[2] }, true);
+
+                glm_ivec3_zero(deltaOneDirection);
+                deltaOneDirection[axes[1]] = deltaInt[axes[1]];
+                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, vec3{ (float_t)deltaOneDirection[0], (float_t)deltaOneDirection[1], (float_t)deltaOneDirection[2] }, true);
+                rayResult = totalLight / 3.0f;
+#else
+                rayResult = totalLight;
+#endif
+            }
+            else if (manhattanDistance == 3)  // Corner case
+            {
+                float_t totalLight = 0.0f;
+                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, delta, true);
+#if OLD_METHOD_WITH_RAY_MULTIPLICATION
+                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, vec3{ (float_t)deltaInt[0], 0.0f, 0.0f }, true);
+                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, vec3{ 0.0f, (float_t)deltaInt[1], 0.0f }, true);
+                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, vec3{ 0.0f, 0.0f, (float_t)deltaInt[2] }, true);
+                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, vec3{ (float_t)deltaInt[0], (float_t)deltaInt[1], 0.0f }, true);
+                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, vec3{ 0.0f, (float_t)deltaInt[1], (float_t)deltaInt[2] }, true);
+                totalLight += shootRayForLightBuilding(d, rayResultCache, nextPosition, vec3{ (float_t)deltaInt[0], 0.0f, (float_t)deltaInt[2] }, true);
+                rayResult = totalLight / 7.0f;
+#else
+                rayResult = totalLight;
+#endif
+            }
+        }
+    }
+    else
+    {
+        std::cerr << "ERROR: ray for light building is incorrect. Manhattan distance: " << manhattanDistance << std::endl;
+    }
+
+    // Insert result into cache
+    if (enableCheckForStaggeredBlocks)  // @COPYPASTA: @NOTE: since `enableCheckForStaggeredBlocks` is used only during the first step, the cache for this data is useless for other rays bc it's only gonna be used once. Hence it being a flag of whether to use the cache or not.
+    {
+        rayResultCache[cacheIndex] = rayResult;
+    }
+    return rayResult;
+#endif
+}
+
+void buildLighting(VoxelField_XData* d, const std::string& guid)
+{
+    std::cout << "START BUILDING LIGHTING" << std::endl;
+    size_t lightgridX = d->vfpd->sizeX + 3;
+    size_t lightgridY = d->vfpd->sizeY + 3;
+    size_t lightgridZ = d->vfpd->sizeZ + 3;
+
+    size_t totalGridCells = lightgridX * lightgridY * lightgridZ;
+    float_t* lightgrid = new float_t[totalGridCells];
+
+    size_t debug_log_currentGridCellId = 0;
+    std::mutex buildLightingMutex;
+
+    size_t cacheSize = 3 * 3 * 3 * totalGridCells;
+    float_t* rayResultCache = new float_t[cacheSize];
+    for (size_t i = 0; i < cacheSize; i++)
+        rayResultCache[i] = -1.0f;
+
+    tf::Taskflow taskflow;
+    tf::Executor executor;
+
+    //
+    // Execute ray queries for building lighting.
+    //
+    for (size_t i = 0; i < lightgridX; i++)
+    for (size_t j = 0; j < lightgridY; j++)
+    for (size_t k = 0; k < lightgridZ; k++)
+    {
+        bool showStatusMessage =
+            (debug_log_currentGridCellId == (size_t)(totalGridCells * 0.1f) ||
+            debug_log_currentGridCellId == (size_t)(totalGridCells * 0.2f) ||
+            debug_log_currentGridCellId == (size_t)(totalGridCells * 0.3f) ||
+            debug_log_currentGridCellId == (size_t)(totalGridCells * 0.4f) ||
+            debug_log_currentGridCellId == (size_t)(totalGridCells * 0.5f) ||
+            debug_log_currentGridCellId == (size_t)(totalGridCells * 0.6f) ||
+            debug_log_currentGridCellId == (size_t)(totalGridCells * 0.7f) ||
+            debug_log_currentGridCellId == (size_t)(totalGridCells * 0.8f) ||
+            debug_log_currentGridCellId == (size_t)(totalGridCells * 0.9f));
+
+        taskflow.emplace([&lightgrid, &buildLightingMutex, &rayResultCache, showStatusMessage, debug_log_currentGridCellId, d, i, j, k, lightgridX, lightgridY, lightgridZ, totalGridCells]() {
+            vec3 position = { i - 1.0f, j - 1.0f, k - 1.0f };  // Subtract 1 to better fit into the voxel grid space.
+            float_t totalLight = 0.0f;
+
+#if NEW_LIGHT_BUILDING_METHOD
+            std::vector<ivec3s> occludedVoxels;
+            for (size_t occludeI = 0; occludeI < 2; occludeI++)
+            for (size_t occludeJ = 0; occludeJ < 2; occludeJ++)
+            for (size_t occludeK = 0; occludeK < 2; occludeK++)
+            {
+                vec3 testPosition = {
+                    position[0] + occludeI - 0.5f,
+                    position[1] + occludeJ - 0.5f,
+                    position[2] + occludeK - 0.5f,
+                };
+                if (physengine::getVoxelDataAtPosition(*d->vfpd, floor(testPosition[0]), floor(testPosition[1]), floor(testPosition[2])) != 0)
+                    occludedVoxels.push_back(ivec3s{ (int32_t)occludeI, (int32_t)occludeJ, (int32_t)occludeK });
+            }
+            
+            if (occludedVoxels.size() < 8)  // If all the surrounding voxels are occluded, then no need to shoot any rays.
+            {
+                // Check to see if should do hemisphere or sphere.
+                bool useSphere = true;
+                vec3 hemisphereNormal = GLM_VEC3_ZERO_INIT;
+                if (occludedVoxels.size() == 4 || occludedVoxels.size() == 3 || occludedVoxels.size() == 2 || occludedVoxels.size() == 1)
+                {
+                    // Check if wall (n=4), kinda-wall-elbow-thing (n=3), edge (n=2), or corner (n=1). Do hemisphere if so.
+                    bool xAxisSame = true;
+                    bool yAxisSame = true;
+                    bool zAxisSame = true;
+                    for (size_t x = 1; x < occludedVoxels.size(); x++)
+                    {
+                        if (occludedVoxels[0].x != occludedVoxels[x].x) xAxisSame = false;
+                        if (occludedVoxels[0].y != occludedVoxels[x].y) yAxisSame = false;
+                        if (occludedVoxels[0].z != occludedVoxels[x].z) zAxisSame = false;
+                    }
+
+                    if (xAxisSame || yAxisSame || zAxisSame)
+                    {
+                        // Confirmed to be a wall. Get normal.
+                        vec3 averagePosition = GLM_VEC3_ZERO_INIT;
+                        for (ivec3s v : occludedVoxels)
+                            glm_vec3_add(averagePosition, vec3{ (float_t)v.x - 0.5f, (float_t)v.y - 0.5f, (float_t)v.z - 0.5f }, averagePosition);
+                        glm_vec3_scale(averagePosition, 1.0f / (float_t)occludedVoxels.size(), averagePosition);
+                        glm_vec3_sub(vec3{ 0.0f, 0.0f, 0.0f }, averagePosition, hemisphereNormal);
+                        glm_vec3_normalize(hemisphereNormal);
+
+                        useSphere = false;
+                    }
+                }
+
+                std::vector<vec3s> directionsToTest = {
+                    // Cardinal directions.
+                    vec3s{  1.0f,  0.0f,  0.0f },
+                    vec3s{ -1.0f,  0.0f,  0.0f },
+                    vec3s{  0.0f,  1.0f,  0.0f },
+                    vec3s{  0.0f, -1.0f,  0.0f },
+                    vec3s{  0.0f,  0.0f,  1.0f },
+                    vec3s{  0.0f,  0.0f, -1.0f },
+                    // Edge directions.
+                    vec3s{  1.0f,  1.0f,  0.0f },
+                    vec3s{ -1.0f,  1.0f,  0.0f },
+                    vec3s{  0.0f,  1.0f,  1.0f },
+                    vec3s{  0.0f,  1.0f, -1.0f },
+                    vec3s{  1.0f, -1.0f,  0.0f },
+                    vec3s{ -1.0f, -1.0f,  0.0f },
+                    vec3s{  0.0f, -1.0f,  1.0f },
+                    vec3s{  0.0f, -1.0f, -1.0f },
+                    vec3s{  1.0f,  0.0f,  1.0f },
+                    vec3s{ -1.0f,  0.0f,  1.0f },
+                    vec3s{  1.0f,  0.0f, -1.0f },
+                    vec3s{ -1.0f,  0.0f, -1.0f },
+                    // Corner directions.
+                    vec3s{  1.0f,  1.0f,  1.0f },
+                    vec3s{ -1.0f,  1.0f,  1.0f },
+                    vec3s{  1.0f,  1.0f, -1.0f },
+                    vec3s{ -1.0f,  1.0f, -1.0f },
+                    vec3s{  1.0f, -1.0f,  1.0f },
+                    vec3s{ -1.0f, -1.0f,  1.0f },
+                    vec3s{  1.0f, -1.0f, -1.0f },
+                    vec3s{ -1.0f, -1.0f, -1.0f },
+                };
+
+                size_t iterations = 1000;
+                for (size_t iteration = 0; iteration < iterations; iteration++)
+                {
+                    vec3 jitter = {
+                        randomFloat() - 0.5f,  // [-0.5, 0.5] random float.
+                        randomFloat() - 0.5f,
+                        randomFloat() - 0.5f
+                    };
+
+                    float_t iterationTotalLight = 0.0f;
+                    size_t numRaysShot = 0;
+                    for (vec3s direction : directionsToTest)
+                    {
+                        vec3 jitteredDirectionNormalized;
+                        glm_vec3_add(direction.raw, jitter, jitteredDirectionNormalized);
+                        glm_vec3_normalize(jitteredDirectionNormalized);
+
+                        if (!useSphere && glm_vec3_dot(jitteredDirectionNormalized, hemisphereNormal) < 0.0f)
+                            glm_vec3_negate(jitteredDirectionNormalized);
+                        
+                        // Scale the direction to align with voxels.
+                        vec3 deltaAbs;
+                        glm_vec3_abs(jitteredDirectionNormalized, deltaAbs);
+                        float_t maxVector = glm_vec3_max(deltaAbs);
+
+                        vec3 deltaJitteredAndScaled;
+                        glm_vec3_scale(jitteredDirectionNormalized, 1.0f / maxVector, deltaJitteredAndScaled);  // Instead of normalizing, sets the abs of the longest axis to 1.0 for iterating thru the voxel grid with integer-like iterations.
+
+                        iterationTotalLight += shootRayForLightBuilding(d, rayResultCache, position, deltaJitteredAndScaled, false);
+                        numRaysShot++;
+                    }
+
+                    if (numRaysShot > 0)
+                        totalLight += iterationTotalLight / (float_t)numRaysShot;
+                }
+                totalLight /= iterations;
+            }
+#else
+            // Cardinal directions.
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{  1.0f,  0.0f,  0.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{ -1.0f,  0.0f,  0.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{  0.0f,  1.0f,  0.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{  0.0f, -1.0f,  0.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{  0.0f,  0.0f,  1.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{  0.0f,  0.0f, -1.0f }, false);
+
+            // Edge directions.
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{  1.0f,  1.0f,  0.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{ -1.0f,  1.0f,  0.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{  0.0f,  1.0f,  1.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{  0.0f,  1.0f, -1.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{  1.0f, -1.0f,  0.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{ -1.0f, -1.0f,  0.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{  0.0f, -1.0f,  1.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{  0.0f, -1.0f, -1.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{  1.0f,  0.0f,  1.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{ -1.0f,  0.0f,  1.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{  1.0f,  0.0f, -1.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{ -1.0f,  0.0f, -1.0f }, false);
+
+            // Corner directions.
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{  1.0f,  1.0f,  1.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{ -1.0f,  1.0f,  1.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{  1.0f,  1.0f, -1.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{ -1.0f,  1.0f, -1.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{  1.0f, -1.0f,  1.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{ -1.0f, -1.0f,  1.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{  1.0f, -1.0f, -1.0f }, false);
+            totalLight += shootRayForLightBuilding(d, rayResultCache, position, vec3{ -1.0f, -1.0f, -1.0f }, false);
+            totalLight /= 26.0f;
+#endif
+            lightgrid[k * lightgridY * lightgridX + j * lightgridX + i] = totalLight;  // Use this layout so that rows are contiguous for image saving.
+
+            if (showStatusMessage)
+            {
+                std::lock_guard<std::mutex> lg(buildLightingMutex);
+                std::cout << "Light rays " << debug_log_currentGridCellId << " out of " << totalGridCells << " finished.    (" << (int32_t)((float_t)debug_log_currentGridCellId / totalGridCells * 100.0f) << "\% complete)" << std::endl;
+            }
+        });
+        debug_log_currentGridCellId++;
+    }
+
+    executor.run(taskflow).wait();
+
+    //
+    // Save lightgrid information to file
+    //
+    std::string folder = "res/textures/generated_voxelfield_lightgrids/vf_" + guid;
+    std::filesystem::create_directories(folder);
+    for (size_t k = 0; k < lightgridZ; k++)
+    {
+        int32_t channels = 4;
+        uint8_t* imgData = new uint8_t[channels * lightgridX * lightgridY];
+        for (size_t i = 0; i < lightgridX; i++)
+        for (size_t j = 0; j < lightgridY; j++)
+        {
+            float_t lightValue = lightgrid[k * lightgridY * lightgridX + j * lightgridX + i];
+            uint8_t lightValueInt = lightValue * 255.0f;
+            size_t pos = j * lightgridX * channels + i * channels;
+            imgData[pos + 0] = lightValueInt;
+            imgData[pos + 1] = lightValueInt;
+            imgData[pos + 2] = lightValueInt;
+            imgData[pos + 3] = 255;
+        }
+
+        stbi_write_png(
+            (folder + "/" + std::to_string(k) + ".png").c_str(),
+            (int32_t)lightgridX,
+            (int32_t)lightgridY,
+            channels,
+            imgData,
+            channels * lightgridX * sizeof(uint8_t)
+        );
+    }
+
+    AudioEngine::getInstance().playSound("res/sfx/wip_draw_weapon.ogg");
+
+    std::cout << "FINISHED BUILDING LIGHTING" << std::endl;
+
+    triggerLoadLightingIfExists(*d, guid);
+}
+
 void VoxelField::renderImGui()
 {
     ImGui::Text("Hello there!");
+
+    if (_data->isLightingDirty && ImGui::Button("Build Lighting (Baking, essentially)") ||
+        !_data->isLightingDirty && ImGui::Button("Despite lighting up to date, Build Lighting anyway"))
+    {
+        buildLighting(_data, getGUID());
+        _data->isLightingDirty = false;
+    }
 
     _data->isPicked = true;
 }
@@ -623,6 +1205,11 @@ inline void assembleVoxelRenderObjects(VoxelField_XData& data, const std::string
     for (size_t i = startRenderObjectIndex; i < data.voxelRenderObjs.size(); i++)
         outRORefs.push_back(&data.voxelRenderObjs[i]);
     data.rom->registerRenderObjects(inROs, outRORefs);
+
+    // Assign the correct light grid id.
+    for (RenderObject** ro : outRORefs)
+        for (auto& inst : (*ro)->calculatedModelInstances)
+            inst.voxelFieldLightingGridID = data.lightgridId;
 }
 
 inline void deleteVoxelRenderObjects(VoxelField_XData& data, std::vector<ivec3s> dirtyPositions)

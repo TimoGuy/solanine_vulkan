@@ -206,6 +206,26 @@ public:
 	void loadImages();
 
 	//
+	// Voxel lightgrids
+	//
+	struct VoxelFieldLightingGridTextureSet
+	{
+		struct GPUTransform
+		{
+			mat4 transform;
+		};
+		std::vector<GPUTransform> transforms;
+		AllocatedBuffer           transformsBuffer;
+
+		bool                  flagRecreateTextureSet = false;
+		std::vector<Texture>  textures;  // @TODO: make way to add and remove lighting grids or edit lighting grids.
+		VkDescriptorSet       descriptor;
+		VkDescriptorSetLayout layout;
+	} _voxelFieldLightingGridTextureSet;
+	void initVoxelLightingDescriptor();
+	void recreateVoxelLightingDescriptor();
+
+	//
 	// Render Objects
 	//
 	RenderObjectManager* _roManager;

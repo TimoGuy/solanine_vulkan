@@ -10,7 +10,8 @@ layout (location = 2) in vec3 inNormal;
 layout (location = 3) in vec2 inUV0;
 layout (location = 4) in vec2 inUV1;
 layout (location = 5) in vec4 inColor0;
-layout (location = 6) flat in uint baseInstanceID;
+layout (location = 6) in vec3 voxelFieldLightingGridPos;
+layout (location = 7) flat in uint baseInstanceID;
 
 layout (location = 0) out vec4 outFragColor;
 
@@ -52,7 +53,7 @@ struct InstancePointer
 	uint objectID;
 	uint materialID;
 	uint animatorNodeID;
-	uint pad;
+	uint voxelFieldLightingGridID;
 };
 
 layout(std140, set = 2, binding = 0) readonly buffer InstancePtrBuffer
@@ -98,6 +99,12 @@ layout (std140, set = 3, binding = 1) readonly buffer MaterialCollection
 {
 	MaterialParam params[MAX_NUM_MATERIALS];
 } materialCollection;
+
+//
+// Voxel field lighting grid lightmaps
+//
+#define MAX_NUM_VOXEL_FIELD_LIGHTMAPS 8
+layout (set = 5, binding = 1) uniform sampler3D voxelFieldLightmaps[MAX_NUM_VOXEL_FIELD_LIGHTMAPS];
 
 // Encapsulate the various inputs used by the various functions in the shading equation
 // We store values in this struct to simplify the integration of alternative implementations
@@ -165,6 +172,12 @@ vec3 getNormal()
 	return normalize(TBN * tangentNormal);
 }
 
+float getVoxelFieldLightmapScaleIBLAmbient()
+{
+	// return 1.0;
+	return texture(voxelFieldLightmaps[instancePtrBuffer.pointers[baseInstanceID].voxelFieldLightingGridID], voxelFieldLightingGridPos).x;
+}
+
 // Calculation of the lighting contribution from an optional Image Based Light source.
 // Precomputed Environment Maps are required uniform inputs and are computed as outlined in [1].
 // See our README.md on Environment Maps [3] for additional discussion.
@@ -182,8 +195,9 @@ vec3 getIBLContribution(PBRInfo pbrInputs, vec3 n, vec3 reflection)
 
 	// For presentation, this allows us to disable IBL terms
 	// For presentation, this allows us to disable IBL terms
-	diffuse *= uboParams.scaleIBLAmbient;
-	specular *= uboParams.scaleIBLAmbient;
+	float lightmapScaleIBLAmbient = getVoxelFieldLightmapScaleIBLAmbient();
+	diffuse *= uboParams.scaleIBLAmbient * lightmapScaleIBLAmbient;
+	specular *= uboParams.scaleIBLAmbient * lightmapScaleIBLAmbient;
 
 	return diffuse + specular;
 }
@@ -269,7 +283,16 @@ float textureProj(vec4 shadowCoord, vec2 offset, uint cascadeIndex)
 
 void main()
 {
-	MaterialParam material = materialCollection.params[instancePtrBuffer.pointers[baseInstanceID].materialID];  // @TODO: figure out how to use the different material things. 
+	// outFragColor = vec4(voxelFieldLightingGridPos, 1.0);
+	// return;
+
+	// float amb = getVoxelFieldLightmapScaleIBLAmbient();
+	// // amb = clamp(amb * 2.0, 0.0, 1.0);
+	// // amb = clamp(amb * 2.0 - 1.0, 0.0, 1.0);
+	// outFragColor = vec4(vec3(amb), 1.0);
+	// return;
+
+	MaterialParam material = materialCollection.params[instancePtrBuffer.pointers[baseInstanceID].materialID];  // @TODO: figure out how to use the different material things.
 
 	float perceptualRoughness;
 	float metallic;
