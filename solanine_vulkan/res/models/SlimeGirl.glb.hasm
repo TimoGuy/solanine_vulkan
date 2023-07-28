@@ -29,6 +29,100 @@
   trans     goto_combat_execute_airborne      StateCombatAirborneAttack
 
 
+# @NOTE This is a test #
+
+:StateAttackAirWazaPart1
+  animation Air_Waza_1
+  loop 0
+  on_finish StateAttackAirWazaPart2
+
+:StateAttackAirWazaPart2
+  animation Air_Waza_2
+  loop 0
+  on_finish StateAttackAirWazaPart3
+
+:StateAttackAirWazaPart3
+  animation Air_Waza_3
+  loop 0
+  on_finish StateAttackAirWazaPart4
+
+:StateAttackAirWazaPart4
+  animation Air_Waza_4
+  loop 0
+  on_finish StateAttackAirWazaPart5
+
+:StateAttackAirWazaPart5
+  animation Air_Waza_5
+  loop 0
+  on_finish StateAttackAirWazaPart6
+
+:StateAttackAirWazaPart6
+  animation Air_Waza_6
+  loop 0
+  on_finish StateAttackAirWazaPart7
+
+:StateAttackAirWazaPart7
+  animation Air_Waza_7
+  loop 0
+  on_finish StateAttackAirWazaPart8
+
+:StateAttackAirWazaPart8
+  animation Air_Waza_8
+  loop 0
+  on_finish StateAttackAirWazaPart9
+
+:StateAttackAirWazaPart9
+  animation Air_Waza_9
+  loop 0
+  on_finish StateAttackAirWazaPart10
+
+:StateAttackAirWazaPart10
+  animation Air_Waza_10
+  loop 0
+  on_finish StateAttackAirWazaPart11
+
+:StateAttackAirWazaPart11
+  animation Air_Waza_11
+  loop 0
+  on_finish StateAttackAirWazaPart12
+
+:StateAttackAirWazaPart12
+  animation Air_Waza_12
+  loop 0
+  on_finish StateAttackAirWazaPart13
+
+:StateAttackAirWazaPart13
+  animation Air_Waza_13
+  loop 0
+  on_finish StateAttackAirWazaPart14
+
+:StateAttackAirWazaPart14
+  animation Air_Waza_14
+  loop 0
+  on_finish StateAttackAirWazaPart15
+
+:StateAttackAirWazaPart15
+  animation Air_Waza_15
+  loop 0
+  on_finish StateAttackAirWazaPart16
+
+:StateAttackAirWazaPart16
+  animation Air_Waza_16
+  loop 0
+  on_finish StateAttackAirWazaPart17
+
+:StateAttackAirWazaPart17
+  animation Air_Waza_17
+  loop 0
+  on_finish StateAttackAirWazaEndingChiburi
+
+:StateAttackAirWazaEndingChiburi   # @TODO: This one's animation doesn't exist... plus some of the moves could end up with ragdoll, not with the chiburi.
+  animation Air_Waza_Ending_Chiburi
+  loop 0
+  on_finish StateIdle
+
+########################
+
 :StateLandIdle
   animation Land_From_Jumping_From_Idle
   loop      0
