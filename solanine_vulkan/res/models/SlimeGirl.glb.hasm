@@ -14,10 +14,10 @@
   trans     goto_fall_combat_prepause_ready   StateFallCombatAirbornePrepauseReady
   trans     goto_combat_execute_grounded      StateCombatGroundedAttack
   trans     goto_combat_execute_airborne      StateCombatAirborneAttack
-  trans     goto_air_waza_1st_form            StateAttackAirWazaEnter1stForm
-  trans     goto_air_waza_2nd_form            StateAttackAirWazaEnter2ndForm
-  trans     goto_air_waza_3rd_form            StateAttackAirWazaEnter3rdForm
-  trans     goto_air_waza_4th_form            StateAttackAirWazaEnter4thForm
+  trans     goto_air_waza_1st_form            StateAttackAirWaza1stFormEntrance
+  trans     goto_air_waza_2nd_form            StateAttackAirWaza2ndFormEntrance
+  trans     goto_air_waza_3rd_form            StateAttackAirWaza3rdFormEntrance
+  trans     goto_air_waza_4th_form            StateAttackAirWaza4thFormEntrance
 
 
 :StateRun
