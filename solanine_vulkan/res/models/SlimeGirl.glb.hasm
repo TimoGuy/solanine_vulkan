@@ -14,6 +14,10 @@
   trans     goto_fall_combat_prepause_ready   StateFallCombatAirbornePrepauseReady
   trans     goto_combat_execute_grounded      StateCombatGroundedAttack
   trans     goto_combat_execute_airborne      StateCombatAirborneAttack
+  trans     goto_air_waza_1st_form            StateAttackAirWazaEnter1stForm
+  trans     goto_air_waza_2nd_form            StateAttackAirWazaEnter2ndForm
+  trans     goto_air_waza_3rd_form            StateAttackAirWazaEnter3rdForm
+  trans     goto_air_waza_4th_form            StateAttackAirWazaEnter4thForm
 
 
 :StateRun
@@ -31,93 +35,122 @@
 
 # @NOTE This is a test #
 
-:StateAttackAirWazaPart1
-  animation Air_Waza_1
-  loop 0
-  on_finish StateAttackAirWazaPart2
+# 1st Form: Gust Wall.
 
-:StateAttackAirWazaPart2
-  animation Air_Waza_2
+:StateAttackAirWaza1stFormEntrance
+  animation Air_Waza_1_Enter
   loop 0
-  on_finish StateAttackAirWazaPart3
+  on_finish StateAttackAirWaza1stFormPart1
+  # @TODO: it looks like there should be an exit from the entrance itself too. Logically and animation-wise (e.g. what if there's an attack that if you enter the form, you can't get out unless if you take damage).
 
-:StateAttackAirWazaPart3
-  animation Air_Waza_3
+:StateAttackAirWaza1stFormPart1
+  animation Air_Waza_1_1
   loop 0
-  on_finish StateAttackAirWazaPart4
+  on_finish StateAttackAirWaza1stFormPart1Exit
 
-:StateAttackAirWazaPart4
-  animation Air_Waza_4
+:StateAttackAirWaza1stFormPart1Exit
+  animation Air_Waza_1_1_Exit
   loop 0
-  on_finish StateAttackAirWazaPart5
+  on_finish StateIdle
 
-:StateAttackAirWazaPart5
-  animation Air_Waza_5
+# 2nd Form: Updraft.
+
+:StateAttackAirWaza1stFormTo2ndForm
+  animation Air_Waza_1_to_2
   loop 0
-  on_finish StateAttackAirWazaPart6
 
-:StateAttackAirWazaPart6
-  animation Air_Waza_6
+:StateAttackAirWaza2ndFormEntrance
+  animation Air_Waza_2_Enter
   loop 0
-  on_finish StateAttackAirWazaPart7
 
-:StateAttackAirWazaPart7
-  animation Air_Waza_7
+:StateAttackAirWaza2ndFormPart1
+  animation Air_Waza_2_1
   loop 0
-  on_finish StateAttackAirWazaPart8
 
-:StateAttackAirWazaPart8
-  animation Air_Waza_8
+:StateAttackAirWaza2ndFormPart1Exit
+  animation Air_Waza_2_1_Exit
   loop 0
-  on_finish StateAttackAirWazaPart9
+  on_finish StateIdle
 
-:StateAttackAirWazaPart9
-  animation Air_Waza_9
+:StateAttackAirWaza2ndFormPart2
+  animation Air_Waza_2_2
   loop 0
-  on_finish StateAttackAirWazaPart10
 
-:StateAttackAirWazaPart10
-  animation Air_Waza_10
+:StateAttackAirWaza2ndFormPart2Exit
+  animation Air_Waza_2_2_Exit
   loop 0
-  on_finish StateAttackAirWazaPart11
+  on_finish StateIdle
 
-:StateAttackAirWazaPart11
-  animation Air_Waza_11
+# 3rd Form: Takeoff.
+
+:StateAttackAirWaza3rdFormEntrance
+  animation Air_Waza_3_Enter
   loop 0
-  on_finish StateAttackAirWazaPart12
 
-:StateAttackAirWazaPart12
-  animation Air_Waza_12
+:StateAttackAirWaza3rdFormPart1
+  animation Air_Waza_3_1
   loop 0
-  on_finish StateAttackAirWazaPart13
 
-:StateAttackAirWazaPart13
-  animation Air_Waza_13
+# 4th Form: Vacuum
+
+:StateAttackAirWaza3rdFormTo4thForm
+  animation Air_Waza_3_to_4
   loop 0
-  on_finish StateAttackAirWazaPart14
 
-:StateAttackAirWazaPart14
-  animation Air_Waza_14
+:StateAttackAirWaza4thFormEntrance
+  animation Air_Waza_4_Enter
   loop 0
-  on_finish StateAttackAirWazaPart15
 
-:StateAttackAirWazaPart15
-  animation Air_Waza_15
+:StateAttackAirWaza4thFormPart1
+  animation Air_Waza_4_1
   loop 0
-  on_finish StateAttackAirWazaPart16
 
-:StateAttackAirWazaPart16
-  animation Air_Waza_16
+:StateAttackAirWaza4thFormPart2
+  animation Air_Waza_4_2
   loop 0
-  on_finish StateAttackAirWazaPart17
 
-:StateAttackAirWazaPart17
-  animation Air_Waza_17
+# 5th Form: Compression
+
+:StateAttackAirWaza4thFormTo5thForm  # @NOTE: there is no normal entrance into the 5th form.
+  animation Air_Waza_4_to_5
   loop 0
-  on_finish StateAttackAirWazaEndingChiburi
 
-:StateAttackAirWazaEndingChiburi   # @TODO: This one's animation doesn't exist... plus some of the moves could end up with ragdoll, not with the chiburi.
-  animation Air_Waza_Ending_Chiburi
+:StateAttackAirWaza5thFormPart1
+  animation Air_Waza_5_1
+  loop 0
+
+:StateAttackAirWaza5thFormPart2
+  animation Air_Waza_5_2
+  loop 0
+
+:StateAttackAirWaza5thFormPart3
+  animation Air_Waza_5_3
+  loop 0
+
+# 6th Form: Path of Most Resistance
+
+:StateAttackAirWaza5thFormTo6thForm  # @NOTE: there is no normal entrance into the 6th form.
+  animation Air_Waza_5_to_6
+  loop 0
+
+:StateAttackAirWaza6thFormPart1
+  animation Air_Waza_6_1
+  loop 0
+
+:StateAttackAirWaza6thFormPart2
+  animation Air_Waza_6_2
+  loop 0
+
+:StateAttackAirWaza6thFormPart3
+  animation Air_Waza_6_3
+  loop 0
+
+:StateAttackAirWaza6thFormPart4
+  animation Air_Waza_6_4
+  loop 0
+
+:StateAttackAirWaza6thFormPart4Exit
+  animation Air_Waza_6_4_Exit
   loop 0
   on_finish StateIdle
 
