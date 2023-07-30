@@ -1,0 +1,179 @@
+# Enter into 1st Waza.
+
+:WazaAir1st_KneelAndPosture
+  entrance           idle    hold_x
+  animation_state    StateAirWaza1stFormEntrance
+  stamina_cost       5
+  duration           34
+  chain              WazaAir1st_SwingDownGust    17    34    press_x
+  on_duration_passed WazaAir1st_KneelAndPosture_ReturnToKamae
+
+:WazaAir1st_KneelAndPosture_ReturnToKamae
+  animation_state    StateAirWaza1stFormEntranceExit
+  duration           22
+  on_duration_passed NULL
+
+
+# Execute 1st Waza.
+
+:WazaAir1st_SwingDownGust
+  animation_state    StateAirWaza1stFormPart1
+  stamina_cost       25
+  duration           25
+  hitscan            -1.0,0.0,0.0    -5.0,0.0,0.0    0.0
+  hitscan            -1.0,0.0,0.0    -5.0,0.0,0.0    0.25
+  hitscan            -1.0,0.0,0.0    -5.0,0.0,0.0    0.5
+  chain              WazaAir1st_To2nd_LandAndStart    10     25    press_x
+  on_duration_passed WazaAir1st_SwingDownGust_ReturnToKamae
+
+:WazaAir1st_SwingDownGust_ReturnToKamae
+  animation_state    StateAirWaza1stFormPart1Exit
+  duration           9
+  on_duration_passed NULL
+
+
+# Enter into 2nd Waza.
+
+:WazaAir1st_To2nd_LandAndStart
+  animation_state    StateAirWaza1stFormTo2ndForm
+  duration           17
+  chain              WazaAir2nd_LeapForwardRaimei    5    17    press_a
+  on_duration_passed WazaAir2nd_LandAndStart_ReturnToKamae
+
+:WazaAir2nd_LandAndStart
+  animation_state    StateAirWaza2ndFormEntrance
+  duration           20
+  chain              WazaAir2nd_LeapForwardRaimei    9    20    press_a
+  on_duration_passed WazaAir2nd_LandAndStart_ReturnToKamae
+
+:WazaAir2nd_LandAndStart_ReturnToKamae
+  animation_state    StateAirWaza2ndFormEntranceExit
+  duration           9
+  on_duration_passed NULL
+
+
+# Execute 2nd Waza.
+
+:WazaAir2nd_LeapForwardRaimei
+  animation_state    StateAirWaza2ndFormPart1
+  duration           37
+  chain              WazaAir2nd_TwistingUpdraft    2    37    press_x
+  on_duration_passed WazaAir2nd_LeapForwardRaimei_ReturnToKamae
+
+:WazaAir2nd_LeapForwardRaimei_ReturnToKamae
+  animation_state    StateAirWaza2ndFormPart1Exit
+  duration           25
+  on_duration_passed NULL
+
+:WazaAir2nd_TwistingUpdraft
+  animation_state    StateAirWaza2ndFormPart2
+  duration           33
+  chain              WazaAir3rd_ShoulderLift    9    33    press_a
+  on_duration_passed WazaAir3rd_ReadyForLiftoff_ReturnToKamae
+
+
+# Enter into 3rd Waza.
+
+:WazaAir3rd_ReadyForLiftoff
+  animation_state    StateAirWaza3rdFormEntrance
+  duration           31
+  chain              WazaAir3rd_ShoulderLift    14    31    press_a
+  on_duration_passed WazaAir3rd_ReadyForLiftoff_ReturnToKamae
+
+:WazaAir3rd_ReadyForLiftoff_ReturnToKamae
+  animation_state    StateAirWaza2ndFormPart2Exit
+  duration           14
+  on_duration_passed NULL
+
+:WazaAir3rd_ShoulderLift
+  animation_state    StateAirWaza3rdFormPart1
+  duration     48
+  chain    WazaAir3rd_To4th_ReadySabakiSwing    4    48    press_x
+  on_duration_passed NULL
+
+
+# Enter into 4th Waza.
+
+:WazaAir3rd_To4th_ReadySabakiSwing
+  animation_state    StateAirWaza3rdFormTo4thForm
+  duration           27
+  chain              WazaAir4th_VacuumCockBack    7    27     press_x
+  on_duration_passed NULL
+
+:WazaAir4th_ReadySabakiSwing
+  entrance           midair    press_x
+  animation_state    StateAirWaza4thFormEntrance
+  duration           22
+  chain              WazaAir4th_VacuumCockBack    2    22     press_x
+  on_duration_passed NULL
+
+:WazaAir4th_VacuumCockBack
+  animation_state    StateAirWaza4thFormPart1
+  duration           33
+  chain              WazaAir4th_SabakiSwing    6    33     press_x
+  on_duration_passed NULL
+
+:WazaAir4th_SabakiSwing
+  animation_state    StateAirWaza4thFormPart2
+  duration           32
+  chain              WazaAir4th_To5th_ReadyAirDrill    9    32    press_a
+  on_duration_passed NULL
+
+
+# Enter into 5th Waza.
+
+:WazaAir4th_To5th_ReadyAirDrill
+  animation_state    StateAirWaza4thFormTo5thForm
+  duration           37
+  chain              WazaAir5th_AirDrill    11    37    press_a
+  on_duration_passed NULL
+
+:WazaAir5th_AirDrill
+  animation_state    StateAirWaza5thFormPart1
+  duration           180
+  chain              WazaAir5th_ReadyPressureFan    4    180    press_x
+  on_duration_passed NULL
+
+:WazaAir5th_ReadyPressureFan
+  animation_state    StateAirWaza5thFormPart2
+  duration           42
+  chain              WazaAir5th_PressureFan    5    42    press_x
+  on_duration_passed NULL
+
+:WazaAir5th_PressureFan
+  animation_state    StateAirWaza5thFormPart3
+  duration           50
+  chain              WazaAir5th_To6th_ReadyWeightShiftCrush    27    50    press_x
+  on_duration_passed NULL
+
+
+# Enter into 6th Waza.
+
+:WazaAir5th_To6th_ReadyWeightShiftCrush
+  animation_state    StateAirWaza5thFormTo6thForm
+  duration           50
+  chain              WazaAir6th_FirstSlashPenetration    8    50    press_x
+  on_duration_passed NULL
+
+:WazaAir6th_FirstSlashPenetration
+  animation_state    StateAirWaza6thFormPart1
+  duration           50
+  chain              WazaAir6th_WeightShiftReleverage    5    50    press_a
+  on_duration_passed NULL
+
+:WazaAir6th_WeightShiftReleverage
+  animation_state    StateAirWaza6thFormPart2
+  duration           50
+  chain              WazaAir6th_BreakthruAndLanding    7    50    any
+  on_duration_passed NULL
+
+:WazaAir6th_BreakthruAndLanding
+  animation_state    StateAirWaza6thFormPart3
+  duration           83
+  chain              WazaAir6th_Chiburi    17    83    any
+  on_duration_passed WazaAir6th_Chiburi
+
+:WazaAir6th_Chiburi
+  animation_state    StateAirWaza6thFormPart3Exit
+  duration           8
+  on_duration_passed NULL  
