@@ -14,10 +14,6 @@
   trans     goto_fall_combat_prepause_ready   StateFallCombatAirbornePrepauseReady
   trans     goto_combat_execute_grounded      StateCombatGroundedAttack
   trans     goto_combat_execute_airborne      StateCombatAirborneAttack
-  trans     goto_air_waza_1st_form            StateAttackAirWaza1stFormEntrance
-  trans     goto_air_waza_2nd_form            StateAttackAirWaza2ndFormEntrance
-  trans     goto_air_waza_3rd_form            StateAttackAirWaza3rdFormEntrance
-  trans     goto_air_waza_4th_form            StateAttackAirWaza4thFormEntrance
 
 
 :StateRun
@@ -35,13 +31,18 @@
 
 # @NOTE This is a test #
 
+# @IDEA: what if there's an attack that if you enter the form, you can't get out unless if you take damage.
+
 # 1st Form: Gust Wall.
 
 :StateAttackAirWaza1stFormEntrance
   animation Air_Waza_1_Enter
   loop 0
-  on_finish StateAttackAirWaza1stFormPart1
-  # @TODO: it looks like there should be an exit from the entrance itself too. Logically and animation-wise (e.g. what if there's an attack that if you enter the form, you can't get out unless if you take damage).
+
+:StateAttackAirWaza1stFormEntranceExit  # @TODO: create hte animation for this.
+  animation Air_Waza_1_Enter_Exit
+  loop 0
+  on_finish StateIdle
 
 :StateAttackAirWaza1stFormPart1
   animation Air_Waza_1_1
@@ -238,7 +239,7 @@
 
 
 :StateCombatGroundedPrepause
-  animation DW_Charge_Weapon_Initial_Attack
+  animation Demo_Air_Waza #DW_Charge_Weapon_Initial_Attack
   loop      0
   trans     goto_grabbed                    StateGrabbed
   trans     goto_finish_prepause_grounded   StateIdle

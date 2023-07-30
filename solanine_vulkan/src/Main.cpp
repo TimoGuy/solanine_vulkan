@@ -37,6 +37,8 @@ int __stdcall WinMain(void*, void*, char* cmdLine, int)
 		"                                                                                                   \n";
 	std::cout << logoText << std::endl;
 
+	// @TODO: disable Sticky Keys right here!!! And then restore the setting to what it was before at the end.
+
 	VulkanEngine engine;
 	engine.init();
 	engine.run();

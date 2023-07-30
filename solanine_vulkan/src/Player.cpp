@@ -287,7 +287,7 @@ void initRootWaza(Player_XData::AttackWaza& waza)
         .executeAtTime = 1.0f,
     });
     for (auto& hsn : waza.hitscanNodes)
-        hsn.executeAtTime *= waza.duration;  // @DEBUG.. I think. It scales the execution time.
+        hsn.executeAtTime *= waza.duration;  // It scales the execution time so that the execution time is [0-1] time.
 }
 
 void processWeaponAttackInput(Player_XData* d)
