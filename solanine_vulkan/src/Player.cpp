@@ -14,6 +14,7 @@
 #include "AudioEngine.h"
 #include "DataSerialization.h"
 #include "GlobalState.h"
+#include "StringHelper.h"
 #include "imgui/imgui.h"
 
 
@@ -46,9 +47,11 @@ struct Player_XData
 
     struct AttackWaza
     {
-        std::string animationTrigger;
+        std::string wazaName = "";
+        std::vector<std::string> entranceCommands;
+        std::string animationState;
         int16_t staminaCost = 10;
-        float_t duration = 0.0f;
+        int16_t duration = 0;
         
         struct HitscanFlowNode
         {
@@ -57,25 +60,27 @@ struct Player_XData
             // the hitscan query lines. Note also that these points are in object space,
             // where { 0, 0, 1 } represents the player's facing forward vector.
             vec3 nodeEnd1, nodeEnd2;
-            float_t executeAtTime = 0.0f;
+            int16_t executeAtTime = 0;
         };
         uint32_t numHitscanSamples = 5;
         std::vector<HitscanFlowNode> hitscanNodes;  // Each node uses the previous node's data to create the hitscans (the first node is ignored except for using it as prev node data).
 
         struct Chain
         {
-            float_t inputTimeWindowStart = 0.0f;  // Press the attack button in this window to trigger the chain.
-            float_t inputTimeWindowEnd = 0.0f;
-            AttackWaza* nextAttack = nullptr;
+            int16_t inputTimeWindowStart = 0;  // Press the attack button in this window to trigger the chain.
+            int16_t inputTimeWindowEnd = 0;
+            std::string nextWazaName = "";  // @NOTE: this is just for looking up the correct next action.
+            AttackWaza* nextWazaPtr = nullptr;  // Baked data.
         };
         std::vector<Chain> chains;  // Note that you can have different chains depending on your rhythm in the attack.
+
+        std::string onDurationPassedWazaName = "NULL";
+        AttackWaza* onDurationPassedWazaPtr = nullptr;
     };
-    AttackWaza  rootWaza;
+    std::vector<AttackWaza> wazas;
 
     AttackWaza* currentWaza = nullptr;
-    float_t     wazaTimer = 0.0f;  // Used for timing chains and hitscans.
-    size_t      wazaCurrentHitScanIdx = 1;  // 0th hitscan node is ignored.
-    float_t     wazaHitTimescale = 1.0f;
+    int16_t     wazaTimer = 0;  // Used for timing chains and hitscans.
 
     // Notifications
     struct Notification
@@ -256,38 +261,227 @@ void processRelease(Player_XData* d)
     textmesh::regenerateTextMeshMesh(d->uiMaterializeItem, getUIMaterializeItemText(d));
 }
 
-void initRootWaza(Player_XData::AttackWaza& waza)
+void parseVec3CommaSeparated(const std::string& vec3Str, vec3& outVec3)
 {
-    // @HARDCODE: this kind of data would ideally be written in some kind of scripting file fyi.
-    waza.animationTrigger = "goto_combat_prepause";
-    waza.staminaCost = 25;
-    waza.duration = 0.25f;
-    waza.hitscanNodes.push_back({
-        .nodeEnd1 = { -1.0f, 0.0f, 0.0f },
-        .nodeEnd2 = { -5.0f, 0.0f, 0.0f },
-    });
-    waza.hitscanNodes.push_back({
-        .nodeEnd1 = { -0.707f, 0.0f, 0.707f },
-        .nodeEnd2 = { -3.536f, 0.0f, 3.536f },
-        .executeAtTime = 0.25f,
-    });
-    waza.hitscanNodes.push_back({
-        .nodeEnd1 = { 0.0f, 0.0f, 1.0f },
-        .nodeEnd2 = { 0.0f, 0.0f, 5.0f },
-        .executeAtTime = 0.5f,
-    });
-    waza.hitscanNodes.push_back({
-        .nodeEnd1 = { 0.707f, 0.0f, 0.707f },
-        .nodeEnd2 = { 3.536f, 0.0f, 3.536f },
-        .executeAtTime = 0.75f,
-    });
-    waza.hitscanNodes.push_back({
-        .nodeEnd1 = { 1.0f, 0.0f, 0.0f },
-        .nodeEnd2 = { 5.0f, 0.0f, 0.0f },
-        .executeAtTime = 1.0f,
-    });
-    for (auto& hsn : waza.hitscanNodes)
-        hsn.executeAtTime *= waza.duration;  // It scales the execution time so that the execution time is [0-1] time.
+    std::string strCopy = vec3Str;
+    std::string::size_type sz;
+    outVec3[0] = std::stof(strCopy, &sz);    strCopy = strCopy.substr(sz + 1);
+    outVec3[1] = std::stof(strCopy, &sz);    strCopy = strCopy.substr(sz + 1);
+    outVec3[2] = std::stof(strCopy);
+}
+
+void loadDataFromLine(Player_XData::AttackWaza& newWaza, const std::string& command, const std::vector<std::string>& params)
+{
+    if (command == "entrance")
+    {
+        newWaza.entranceCommands = params;
+    }
+    else if (command == "animation_state")
+    {
+        newWaza.animationState = params[0];
+    }
+    else if (command == "stamina_cost")
+    {
+        newWaza.staminaCost = std::stoi(params[0]);
+    }
+    else if (command == "duration")
+    {
+        newWaza.duration = std::stoi(params[0]);
+    }
+    else if (command == "hitscan")
+    {
+        Player_XData::AttackWaza::HitscanFlowNode newHitscanNode;
+        vec3 end1, end2;
+        parseVec3CommaSeparated(params[0], end1);
+        parseVec3CommaSeparated(params[1], end2);
+        glm_vec3_copy(end1, newHitscanNode.nodeEnd1);
+        glm_vec3_copy(end2, newHitscanNode.nodeEnd2);
+        if (params.size() >= 3)
+            newHitscanNode.executeAtTime = std::stoi(params[2]);
+        newWaza.hitscanNodes.push_back(newHitscanNode);
+    }
+    else if (command == "chain")
+    {
+        Player_XData::AttackWaza::Chain newChain;
+        newChain.nextWazaName = params[0];
+        newChain.inputTimeWindowStart = std::stoi(params[1]);
+        newChain.inputTimeWindowEnd = std::stoi(params[2]);
+        newWaza.chains.push_back(newChain);
+    }
+    else if (command == "on_duration_passed")
+    {
+        newWaza.onDurationPassedWazaName = params[0];
+    }
+    else
+    {
+        // ERROR
+        std::cerr << "[WAZA LOADING]" << std::endl
+            << "ERROR: Unknown command token: " << command << std::endl;
+    }
+}
+
+Player_XData::AttackWaza* getWazaPtrFromName(std::vector<Player_XData::AttackWaza>& wazas, const std::string& wazaName)
+{
+    if (wazaName == "NULL")  // Special case.
+        return nullptr;
+
+    for (Player_XData::AttackWaza& waza : wazas)
+    {
+        if (waza.wazaName == wazaName)
+            return &waza;
+    }
+
+    std::cerr << "[WAZA LOADING]" << std::endl
+        << "ERROR: Waza with name \"" << wazaName << "\" was not found (`getWazaPtrFromName`)." << std::endl;
+    return nullptr;
+}
+
+void initRootWaza(std::vector<Player_XData::AttackWaza>& wazas)
+{
+    std::string fname = "res/waza/air_waza.hwac";
+    std::ifstream wazaFile(fname);
+    if (!wazaFile.is_open())
+    {
+        std::cerr << "[WAZA LOADING]" << std::endl
+            << "WARNING: file \"" << fname << "\" not found, thus could not load the waza action commands." << std::endl;
+        return;
+    }
+
+    //
+    // Parse the commands
+    //
+    wazas.clear();
+    Player_XData::AttackWaza newWaza;
+    std::string line;
+    for (size_t lineNum = 1; std::getline(wazaFile, line); lineNum++)  // @COPYPASTA with SceneManagement.cpp
+    {
+        // Prep line data
+        std::string originalLine = line;
+
+        size_t found = line.find('#');
+        if (found != std::string::npos)
+        {
+            line = line.substr(0, found);
+        }
+
+        trim(line);
+        if (line.empty())
+            continue;
+
+        // Package finished state
+        if (line[0] == ':')
+        {
+            if (!newWaza.wazaName.empty())
+            {
+                wazas.push_back(newWaza);
+                newWaza = Player_XData::AttackWaza();
+            }
+        }
+
+        // Process line
+        if (line[0] == ':')
+        {
+            line = line.substr(1);  // Cut out colon
+            trim(line);
+
+            newWaza.wazaName = line;
+        }
+        else if (!newWaza.wazaName.empty())
+        {
+            std::string lineCommand = line.substr(0, line.find(' '));
+            trim(lineCommand);
+
+            std::string lineParams = line.substr(lineCommand.length());
+            trim(lineParams);
+            std::vector<std::string> paramsParsed;
+            while (true)
+            {
+                size_t nextWS;
+                if ((nextWS = lineParams.find(' ')) == std::string::npos)
+                {
+                    // This is a single param. End of the list.
+                    paramsParsed.push_back(lineParams);
+                    break;
+                }
+                else
+                {
+                    // Break off the param and add the first one to the list.
+                    std::string param = lineParams.substr(0, nextWS);
+                    trim(param);
+                    paramsParsed.push_back(param);
+
+                    lineParams = lineParams.substr(nextWS);
+                    trim(lineParams);
+                }
+            }
+
+            loadDataFromLine(newWaza, lineCommand, paramsParsed);
+        }
+        else
+        {
+            // ERROR
+            std::cerr << "[WAZA LOADING]" << std::endl
+                << "ERROR (line " << lineNum << ") (file: " << fname << "): Headless data" << std::endl
+                << "   Trimmed line: " << line << std::endl
+                << "  Original line: " << line << std::endl;
+        }
+    }
+
+    // Package finished state
+    // @COPYPASTA
+    if (!newWaza.wazaName.empty())
+    {
+        wazas.push_back(newWaza);
+        newWaza = Player_XData::AttackWaza();
+    }
+
+    //
+    // Bake pointers into string references.
+    //
+    for (Player_XData::AttackWaza& waza : wazas)
+    {
+        if (waza.wazaName == "NULL")
+        {
+            std::cerr << "[WAZA LOADING]" << std::endl
+                << "ERROR: You can't name a waza state \"NULL\"... it's a keyword!!! Aborting." << std::endl;
+            break;
+        }
+
+        for (Player_XData::AttackWaza::Chain& chain : waza.chains)
+            chain.nextWazaPtr = getWazaPtrFromName(wazas, chain.nextWazaName);
+        waza.onDurationPassedWazaPtr = getWazaPtrFromName(wazas, waza.onDurationPassedWazaName);
+    }
+
+    // // @HARDCODE: this kind of data would ideally be written in some kind of scripting file fyi.
+    // waza.animationState = "goto_combat_prepause";
+    // waza.staminaCost = 25;
+    // waza.duration = 0.25f;
+    // waza.hitscanNodes.push_back({
+    //     .nodeEnd1 = { -1.0f, 0.0f, 0.0f },
+    //     .nodeEnd2 = { -5.0f, 0.0f, 0.0f },
+    // });
+    // waza.hitscanNodes.push_back({
+    //     .nodeEnd1 = { -0.707f, 0.0f, 0.707f },
+    //     .nodeEnd2 = { -3.536f, 0.0f, 3.536f },
+    //     .executeAtTime = 0.25f,
+    // });
+    // waza.hitscanNodes.push_back({
+    //     .nodeEnd1 = { 0.0f, 0.0f, 1.0f },
+    //     .nodeEnd2 = { 0.0f, 0.0f, 5.0f },
+    //     .executeAtTime = 0.5f,
+    // });
+    // waza.hitscanNodes.push_back({
+    //     .nodeEnd1 = { 0.707f, 0.0f, 0.707f },
+    //     .nodeEnd2 = { 3.536f, 0.0f, 3.536f },
+    //     .executeAtTime = 0.75f,
+    // });
+    // waza.hitscanNodes.push_back({
+    //     .nodeEnd1 = { 1.0f, 0.0f, 0.0f },
+    //     .nodeEnd2 = { 5.0f, 0.0f, 0.0f },
+    //     .executeAtTime = 1.0f,
+    // });
+    // for (auto& hsn : waza.hitscanNodes)
+    //     hsn.executeAtTime *= waza.duration;  // It scales the execution time so that the execution time is [0-1] time.
 }
 
 void processWeaponAttackInput(Player_XData* d)
@@ -299,7 +493,7 @@ void processWeaponAttackInput(Player_XData* d)
     if (d->currentWaza == nullptr)
     {
         // By default start at the root waza.
-        nextWaza = &d->rootWaza;
+        nextWaza = &d->wazas[0];
     }
     else
     {
@@ -307,10 +501,10 @@ void processWeaponAttackInput(Player_XData* d)
         bool doChain = false;
         for (auto& chain : d->currentWaza->chains)
             if (d->wazaTimer >= chain.inputTimeWindowStart &&
-                d->wazaTimer < chain.inputTimeWindowEnd)
+                d->wazaTimer <= chain.inputTimeWindowEnd)
             {
                 doChain = true;
-                nextWaza = chain.nextAttack;
+                nextWaza = chain.nextWazaPtr;
                 break;
             }
 
@@ -350,27 +544,27 @@ void processWeaponAttackInput(Player_XData* d)
 
         // Kick off new waza with a clear state.
         d->currentWaza = nextWaza;
-        d->wazaTimer = 0.0f;
-        d->wazaCurrentHitScanIdx = 1;  // 0th hitscan node is ignored.
+        d->wazaTimer = 0;
 
-        d->characterRenderObj->animator->setTrigger(d->currentWaza->animationTrigger);
+        d->characterRenderObj->animator->setState(d->currentWaza->animationState);
     }
 }
 
 void processWazaUpdate(Player_XData* d, EntityManager* em, const float_t& physicsDeltaTime)
 {
-    d->wazaTimer += physicsDeltaTime;
     size_t hitscanLayer = physengine::getCollisionLayer("HitscanInteractible");
     assert(d->currentWaza->hitscanNodes.size() >= 2);
 
     bool playWazaHitSfx = false;
 
     // Execute all hitscans that need to be executed in the timeline.
-    while (d->wazaCurrentHitScanIdx < d->currentWaza->hitscanNodes.size() &&
-        d->wazaTimer >= d->currentWaza->hitscanNodes[d->wazaCurrentHitScanIdx].executeAtTime)
+    for (size_t i = 1; i < d->currentWaza->hitscanNodes.size(); i++)  // @NOTE: 0th hitscan node is ignored bc it's used to draw the line from 0th to 1st hit scan line.
     {
-        auto& node     = d->currentWaza->hitscanNodes[d->wazaCurrentHitScanIdx];
-        auto& nodePrev = d->currentWaza->hitscanNodes[d->wazaCurrentHitScanIdx - 1];
+        if (d->currentWaza->hitscanNodes[i].executeAtTime != d->wazaTimer)
+            continue;
+
+        auto& node     = d->currentWaza->hitscanNodes[i];
+        auto& nodePrev = d->currentWaza->hitscanNodes[i - 1];
 
         vec3 translation;
         glm_vec3_add(d->position, vec3{ 0.0f, d->cpd->radius + d->cpd->height * 0.5f, 0.0f }, translation);
@@ -420,19 +614,21 @@ void processWazaUpdate(Player_XData* d, EntityManager* em, const float_t& physic
                 break;
             }
         }
-        d->wazaCurrentHitScanIdx++;
     }
 
     // Play sound if an attack waza landed.
     if (playWazaHitSfx)
     {
         AudioEngine::getInstance().playSound("res/sfx/wip_EnemyHit_Critical.wav");
-        d->wazaHitTimescale = 0.5f;
+        // d->wazaHitTimescale = 0.5f;  @TODO
     }
 
     // End waza if duration has passed.
-    if (d->wazaTimer >= d->currentWaza->duration)
-        d->currentWaza = nullptr;
+    if (++d->wazaTimer > d->currentWaza->duration)
+    {
+        d->currentWaza = d->currentWaza->onDurationPassedWazaPtr;
+        d->wazaTimer = 0;
+    }
 }
 
 Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSerialized* ds) : Entity(em, ds), _data(new Player_XData())
@@ -560,7 +756,7 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
     glm_vec3_copy(vec3{ 25.0f, -135.0f, 0.0f }, _data->uiStamina->renderPosition);
     _data->uiStamina->scale = 25.0f;
 
-    initRootWaza(_data->rootWaza);
+    initRootWaza(_data->wazas);
 }
 
 Player::~Player()
@@ -772,13 +968,14 @@ void Player::update(const float_t& deltaTime)
     _data->attackTwitchAngle = glm_lerp(_data->attackTwitchAngle, 0.0f, std::abs(_data->attackTwitchAngle) * _data->attackTwitchAngleReturnSpeed * 60.0f * deltaTime);
 
     // Update time scale with waza hit
-    if (_data->wazaHitTimescale < 1.0f)
+    // @TODO: @FIXME
+    /*if (_data->wazaHitTimescale < 1.0f)
     {
         _data->wazaHitTimescale = physutil::lerp(_data->wazaHitTimescale, 1.0f, deltaTime / 0.5f);
         if (_data->wazaHitTimescale > 0.999f)
             _data->wazaHitTimescale = 1.0f;
         globalState::timescale = _data->wazaHitTimescale;
-    }
+    }*/
 }
 
 void Player::lateUpdate(const float_t& deltaTime)

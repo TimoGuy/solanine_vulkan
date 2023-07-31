@@ -2389,6 +2389,11 @@ namespace vkglTF
 			<< "WARNING: Event name \"" << eventName << "\" not found in list of event callbacks" << std::endl;
 	}
 
+	void Animator::setState(const std::string& stateName)
+	{
+		// @TODO: stub.
+	}
+
 	void Animator::setTrigger(const std::string& triggerName)
 	{
 		if (animStateMachineCopy.triggerNameToIndex.find(triggerName) == animStateMachineCopy.triggerNameToIndex.end())
