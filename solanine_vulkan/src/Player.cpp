@@ -545,7 +545,6 @@ void processWeaponAttackInput(Player_XData* d)
         // Kick off new waza with a clear state.
         d->currentWaza = nextWaza;
         d->wazaTimer = 0;
-
         d->characterRenderObj->animator->setState(d->currentWaza->animationState);
     }
 }
@@ -553,7 +552,7 @@ void processWeaponAttackInput(Player_XData* d)
 void processWazaUpdate(Player_XData* d, EntityManager* em, const float_t& physicsDeltaTime)
 {
     size_t hitscanLayer = physengine::getCollisionLayer("HitscanInteractible");
-    assert(d->currentWaza->hitscanNodes.size() >= 2);
+    assert(d->currentWaza->hitscanNodes.size() == 0 || d->currentWaza->hitscanNodes.size() >= 2);
 
     bool playWazaHitSfx = false;
 
@@ -628,6 +627,8 @@ void processWazaUpdate(Player_XData* d, EntityManager* em, const float_t& physic
     {
         d->currentWaza = d->currentWaza->onDurationPassedWazaPtr;
         d->wazaTimer = 0;
+        if (d->currentWaza != nullptr)
+            d->characterRenderObj->animator->setState(d->currentWaza->animationState);
     }
 }
 

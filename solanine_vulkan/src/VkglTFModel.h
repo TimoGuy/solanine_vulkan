@@ -401,6 +401,7 @@ namespace vkglTF
 		void update(const float_t& deltaTime);
 
 		void runEvent(const std::string& eventName);  // @NOTE: this is really naive btw
+		void setState(const std::string& stateName);
 		void setTrigger(const std::string& triggerName);
 		void setMask(const std::string& maskName, bool enabled);
 		void setTwitchAngle(float_t radians);

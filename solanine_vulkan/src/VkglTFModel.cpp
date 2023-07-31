@@ -2391,7 +2391,20 @@ namespace vkglTF
 
 	void Animator::setState(const std::string& stateName)
 	{
-		// @TODO: stub.
+		// @TODO: It seems like since there will be a butt-ton of animator states, there should be a hash map.
+		//        Though, for now it's just a linear search. Change it when you feel like it.  -Timo 2023/07/31
+		for (size_t i = 0; i < animStateMachineCopy.masks.size(); i++)
+		{
+			auto& mask = animStateMachineCopy.masks[i];
+			for (auto& state : mask.states)
+			{
+				if (state.stateName == stateName)
+				{
+					playAnimation(i, state.animationIndex, state.loop);
+					return;
+				}
+			}
+		}
 	}
 
 	void Animator::setTrigger(const std::string& triggerName)
