@@ -52,6 +52,21 @@ struct Player_XData
         std::string animationState;
         int16_t staminaCost = 10;
         int16_t duration = 0;
+        bool holdMidair = false;
+
+        struct VelocityDecaySetting
+        {
+            float_t velocityDecay;
+            int16_t executeAtTime = 0;
+        };
+        std::vector<VelocityDecaySetting> velocityDecaySettings;
+
+        struct VelocitySetting
+        {
+            vec3 velocity;
+            int16_t executeAtTime = 0;
+        };
+        std::vector<VelocitySetting> velocitySettings;
         
         struct HitscanFlowNode
         {
@@ -80,6 +95,8 @@ struct Player_XData
     std::vector<AttackWaza> wazas;
 
     AttackWaza* currentWaza = nullptr;
+    float_t     wazaVelocityDecay = 0.0f;
+    vec3        wazaVelocity;
     int16_t     wazaTimer = 0;  // Used for timing chains and hitscans.
 
     // Notifications
@@ -287,6 +304,26 @@ void loadDataFromLine(Player_XData::AttackWaza& newWaza, const std::string& comm
     else if (command == "duration")
     {
         newWaza.duration = std::stoi(params[0]);
+    }
+    else if (command == "hold_midair")
+    {
+        newWaza.holdMidair = true;
+    }
+    else if (command == "velocity_decay")
+    {
+        Player_XData::AttackWaza::VelocityDecaySetting newVelocityDecaySetting;
+        newVelocityDecaySetting.velocityDecay = std::stof(params[0]);
+        newVelocityDecaySetting.executeAtTime = std::stoi(params[1]);
+        newWaza.velocityDecaySettings.push_back(newVelocityDecaySetting);
+    }
+    else if (command == "velocity")
+    {
+        Player_XData::AttackWaza::VelocitySetting newVelocitySetting;
+        vec3 velo;
+        parseVec3CommaSeparated(params[0], velo);
+        glm_vec3_copy(velo, newVelocitySetting.velocity);
+        newVelocitySetting.executeAtTime = std::stoi(params[1]);
+        newWaza.velocitySettings.push_back(newVelocitySetting);
     }
     else if (command == "hitscan")
     {
@@ -544,6 +581,8 @@ void processWeaponAttackInput(Player_XData* d)
 
         // Kick off new waza with a clear state.
         d->currentWaza = nextWaza;
+        d->wazaVelocityDecay = 0.0f;
+        glm_vec3_copy((d->currentWaza != nullptr && d->currentWaza->velocitySettings.size() > 0 && d->currentWaza->velocitySettings[0].executeAtTime == 0) ? d->currentWaza->velocitySettings[0].velocity : vec3{ 0.0f, 0.0f, 0.0f }, d->wazaVelocity);  // @NOTE: this doesn't work if the executeAtTime's aren't sorted asc.
         d->wazaTimer = 0;
         d->characterRenderObj->animator->setState(d->currentWaza->animationState);
     }
@@ -551,12 +590,43 @@ void processWeaponAttackInput(Player_XData* d)
 
 void processWazaUpdate(Player_XData* d, EntityManager* em, const float_t& physicsDeltaTime)
 {
+    //
+    // Execute all velocity decay settings.
+    //
+    for (Player_XData::AttackWaza::VelocityDecaySetting& vds : d->currentWaza->velocityDecaySettings)
+        if (vds.executeAtTime == d->wazaTimer)
+        {
+            d->wazaVelocityDecay = vds.velocityDecay;
+            break;
+        }
+
+    //
+    // Execute all velocity settings corresponding to the timer.
+    //
+    bool setNewVelocity = false;
+    for (Player_XData::AttackWaza::VelocitySetting& velocitySetting : d->currentWaza->velocitySettings)
+        if (velocitySetting.executeAtTime == d->wazaTimer)
+        {
+            setNewVelocity = true;
+            glm_vec3_copy(velocitySetting.velocity, d->wazaVelocity);
+            break;
+        }
+
+    if (!setNewVelocity)
+    {
+        // Apply velocity decay
+        float_t newNorm = std::max(0.0f, glm_vec3_norm(d->wazaVelocity) - d->wazaVelocityDecay);
+        glm_vec3_scale_as(d->wazaVelocity, newNorm, d->wazaVelocity);
+    }
+
+    //
+    // Execute all hitscans that need to be executed in the timeline.
+    //
     size_t hitscanLayer = physengine::getCollisionLayer("HitscanInteractible");
-    assert(d->currentWaza->hitscanNodes.size() == 0 || d->currentWaza->hitscanNodes.size() >= 2);
+    assert(d->currentWaza->hitscanNodes.size() != 1);
 
     bool playWazaHitSfx = false;
 
-    // Execute all hitscans that need to be executed in the timeline.
     for (size_t i = 1; i < d->currentWaza->hitscanNodes.size(); i++)  // @NOTE: 0th hitscan node is ignored bc it's used to draw the line from 0th to 1st hit scan line.
     {
         if (d->currentWaza->hitscanNodes[i].executeAtTime != d->wazaTimer)
@@ -619,15 +689,19 @@ void processWazaUpdate(Player_XData* d, EntityManager* em, const float_t& physic
     if (playWazaHitSfx)
     {
         AudioEngine::getInstance().playSound("res/sfx/wip_EnemyHit_Critical.wav");
-        // d->wazaHitTimescale = 0.5f;  @TODO
+        // d->wazaHitTimescale = 0.5f;  @TODO: reintroduce the timescale for waza.
     }
 
     // End waza if duration has passed.
     if (++d->wazaTimer > d->currentWaza->duration)
     {
         d->currentWaza = d->currentWaza->onDurationPassedWazaPtr;
+        d->wazaVelocityDecay = 0.0f;
+        glm_vec3_copy((d->currentWaza != nullptr && d->currentWaza->velocitySettings.size() > 0 && d->currentWaza->velocitySettings[0].executeAtTime == 0) ? d->currentWaza->velocitySettings[0].velocity : vec3{ 0.0f, 0.0f, 0.0f }, d->wazaVelocity);  // @NOTE: this doesn't work if the executeAtTime's aren't sorted asc.
         d->wazaTimer = 0;
-        if (d->currentWaza != nullptr)
+        if (d->currentWaza == nullptr)
+            d->characterRenderObj->animator->setState("StateIdle");  // @TODO: this is a crutch.... need to turn this into more of a trigger based system.
+        else
             d->characterRenderObj->animator->setState(d->currentWaza->animationState);
     }
 }
@@ -881,13 +955,41 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     _data->gravityForce += gravity * physicsDeltaTime;
     if (_data->prevIsGrounded && _data->inputFlagJump)
     {
-        _data->gravityForce = std::sqrtf(jumpHeight * 2.0f * std::abs(gravity));
+        _data->gravityForce = std::sqrtf(jumpHeight * 2.0f * std::abs(gravity));  // @COPYPASTA
         _data->prevIsGrounded = false;
         _data->inputFlagJump = false;
     }
 
     vec3 velocity;
     glm_vec3_scale(_data->worldSpaceInput, 10.0f * physicsDeltaTime, velocity);
+
+    if (_data->currentWaza != nullptr)
+    {
+        // Hold in midair if wanted by waza
+        if (_data->currentWaza->holdMidair)
+        {
+            _data->gravityForce = std::max(0.0f, _data->gravityForce);
+        }
+
+        // Add waza velocity
+        if(glm_vec3_norm2(_data->wazaVelocity) > 0.0f)
+        {
+            mat4 rotation;
+            glm_euler_zyx(vec3{ 0.0f, _data->facingDirection, 0.0f }, rotation);
+            vec3 facingWazaVelocity;
+            glm_mat4_mulv3(rotation, _data->wazaVelocity, 0.0f, facingWazaVelocity);
+            glm_vec3_muladds(facingWazaVelocity, physicsDeltaTime, velocity);
+            
+            // Execute jump.
+            if (_data->wazaVelocity[1] > 0.0f)
+            {
+                _data->gravityForce = _data->wazaVelocity[1];
+                _data->prevIsGrounded = false;
+
+                _data->wazaVelocity[1] = 0.0f;
+            }
+        }
+    }
 
     if (_data->prevIsGrounded && _data->prevGroundNormal[1] < 0.999f)
     {
@@ -898,7 +1000,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         glm_mat3_mulv(groundNormalRotationM3, velocity, velocity);
     }
 
-    glm_vec3_add(velocity, vec3{ 0.0f, _data->gravityForce * physicsDeltaTime, 0.0f }, velocity);
+    velocity[1] += _data->gravityForce * physicsDeltaTime;
     physengine::moveCapsuleAccountingForCollision(*_data->cpd, velocity, _data->prevIsGrounded, _data->prevGroundNormal);
     glm_vec3_copy(_data->cpd->basePosition, _data->position);
 
