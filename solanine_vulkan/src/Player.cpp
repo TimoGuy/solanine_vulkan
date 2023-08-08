@@ -978,43 +978,44 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         _data->inputFlagJump = false;
     }
 
-    vec3 velocity;
-    if (_data->prevIsGrounded)
-        glm_vec3_scale(_data->worldSpaceInput, _data->inputMaxXZSpeed * physicsDeltaTime, velocity);
-    else
+    vec3 velocity = GLM_VEC3_ZERO_INIT;
+    if (_data->currentWaza == nullptr)
     {
-        vec3 targetVelocity;
-        glm_vec3_scale(_data->worldSpaceInput, _data->inputMaxXZSpeed * physicsDeltaTime, targetVelocity);
-
-        vec3 flatDeltaPosition;
-        glm_vec3_sub(_data->cpd->basePosition, _data->prevCPDBasePosition, flatDeltaPosition);
-        flatDeltaPosition[1] = 0.0f;
-
-        vec3 targetDelta;
-        glm_vec3_sub(targetVelocity, flatDeltaPosition, targetDelta);
-        if (glm_vec3_norm2(targetDelta) > 0.000001f)
-        {
-            vec3 flatDeltaPositionNormalized;
-            glm_vec3_normalize_to(flatDeltaPosition, flatDeltaPositionNormalized);
-            vec3 targetVelocityNormalized;
-            glm_vec3_normalize_to(targetVelocity, targetVelocityNormalized);
-            bool useAcceleration = (glm_vec3_dot(targetVelocityNormalized, flatDeltaPositionNormalized) < 0.0f || glm_vec3_norm2(targetVelocity) > glm_vec3_norm2(flatDeltaPosition));
-            float_t maxAllowedDeltaMagnitude = (useAcceleration ? _data->midairXZAcceleration : _data->midairXZDeceleration) * physicsDeltaTime;
-
-            // std::cout << "JASDF " << maxAllowedDeltaMagnitude << "\tasdf: " << deltaMagnitude << std::endl;
-            if (glm_vec3_norm2(targetDelta) > maxAllowedDeltaMagnitude * maxAllowedDeltaMagnitude)
-                glm_vec3_scale_as(targetDelta, maxAllowedDeltaMagnitude, targetDelta);
-
-            glm_vec3_add(flatDeltaPosition, targetDelta, velocity);
-        }
+        if (_data->prevIsGrounded)
+            glm_vec3_scale(_data->worldSpaceInput, _data->inputMaxXZSpeed * physicsDeltaTime, velocity);
         else
         {
-            glm_vec3_copy(flatDeltaPosition, velocity);
-        }
-    }
-    glm_vec3_copy(_data->cpd->basePosition, _data->prevCPDBasePosition);
+            vec3 targetVelocity;
+            glm_vec3_scale(_data->worldSpaceInput, _data->inputMaxXZSpeed * physicsDeltaTime, targetVelocity);
 
-    if (_data->currentWaza != nullptr)
+            vec3 flatDeltaPosition;
+            glm_vec3_sub(_data->cpd->basePosition, _data->prevCPDBasePosition, flatDeltaPosition);
+            flatDeltaPosition[1] = 0.0f;
+
+            vec3 targetDelta;
+            glm_vec3_sub(targetVelocity, flatDeltaPosition, targetDelta);
+            if (glm_vec3_norm2(targetDelta) > 0.000001f)
+            {
+                vec3 flatDeltaPositionNormalized;
+                glm_vec3_normalize_to(flatDeltaPosition, flatDeltaPositionNormalized);
+                vec3 targetVelocityNormalized;
+                glm_vec3_normalize_to(targetVelocity, targetVelocityNormalized);
+                bool useAcceleration = (glm_vec3_dot(targetVelocityNormalized, flatDeltaPositionNormalized) < 0.0f || glm_vec3_norm2(targetVelocity) > glm_vec3_norm2(flatDeltaPosition));
+                float_t maxAllowedDeltaMagnitude = (useAcceleration ? _data->midairXZAcceleration : _data->midairXZDeceleration) * physicsDeltaTime;
+
+                if (glm_vec3_norm2(targetDelta) > maxAllowedDeltaMagnitude * maxAllowedDeltaMagnitude)
+                    glm_vec3_scale_as(targetDelta, maxAllowedDeltaMagnitude, targetDelta);
+
+                glm_vec3_add(flatDeltaPosition, targetDelta, velocity);
+            }
+            else
+            {
+                glm_vec3_copy(flatDeltaPosition, velocity);
+            }
+        }
+        glm_vec3_copy(_data->cpd->basePosition, _data->prevCPDBasePosition);
+    }
+    else
     {
         // Hold in midair if wanted by waza
         if (_data->currentWaza->holdMidair &&
@@ -1026,13 +1027,13 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         }
 
         // Add waza velocity
-        if(glm_vec3_norm2(_data->wazaVelocity) > 0.0f)
+        if (glm_vec3_norm2(_data->wazaVelocity) > 0.0f)
         {
             mat4 rotation;
             glm_euler_zyx(vec3{ 0.0f, _data->facingDirection, 0.0f }, rotation);
             vec3 facingWazaVelocity;
             glm_mat4_mulv3(rotation, _data->wazaVelocity, 0.0f, facingWazaVelocity);
-            glm_vec3_muladds(facingWazaVelocity, physicsDeltaTime, velocity);
+            glm_vec3_scale(facingWazaVelocity, physicsDeltaTime, velocity);
             
             // Execute jump.
             if (_data->wazaVelocity[1] > 0.0f)
