@@ -62,10 +62,10 @@
 :WazaAir2nd_LeapForwardRaimei
   animation_state    StateAirWaza2ndFormPart1
   stamina_cost       0
-  duration           15
+  duration           30
   velocity_decay     0.5    0
   velocity           0.0,0.0,50.0    0
-  chain              WazaAir2nd_TwistingUpdraft    2    15    press_x
+  chain              WazaAir2nd_TwistingUpdraft    2    30    press_x
   on_duration_passed WazaAir2nd_LeapForwardRaimei_ReturnToKamae
 
 :WazaAir2nd_LeapForwardRaimei_ReturnToKamae
@@ -106,7 +106,7 @@
   animation_state    StateAirWaza3rdFormPart1
   stamina_cost       0
   duration           48
-  velocity           0.0,20.0,4.0    3
+  velocity           0.0,30.0,4.0    3
   chain              WazaAir3rd_To4th_ReadySabakiSwing    4    48    press_x
   on_duration_passed NULL
 
@@ -155,6 +155,8 @@
   stamina_cost       0
   duration           37
   hold_midair
+  velocity           0.0,2.0,-1.0    0
+  velocity_decay     0.2    0
   chain              WazaAir5th_AirDrill    11    37    press_a
   on_duration_passed NULL
 
@@ -162,7 +164,7 @@
   animation_state    StateAirWaza5thFormPart1
   stamina_cost       0
   duration           180
-  velocity           0.0,-5.0,4.0    0
+  velocity           0.0,-10.0,4.0    0
   chain              WazaAir5th_ReadyPressureFan    4    180    press_x
   on_duration_passed NULL
 
@@ -170,7 +172,7 @@
   animation_state    StateAirWaza5thFormPart2
   stamina_cost       0
   duration           42
-  velocity           0.0,-5.0,4.0    0
+  hold_midair        0    9
   chain              WazaAir5th_PressureFan    5    42    press_x
   on_duration_passed NULL
 
@@ -178,7 +180,7 @@
   animation_state    StateAirWaza5thFormPart3
   stamina_cost       0
   duration           50
-  velocity           0.0,10.0,0.0    0
+  velocity           0.0,15.0,0.0    0
   chain              WazaAir5th_To6th_ReadyWeightShiftCrush    13    50    press_x
   on_duration_passed NULL
 

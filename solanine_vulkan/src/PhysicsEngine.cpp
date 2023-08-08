@@ -834,18 +834,22 @@ namespace physengine
                 float_t penetrationDepth;
                 bool collided = physengine::debugCheckCapsuleColliding(cpd, normal, penetrationDepth);
 
-                // Subsequent iterations of collision are just to resolve until sitting in empty space,
-                // so only double check 1st iteration if expecting to stick to the ground.
-                if (iterations == 0 && !collided && stickToGround)
-                {
-                    vec3 oldPosition;
-                    glm_vec3_copy(cpd.basePosition, oldPosition);
+                // @NOTE: this was to stick the capsule to the ground for high humps, but caused the capsule
+                //        to fly off at twice the speed sometimes bc of nicking the side of the capsule with the
+                //        collision resolution. Without sticking (and if voxels are the way), then there is no need
+                //        to keep the capsule stuck onto the ground.  -Timo 2023/08/08
+                // // Subsequent iterations of collision are just to resolve until sitting in empty space,
+                // // so only double check 1st iteration if expecting to stick to the ground.
+                // if (iterations == 0 && !collided && stickToGround)
+                // {
+                //     vec3 oldPosition;
+                //     glm_vec3_copy(cpd.basePosition, oldPosition);
 
-                    cpd.basePosition[1] += -ccdDistance;  // Just push straight down maximum amount to see if collides
-                    collided = physengine::debugCheckCapsuleColliding(cpd, normal, penetrationDepth);
-                    if (!collided)
-                        glm_vec3_copy(oldPosition, cpd.basePosition);  // I guess this empty space was where the capsule was supposed to go to after all!
-                }
+                //     cpd.basePosition[1] += -ccdDistance;  // Just push straight down maximum amount to see if collides
+                //     collided = physengine::debugCheckCapsuleColliding(cpd, normal, penetrationDepth);
+                //     if (!collided)
+                //         glm_vec3_copy(oldPosition, cpd.basePosition);  // I guess this empty space was where the capsule was supposed to go to after all!
+                // }
 
                 // Resolved into empty space.
                 // Do not proceed to do collision resolution.
