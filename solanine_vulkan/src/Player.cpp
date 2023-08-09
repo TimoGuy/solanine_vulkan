@@ -55,6 +55,7 @@ struct Player_XData
         bool holdMidair = false;
         int16_t holdMidairTimeFrom = -1;
         int16_t holdMidairTimeTo = -1;
+        float_t gravityMultiplier = 1.0f;
 
         struct VelocityDecaySetting
         {
@@ -130,6 +131,8 @@ struct Player_XData
     float_t midairXZAcceleration = 1.0f;
     float_t midairXZDeceleration = 0.25f;
     vec3    prevCPDBasePosition;
+
+    std::vector<int32_t> auraSfxChannelIds;
 
     // Tweak Props
     vec3 position;
@@ -324,6 +327,10 @@ void loadDataFromLine(Player_XData::AttackWaza& newWaza, const std::string& comm
             newWaza.holdMidairTimeFrom = std::stoi(params[0]);
             newWaza.holdMidairTimeTo = std::stoi(params[1]);
         }
+    }
+    else if (command == "gravity_multiplier")
+    {
+        newWaza.gravityMultiplier = std::stof(params[0]);
     }
     else if (command == "velocity_decay")
     {
@@ -987,7 +994,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     //
     constexpr float_t gravity = -0.98f / 0.025f;  // @TODO: put physicsengine constexpr of `physicsDeltaTime` into the header file and rename it to `constantPhysicsDeltaTime` and replace the 0.025f with it.
     constexpr float_t jumpHeight = 2.0f;
-    _data->gravityForce += gravity * physicsDeltaTime;
+    _data->gravityForce += gravity * (_data->currentWaza != nullptr ? _data->currentWaza->gravityMultiplier : 1.0f) * physicsDeltaTime;
     _data->prevPerformedJump = false;
     if (_data->prevIsGrounded && _data->inputFlagJump)
     {
@@ -1145,6 +1152,36 @@ void Player::update(const float_t& deltaTime)
         "MaskCombatMode",
         false
     );
+
+    //
+    // Change aura
+    //
+    if (input::keyAuraPressed)
+    {
+        if (_data->auraSfxChannelIds.empty())
+        {
+            // Spin up aura sfx            
+            _data->auraSfxChannelIds.push_back(
+                AudioEngine::getInstance().playSound("res/sfx/wip_hollow_knight_sfx/hero_super_dash_burst.wav")  // Burst start
+            );
+            _data->auraSfxChannelIds.push_back(
+                AudioEngine::getInstance().playSound("res/sfx/wip_hollow_knight_sfx/hero_super_dash_loop.wav", true)  // Aura loop
+            );
+            _data->auraSfxChannelIds.push_back(
+                AudioEngine::getInstance().playSound("res/sfx/wip_hollow_knight_sfx/hero_fury_charm_loop.wav", true)  // Heartbeat loop
+            );
+        }
+    }
+    else if (!_data->auraSfxChannelIds.empty())
+    {
+        // Shut down aura sfx
+        for (int32_t id : _data->auraSfxChannelIds)
+            AudioEngine::getInstance().stopChannel(id);
+        _data->auraSfxChannelIds.clear();
+        
+        // Play ending sound
+        AudioEngine::getInstance().playSound("res/sfx/wip_hollow_knight_sfx/hero_super_dash_ready.wav");
+    }
 
     // Update time scale with waza hit
     // @TODO: @FIXME

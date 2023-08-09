@@ -63,8 +63,9 @@
   animation_state    StateAirWaza2ndFormPart1
   stamina_cost       0
   duration           30
+  gravity_multiplier 0.25
   velocity_decay     0.5    0
-  velocity           0.0,0.0,50.0    0
+  velocity           0.0,2.0,50.0    0
   chain              WazaAir2nd_TwistingUpdraft    2    30    press_x
   on_duration_passed WazaAir2nd_LeapForwardRaimei_ReturnToKamae
 
