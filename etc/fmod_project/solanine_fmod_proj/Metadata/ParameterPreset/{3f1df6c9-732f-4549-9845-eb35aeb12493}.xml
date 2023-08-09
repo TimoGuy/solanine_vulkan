@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<objects serializationModel="Studio.02.02.00">
+	<object class="ParameterPreset" id="{3f1df6c9-732f-4549-9845-eb35aeb12493}">
+		<property name="name">
+			<value>Aura_On</value>
+		</property>
+		<relationship name="folder">
+			<destination>{5e3fc699-9d0f-4870-822e-a006ea317ef7}</destination>
+		</relationship>
+		<relationship name="parameter">
+			<destination>{04324bcc-6b51-4a48-a120-2842b94c94ec}</destination>
+		</relationship>
+	</object>
+	<object class="GameParameter" id="{04324bcc-6b51-4a48-a120-2842b94c94ec}">
+		<property name="parameterType">
+			<value>1</value>
+		</property>
+		<property name="maximum">
+			<value>2</value>
+		</property>
+		<property name="initialValue">
+			<value>0</value>
+		</property>
+	</object>
+</objects>
