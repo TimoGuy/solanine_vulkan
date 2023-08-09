@@ -1033,7 +1033,6 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
                 glm_vec3_copy(flatDeltaPosition, velocity);
             }
         }
-        glm_vec3_copy(_data->cpd->basePosition, _data->prevCPDBasePosition);
     }
     else
     {
@@ -1076,6 +1075,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     }
 
     velocity[1] += _data->gravityForce * physicsDeltaTime;
+    glm_vec3_copy(_data->cpd->basePosition, _data->prevCPDBasePosition);
     physengine::moveCapsuleAccountingForCollision(*_data->cpd, velocity, _data->prevIsGrounded, _data->prevGroundNormal);
     glm_vec3_copy(_data->cpd->basePosition, _data->position);
 
