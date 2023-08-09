@@ -2401,6 +2401,12 @@ namespace vkglTF
 				if (state.stateName == stateName)
 				{
 					playAnimation(i, state.animationIndex, state.loop);
+
+					// Turn off all triggers
+					// @NOTE: this is to prevent a trigger changing the state after the state was just changed with this function!  -Timo 2023/08/08
+					for (auto& trigger : animStateMachineCopy.triggers)
+						trigger.activated = false;
+
 					return;
 				}
 			}
