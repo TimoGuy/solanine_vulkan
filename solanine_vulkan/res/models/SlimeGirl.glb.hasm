@@ -499,12 +499,12 @@
   event     0.4166666667                        EventMaterializeBlade
   on_finish StateMCMIdle
 
-:StateMCMSheathWeapon  # @TODO: this one is incomplete
+:StateMCMSheathWeapon
   mask      MaskCombatMode
   animation Sheath_Weapon
-  event     0.0                                 EventSetAttachmentToBack
-  event     0.4166666667                        EventHokasuBlade
-  event     0.4166666667                        EventDisableMCM
+  event     0.25                                EventHokasuBlade
+  event     0.6666666667                        EventSetAttachmentToBack
+  event     1.0                                 EventDisableMCM
   on_finish StateMCMIdle
 
 

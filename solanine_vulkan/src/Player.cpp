@@ -95,7 +95,8 @@ struct Player_XData
         std::string onDurationPassedWazaName = "NULL";
         AttackWaza* onDurationPassedWazaPtr = nullptr;
     };
-    std::vector<AttackWaza> wazas;
+    std::vector<AttackWaza> defaultWazaSet;
+    std::vector<AttackWaza> airWazaSet;
 
     AttackWaza* currentWaza = nullptr;
     float_t     wazaVelocityDecay = 0.0f;
@@ -396,9 +397,8 @@ Player_XData::AttackWaza* getWazaPtrFromName(std::vector<Player_XData::AttackWaz
     return nullptr;
 }
 
-void initRootWaza(std::vector<Player_XData::AttackWaza>& wazas)
+void initWazaSetFromFile(std::vector<Player_XData::AttackWaza>& wazas, const std::string& fname)
 {
-    std::string fname = "res/waza/air_waza.hwac";
     std::ifstream wazaFile(fname);
     if (!wazaFile.is_open())
     {
@@ -553,7 +553,10 @@ void processWeaponAttackInput(Player_XData* d)
     if (d->currentWaza == nullptr)
     {
         // By default start at the root waza.
-        nextWaza = &d->wazas[0];
+        if (input::keyAuraPressed)
+            nextWaza = &d->airWazaSet[0];
+        else
+            nextWaza = &d->defaultWazaSet[0];
     }
     else
     {
@@ -898,7 +901,8 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
     glm_vec3_copy(vec3{ 25.0f, -135.0f, 0.0f }, _data->uiStamina->renderPosition);
     _data->uiStamina->scale = 25.0f;
 
-    initRootWaza(_data->wazas);
+    initWazaSetFromFile(_data->defaultWazaSet, "res/waza/default_waza.hwac");
+    initWazaSetFromFile(_data->airWazaSet, "res/waza/air_waza.hwac");
 }
 
 Player::~Player()

@@ -1,0 +1,14 @@
+# STUB: filled out default information
+
+:WazaAir1st_KneelAndPosture
+  entrance           idle    hold_x
+  animation_state    StateAirWaza1stFormEntrance
+  stamina_cost       5
+  duration           34
+  on_duration_passed WazaAir1st_KneelAndPosture_ReturnToKamae
+
+:WazaAir1st_KneelAndPosture_ReturnToKamae
+  animation_state    StateAirWaza1stFormEntranceExit
+  stamina_cost       0
+  duration           22
+  on_duration_passed NULL

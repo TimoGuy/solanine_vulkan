@@ -2243,127 +2243,138 @@ namespace vkglTF
 			//          use any of the active triggers, then turn off all the triggers in that case and move on!
 			//        - HOWEVER, make sure to give priority to the onFinish event!!!!! over the Transitions
 			//
-			bool keepLooking;
-			for (size_t i = 0; i < animStateMachineCopy.masks.size(); i++)
+			bool keepLookingOuter;
+			do
 			{
-				auto& mask = animStateMachineCopy.masks[i];
-				auto& mp   = animStateMachineCopy.maskPlayers[i];
+				keepLookingOuter = false;
 
-				bool stateChanged = false;
-
-				do
+				for (size_t i = 0; i < animStateMachineCopy.masks.size(); i++)
 				{
-					keepLooking = false;
+					auto& mask = animStateMachineCopy.masks[i];
+					auto& mp   = animStateMachineCopy.maskPlayers[i];
 
-					auto& currentState = mask.states[mask.asmStateIndex];
-				
-					// First priority, see if onFinish should get triggered
-					if (mp.animEndedThisFrame && currentState.onFinish.useOnFinish)
+					bool stateChanged = false;
+
+					bool keepLookingInner;
+					do
 					{
-						mask.asmStateIndex = currentState.onFinish.toStateIndex;
-						stateChanged = true;
-						keepLooking = true;
-						mp.animEndedThisFrame = false;  // New state entered; anim just started so reset this!
-						continue;
-					}
+						keepLookingInner = false;
 
-					// Second priority, everything else (special transitions, triggers)
-					else
-					{
-						bool end = false;
-
-						// Special transitions
-						for (auto& transition : currentState.transitions)
+						auto& currentState = mask.states[mask.asmStateIndex];
+					
+						// First priority, see if onFinish should get triggered
+						if (mp.animEndedThisFrame && currentState.onFinish.useOnFinish)
 						{
-							// @NOTE: @TODO: @CHECK: I just noticed that the special CURRENT_STATE and NOT_CURRENT_STATE transitions happen
-							//                       one frame after the trigger transformations, as in they're not reliable to happen on the
-							//                       same frame that the transition happened on a different mask. Maybe this code should only
-							//                       run when the state actually changes for a layer? Or... it's not actually a problem and it
-							//                       can be left the way it is right now. Idk but for now I'm leaving it like this.
-							//                         -Timo 2022/11/20
-							switch (transition.type)
-							{
-							case StateMachine::TransitionType::CURRENT_STATE:
-							{
-								if (animStateMachineCopy.masks[transition.checkingMaskIndex].asmStateIndex == transition.checkingStateIndex)
-								{
-									// Apply transition
-									mask.asmStateIndex = transition.toStateIndex;
-									stateChanged = true;
-									keepLooking = true;
-									mp.animEndedThisFrame = false;
-
-									end = true;
-								}
-								break;
-							}
-
-							case StateMachine::TransitionType::NOT_CURRENT_STATE:
-							{
-								if (animStateMachineCopy.masks[transition.checkingMaskIndex].asmStateIndex != transition.checkingStateIndex)
-								{
-									// Apply transition @COPYPASTA
-									mask.asmStateIndex = transition.toStateIndex;
-									stateChanged = true;
-									keepLooking = true;
-									mp.animEndedThisFrame = false;
-
-									end = true;
-								}
-								break;
-							}
-
-							case StateMachine::TransitionType::TRIGGER_ACTIVATED:
-								break;  // Skip this (triggers are handled separately)
-							}
-
-							if (end)
-								break;
+							mask.asmStateIndex = currentState.onFinish.toStateIndex;
+							stateChanged = true;
+							keepLookingInner = true;
+							keepLookingOuter = true;
+							mp.animEndedThisFrame = false;  // New state entered; anim just started so reset this!
+							continue;
 						}
 
-						if (end)
-							continue;
-
-						// Triggers
-						for (size_t i = 0; i < animStateMachineCopy.triggers.size(); i++)
+						// Second priority, everything else (special transitions, triggers)
+						else
 						{
-							if (!animStateMachineCopy.triggers[i].activated)
-								continue;
+							bool end = false;
 
+							// Special transitions
 							for (auto& transition : currentState.transitions)
 							{
-								if (transition.triggerIndex != i)
-									continue;
+								// @NOTE: @TODO: @CHECK: I just noticed that the special CURRENT_STATE and NOT_CURRENT_STATE transitions happen
+								//                       one frame after the trigger transformations, as in they're not reliable to happen on the
+								//                       same frame that the transition happened on a different mask. Maybe this code should only
+								//                       run when the state actually changes for a layer? Or... it's not actually a problem and it
+								//                       can be left the way it is right now. Idk but for now I'm leaving it like this.
+								//                         -Timo 2022/11/20
+								// @REPLY: With adding the outer do while loop, everything is guaranteed to stay in sync with the (NOT_)CURRENT_STATE
+								//         transitions... I believe. It works with the MCM use case now at least.  -Timo 2023/08/09
+								switch (transition.type)
+								{
+								case StateMachine::TransitionType::CURRENT_STATE:
+								{
+									if (animStateMachineCopy.masks[transition.checkingMaskIndex].asmStateIndex == transition.checkingStateIndex)
+									{
+										// Apply transition
+										mask.asmStateIndex = transition.toStateIndex;
+										stateChanged = true;
+										keepLookingInner = true;
+										keepLookingOuter = true;
+										mp.animEndedThisFrame = false;
 
-								// Apply transition via trigger
-								mask.asmStateIndex = transition.toStateIndex;
-								animStateMachineCopy.triggers[i].activated = false;  // Reset that one trigger used
-								stateChanged = true;
-								keepLooking = true;
-								mp.animEndedThisFrame = false;  // New state entered; anim just started so reset this!
+										end = true;
+									}
+									break;
+								}
 
-								end = true;
-								break;
+								case StateMachine::TransitionType::NOT_CURRENT_STATE:
+								{
+									if (animStateMachineCopy.masks[transition.checkingMaskIndex].asmStateIndex != transition.checkingStateIndex)
+									{
+										// Apply transition @COPYPASTA
+										mask.asmStateIndex = transition.toStateIndex;
+										stateChanged = true;
+										keepLookingInner = true;
+										keepLookingOuter = true;
+										mp.animEndedThisFrame = false;
+
+										end = true;
+									}
+									break;
+								}
+
+								case StateMachine::TransitionType::TRIGGER_ACTIVATED:
+									break;  // Skip this (triggers are handled separately)
+								}
+
+								if (end)
+									break;
 							}
 
 							if (end)
-								break;
+								continue;
+
+							// Triggers
+							for (size_t i = 0; i < animStateMachineCopy.triggers.size(); i++)
+							{
+								if (!animStateMachineCopy.triggers[i].activated)
+									continue;
+
+								for (auto& transition : currentState.transitions)
+								{
+									if (transition.triggerIndex != i)
+										continue;
+
+									// Apply transition via trigger
+									mask.asmStateIndex = transition.toStateIndex;
+									animStateMachineCopy.triggers[i].activated = false;  // Reset that one trigger used
+									stateChanged = true;
+									keepLookingInner = true;
+									keepLookingOuter = true;
+									mp.animEndedThisFrame = false;  // New state entered; anim just started so reset this!
+
+									end = true;
+									break;
+								}
+
+								if (end)
+									break;
+							}
 						}
+					} while (keepLookingInner);
+
+					// Apply new animation if changed
+					if (stateChanged)
+					{
+						// @DEBUG: for testing when the animator state changes
+						std::cout << "[ANIMATOR RUN EVENT]" << std::endl
+							<< "INFO: ASM: State changed to " << mask.states[mask.asmStateIndex].stateName << std::endl;
+
+						auto& state = mask.states[mask.asmStateIndex];
+						playAnimation(i, state.animationIndex, state.loop);
 					}
 				}
-				while (keepLooking);
-
-				// Apply new animation if changed
-				if (stateChanged)
-				{
-					// @DEBUG: for testing when the animator state changes
-					std::cout << "[ANIMATOR RUN EVENT]" << std::endl
-						<< "INFO: ASM: State changed to " << mask.states[mask.asmStateIndex].stateName << std::endl;
-
-					auto& state = mask.states[mask.asmStateIndex];
-					playAnimation(i, state.animationIndex, state.loop);
-				}
-			}
+			} while (keepLookingOuter);
 
 			// Reset triggers
 			for (auto& trigger : animStateMachineCopy.triggers)
