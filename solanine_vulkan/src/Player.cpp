@@ -122,6 +122,10 @@ struct Player_XData
     bool    prevIsGrounded = false;
     vec3    prevGroundNormal = GLM_VEC3_ZERO_INIT;
 
+    bool    prevIsMoving = false;
+    bool    prevPrevIsGrounded = false;
+    bool    prevPerformedJump = false;
+
     float_t inputMaxXZSpeed = 7.5f;
     float_t midairXZAcceleration = 1.0f;
     float_t midairXZDeceleration = 0.25f;
@@ -906,10 +910,14 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         glm_normalize(flatCamRight);
         glm_vec3_muladds(flatCamRight, input[0], _data->worldSpaceInput);
 
-        if (glm_vec3_norm2(_data->worldSpaceInput) < 0.01f)
+        bool isMoving = glm_vec3_norm2(_data->worldSpaceInput) < 0.01f;
+        if (isMoving)
         {
             glm_vec3_zero(_data->worldSpaceInput);
-            // _data->characterRenderObj->animator->setTrigger("goto_idle");  @TODO
+            if (_data->prevIsGrounded &&
+                (_data->prevIsGrounded != _data->prevPrevIsGrounded ||
+                isMoving != _data->prevIsMoving))
+                _data->characterRenderObj->animator->setTrigger("goto_idle");
         }
         else
         {
@@ -917,8 +925,17 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
             glm_vec3_scale_as(_data->worldSpaceInput, magnitude, _data->worldSpaceInput);
             if (_data->prevIsGrounded)
                 _data->facingDirection = atan2f(_data->worldSpaceInput[0], _data->worldSpaceInput[2]);
-            // _data->characterRenderObj->animator->setTrigger("goto_run");  @TODO
+            if (_data->prevIsGrounded &&
+                (_data->prevIsGrounded != _data->prevPrevIsGrounded ||
+                isMoving != _data->prevIsMoving))
+                _data->characterRenderObj->animator->setTrigger("goto_run");
         }
+        if (!_data->prevIsGrounded &&
+            _data->prevIsGrounded != _data->prevPrevIsGrounded &&
+            !_data->prevPerformedJump)
+            _data->characterRenderObj->animator->setTrigger("goto_fall");
+        _data->prevIsMoving = isMoving;
+        _data->prevPrevIsGrounded = _data->prevIsGrounded;
     }
     else
     {
@@ -971,11 +988,14 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     constexpr float_t gravity = -0.98f / 0.025f;  // @TODO: put physicsengine constexpr of `physicsDeltaTime` into the header file and rename it to `constantPhysicsDeltaTime` and replace the 0.025f with it.
     constexpr float_t jumpHeight = 2.0f;
     _data->gravityForce += gravity * physicsDeltaTime;
+    _data->prevPerformedJump = false;
     if (_data->prevIsGrounded && _data->inputFlagJump)
     {
         _data->gravityForce = std::sqrtf(jumpHeight * 2.0f * std::abs(gravity));  // @COPYPASTA
         _data->prevIsGrounded = false;
         _data->inputFlagJump = false;
+        _data->prevPerformedJump = true;
+        _data->characterRenderObj->animator->setTrigger("goto_jump");
     }
 
     vec3 velocity = GLM_VEC3_ZERO_INIT;
