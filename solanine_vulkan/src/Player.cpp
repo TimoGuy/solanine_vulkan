@@ -225,7 +225,8 @@ void processAttack(Player_XData* d)
                     globalState::changeInventoryItemQtyByIndex(hiwq.harvestableItemId, -(int32_t)hiwq.quantity);  // Remove from inventory the materials needed.
                 d->materializedItem = sio;
                 d->currentWeaponDurability = d->materializedItem->weaponStats.durability;  // @NOTE: non-weapons will have garbage set as their durability. Just ignore.
-                AudioEngine::getInstance().playSound("res/sfx/wip_Pl_Kago_Ready.wav");
+                d->characterRenderObj->animator->setTrigger("goto_draw_weapon");
+                d->characterRenderObj->animator->setTrigger("goto_mcm_draw_weapon");
             }
             else
             {
@@ -239,7 +240,7 @@ void processAttack(Player_XData* d)
     }
     else if (d->staminaData.currentStamina > 0)
     {
-        // Attempt to use item.
+        // Attempt to use materialized item.
         switch (d->materializedItem->type)
         {
             case globalState::WEAPON:
@@ -252,8 +253,11 @@ void processAttack(Player_XData* d)
                 // Attempt to eat.
                 globalState::savedPlayerHealth += 5;
                 d->materializedItem = nullptr;  // Ate the item off the handle.
+                d->weaponRenderObj->renderLayer = RenderLayer::INVISIBLE;
                 AudioEngine::getInstance().playSound("res/sfx/wip_Pl_Eating_S00.wav");
                 AudioEngine::getInstance().playSound("res/sfx/wip_Sys_ExtraHeartUp_01.wav");
+                d->characterRenderObj->animator->setTrigger("goto_sheath_weapon");  // @TODO: figure out how to prevent ice breaking sfx in hokasu event.
+                d->characterRenderObj->animator->setTrigger("goto_mcm_sheath_weapon");
             } break;
 
             case globalState::TOOL:
@@ -282,12 +286,8 @@ void processRelease(Player_XData* d)
     {
         // Release the item off the handle.
         d->materializedItem = nullptr;
-        // @TODO: leave the item on the ground if you wanna reattach or use or litter.
-        AudioEngine::getInstance().playSoundFromList({
-            "res/sfx/wip_Pl_IceBreaking00.wav",
-            "res/sfx/wip_Pl_IceBreaking01.wav",
-            "res/sfx/wip_Pl_IceBreaking02.wav",
-        });
+        d->characterRenderObj->animator->setTrigger("goto_sheath_weapon");
+        d->characterRenderObj->animator->setTrigger("goto_mcm_sheath_weapon");
     }
     textmesh::regenerateTextMeshMesh(d->uiMaterializeItem, getUIMaterializeItemText(d));
 }
@@ -608,6 +608,7 @@ void processWeaponAttackInput(Player_XData* d)
         glm_vec3_copy((d->currentWaza != nullptr && d->currentWaza->velocitySettings.size() > 0 && d->currentWaza->velocitySettings[0].executeAtTime == 0) ? d->currentWaza->velocitySettings[0].velocity : vec3{ 0.0f, 0.0f, 0.0f }, d->wazaVelocity);  // @NOTE: this doesn't work if the executeAtTime's aren't sorted asc.
         d->wazaTimer = 0;
         d->characterRenderObj->animator->setState(d->currentWaza->animationState);
+        d->characterRenderObj->animator->setMask("MaskCombatMode", (d->currentWaza == nullptr));
     }
 }
 
@@ -726,6 +727,7 @@ void processWazaUpdate(Player_XData* d, EntityManager* em, const float_t& physic
             d->characterRenderObj->animator->setState("StateIdle");  // @TODO: this is a crutch.... need to turn this into more of a trigger based system.
         else
             d->characterRenderObj->animator->setState(d->currentWaza->animationState);
+        d->characterRenderObj->animator->setMask("MaskCombatMode", (d->currentWaza == nullptr));
     }
 }
 
@@ -745,6 +747,47 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
 
     _data->weaponAttachmentJointName = "Back Attachment";
     std::vector<vkglTF::Animator::AnimatorCallback> animatorCallbacks = {
+        {
+            "EventEnableMCM", [&]() {
+                _data->characterRenderObj->animator->setMask("MaskCombatMode", true);
+            }
+        },
+        {
+            "EventDisableMCM", [&]() {
+                _data->characterRenderObj->animator->setMask("MaskCombatMode", false);
+            }
+        },
+        {
+            "EventSetAttachmentToHand", [&]() {
+                std::cout << "TO HAND" << std::endl;
+                _data->weaponAttachmentJointName = "Hand Attachment";
+            }
+        },
+        {
+            "EventSetAttachmentToBack", [&]() {
+                std::cout << "TO BACK" << std::endl;
+                _data->weaponAttachmentJointName = "Back Attachment";
+            }
+        },
+        {
+            "EventMaterializeBlade", [&]() {
+                std::cout << "MATERIALIZE BLADE" << std::endl;
+                _data->weaponRenderObj->renderLayer = RenderLayer::VISIBLE;  // @TODO: in the future will have model switching.
+                AudioEngine::getInstance().playSound("res/sfx/wip_Pl_Kago_Ready.wav");
+            }
+        },
+        {
+            "EventHokasuBlade", [&]() {
+                std::cout << "HOKASU BLADE" << std::endl;
+                _data->weaponRenderObj->renderLayer = RenderLayer::INVISIBLE;  // @TODO: in the future will have model switching.
+                // @TODO: leave the item on the ground if you wanna reattach or use or litter.
+                AudioEngine::getInstance().playSoundFromList({
+                    "res/sfx/wip_Pl_IceBreaking00.wav",
+                    "res/sfx/wip_Pl_IceBreaking01.wav",
+                    "res/sfx/wip_Pl_IceBreaking02.wav",
+                });
+            }
+        },
         {
             "EventPlaySFXAttack", [&]() {
                 AudioEngine::getInstance().playSoundFromList({
@@ -1143,15 +1186,6 @@ void Player::update(const float_t& deltaTime)
     _data->inputFlagJump |= !_data->disableInput && input::onKeyJumpPress;
     _data->inputFlagAttack |= !_data->disableInput && input::onLMBPress;
     _data->inputFlagRelease |= !_data->disableInput && input::onRMBPress;
-
-    //
-    // Update mask for animation
-    // @TODO: there is popping for some reason. Could be how the transitions/triggers work in the animator controller or could be a different underlying issue. Figure it out pls!  -Timo
-    //
-    _data->characterRenderObj->animator->setMask(
-        "MaskCombatMode",
-        false
-    );
 
     //
     // Change aura

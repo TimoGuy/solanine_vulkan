@@ -230,7 +230,7 @@ namespace vkglTF
 
 		struct Event
 		{
-			float_t     eventCallAt = 0.0f;  // @NOTE: at least for now this is a percentage value
+			float_t     eventCallAt = 0.0f;  // @NOTE: this is number of realtime seconds (i.e. typically number of frames / 24.0) elapsed to call the event.
 			std::string eventName;  // @NOTE: just for setup
 			size_t      eventIndex  = (size_t)-1;  // @NOTE: this will be compiled at the animator-owned copy level
 		};

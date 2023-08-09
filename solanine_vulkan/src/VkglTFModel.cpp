@@ -2221,7 +2221,7 @@ namespace vkglTF
 				auto& mp   = animStateMachineCopy.maskPlayers[i];
 
 				auto& currentState = mask.states[mask.asmStateIndex];
-				glm_vec2_scale(mp.timeRange, 1.0f / mp.animDuration, mp.timeRange);
+				// glm_vec2_scale(mp.timeRange, 1.0f / mp.animDuration, mp.timeRange);  @NOTE: remove this because I want animation events to play according to the time elapsed, not a percentage of the duration.  -Timo 2023/08/09
 				for (auto& event : currentState.events)
 				{
 					if (mp.timeRange[0] <= event.eventCallAt && event.eventCallAt < mp.timeRange[1])

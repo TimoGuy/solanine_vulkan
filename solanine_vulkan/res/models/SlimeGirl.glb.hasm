@@ -14,6 +14,43 @@
   trans     goto_fall_combat_prepause_ready   StateFallCombatAirbornePrepauseReady
   trans     goto_combat_execute_grounded      StateCombatGroundedAttack
   trans     goto_combat_execute_airborne      StateCombatAirborneAttack
+  trans     goto_draw_weapon                  StateDrawWeapon
+  trans     goto_sheath_weapon                StateSheathWeapon
+  trans     goto_combat_execute_airborne      StateCombatAirborneAttack
+
+
+:StateDrawWeapon  # @NOTE: meant to be a copy of StateIdle (except for on_finish)
+  animation Draw_Weapon
+  loop      0
+  trans     goto_run                          StateRun
+  trans     goto_jump                         StateJumpFromIdle
+  trans     goto_fall                         StateFall
+  trans     goto_grabbed                      StateGrabbed
+  trans     goto_combat_prepause              StateCombatGroundedPrepause
+  trans     goto_fall_combat_prepause_ready   StateFallCombatAirbornePrepauseReady
+  trans     goto_combat_execute_grounded      StateCombatGroundedAttack
+  trans     goto_combat_execute_airborne      StateCombatAirborneAttack
+  trans     goto_draw_weapon                  StateDrawWeapon
+  trans     goto_sheath_weapon                StateSheathWeapon
+  trans     goto_combat_execute_airborne      StateCombatAirborneAttack
+  on_finish StateIdle
+
+
+:StateSheathWeapon  # @NOTE: meant to be a copy of StateIdle (except for on_finish)
+  animation Sheath_Weapon
+  loop      0
+  trans     goto_run                          StateRun
+  trans     goto_jump                         StateJumpFromIdle
+  trans     goto_fall                         StateFall
+  trans     goto_grabbed                      StateGrabbed
+  trans     goto_combat_prepause              StateCombatGroundedPrepause
+  trans     goto_fall_combat_prepause_ready   StateFallCombatAirbornePrepauseReady
+  trans     goto_combat_execute_grounded      StateCombatGroundedAttack
+  trans     goto_combat_execute_airborne      StateCombatAirborneAttack
+  trans     goto_draw_weapon                  StateDrawWeapon
+  trans     goto_sheath_weapon                StateSheathWeapon
+  trans     goto_combat_execute_airborne      StateCombatAirborneAttack
+  on_finish StateIdle
 
 
 :StateRun
@@ -398,7 +435,7 @@
 # This masks the upper body starting with the Mid Back bone. Everything else should still get controlled normally by whatever layers aren't taking the bones
 ~MaskCombatMode
   enabled   0
-  bone      Shoulder.L  # @NOTE: you need to have some way of doing errors in case if these bones are named incorrectly
+  bone      Shoulder.L  # @TODO: you need to have some way of doing errors in case if these bones are named incorrectly
   bone      Upper Arm.L
   bone      Forearm.L
   bone      Hand.L
@@ -439,6 +476,8 @@
   animation DW_Idle
   loop      1
   trans     current_state                       StateRun       StateMCMRun
+  trans     goto_mcm_draw_weapon                StateMCMDrawWeapon
+  trans     goto_mcm_sheath_weapon              StateMCMSheathWeapon
   trans     goto_mcm_grounded_prepause_ready    StateMCMGroundedPrepauseReady
 
 
@@ -447,7 +486,26 @@
   animation DW_Run
   loop      1
   trans     not_current_state                   StateRun       StateMCMIdle
+  trans     goto_mcm_draw_weapon                StateMCMDrawWeapon
+  trans     goto_mcm_sheath_weapon              StateMCMSheathWeapon
   trans     goto_mcm_grounded_prepause_ready    StateMCMGroundedPrepauseReady
+
+
+:StateMCMDrawWeapon
+  mask      MaskCombatMode
+  animation Draw_Weapon
+  event     0.0                                 EventEnableMCM
+  event     0.0                                 EventSetAttachmentToHand
+  event     0.4166666667                        EventMaterializeBlade
+  on_finish StateMCMIdle
+
+:StateMCMSheathWeapon  # @TODO: this one is incomplete
+  mask      MaskCombatMode
+  animation Sheath_Weapon
+  event     0.0                                 EventSetAttachmentToBack
+  event     0.4166666667                        EventHokasuBlade
+  event     0.4166666667                        EventDisableMCM
+  on_finish StateMCMIdle
 
 
 :StateMCMGroundedPrepauseReady
