@@ -401,10 +401,12 @@ namespace vkglTF
 		void update(const float_t& deltaTime);
 
 		void runEvent(const std::string& eventName);  // @NOTE: this is really naive btw
-		void setState(const std::string& stateName);
+		void setState(const std::string& stateName, float_t time = 0.0f);
 		void setTrigger(const std::string& triggerName);
 		void setMask(const std::string& maskName, bool enabled);
 		void setTwitchAngle(float_t radians);
+		void setUpdateSpeedMultiplier(const float_t& multiplier);
+		float_t getUpdateSpeedMultiplier();
 
 	private:
 		vkglTF::Model*                model;
@@ -412,6 +414,7 @@ namespace vkglTF
 		StateMachine                  animStateMachineCopy;
 		std::vector<AnimatorCallback> eventCallbacks;
 		float_t                       twitchAngle;
+		float_t                       speedMultiplier = 1.0f;
 
 		void updateAnimation();
 		void updateJointMatrices(size_t globalNodeReservedIndex, vkglTF::Skin* skin, mat4& m);

@@ -12,6 +12,10 @@
             - [x] This could just piggyback off of the player for the time being.
             > The player entity could just turn into an actor and every enemy and npc could be based off of it too I guess. That would help a lot with a lot of code duplication. This may not even need to be its own separate entity ever!
             > So if we're just gonna piggyback off the player, have a checkbox that's like "hwac testing mode".
+            - [x] Be able to scrub thru animation.
+            - [ ] Draw line of "Hand Attachment" with the weapon's blade start/end stats.
+            - [ ] Draw lines of all hitscan lines, with a different color of the current tick's hitscan.
+            - [ ] Write out all hitscans in textarea for copying into hwac.
         - [ ] Add velocity param to hwac file to set what velocity enemy would go (non-normalized) if it touched the slice/hitscan.
         - [ ] Add a "suck in nearby entities @ point x,x,x" param to hwac file for WazaAir4th_VacuumCockBack.
 

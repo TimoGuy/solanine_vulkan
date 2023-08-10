@@ -107,11 +107,13 @@ struct Player_XData
     struct AttackWazaEditor
     {
         bool isEditingMode = false;
+        bool triggerRecalcWazaCache = false;  // Trigger to do expensive calculations for specific single waza. Only turn on when state changes.
+        float_t preEditorAnimatorSpeedMultiplier;
+
         std::string editingWazaFname;
         std::vector<AttackWaza> editingWazaSet;
         size_t wazaIndex;
         int16_t currentTick, minTick, maxTick;  // @NOTE: bounds are inclusive.
-        bool triggerRecalcWazaCache = false;  // Trigger to do expensive calculations for specific single waza. Only turn on when state changes.
     } attackWazaEditor;
 
     // Notifications
@@ -1151,8 +1153,17 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Player_XData* d, Enti
 
 void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Player_XData* d)
 {
-    // @STUB
+    if (d->attackWazaEditor.triggerRecalcWazaCache)
+    {
+        Player_XData::AttackWaza& aw = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex];
 
+        d->attackWazaEditor.minTick = 0;
+        d->attackWazaEditor.maxTick = aw.duration;
+
+        d->characterRenderObj->animator->setState(aw.animationState, d->attackWazaEditor.currentTick * physicsDeltaTime);
+
+        d->attackWazaEditor.triggerRecalcWazaCache = false;
+    }
 }
 
 void Player::physicsUpdate(const float_t& physicsDeltaTime)
@@ -1391,7 +1402,7 @@ std::vector<std::string> getListOfWazaFnames()
             continue;
         if (!path.has_extension() || path.extension().compare(".hwac") != 0)
             continue;
-        auto relativePath = std::filesystem::relative(path, WAZA_DIRECTORY_PATH);
+        auto relativePath = std::filesystem::relative(path, ".");
         wazaFnames.push_back(relativePath.string());  // @NOTE: that this line could be dangerous if there are any filenames or directory names that have utf8 chars or wchars in it
     }
     return wazaFnames;
@@ -1423,11 +1434,14 @@ void defaultRenderImGui(Player_XData* d)
             if (ImGui::Button(("Open \"" + path + "\"").c_str()))
             {
                 d->attackWazaEditor.isEditingMode = true;
+                d->attackWazaEditor.triggerRecalcWazaCache = true;
+                d->attackWazaEditor.preEditorAnimatorSpeedMultiplier = d->characterRenderObj->animator->getUpdateSpeedMultiplier();
+                d->characterRenderObj->animator->setUpdateSpeedMultiplier(0.0f);
+
                 d->attackWazaEditor.editingWazaFname = path;
                 initWazaSetFromFile(d->attackWazaEditor.editingWazaSet, d->attackWazaEditor.editingWazaFname);
                 d->attackWazaEditor.wazaIndex = 0;
                 d->attackWazaEditor.currentTick = 0;
-                d->attackWazaEditor.triggerRecalcWazaCache = true;
                 ImGui::CloseCurrentPopup();
             }
         ImGui::EndPopup();
@@ -1436,7 +1450,20 @@ void defaultRenderImGui(Player_XData* d)
 
 void attackWazaEditorRenderImGui(Player_XData* d)
 {
-    // @STUB
+    if (ImGui::Button("Exit Waza Editor"))
+    {
+        d->attackWazaEditor.isEditingMode = false;
+        d->characterRenderObj->animator->setUpdateSpeedMultiplier(d->attackWazaEditor.preEditorAnimatorSpeedMultiplier);
+        // @TODO: reset animator and asm to default/root animation state.
+        return;
+    }
+
+    int32_t currentTickCopy = (int32_t)d->attackWazaEditor.currentTick;
+    if (ImGui::SliderInt("Waza Tick", &currentTickCopy, d->attackWazaEditor.minTick, d->attackWazaEditor.maxTick))
+    {
+        d->attackWazaEditor.currentTick = (size_t)currentTickCopy;
+        d->attackWazaEditor.triggerRecalcWazaCache = true;
+    }
 }
 
 void Player::renderImGui()
