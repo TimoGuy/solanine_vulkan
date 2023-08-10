@@ -16,6 +16,7 @@
             - [ ] Draw line of "Hand Attachment" with the weapon's blade start/end stats.
             - [ ] Draw lines of all hitscan lines, with a different color of the current tick's hitscan.
             - [ ] Write out all hitscans in textarea for copying into hwac.
+            > NOTE: I wrote down doing the velocity tracking, but it could step on top of the hitscan line stuff, and felt like it wasn't the main focus of this (for now) small tool, so I removed it.  -Timo 2023/08/10
         - [ ] Add velocity param to hwac file to set what velocity enemy would go (non-normalized) if it touched the slice/hitscan.
         - [ ] Add a "suck in nearby entities @ point x,x,x" param to hwac file for WazaAir4th_VacuumCockBack.
 
