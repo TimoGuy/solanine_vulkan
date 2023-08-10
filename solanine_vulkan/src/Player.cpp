@@ -103,6 +103,17 @@ struct Player_XData
     vec3        wazaVelocity;
     int16_t     wazaTimer = 0;  // Used for timing chains and hitscans.
 
+    // Waza Editor/Viewer State
+    struct AttackWazaEditor
+    {
+        bool isEditingMode = false;
+        std::string editingWazaFname;
+        std::vector<AttackWaza> editingWazaSet;
+        size_t wazaIndex;
+        int16_t currentTick, minTick, maxTick;  // @NOTE: bounds are inclusive.
+        bool triggerRecalcWazaCache = false;  // Trigger to do expensive calculations for specific single waza. Only turn on when state changes.
+    } attackWazaEditor;
+
     // Notifications
     struct Notification
     {
@@ -927,17 +938,17 @@ Player::~Player()
     delete _data;
 }
 
-void Player::physicsUpdate(const float_t& physicsDeltaTime)
+void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Player_XData* d, EntityManager* em)
 {
     if (textbox::isProcessingMessage())
     {
-        _data->uiMaterializeItem->excludeFromBulkRender = true;
+        d->uiMaterializeItem->excludeFromBulkRender = true;
         return;
     }
     else
-        _data->uiMaterializeItem->excludeFromBulkRender = false;
+        d->uiMaterializeItem->excludeFromBulkRender = false;
 
-    if (_data->currentWaza == nullptr)
+    if (d->currentWaza == nullptr)
     {
         //
         // Calculate input
@@ -947,93 +958,93 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
         input[0] += input::keyRightPressed ?  1.0f : 0.0f;
         input[1] += input::keyUpPressed    ?  1.0f : 0.0f;
         input[1] += input::keyDownPressed  ? -1.0f : 0.0f;
-        if (_data->disableInput)
+        if (d->disableInput)
             input[0] = input[1] = 0.0f;
 
         vec3 flatCameraFacingDirection = {
-            _data->camera->sceneCamera.facingDirection[0],
+            d->camera->sceneCamera.facingDirection[0],
             0.0f,
-            _data->camera->sceneCamera.facingDirection[2]
+            d->camera->sceneCamera.facingDirection[2]
         };
         glm_normalize(flatCameraFacingDirection);
 
-        glm_vec3_scale(flatCameraFacingDirection, input[1], _data->worldSpaceInput);
+        glm_vec3_scale(flatCameraFacingDirection, input[1], d->worldSpaceInput);
         vec3 up = { 0.0f, 1.0f, 0.0f };
         vec3 flatCamRight;
         glm_vec3_cross(flatCameraFacingDirection, up, flatCamRight);
         glm_normalize(flatCamRight);
-        glm_vec3_muladds(flatCamRight, input[0], _data->worldSpaceInput);
+        glm_vec3_muladds(flatCamRight, input[0], d->worldSpaceInput);
 
-        bool isMoving = glm_vec3_norm2(_data->worldSpaceInput) < 0.01f;
+        bool isMoving = glm_vec3_norm2(d->worldSpaceInput) < 0.01f;
         if (isMoving)
         {
-            glm_vec3_zero(_data->worldSpaceInput);
-            if (_data->prevIsGrounded &&
-                (_data->prevIsGrounded != _data->prevPrevIsGrounded ||
-                isMoving != _data->prevIsMoving))
-                _data->characterRenderObj->animator->setTrigger("goto_idle");
+            glm_vec3_zero(d->worldSpaceInput);
+            if (d->prevIsGrounded &&
+                (d->prevIsGrounded != d->prevPrevIsGrounded ||
+                isMoving != d->prevIsMoving))
+                d->characterRenderObj->animator->setTrigger("goto_idle");
         }
         else
         {
-            float_t magnitude = glm_clamp_zo(glm_vec3_norm(_data->worldSpaceInput));
-            glm_vec3_scale_as(_data->worldSpaceInput, magnitude, _data->worldSpaceInput);
-            if (_data->prevIsGrounded)
-                _data->facingDirection = atan2f(_data->worldSpaceInput[0], _data->worldSpaceInput[2]);
-            if (_data->prevIsGrounded &&
-                (_data->prevIsGrounded != _data->prevPrevIsGrounded ||
-                isMoving != _data->prevIsMoving))
-                _data->characterRenderObj->animator->setTrigger("goto_run");
+            float_t magnitude = glm_clamp_zo(glm_vec3_norm(d->worldSpaceInput));
+            glm_vec3_scale_as(d->worldSpaceInput, magnitude, d->worldSpaceInput);
+            if (d->prevIsGrounded)
+                d->facingDirection = atan2f(d->worldSpaceInput[0], d->worldSpaceInput[2]);
+            if (d->prevIsGrounded &&
+                (d->prevIsGrounded != d->prevPrevIsGrounded ||
+                isMoving != d->prevIsMoving))
+                d->characterRenderObj->animator->setTrigger("goto_run");
         }
-        if (!_data->prevIsGrounded &&
-            _data->prevIsGrounded != _data->prevPrevIsGrounded &&
-            !_data->prevPerformedJump)
-            _data->characterRenderObj->animator->setTrigger("goto_fall");
-        _data->prevIsMoving = isMoving;
-        _data->prevPrevIsGrounded = _data->prevIsGrounded;
+        if (!d->prevIsGrounded &&
+            d->prevIsGrounded != d->prevPrevIsGrounded &&
+            !d->prevPerformedJump)
+            d->characterRenderObj->animator->setTrigger("goto_fall");
+        d->prevIsMoving = isMoving;
+        d->prevPrevIsGrounded = d->prevIsGrounded;
     }
     else
     {
         //
         // Update waza performance
         //
-        glm_vec3_zero(_data->worldSpaceInput);  // Filter movement to put out the waza.
-        _data->inputFlagJump = false;
-        _data->inputFlagRelease = false;  // @NOTE: @TODO: Idk if this is appropriate or wanted behavior.
+        glm_vec3_zero(d->worldSpaceInput);  // Filter movement to put out the waza.
+        d->inputFlagJump = false;
+        d->inputFlagRelease = false;  // @NOTE: @TODO: Idk if this is appropriate or wanted behavior.
 
-        processWazaUpdate(_data, _em, physicsDeltaTime);
+        processWazaUpdate(d, em, physicsDeltaTime);
     }
 
 
     //
     // Process input flags
     //
-    if (_data->inputFlagAttack)
+    if (d->inputFlagAttack)
     {
-        processAttack(_data);
-        _data->inputFlagAttack = false;
+        processAttack(d);
+        d->inputFlagAttack = false;
     }
 
-    if (_data->inputFlagRelease)
+    if (d->inputFlagRelease)
     {
-        processRelease(_data);
-        _data->inputFlagRelease = false;
+        processRelease(d);
+        d->inputFlagRelease = false;
     }
 
     //
     // Update stamina gauge
     //
-    if (_data->staminaData.refillTimer > 0.0f)
-        _data->staminaData.refillTimer -= physicsDeltaTime;
-    else if (_data->staminaData.currentStamina != _data->staminaData.maxStamina)
-        changeStamina(_data, (int16_t)(_data->staminaData.refillRate * physicsDeltaTime));
+    if (d->staminaData.refillTimer > 0.0f)
+        d->staminaData.refillTimer -= physicsDeltaTime;
+    else if (d->staminaData.currentStamina != d->staminaData.maxStamina)
+        changeStamina(d, (int16_t)(d->staminaData.refillRate * physicsDeltaTime));
 
-    if (_data->staminaData.changedTimer > 0.0f)
+    if (d->staminaData.changedTimer > 0.0f)
     {
-        _data->uiStamina->excludeFromBulkRender = false;
-        _data->staminaData.changedTimer -= physicsDeltaTime;
+        d->uiStamina->excludeFromBulkRender = false;
+        d->staminaData.changedTimer -= physicsDeltaTime;
     }
     else
-        _data->uiStamina->excludeFromBulkRender = true;
+        d->uiStamina->excludeFromBulkRender = true;
 
 
     //
@@ -1041,29 +1052,29 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     //
     constexpr float_t gravity = -0.98f / 0.025f;  // @TODO: put physicsengine constexpr of `physicsDeltaTime` into the header file and rename it to `constantPhysicsDeltaTime` and replace the 0.025f with it.
     constexpr float_t jumpHeight = 2.0f;
-    _data->gravityForce += gravity * (_data->currentWaza != nullptr ? _data->currentWaza->gravityMultiplier : 1.0f) * physicsDeltaTime;
-    _data->prevPerformedJump = false;
-    if (_data->prevIsGrounded && _data->inputFlagJump)
+    d->gravityForce += gravity * (d->currentWaza != nullptr ? d->currentWaza->gravityMultiplier : 1.0f) * physicsDeltaTime;
+    d->prevPerformedJump = false;
+    if (d->prevIsGrounded && d->inputFlagJump)
     {
-        _data->gravityForce = std::sqrtf(jumpHeight * 2.0f * std::abs(gravity));  // @COPYPASTA
-        _data->prevIsGrounded = false;
-        _data->inputFlagJump = false;
-        _data->prevPerformedJump = true;
-        _data->characterRenderObj->animator->setTrigger("goto_jump");
+        d->gravityForce = std::sqrtf(jumpHeight * 2.0f * std::abs(gravity));  // @COPYPASTA
+        d->prevIsGrounded = false;
+        d->inputFlagJump = false;
+        d->prevPerformedJump = true;
+        d->characterRenderObj->animator->setTrigger("goto_jump");
     }
 
     vec3 velocity = GLM_VEC3_ZERO_INIT;
-    if (_data->currentWaza == nullptr)
+    if (d->currentWaza == nullptr)
     {
-        if (_data->prevIsGrounded)
-            glm_vec3_scale(_data->worldSpaceInput, _data->inputMaxXZSpeed * physicsDeltaTime, velocity);
+        if (d->prevIsGrounded)
+            glm_vec3_scale(d->worldSpaceInput, d->inputMaxXZSpeed * physicsDeltaTime, velocity);
         else
         {
             vec3 targetVelocity;
-            glm_vec3_scale(_data->worldSpaceInput, _data->inputMaxXZSpeed * physicsDeltaTime, targetVelocity);
+            glm_vec3_scale(d->worldSpaceInput, d->inputMaxXZSpeed * physicsDeltaTime, targetVelocity);
 
             vec3 flatDeltaPosition;
-            glm_vec3_sub(_data->cpd->basePosition, _data->prevCPDBasePosition, flatDeltaPosition);
+            glm_vec3_sub(d->cpd->basePosition, d->prevCPDBasePosition, flatDeltaPosition);
             flatDeltaPosition[1] = 0.0f;
 
             vec3 targetDelta;
@@ -1075,7 +1086,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
                 vec3 targetVelocityNormalized;
                 glm_vec3_normalize_to(targetVelocity, targetVelocityNormalized);
                 bool useAcceleration = (glm_vec3_dot(targetVelocityNormalized, flatDeltaPositionNormalized) < 0.0f || glm_vec3_norm2(targetVelocity) > glm_vec3_norm2(flatDeltaPosition));
-                float_t maxAllowedDeltaMagnitude = (useAcceleration ? _data->midairXZAcceleration : _data->midairXZDeceleration) * physicsDeltaTime;
+                float_t maxAllowedDeltaMagnitude = (useAcceleration ? d->midairXZAcceleration : d->midairXZDeceleration) * physicsDeltaTime;
 
                 if (glm_vec3_norm2(targetDelta) > maxAllowedDeltaMagnitude * maxAllowedDeltaMagnitude)
                     glm_vec3_scale_as(targetDelta, maxAllowedDeltaMagnitude, targetDelta);
@@ -1091,51 +1102,65 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     else
     {
         // Hold in midair if wanted by waza
-        if (_data->currentWaza->holdMidair &&
-            _data->currentWaza->holdMidairTimeFrom < 0 ||
-            (_data->currentWaza->holdMidairTimeFrom <= _data->wazaTimer - 1 &&
-            _data->currentWaza->holdMidairTimeTo >= _data->wazaTimer - 1))
+        if (d->currentWaza->holdMidair &&
+            d->currentWaza->holdMidairTimeFrom < 0 ||
+            (d->currentWaza->holdMidairTimeFrom <= d->wazaTimer - 1 &&
+            d->currentWaza->holdMidairTimeTo >= d->wazaTimer - 1))
         {
-            _data->gravityForce = std::max(0.0f, _data->gravityForce);
+            d->gravityForce = std::max(0.0f, d->gravityForce);
         }
 
         // Add waza velocity
-        if (glm_vec3_norm2(_data->wazaVelocity) > 0.0f)
+        if (glm_vec3_norm2(d->wazaVelocity) > 0.0f)
         {
             mat4 rotation;
-            glm_euler_zyx(vec3{ 0.0f, _data->facingDirection, 0.0f }, rotation);
+            glm_euler_zyx(vec3{ 0.0f, d->facingDirection, 0.0f }, rotation);
             vec3 facingWazaVelocity;
-            glm_mat4_mulv3(rotation, _data->wazaVelocity, 0.0f, facingWazaVelocity);
+            glm_mat4_mulv3(rotation, d->wazaVelocity, 0.0f, facingWazaVelocity);
             glm_vec3_scale(facingWazaVelocity, physicsDeltaTime, velocity);
             
             // Execute jump.
-            if (_data->wazaVelocity[1] > 0.0f)
+            if (d->wazaVelocity[1] > 0.0f)
             {
-                _data->gravityForce = _data->wazaVelocity[1];
-                _data->prevIsGrounded = false;
+                d->gravityForce = d->wazaVelocity[1];
+                d->prevIsGrounded = false;
 
-                _data->wazaVelocity[1] = 0.0f;
+                d->wazaVelocity[1] = 0.0f;
             }
         }
     }
 
-    if (_data->prevIsGrounded && _data->prevGroundNormal[1] < 0.999f)
+    if (d->prevIsGrounded && d->prevGroundNormal[1] < 0.999f)
     {
         versor groundNormalRotation;
-        glm_quat_from_vecs(vec3{ 0.0f, 1.0f, 0.0f }, _data->prevGroundNormal, groundNormalRotation);
+        glm_quat_from_vecs(vec3{ 0.0f, 1.0f, 0.0f }, d->prevGroundNormal, groundNormalRotation);
         mat3 groundNormalRotationM3;
         glm_quat_mat3(groundNormalRotation, groundNormalRotationM3);
         glm_mat3_mulv(groundNormalRotationM3, velocity, velocity);
     }
 
-    velocity[1] += _data->gravityForce * physicsDeltaTime;
-    glm_vec3_copy(_data->cpd->basePosition, _data->prevCPDBasePosition);
-    physengine::moveCapsuleAccountingForCollision(*_data->cpd, velocity, _data->prevIsGrounded, _data->prevGroundNormal);
-    glm_vec3_copy(_data->cpd->basePosition, _data->position);
+    velocity[1] += d->gravityForce * physicsDeltaTime;
+    glm_vec3_copy(d->cpd->basePosition, d->prevCPDBasePosition);
+    physengine::moveCapsuleAccountingForCollision(*d->cpd, velocity, d->prevIsGrounded, d->prevGroundNormal);
+    glm_vec3_copy(d->cpd->basePosition, d->position);
 
-    _data->prevIsGrounded = (_data->prevGroundNormal[1] >= 0.707106781187);  // >=45 degrees
-    if (_data->prevIsGrounded)
-        _data->gravityForce = 0.0f;
+    d->prevIsGrounded = (d->prevGroundNormal[1] >= 0.707106781187);  // >=45 degrees
+    if (d->prevIsGrounded)
+        d->gravityForce = 0.0f;
+}
+
+void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Player_XData* d)
+{
+    // @STUB
+
+}
+
+void Player::physicsUpdate(const float_t& physicsDeltaTime)
+{
+    if (_data->attackWazaEditor.isEditingMode)
+        attackWazaEditorPhysicsUpdate(physicsDeltaTime, _data);
+    else
+        defaultPhysicsUpdate(physicsDeltaTime, _data, _em);
 }
 
 // @TODO: @INCOMPLETE: will need to move the interaction logic into its own type of object, where you can update the interactor position and add/register interaction fields.
@@ -1355,14 +1380,69 @@ void Player::reportMoved(mat4* matrixMoved)
     glm_vec3_copy(_data->position, _data->cpd->basePosition);
 }
 
+std::vector<std::string> getListOfWazaFnames()
+{
+    const std::string WAZA_DIRECTORY_PATH = "res/waza/";
+    std::vector<std::string> wazaFnames;
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(WAZA_DIRECTORY_PATH))
+    {
+        const auto& path = entry.path();
+        if (std::filesystem::is_directory(path))
+            continue;
+        if (!path.has_extension() || path.extension().compare(".hwac") != 0)
+            continue;
+        auto relativePath = std::filesystem::relative(path, WAZA_DIRECTORY_PATH);
+        wazaFnames.push_back(relativePath.string());  // @NOTE: that this line could be dangerous if there are any filenames or directory names that have utf8 chars or wchars in it
+    }
+    return wazaFnames;
+}
+
+void defaultRenderImGui(Player_XData* d)
+{
+    ImGui::DragFloat("modelSize", &d->modelSize);
+    ImGui::DragFloat("attackTwitchAngleReturnSpeed", &d->attackTwitchAngleReturnSpeed);
+    ImGui::DragFloat3("uiMaterializeItem->renderPosition", d->uiMaterializeItem->renderPosition);
+    ImGui::DragFloat3("uiStamina->renderPosition", d->uiStamina->renderPosition);
+    ImGui::InputInt("currentWeaponDurability", &d->currentWeaponDurability);
+    ImGui::DragFloat("inputMaxXZSpeed", &d->inputMaxXZSpeed);
+    ImGui::DragFloat("midairXZAcceleration", &d->midairXZAcceleration);
+    ImGui::DragFloat("midairXZDeceleration", &d->midairXZDeceleration);
+
+    ImGui::Separator();
+
+    // Enter into waza view/edit mode.
+    static std::vector<std::string> listOfWazas;
+    if (ImGui::Button("Open Waza in Editor.."))
+    {
+        listOfWazas = getListOfWazaFnames();
+        ImGui::OpenPopup("open_waza_popup");
+    }
+    if (ImGui::BeginPopup("open_waza_popup"))
+    {
+        for (auto& path : listOfWazas)
+            if (ImGui::Button(("Open \"" + path + "\"").c_str()))
+            {
+                d->attackWazaEditor.isEditingMode = true;
+                d->attackWazaEditor.editingWazaFname = path;
+                initWazaSetFromFile(d->attackWazaEditor.editingWazaSet, d->attackWazaEditor.editingWazaFname);
+                d->attackWazaEditor.wazaIndex = 0;
+                d->attackWazaEditor.currentTick = 0;
+                d->attackWazaEditor.triggerRecalcWazaCache = true;
+                ImGui::CloseCurrentPopup();
+            }
+        ImGui::EndPopup();
+    }
+}
+
+void attackWazaEditorRenderImGui(Player_XData* d)
+{
+    // @STUB
+}
+
 void Player::renderImGui()
 {
-    ImGui::DragFloat("modelSize", &_data->modelSize);
-    ImGui::DragFloat("attackTwitchAngleReturnSpeed", &_data->attackTwitchAngleReturnSpeed);
-    ImGui::DragFloat3("uiMaterializeItem->renderPosition", _data->uiMaterializeItem->renderPosition);
-    ImGui::DragFloat3("uiStamina->renderPosition", _data->uiStamina->renderPosition);
-    ImGui::InputInt("currentWeaponDurability", &_data->currentWeaponDurability);
-    ImGui::DragFloat("inputMaxXZSpeed", &_data->inputMaxXZSpeed);
-    ImGui::DragFloat("midairXZAcceleration", &_data->midairXZAcceleration);
-    ImGui::DragFloat("midairXZDeceleration", &_data->midairXZDeceleration);
+    if (_data->attackWazaEditor.isEditingMode)
+        attackWazaEditorRenderImGui(_data);
+    else
+        defaultRenderImGui(_data);
 }
