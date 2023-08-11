@@ -2400,7 +2400,7 @@ namespace vkglTF
 			<< "WARNING: Event name \"" << eventName << "\" not found in list of event callbacks" << std::endl;
 	}
 
-	void Animator::setState(const std::string& stateName, float_t time)
+	void Animator::setState(const std::string& stateName, float_t time, bool forceImmediateUpdate)
 	{
 		// @TODO: It seems like since there will be a butt-ton of animator states, there should be a hash map.
 		//        Though, for now it's just a linear search. Change it when you feel like it.  -Timo 2023/07/31
@@ -2412,6 +2412,8 @@ namespace vkglTF
 				if (state.stateName == stateName)
 				{
 					playAnimation(i, state.animationIndex, state.loop, time);
+					if (forceImmediateUpdate)
+						updateAnimation();
 
 					// Turn off all triggers
 					// @NOTE: this is to prevent a trigger changing the state after the state was just changed with this function!  -Timo 2023/08/08

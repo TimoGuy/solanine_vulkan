@@ -16,6 +16,7 @@
 #include "GlobalState.h"
 #include "StringHelper.h"
 #include "imgui/imgui.h"
+#include "imgui/imgui_stdlib.h"
 
 
 struct Player_XData
@@ -116,6 +117,10 @@ struct Player_XData
         int16_t currentTick, minTick, maxTick;  // @NOTE: bounds are inclusive.
 
         vec2 bladeDistanceStartEnd = { 1.0f, 5.0f };
+        std::string exportString = "";
+
+        bool triggerBakeHitscans = false;
+        int16_t bakeHitscanStartTick = -1, bakeHitscanEndTick = -1;
     } attackWazaEditor;
 
     // Notifications
@@ -1153,6 +1158,15 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Player_XData* d, Enti
         d->gravityForce = 0.0f;
 }
 
+void calculateBladeStartEndFromHandAttachment(Player_XData* d, vec3& bladeStart, vec3& bladeEnd)
+{
+    mat4 attachmentJointMat;
+    d->characterRenderObj->animator->getJointMatrix("Hand Attachment", attachmentJointMat);
+    glm_mat4_mul(d->characterRenderObj->transformMatrix, attachmentJointMat, attachmentJointMat);
+    glm_mat4_mulv3(attachmentJointMat, vec3{ 0.0f, d->attackWazaEditor.bladeDistanceStartEnd[0], 0.0f }, 1.0f, bladeStart);
+    glm_mat4_mulv3(attachmentJointMat, vec3{ 0.0f, d->attackWazaEditor.bladeDistanceStartEnd[1], 0.0f }, 1.0f, bladeEnd);
+}
+
 void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Player_XData* d)
 {
     if (d->attackWazaEditor.triggerRecalcWazaCache)
@@ -1168,13 +1182,47 @@ void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Player_XData
         return;
     }
 
-    
-    mat4 attachmentJointMat;
-    d->characterRenderObj->animator->getJointMatrix("Hand Attachment", attachmentJointMat);
-    glm_mat4_mul(d->characterRenderObj->transformMatrix, attachmentJointMat, attachmentJointMat);
+    if (d->attackWazaEditor.triggerBakeHitscans)
+    {
+        Player_XData::AttackWaza& aw = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex];
+
+        // Fill in hitscan flow nodes according to baked range.
+        aw.hitscanNodes.clear();
+        for (int16_t i = d->attackWazaEditor.bakeHitscanStartTick; i <= d->attackWazaEditor.bakeHitscanEndTick; i++)
+        {
+            d->characterRenderObj->animator->setState(aw.animationState, i * physicsDeltaTime, true);
+
+            Player_XData::AttackWaza::HitscanFlowNode hfn;
+            calculateBladeStartEndFromHandAttachment(d, hfn.nodeEnd1, hfn.nodeEnd2);
+            hfn.executeAtTime = i;
+            aw.hitscanNodes.push_back(hfn);
+        }
+
+        // Fill out the export string.
+        d->attackWazaEditor.exportString = "";
+        for (size_t i = 0; i < aw.hitscanNodes.size(); i++)
+        {
+            d->attackWazaEditor.exportString +=
+                "  hitscan            " +
+                std::to_string(aw.hitscanNodes[i].nodeEnd1[0]) + "," +
+                std::to_string(aw.hitscanNodes[i].nodeEnd1[1]) + "," +
+                std::to_string(aw.hitscanNodes[i].nodeEnd1[2]) + "    " +
+                std::to_string(aw.hitscanNodes[i].nodeEnd2[0]) + "," +
+                std::to_string(aw.hitscanNodes[i].nodeEnd2[1]) + "," +
+                std::to_string(aw.hitscanNodes[i].nodeEnd1[2]);
+            if (i > 0)
+                d->attackWazaEditor.exportString +=
+                    "    " + std::to_string(aw.hitscanNodes[i].executeAtTime);
+            d->attackWazaEditor.exportString += "\n";
+        }
+
+        d->attackWazaEditor.triggerBakeHitscans = false;
+        return;
+    }
+
+    // Draw visual line showing where weapon hitscan will show up.
     vec3 bladeStart, bladeEnd;
-    glm_mat4_mulv3(attachmentJointMat, vec3{ 0.0f, d->attackWazaEditor.bladeDistanceStartEnd[0], 0.0f }, 1.0f, bladeStart);
-    glm_mat4_mulv3(attachmentJointMat, vec3{ 0.0f, d->attackWazaEditor.bladeDistanceStartEnd[1], 0.0f }, 1.0f, bladeEnd);
+    calculateBladeStartEndFromHandAttachment(d, bladeStart, bladeEnd);
     physengine::drawDebugVisLine(bladeStart, bladeEnd);
 }
 
@@ -1497,8 +1545,30 @@ void attackWazaEditorRenderImGui(Player_XData* d)
     int32_t currentTickCopy = (int32_t)d->attackWazaEditor.currentTick;
     if (ImGui::SliderInt("Waza Tick", &currentTickCopy, d->attackWazaEditor.minTick, d->attackWazaEditor.maxTick))
     {
-        d->attackWazaEditor.currentTick = (size_t)currentTickCopy;
+        d->attackWazaEditor.currentTick = (int16_t)currentTickCopy;
         d->attackWazaEditor.triggerRecalcWazaCache = true;
+    }
+
+    ImGui::Text("Bake hitscan with waza");
+    if (ImGui::Button("Set baking hitscan range start"))
+        d->attackWazaEditor.bakeHitscanStartTick = d->attackWazaEditor.currentTick;
+    if (ImGui::Button("Set baking hitscan range end"))
+        d->attackWazaEditor.bakeHitscanEndTick = d->attackWazaEditor.currentTick;
+
+    ImGui::BeginDisabled(d->attackWazaEditor.bakeHitscanStartTick < 0 || d->attackWazaEditor.bakeHitscanEndTick < 0 || d->attackWazaEditor.bakeHitscanStartTick >= d->attackWazaEditor.bakeHitscanEndTick);
+    if (ImGui::Button(("Bake hitscans (range: [" + std::to_string(d->attackWazaEditor.bakeHitscanStartTick) + ", " + std::to_string(d->attackWazaEditor.bakeHitscanEndTick) + "])").c_str()))
+    {
+        d->attackWazaEditor.triggerBakeHitscans = true;
+    }
+    ImGui::EndDisabled();
+
+
+    if (!d->attackWazaEditor.exportString.empty())
+    {
+        ImGui::Separator();
+
+        ImGui::Text("Hitscan Export String");
+        ImGui::InputTextMultiline("##Attack Waza Export string copying area", &d->attackWazaEditor.exportString, ImVec2(512, ImGui::GetTextLineHeight() * 16), ImGuiInputTextFlags_AllowTabInput);
     }
 }
 
