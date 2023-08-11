@@ -8,15 +8,18 @@
     - [x] Add unsheath & materialize anim to asm
     - [x] Add break off and sheath anim to asm
     - [ ] Modify beanbag enemy to be affected by the slices
-        - [ ] Create entity that holds a model, loads the animations, and writes hitscans by selecting a bone and setting the length of the start and end of the blade, and you can select from which point in time physics wise to do the attack and it will write hitscan vec3s in a textbox for you. And it will draw the hitscan lines for you so you can easily see them.
+        - [x] Create entity that holds a model, loads the animations, and writes hitscans by selecting a bone and setting the length of the start and end of the blade, and you can select from which point in time physics wise to do the attack and it will write hitscan vec3s in a textbox for you. And it will draw the hitscan lines for you so you can easily see them.
             - [x] This could just piggyback off of the player for the time being.
             > The player entity could just turn into an actor and every enemy and npc could be based off of it too I guess. That would help a lot with a lot of code duplication. This may not even need to be its own separate entity ever!
             > So if we're just gonna piggyback off the player, have a checkbox that's like "hwac testing mode".
             - [x] Be able to scrub thru animation.
             - [x] Draw line of "Hand Attachment" with the weapon's blade start/end stats.
             - [x] Write out all hitscans in textarea for copying into hwac.
-            - [ ] Draw lines of all hitscan lines, with a different color of the current tick's hitscan.
+            - [x] Draw lines of all hitscan lines, with a different color of the current tick's hitscan.
             > NOTE: I wrote down doing the velocity tracking, but it could step on top of the hitscan line stuff, and felt like it wasn't the main focus of this (for now) small tool, so I removed it.  -Timo 2023/08/10
+        - [x] Fix bug where short circuit searching for entity to hit if hit self with hitscans.
+        - [x] Fix bug where hitscan lines aren't following velocity.
+            - [x] Change hitscan lines to save the previous line in world space as the previous flow node positions.
         - [ ] Add velocity param to hwac file to set what velocity enemy would go (non-normalized) if it touched the slice/hitscan.
         - [ ] Add a "suck in nearby entities @ point x,x,x" param to hwac file for WazaAir4th_VacuumCockBack.
 

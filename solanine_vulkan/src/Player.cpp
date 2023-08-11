@@ -100,6 +100,7 @@ struct Player_XData
     std::vector<AttackWaza> airWazaSet;
 
     AttackWaza* currentWaza = nullptr;
+    vec3        prevWazaHitscanNodeEnd1, prevWazaHitscanNodeEnd2;
     float_t     wazaVelocityDecay = 0.0f;
     vec3        wazaVelocity;
     int16_t     wazaTimer = 0;  // Used for timing chains and hitscans.
@@ -635,7 +636,7 @@ void processWeaponAttackInput(Player_XData* d)
     }
 }
 
-void processWazaUpdate(Player_XData* d, EntityManager* em, const float_t& physicsDeltaTime)
+void processWazaUpdate(Player_XData* d, EntityManager* em, const float_t& physicsDeltaTime, const std::string& myGuid)
 {
     //
     // Execute all velocity decay settings.
@@ -676,59 +677,75 @@ void processWazaUpdate(Player_XData* d, EntityManager* em, const float_t& physic
 
     for (size_t i = 1; i < d->currentWaza->hitscanNodes.size(); i++)  // @NOTE: 0th hitscan node is ignored bc it's used to draw the line from 0th to 1st hit scan line.
     {
-        if (d->currentWaza->hitscanNodes[i].executeAtTime != d->wazaTimer)
-            continue;
-
-        auto& node     = d->currentWaza->hitscanNodes[i];
-        auto& nodePrev = d->currentWaza->hitscanNodes[i - 1];
-
-        vec3 translation;
-        glm_vec3_add(d->position, vec3{ 0.0f, d->cpd->radius + d->cpd->height * 0.5f, 0.0f }, translation);
-        mat4 rotation;
-        glm_euler_zyx(vec3{ 0.0f, d->facingDirection, 0.0f }, rotation);
-
-        for (uint32_t s = 0; s <= d->currentWaza->numHitscanSamples; s++)
+        if (d->currentWaza->hitscanNodes[i].executeAtTime == d->wazaTimer)
         {
-            float_t t = (float_t)s / (float_t)d->currentWaza->numHitscanSamples;
-            vec3 pt1, pt2;
-            glm_vec3_lerp(node.nodeEnd1, node.nodeEnd2, t, pt1);
-            glm_vec3_lerp(nodePrev.nodeEnd1, nodePrev.nodeEnd2, t, pt2);
+            mat4 rotation;
+            glm_euler_zyx(vec3{ 0.0f, d->facingDirection, 0.0f }, rotation);
 
-            glm_mat4_mulv3(rotation, pt1, 0.0f, pt1);
-            glm_mat4_mulv3(rotation, pt2, 0.0f, pt2);
-            glm_vec3_add(pt1, translation, pt1);
-            glm_vec3_add(pt2, translation, pt2);
+            auto& node = d->currentWaza->hitscanNodes[i];
+            vec3 nodeEnd1WS, nodeEnd2WS;
+            glm_mat4_mulv3(rotation, node.nodeEnd1, 0.0f, nodeEnd1WS);
+            glm_mat4_mulv3(rotation, node.nodeEnd2, 0.0f, nodeEnd2WS);
+            glm_vec3_add(nodeEnd1WS, d->position, nodeEnd1WS);
+            glm_vec3_add(nodeEnd2WS, d->position, nodeEnd2WS);
 
-            std::vector<std::string> hitGuids;
-            if (physengine::lineSegmentCast(pt1, pt2, hitscanLayer, true, hitGuids))
+            if (i == 1)
             {
-                float_t attackLvl =
-                    (float_t)(d->currentWeaponDurability > 0 ?
-                        d->materializedItem->weaponStats.attackPower :
-                        d->materializedItem->weaponStats.attackPowerWhenDulled);
+                // Set prev node to 0th flow nodes.
+                auto& nodePrev = d->currentWaza->hitscanNodes[i - 1];
+                glm_mat4_mulv3(rotation, nodePrev.nodeEnd1, 0.0f, d->prevWazaHitscanNodeEnd1);
+                glm_mat4_mulv3(rotation, nodePrev.nodeEnd2, 0.0f, d->prevWazaHitscanNodeEnd2);
+                glm_vec3_add(d->prevWazaHitscanNodeEnd1, d->position, d->prevWazaHitscanNodeEnd1);
+                glm_vec3_add(d->prevWazaHitscanNodeEnd2, d->position, d->prevWazaHitscanNodeEnd2);
+            }
 
-                // Successful hitscan!
-                for (auto& guid : hitGuids)
+            for (uint32_t s = 0; s <= d->currentWaza->numHitscanSamples; s++)
+            {
+                float_t t = (float_t)s / (float_t)d->currentWaza->numHitscanSamples;
+                vec3 pt1, pt2;
+                glm_vec3_lerp(nodeEnd1WS, nodeEnd2WS, t, pt1);
+                glm_vec3_lerp(d->prevWazaHitscanNodeEnd1, d->prevWazaHitscanNodeEnd2, t, pt2);
+
+                std::vector<std::string> hitGuids;
+                if (physengine::lineSegmentCast(pt1, pt2, hitscanLayer, true, hitGuids))
                 {
-                    DataSerializer ds;
-                    ds.dumpString("msg_hitscan_hit");
-                    ds.dumpFloat(attackLvl);
-                    DataSerialized dsd = ds.getSerializedData();
-                    if (em->sendMessage(guid, dsd))
-                    {
-                        playWazaHitSfx = true;
+                    float_t attackLvl =
+                        (float_t)(d->currentWeaponDurability > 0 ?
+                            d->materializedItem->weaponStats.attackPower :
+                            d->materializedItem->weaponStats.attackPowerWhenDulled);
 
-                        // Take off some durability bc of successful hitscan.
-                        if (d->currentWeaponDurability > 0)
+                    // Successful hitscan!
+                    for (auto& guid : hitGuids)
+                    {
+                        if (guid == myGuid)
+                            continue;
+
+                        DataSerializer ds;
+                        ds.dumpString("msg_hitscan_hit");
+                        ds.dumpFloat(attackLvl);
+                        DataSerialized dsd = ds.getSerializedData();
+                        if (em->sendMessage(guid, dsd))
                         {
-                            d->currentWeaponDurability--;
-                            if (d->currentWeaponDurability <= 0)
-                                pushPlayerNotification("Weapon has dulled!", d);
+                            playWazaHitSfx = true;
+
+                            // Take off some durability bc of successful hitscan.
+                            if (d->currentWeaponDurability > 0)
+                            {
+                                d->currentWeaponDurability--;
+                                if (d->currentWeaponDurability <= 0)
+                                    pushPlayerNotification("Weapon has dulled!", d);
+                            }
                         }
                     }
+                    // break;  @NOTE: in situations where self gets hit by the hitscan, I don't want the search to end.
                 }
-                break;
             }
+
+            // Update prev hitscan node ends.
+            glm_vec3_copy(nodeEnd1WS, d->prevWazaHitscanNodeEnd1);
+            glm_vec3_copy(nodeEnd2WS, d->prevWazaHitscanNodeEnd2);
+
+            break;  // @NOTE: there should only be one waza hitscan per step, so since this one got processed, then no need to keep searching for another.  -Timo 2023/08/10
         }
     }
 
@@ -947,7 +964,7 @@ Player::~Player()
     delete _data;
 }
 
-void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Player_XData* d, EntityManager* em)
+void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Player_XData* d, EntityManager* em, const std::string& myGuid)
 {
     if (textbox::isProcessingMessage())
     {
@@ -1020,7 +1037,7 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Player_XData* d, Enti
         d->inputFlagJump = false;
         d->inputFlagRelease = false;  // @NOTE: @TODO: Idk if this is appropriate or wanted behavior.
 
-        processWazaUpdate(d, em, physicsDeltaTime);
+        processWazaUpdate(d, em, physicsDeltaTime, myGuid);
     }
 
 
@@ -1162,7 +1179,6 @@ void calculateBladeStartEndFromHandAttachment(Player_XData* d, vec3& bladeStart,
 {
     mat4 attachmentJointMat;
     d->characterRenderObj->animator->getJointMatrix("Hand Attachment", attachmentJointMat);
-    glm_mat4_mul(d->characterRenderObj->transformMatrix, attachmentJointMat, attachmentJointMat);
     glm_mat4_mulv3(attachmentJointMat, vec3{ 0.0f, d->attackWazaEditor.bladeDistanceStartEnd[0], 0.0f }, 1.0f, bladeStart);
     glm_mat4_mulv3(attachmentJointMat, vec3{ 0.0f, d->attackWazaEditor.bladeDistanceStartEnd[1], 0.0f }, 1.0f, bladeEnd);
 }
@@ -1194,6 +1210,8 @@ void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Player_XData
 
             Player_XData::AttackWaza::HitscanFlowNode hfn;
             calculateBladeStartEndFromHandAttachment(d, hfn.nodeEnd1, hfn.nodeEnd2);
+            glm_vec3_scale(hfn.nodeEnd1, d->modelSize, hfn.nodeEnd1);
+            glm_vec3_scale(hfn.nodeEnd2, d->modelSize, hfn.nodeEnd2);
             hfn.executeAtTime = i;
             aw.hitscanNodes.push_back(hfn);
         }
@@ -1209,7 +1227,7 @@ void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Player_XData
                 std::to_string(aw.hitscanNodes[i].nodeEnd1[2]) + "    " +
                 std::to_string(aw.hitscanNodes[i].nodeEnd2[0]) + "," +
                 std::to_string(aw.hitscanNodes[i].nodeEnd2[1]) + "," +
-                std::to_string(aw.hitscanNodes[i].nodeEnd1[2]);
+                std::to_string(aw.hitscanNodes[i].nodeEnd2[2]);
             if (i > 0)
                 d->attackWazaEditor.exportString +=
                     "    " + std::to_string(aw.hitscanNodes[i].executeAtTime);
@@ -1224,18 +1242,27 @@ void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Player_XData
     std::vector<Player_XData::AttackWaza::HitscanFlowNode>& hnodes = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].hitscanNodes;
     for (size_t i = 1; i < hnodes.size(); i++)
     {
-        physengine::drawDebugVisLine(hnodes[i - 1].nodeEnd1, hnodes[i].nodeEnd1);
-        physengine::drawDebugVisLine(hnodes[i - 1].nodeEnd2, hnodes[i].nodeEnd2);
+        vec3 nodeEnd1_i, nodeEnd1_i1, nodeEnd2_i, nodeEnd2_i1;
+        glm_vec3_add(hnodes[i].nodeEnd1, d->position, nodeEnd1_i);
+        glm_vec3_add(hnodes[i - 1].nodeEnd1, d->position, nodeEnd1_i1);
+        glm_vec3_add(hnodes[i].nodeEnd2, d->position, nodeEnd2_i);
+        glm_vec3_add(hnodes[i - 1].nodeEnd2, d->position, nodeEnd2_i1);
+        physengine::drawDebugVisLine(nodeEnd1_i1, nodeEnd1_i);
+        physengine::drawDebugVisLine(nodeEnd2_i1, nodeEnd2_i);
 
-        vec3 nodeEndMid_i1, nodeEndMid_i;
-        glm_vec3_lerp(hnodes[i - 1].nodeEnd1, hnodes[i - 1].nodeEnd2, 0.5f, nodeEndMid_i1);
-        glm_vec3_lerp(hnodes[i].nodeEnd1, hnodes[i].nodeEnd2, 0.5f, nodeEndMid_i);
+        vec3 nodeEndMid_i, nodeEndMid_i1;
+        glm_vec3_lerp(nodeEnd1_i1, nodeEnd2_i1, 0.5f, nodeEndMid_i1);
+        glm_vec3_lerp(nodeEnd1_i, nodeEnd2_i, 0.5f, nodeEndMid_i);
         physengine::drawDebugVisLine(nodeEndMid_i1, nodeEndMid_i);
     }
 
     // Draw visual line showing where weapon hitscan will show up.
     vec3 bladeStart, bladeEnd;
     calculateBladeStartEndFromHandAttachment(d, bladeStart, bladeEnd);
+    glm_vec3_scale(bladeStart, d->modelSize, bladeStart);
+    glm_vec3_scale(bladeEnd, d->modelSize, bladeEnd);
+    glm_vec3_add(bladeStart, d->position, bladeStart);
+    glm_vec3_add(bladeEnd, d->position, bladeEnd);
     physengine::drawDebugVisLine(bladeStart, bladeEnd);
 }
 
@@ -1244,7 +1271,7 @@ void Player::physicsUpdate(const float_t& physicsDeltaTime)
     if (_data->attackWazaEditor.isEditingMode)
         attackWazaEditorPhysicsUpdate(physicsDeltaTime, _data);
     else
-        defaultPhysicsUpdate(physicsDeltaTime, _data, _em);
+        defaultPhysicsUpdate(physicsDeltaTime, _data, _em, getGUID());
 }
 
 // @TODO: @INCOMPLETE: will need to move the interaction logic into its own type of object, where you can update the interactor position and add/register interaction fields.
@@ -1535,6 +1562,7 @@ void attackWazaEditorRenderImGui(Player_XData* d)
         return;
     }
 
+    ImGui::SameLine();
     if (ImGui::Button("Select Waza in Set.."))
         ImGui::OpenPopup("open_waza_in_set_popup");
     if (ImGui::BeginPopup("open_waza_in_set_popup"))
