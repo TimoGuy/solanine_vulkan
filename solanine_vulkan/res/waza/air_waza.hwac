@@ -62,7 +62,7 @@
 
 # Execute 2nd Waza.
 
-:WazaAir2nd_LeapForwardRaimei
+:WazaAir2nd_LeapForwardRaimei                        # @NOTE: I don't know if having hitscans be allowed on this is the best choice. I took it out so that timing the `WazaAir2nd_TwistingUpdraft` is required.  -Timo 2023/08/11
   animation_state    StateAirWaza2ndFormPart1
   stamina_cost       0
   duration           30
