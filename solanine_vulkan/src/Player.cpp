@@ -968,6 +968,15 @@ Player::~Player()
 
 void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Player_XData* d, EntityManager* em, const std::string& myGuid)
 {
+    if (d->wazaHitTimescale < 1.0f)
+    {
+        // Update time scale with waza hit
+        d->wazaHitTimescale = physutil::lerp(d->wazaHitTimescale, 1.0f, physicsDeltaTime * d->wazaHitTimescale * d->wazaHitTimescaleReturnToOneSpeed);
+        if (d->wazaHitTimescale > 0.999f)
+            d->wazaHitTimescale = 1.0f;
+        globalState::timescale = d->wazaHitTimescale;
+    }
+
     if (textbox::isProcessingMessage())
     {
         d->uiMaterializeItem->excludeFromBulkRender = true;
@@ -1382,15 +1391,6 @@ void Player::lateUpdate(const float_t& deltaTime)
     _data->characterRenderObj->animator->getJointMatrix(_data->weaponAttachmentJointName, attachmentJointMat);
     glm_mat4_mul(_data->characterRenderObj->transformMatrix, attachmentJointMat, _data->weaponRenderObj->transformMatrix);
     glm_mat4_copy(_data->weaponRenderObj->transformMatrix, _data->handleRenderObj->transformMatrix);
-
-    // Update time scale with waza hit
-    if (_data->wazaHitTimescale < 1.0f)
-    {
-        _data->wazaHitTimescale = physutil::lerp(_data->wazaHitTimescale, 1.0f, deltaTime * _data->wazaHitTimescale * _data->wazaHitTimescaleReturnToOneSpeed);
-        if (_data->wazaHitTimescale > 0.999f)
-            _data->wazaHitTimescale = 1.0f;
-        globalState::timescale = _data->wazaHitTimescale;
-    }
 }
 
 void Player::dump(DataSerializer& ds)
