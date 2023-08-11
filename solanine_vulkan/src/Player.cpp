@@ -114,6 +114,8 @@ struct Player_XData
         std::vector<AttackWaza> editingWazaSet;
         size_t wazaIndex;
         int16_t currentTick, minTick, maxTick;  // @NOTE: bounds are inclusive.
+
+        vec2 bladeDistanceStartEnd = { 1.0f, 5.0f };
     } attackWazaEditor;
 
     // Notifications
@@ -1163,7 +1165,17 @@ void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Player_XData
         d->characterRenderObj->animator->setState(aw.animationState, d->attackWazaEditor.currentTick * physicsDeltaTime);
 
         d->attackWazaEditor.triggerRecalcWazaCache = false;
+        return;
     }
+
+    
+    mat4 attachmentJointMat;
+    d->characterRenderObj->animator->getJointMatrix("Hand Attachment", attachmentJointMat);
+    glm_mat4_mul(d->characterRenderObj->transformMatrix, attachmentJointMat, attachmentJointMat);
+    vec3 bladeStart, bladeEnd;
+    glm_mat4_mulv3(attachmentJointMat, vec3{ 0.0f, d->attackWazaEditor.bladeDistanceStartEnd[0], 0.0f }, 1.0f, bladeStart);
+    glm_mat4_mulv3(attachmentJointMat, vec3{ 0.0f, d->attackWazaEditor.bladeDistanceStartEnd[1], 0.0f }, 1.0f, bladeEnd);
+    physengine::drawDebugVisLine(bladeStart, bladeEnd);
 }
 
 void Player::physicsUpdate(const float_t& physicsDeltaTime)
@@ -1443,6 +1455,7 @@ void defaultRenderImGui(Player_XData* d)
                 d->attackWazaEditor.wazaIndex = 0;
                 d->attackWazaEditor.currentTick = 0;
                 ImGui::CloseCurrentPopup();
+                break;
             }
         ImGui::EndPopup();
     }
@@ -1457,6 +1470,29 @@ void attackWazaEditorRenderImGui(Player_XData* d)
         // @TODO: reset animator and asm to default/root animation state.
         return;
     }
+
+    if (ImGui::Button("Select Waza in Set.."))
+        ImGui::OpenPopup("open_waza_in_set_popup");
+    if (ImGui::BeginPopup("open_waza_in_set_popup"))
+    {
+        for (size_t i = 0; i < d->attackWazaEditor.editingWazaSet.size(); i++)
+        {
+            Player_XData::AttackWaza& aw = d->attackWazaEditor.editingWazaSet[i];
+            if (ImGui::Button(aw.wazaName.c_str()))
+            {
+                // Change waza within set to edit.
+                d->attackWazaEditor.wazaIndex = i;
+                d->attackWazaEditor.currentTick = 0;
+                d->attackWazaEditor.triggerRecalcWazaCache = true;
+                ImGui::CloseCurrentPopup();
+                break;
+            }
+        }
+        ImGui::EndPopup();
+    }
+
+    ImGui::Separator();
+    ImGui::Text(d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].wazaName.c_str());  // Waza Name
 
     int32_t currentTickCopy = (int32_t)d->attackWazaEditor.currentTick;
     if (ImGui::SliderInt("Waza Tick", &currentTickCopy, d->attackWazaEditor.minTick, d->attackWazaEditor.maxTick))
