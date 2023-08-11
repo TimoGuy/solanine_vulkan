@@ -1220,6 +1220,19 @@ void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Player_XData
         return;
     }
 
+    // Draw flow node lines
+    std::vector<Player_XData::AttackWaza::HitscanFlowNode>& hnodes = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].hitscanNodes;
+    for (size_t i = 1; i < hnodes.size(); i++)
+    {
+        physengine::drawDebugVisLine(hnodes[i - 1].nodeEnd1, hnodes[i].nodeEnd1);
+        physengine::drawDebugVisLine(hnodes[i - 1].nodeEnd2, hnodes[i].nodeEnd2);
+
+        vec3 nodeEndMid_i1, nodeEndMid_i;
+        glm_vec3_lerp(hnodes[i - 1].nodeEnd1, hnodes[i - 1].nodeEnd2, 0.5f, nodeEndMid_i1);
+        glm_vec3_lerp(hnodes[i].nodeEnd1, hnodes[i].nodeEnd2, 0.5f, nodeEndMid_i);
+        physengine::drawDebugVisLine(nodeEndMid_i1, nodeEndMid_i);
+    }
+
     // Draw visual line showing where weapon hitscan will show up.
     vec3 bladeStart, bladeEnd;
     calculateBladeStartEndFromHandAttachment(d, bladeStart, bladeEnd);
@@ -1330,6 +1343,9 @@ void Player::update(const float_t& deltaTime)
 
 void Player::lateUpdate(const float_t& deltaTime)
 {
+    if (_data->attackWazaEditor.isEditingMode)
+        _data->facingDirection = 0.0f;  // @NOTE: this needs to be facing in the default facing direction so that the hitscan node positions are facing in the default direction when baked.
+
     //
     // Update position of character and weapon
     //
@@ -1532,6 +1548,7 @@ void attackWazaEditorRenderImGui(Player_XData* d)
                 d->attackWazaEditor.wazaIndex = i;
                 d->attackWazaEditor.currentTick = 0;
                 d->attackWazaEditor.triggerRecalcWazaCache = true;
+                d->attackWazaEditor.exportString = "";
                 ImGui::CloseCurrentPopup();
                 break;
             }
