@@ -1358,15 +1358,6 @@ void Player::update(const float_t& deltaTime)
         // Play ending sound
         AudioEngine::getInstance().playSound("res/sfx/wip_hollow_knight_sfx/hero_super_dash_ready.wav");
     }
-
-    // Update time scale with waza hit
-    if (_data->wazaHitTimescale < 1.0f)
-    {
-        _data->wazaHitTimescale = physutil::lerp(_data->wazaHitTimescale, 1.0f, deltaTime * _data->wazaHitTimescale * _data->wazaHitTimescaleReturnToOneSpeed);
-        if (_data->wazaHitTimescale > 0.999f)
-            _data->wazaHitTimescale = 1.0f;
-        globalState::timescale = _data->wazaHitTimescale;
-    }
 }
 
 void Player::lateUpdate(const float_t& deltaTime)
@@ -1391,6 +1382,15 @@ void Player::lateUpdate(const float_t& deltaTime)
     _data->characterRenderObj->animator->getJointMatrix(_data->weaponAttachmentJointName, attachmentJointMat);
     glm_mat4_mul(_data->characterRenderObj->transformMatrix, attachmentJointMat, _data->weaponRenderObj->transformMatrix);
     glm_mat4_copy(_data->weaponRenderObj->transformMatrix, _data->handleRenderObj->transformMatrix);
+
+    // Update time scale with waza hit
+    if (_data->wazaHitTimescale < 1.0f)
+    {
+        _data->wazaHitTimescale = physutil::lerp(_data->wazaHitTimescale, 1.0f, deltaTime * _data->wazaHitTimescale * _data->wazaHitTimescaleReturnToOneSpeed);
+        if (_data->wazaHitTimescale > 0.999f)
+            _data->wazaHitTimescale = 1.0f;
+        globalState::timescale = _data->wazaHitTimescale;
+    }
 }
 
 void Player::dump(DataSerializer& ds)
