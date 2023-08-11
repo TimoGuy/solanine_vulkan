@@ -104,6 +104,8 @@ struct Player_XData
     float_t     wazaVelocityDecay = 0.0f;
     vec3        wazaVelocity;
     int16_t     wazaTimer = 0;  // Used for timing chains and hitscans.
+    float_t     wazaHitTimescale = 1.0f;
+    float_t     wazaHitTimescaleReturnToOneSpeed = 50.0f;
 
     // Waza Editor/Viewer State
     struct AttackWazaEditor
@@ -753,7 +755,7 @@ void processWazaUpdate(Player_XData* d, EntityManager* em, const float_t& physic
     if (playWazaHitSfx)
     {
         AudioEngine::getInstance().playSound("res/sfx/wip_EnemyHit_Critical.wav");
-        // d->wazaHitTimescale = 0.5f;  @TODO: reintroduce the timescale for waza.
+        d->wazaHitTimescale = 0.1f;
     }
 
     // End waza if duration has passed.
@@ -1358,14 +1360,13 @@ void Player::update(const float_t& deltaTime)
     }
 
     // Update time scale with waza hit
-    // @TODO: @FIXME
-    /*if (_data->wazaHitTimescale < 1.0f)
+    if (_data->wazaHitTimescale < 1.0f)
     {
-        _data->wazaHitTimescale = physutil::lerp(_data->wazaHitTimescale, 1.0f, deltaTime / 0.5f);
+        _data->wazaHitTimescale = physutil::lerp(_data->wazaHitTimescale, 1.0f, deltaTime * _data->wazaHitTimescale * _data->wazaHitTimescaleReturnToOneSpeed);
         if (_data->wazaHitTimescale > 0.999f)
             _data->wazaHitTimescale = 1.0f;
         globalState::timescale = _data->wazaHitTimescale;
-    }*/
+    }
 }
 
 void Player::lateUpdate(const float_t& deltaTime)
@@ -1521,6 +1522,8 @@ void defaultRenderImGui(Player_XData* d)
     ImGui::DragFloat("inputMaxXZSpeed", &d->inputMaxXZSpeed);
     ImGui::DragFloat("midairXZAcceleration", &d->midairXZAcceleration);
     ImGui::DragFloat("midairXZDeceleration", &d->midairXZDeceleration);
+    ImGui::DragFloat("wazaHitTimescale", &d->wazaHitTimescale);
+    ImGui::DragFloat("wazaHitTimescaleReturnToOneSpeed", &d->wazaHitTimescaleReturnToOneSpeed);
 
     ImGui::Separator();
 
