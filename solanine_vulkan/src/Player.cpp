@@ -966,25 +966,16 @@ Player::~Player()
     delete _data;
 }
 
+void updateWazaTimescale(const float_t& physicsDeltaTime, Player_XData* d)
+{
+    d->wazaHitTimescale = physutil::lerp(d->wazaHitTimescale, 1.0f, physicsDeltaTime * d->wazaHitTimescale * d->wazaHitTimescaleReturnToOneSpeed);
+    if (d->wazaHitTimescale > 0.999f)
+        d->wazaHitTimescale = 1.0f;
+    globalState::timescale = d->wazaHitTimescale;
+}
+
 void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Player_XData* d, EntityManager* em, const std::string& myGuid)
 {
-    if (d->wazaHitTimescale < 1.0f)
-    {
-        // Update time scale with waza hit
-        d->wazaHitTimescale = physutil::lerp(d->wazaHitTimescale, 1.0f, physicsDeltaTime * d->wazaHitTimescale * d->wazaHitTimescaleReturnToOneSpeed);
-        if (d->wazaHitTimescale > 0.999f)
-            d->wazaHitTimescale = 1.0f;
-        globalState::timescale = d->wazaHitTimescale;
-    }
-
-    if (textbox::isProcessingMessage())
-    {
-        d->uiMaterializeItem->excludeFromBulkRender = true;
-        return;
-    }
-    else
-        d->uiMaterializeItem->excludeFromBulkRender = false;
-
     if (d->currentWaza == nullptr)
     {
         //
@@ -1279,6 +1270,19 @@ void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Player_XData
 
 void Player::physicsUpdate(const float_t& physicsDeltaTime)
 {
+    if (_data->wazaHitTimescale < 1.0f)
+        updateWazaTimescale(physicsDeltaTime, _data);
+
+    // Prevent further processing of update if textbox exists.
+    if (textbox::isProcessingMessage())
+    {
+        _data->uiMaterializeItem->excludeFromBulkRender = true;
+        return;
+    }
+    else
+        _data->uiMaterializeItem->excludeFromBulkRender = false;
+
+    // Process physics updates depending on the mode.
     if (_data->attackWazaEditor.isEditingMode)
         attackWazaEditorPhysicsUpdate(physicsDeltaTime, _data);
     else
