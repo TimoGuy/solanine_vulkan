@@ -15,12 +15,18 @@
 #include "DataSerialization.h"
 #include "GlobalState.h"
 #include "StringHelper.h"
+#include "HarvestableItem.h"
+#include "ScannableItem.h"
 #include "imgui/imgui.h"
 #include "imgui/imgui_stdlib.h"
 
 
+std::string CHARACTER_TYPE_PLAYER = "PLAYER";
+
 struct Character_XData
 {
+    std::string characterType = CHARACTER_TYPE_PLAYER;
+
     RenderObjectManager*     rom;
     Camera*                  camera;
     RenderObject*            characterRenderObj;
@@ -149,6 +155,9 @@ struct Character_XData
     bool    prevIsGrounded = false;
     vec3    prevGroundNormal = GLM_VEC3_ZERO_INIT;
 
+    vec3    launchVelocity;
+    bool    triggerLaunchVelocity = false;
+
     bool    prevIsMoving = false;
     bool    prevPrevIsGrounded = false;
     bool    prevPerformedJump = false;
@@ -164,7 +173,40 @@ struct Character_XData
     vec3 position;
     float_t facingDirection = 0.0f;
     float_t modelSize = 0.3f;
+    
+    int32_t health = 100;
+    float_t iframesTime = 0.25f;
+    float_t iframesTimer = 0.0f;
+
+    std::vector<size_t> harvestableItemsIdsToSpawnAfterDeath;
+    std::vector<size_t> scannableItemsIdsToSpawnAfterDeath;
 };
+
+void processOutOfHealth(EntityManager* em, Entity* e, Character_XData* d)
+{
+    // Drop off items and then destroy self.
+    for (size_t id : d->harvestableItemsIdsToSpawnAfterDeath)
+    {
+        DataSerializer ds;
+        ds.dumpString(e->getGUID());  // Use this guid to force a guid recalculation.
+        ds.dumpVec3(d->position);
+        float_t hii = (float_t)id;
+        ds.dumpFloat(hii);
+        DataSerialized dsd = ds.getSerializedData();
+        new HarvestableItem(em, d->rom, &dsd);
+    }
+    for (size_t id : d->scannableItemsIdsToSpawnAfterDeath)
+    {
+        DataSerializer ds;
+        ds.dumpString(e->getGUID());  // Use this guid to force a guid recalculation.
+        ds.dumpVec3(d->position);
+        float_t hii = (float_t)id;
+        ds.dumpFloat(hii);
+        DataSerialized dsd = ds.getSerializedData();
+        new ScannableItem(em, d->rom, &dsd);
+    }
+    em->destroyEntity(e);
+}
 
 void pushPlayerNotification(const std::string& message, Character_XData* d)
 {
@@ -540,37 +582,6 @@ void initWazaSetFromFile(std::vector<Character_XData::AttackWaza>& wazas, const 
             chain.nextWazaPtr = getWazaPtrFromName(wazas, chain.nextWazaName);
         waza.onDurationPassedWazaPtr = getWazaPtrFromName(wazas, waza.onDurationPassedWazaName);
     }
-
-    // // @HARDCODE: this kind of data would ideally be written in some kind of scripting file fyi.
-    // waza.animationState = "goto_combat_prepause";
-    // waza.staminaCost = 25;
-    // waza.duration = 0.25f;
-    // waza.hitscanNodes.push_back({
-    //     .nodeEnd1 = { -1.0f, 0.0f, 0.0f },
-    //     .nodeEnd2 = { -5.0f, 0.0f, 0.0f },
-    // });
-    // waza.hitscanNodes.push_back({
-    //     .nodeEnd1 = { -0.707f, 0.0f, 0.707f },
-    //     .nodeEnd2 = { -3.536f, 0.0f, 3.536f },
-    //     .executeAtTime = 0.25f,
-    // });
-    // waza.hitscanNodes.push_back({
-    //     .nodeEnd1 = { 0.0f, 0.0f, 1.0f },
-    //     .nodeEnd2 = { 0.0f, 0.0f, 5.0f },
-    //     .executeAtTime = 0.5f,
-    // });
-    // waza.hitscanNodes.push_back({
-    //     .nodeEnd1 = { 0.707f, 0.0f, 0.707f },
-    //     .nodeEnd2 = { 3.536f, 0.0f, 3.536f },
-    //     .executeAtTime = 0.75f,
-    // });
-    // waza.hitscanNodes.push_back({
-    //     .nodeEnd1 = { 1.0f, 0.0f, 0.0f },
-    //     .nodeEnd2 = { 5.0f, 0.0f, 0.0f },
-    //     .executeAtTime = 1.0f,
-    // });
-    // for (auto& hsn : waza.hitscanNodes)
-    //     hsn.executeAtTime *= waza.duration;  // It scales the execution time so that the execution time is [0-1] time.
 }
 
 void processWeaponAttackInput(Character_XData* d)
@@ -768,6 +779,7 @@ void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& phy
     // End waza if duration has passed.
     if (++d->wazaTimer > d->currentWaza->duration)
     {
+        // @COPYPASTA
         d->currentWaza = d->currentWaza->onDurationPassedWazaPtr;
         d->wazaVelocityDecay = 0.0f;
         glm_vec3_copy((d->currentWaza != nullptr && d->currentWaza->velocitySettings.size() > 0 && d->currentWaza->velocitySettings[0].executeAtTime == 0) ? d->currentWaza->velocitySettings[0].velocity : vec3{ 0.0f, 0.0f, 0.0f }, d->wazaVelocity);  // @NOTE: this doesn't work if the executeAtTime's aren't sorted asc.
@@ -928,27 +940,30 @@ Character::Character(EntityManager* em, RenderObjectManager* rom, Camera* camera
     for (auto& inst : _data->weaponRenderObj->calculatedModelInstances)
         inst.voxelFieldLightingGridID = 1;
 
-    _data->camera->mainCamMode.setMainCamTargetObject(_data->characterRenderObj);  // @NOTE: I believe that there should be some kind of main camera system that targets the player by default but when entering different volumes etc. the target changes depending.... essentially the system needs to be more built out imo
-
     _data->cpd = physengine::createCapsule(getGUID(), 0.5f, 1.0f);  // Total height is 2, but r*2 is subtracted to get the capsule height (i.e. the line segment length that the capsule rides along)
     glm_vec3_copy(_data->position, _data->cpd->basePosition);
     glm_vec3_copy(_data->cpd->basePosition, _data->prevCPDBasePosition);
 
-    globalState::playerGUID = getGUID();
-    globalState::playerPositionRef = &_data->cpd->basePosition;
+    if (_data->characterType == CHARACTER_TYPE_PLAYER)
+    {
+        _data->camera->mainCamMode.setMainCamTargetObject(_data->characterRenderObj);  // @NOTE: I believe that there should be some kind of main camera system that targets the player by default but when entering different volumes etc. the target changes depending.... essentially the system needs to be more built out imo
 
-    _data->uiMaterializeItem = textmesh::createAndRegisterTextMesh("defaultFont", textmesh::RIGHT, textmesh::BOTTOM, getUIMaterializeItemText(_data));
-    _data->uiMaterializeItem->isPositionScreenspace = true;
-    glm_vec3_copy(vec3{ 925.0f, -510.0f, 0.0f }, _data->uiMaterializeItem->renderPosition);
-    _data->uiMaterializeItem->scale = 25.0f;
+        globalState::playerGUID = getGUID();
+        globalState::playerPositionRef = &_data->cpd->basePosition;
 
-    _data->uiStamina = textmesh::createAndRegisterTextMesh("defaultFont", textmesh::LEFT, textmesh::MID, getStaminaText(_data));
-    _data->uiStamina->isPositionScreenspace = true;
-    glm_vec3_copy(vec3{ 25.0f, -135.0f, 0.0f }, _data->uiStamina->renderPosition);
-    _data->uiStamina->scale = 25.0f;
+        _data->uiMaterializeItem = textmesh::createAndRegisterTextMesh("defaultFont", textmesh::RIGHT, textmesh::BOTTOM, getUIMaterializeItemText(_data));
+        _data->uiMaterializeItem->isPositionScreenspace = true;
+        glm_vec3_copy(vec3{ 925.0f, -510.0f, 0.0f }, _data->uiMaterializeItem->renderPosition);
+        _data->uiMaterializeItem->scale = 25.0f;
 
-    initWazaSetFromFile(_data->defaultWazaSet, "res/waza/default_waza.hwac");
-    initWazaSetFromFile(_data->airWazaSet, "res/waza/air_waza.hwac");
+        _data->uiStamina = textmesh::createAndRegisterTextMesh("defaultFont", textmesh::LEFT, textmesh::MID, getStaminaText(_data));
+        _data->uiStamina->isPositionScreenspace = true;
+        glm_vec3_copy(vec3{ 25.0f, -135.0f, 0.0f }, _data->uiStamina->renderPosition);
+        _data->uiStamina->scale = 25.0f;
+
+        initWazaSetFromFile(_data->defaultWazaSet, "res/waza/default_waza.hwac");
+        initWazaSetFromFile(_data->airWazaSet, "res/waza/air_waza.hwac");
+    }
 }
 
 Character::~Character()
@@ -989,10 +1004,15 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
         // Calculate input
         //
         vec2 input = GLM_VEC2_ZERO_INIT;
-        input[0] += input::keyLeftPressed  ? -1.0f : 0.0f;
-        input[0] += input::keyRightPressed ?  1.0f : 0.0f;
-        input[1] += input::keyUpPressed    ?  1.0f : 0.0f;
-        input[1] += input::keyDownPressed  ? -1.0f : 0.0f;
+
+        if (d->characterType == CHARACTER_TYPE_PLAYER)
+        {
+            input[0] += input::keyLeftPressed  ? -1.0f : 0.0f;
+            input[0] += input::keyRightPressed ?  1.0f : 0.0f;
+            input[1] += input::keyUpPressed    ?  1.0f : 0.0f;
+            input[1] += input::keyDownPressed  ? -1.0f : 0.0f;
+        }
+
         if (d->disableInput)
             input[0] = input[1] = 0.0f;
 
@@ -1073,14 +1093,16 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
     else if (d->staminaData.currentStamina != d->staminaData.maxStamina)
         changeStamina(d, (int16_t)(d->staminaData.refillRate * physicsDeltaTime));
 
-    if (d->staminaData.changedTimer > 0.0f)
+    if (d->characterType == CHARACTER_TYPE_PLAYER)
     {
-        d->uiStamina->excludeFromBulkRender = false;
-        d->staminaData.changedTimer -= physicsDeltaTime;
+        if (d->staminaData.changedTimer > 0.0f)
+        {
+            d->uiStamina->excludeFromBulkRender = false;
+            d->staminaData.changedTimer -= physicsDeltaTime;
+        }
+        else
+            d->uiStamina->excludeFromBulkRender = true;
     }
-    else
-        d->uiStamina->excludeFromBulkRender = true;
-
 
     //
     // Update movement and collision
@@ -1088,7 +1110,7 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
     constexpr float_t gravity = -0.98f / 0.025f;  // @TODO: put physicsengine constexpr of `physicsDeltaTime` into the header file and rename it to `constantPhysicsDeltaTime` and replace the 0.025f with it.
     constexpr float_t jumpHeight = 2.0f;
     d->gravityForce += gravity * (d->currentWaza != nullptr ? d->currentWaza->gravityMultiplier : 1.0f) * physicsDeltaTime;
-    d->prevPerformedJump = false;
+    d->prevPerformedJump = false;  // For animation state machine (differentiate goto_jump and goto_fall)
     if (d->prevIsGrounded && d->inputFlagJump)
     {
         d->gravityForce = std::sqrtf(jumpHeight * 2.0f * std::abs(gravity));  // @COPYPASTA
@@ -1155,14 +1177,21 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
             glm_vec3_scale(facingWazaVelocity, physicsDeltaTime, velocity);
             
             // Execute jump.
-            if (d->wazaVelocity[1] > 0.0f)
+            if (d->wazaVelocity[1] > 0.0f)  // @CHECK: I think that maybe... negative velocities should be copied to `gravityForce` as well. CHECK!  -Timo 2023/08/14
             {
                 d->gravityForce = d->wazaVelocity[1];
                 d->prevIsGrounded = false;
 
-                d->wazaVelocity[1] = 0.0f;
+                d->wazaVelocity[1] = 0.0f;  // @REPLY: maybe this line is what the >0 check is for with the vertical waza velocity????  -Timo 2023/08/14
+                velocity[1] = 0.0f;  // @AMEND: I added this line after analyzing this code block... bc velocity[1] gets a += later with gravityforce leading it, I think that wazaVelocity[1] shouldn't be added on twice, so I added this line. It's sure to require some adjusting of the hwacs.  -Timo 2023/08/14
             }
         }
+    }
+
+    if (d->triggerLaunchVelocity)
+    {
+        glm_vec3_scale(d->launchVelocity, physicsDeltaTime, velocity);
+        d->triggerLaunchVelocity = false;
     }
 
     if (d->prevIsGrounded && d->prevGroundNormal[1] < 0.999f)
@@ -1285,14 +1314,21 @@ void Character::physicsUpdate(const float_t& physicsDeltaTime)
     if (_data->wazaHitTimescale < 1.0f)
         updateWazaTimescale(physicsDeltaTime, _data);
 
-    // Prevent further processing of update if textbox exists.
-    if (textbox::isProcessingMessage())
+    if (_data->characterType == CHARACTER_TYPE_PLAYER)
     {
-        _data->uiMaterializeItem->excludeFromBulkRender = true;
-        return;
+        // Prevent further processing of update if textbox exists.
+        if (textbox::isProcessingMessage())
+        {
+            _data->uiMaterializeItem->excludeFromBulkRender = true;
+            return;
+        }
+        else
+            _data->uiMaterializeItem->excludeFromBulkRender = false;
     }
-    else
-        _data->uiMaterializeItem->excludeFromBulkRender = false;
+
+    // Update invincibility frames timer.
+    if (_data->iframesTimer > 0.0f)
+        _data->iframesTimer -= physicsDeltaTime;
 
     // Process physics updates depending on the mode.
     if (_data->attackWazaEditor.isEditingMode)
@@ -1320,68 +1356,77 @@ void Character::update(const float_t& deltaTime)
     _data->characterRenderObj->animator->setTwitchAngle(_data->attackTwitchAngle);
     _data->attackTwitchAngle = glm_lerp(_data->attackTwitchAngle, 0.0f, std::abs(_data->attackTwitchAngle) * _data->attackTwitchAngleReturnSpeed * 60.0f * deltaTime);
 
-    //
-    // Handle 'E' action
-    //
-    if (interactionUIText != nullptr &&
-        !interactionGUIDPriorityQueue.empty())
-        if (_data->prevIsGrounded && !textbox::isProcessingMessage())
-        {
-            interactionUIText->excludeFromBulkRender = false;
-            if (!_data->disableInput && input::onKeyInteractPress)
-            {
-                DataSerializer ds;
-                ds.dumpString("msg_commit_interaction");
-                DataSerialized dsd = ds.getSerializedData();
-                _em->sendMessage(interactionGUIDPriorityQueue.front().guid, dsd);
-            }
-        }
-        else
-            interactionUIText->excludeFromBulkRender = true;
-
-    // Notification UI
-    if (_data->notification.showMessageTimer > 0.0f)
+    if (_data->characterType == CHARACTER_TYPE_PLAYER)
     {
-        _data->notification.showMessageTimer -= deltaTime;
-        _data->notification.message->excludeFromBulkRender = (_data->notification.showMessageTimer <= 0.0f);
+        //
+        // Handle 'E' action
+        //
+        if (interactionUIText != nullptr &&
+            !interactionGUIDPriorityQueue.empty())
+            if (_data->prevIsGrounded && !textbox::isProcessingMessage())
+            {
+                interactionUIText->excludeFromBulkRender = false;
+                if (!_data->disableInput && input::onKeyInteractPress)
+                {
+                    DataSerializer ds;
+                    ds.dumpString("msg_commit_interaction");
+                    DataSerialized dsd = ds.getSerializedData();
+                    _em->sendMessage(interactionGUIDPriorityQueue.front().guid, dsd);
+                }
+            }
+            else
+                interactionUIText->excludeFromBulkRender = true;
+
+        // Notification UI
+        if (_data->notification.showMessageTimer > 0.0f)
+        {
+            _data->notification.showMessageTimer -= deltaTime;
+            _data->notification.message->excludeFromBulkRender = (_data->notification.showMessageTimer <= 0.0f);
+        }
     }
 
     if (textbox::isProcessingMessage())
         return;
 
-    // Poll keydown inputs.
-    _data->inputFlagJump |= !_data->disableInput && input::onKeyJumpPress;
-    _data->inputFlagAttack |= !_data->disableInput && input::onLMBPress;
-    _data->inputFlagRelease |= !_data->disableInput && input::onRMBPress;
+    if (_data->characterType == CHARACTER_TYPE_PLAYER)
+    {
+        // Poll keydown inputs.
+        _data->inputFlagJump |= !_data->disableInput && input::onKeyJumpPress;
+        _data->inputFlagAttack |= !_data->disableInput && input::onLMBPress;
+        _data->inputFlagRelease |= !_data->disableInput && input::onRMBPress;
 
-    //
-    // Change aura
-    //
-    if (input::keyAuraPressed)
-    {
-        if (_data->auraSfxChannelIds.empty())
+        //
+        // Change aura
+        //
+        if (input::keyAuraPressed)
         {
-            // Spin up aura sfx            
-            _data->auraSfxChannelIds.push_back(
-                AudioEngine::getInstance().playSound("res/sfx/wip_hollow_knight_sfx/hero_super_dash_burst.wav")  // Aura burst start
-            );
-            _data->auraSfxChannelIds.push_back(
-                AudioEngine::getInstance().playSound("res/sfx/wip_hollow_knight_sfx/hero_super_dash_loop.wav", true)  // Aura loop
-            );
-            _data->auraSfxChannelIds.push_back(
-                AudioEngine::getInstance().playSound("res/sfx/wip_hollow_knight_sfx/hero_fury_charm_loop.wav", true)  // Heartbeat loop
-            );
+            if (_data->auraSfxChannelIds.empty())
+            {
+                // Spin up aura sfx            
+                _data->auraSfxChannelIds.push_back(
+                    AudioEngine::getInstance().playSound("res/sfx/wip_hollow_knight_sfx/hero_super_dash_burst.wav")  // Aura burst start
+                );
+                _data->auraSfxChannelIds.push_back(
+                    AudioEngine::getInstance().playSound("res/sfx/wip_hollow_knight_sfx/hero_super_dash_loop.wav", true)  // Aura loop
+                );
+                _data->auraSfxChannelIds.push_back(
+                    AudioEngine::getInstance().playSound("res/sfx/wip_hollow_knight_sfx/hero_fury_charm_loop.wav", true)  // Heartbeat loop
+                );
+            }
         }
-    }
-    else if (!_data->auraSfxChannelIds.empty())
-    {
-        // Shut down aura sfx
-        for (int32_t id : _data->auraSfxChannelIds)
-            AudioEngine::getInstance().stopChannel(id);
-        _data->auraSfxChannelIds.clear();
-        
-        // Play ending sound
-        AudioEngine::getInstance().playSound("res/sfx/wip_hollow_knight_sfx/hero_super_dash_ready.wav");
+        else
+        {
+            if (!_data->auraSfxChannelIds.empty())
+            {
+                // Shut down aura sfx
+                for (int32_t id : _data->auraSfxChannelIds)
+                    AudioEngine::getInstance().stopChannel(id);
+                _data->auraSfxChannelIds.clear();
+                
+                // Play ending sound
+                AudioEngine::getInstance().playSound("res/sfx/wip_hollow_knight_sfx/hero_super_dash_ready.wav");
+            }
+        }
     }
 }
 
@@ -1412,15 +1457,64 @@ void Character::lateUpdate(const float_t& deltaTime)
 void Character::dump(DataSerializer& ds)
 {
     Entity::dump(ds);
+    ds.dumpString(_data->characterType);
     ds.dumpVec3(_data->position);
     ds.dumpFloat(_data->facingDirection);
+
+    float_t healthF = _data->health;
+    ds.dumpFloat(healthF);
+
+    // Harvestable item ids
+    float_t numHarvestableItems = (float_t)_data->harvestableItemsIdsToSpawnAfterDeath.size();
+    ds.dumpFloat(numHarvestableItems);
+    for (size_t id : _data->harvestableItemsIdsToSpawnAfterDeath)
+    {
+        float_t idF = (float_t)id;
+        ds.dumpFloat(idF);
+    }
+
+    // Scannable item ids
+    float_t numScannableItems = (float_t)_data->scannableItemsIdsToSpawnAfterDeath.size();
+    ds.dumpFloat(numScannableItems);
+    for (size_t id : _data->scannableItemsIdsToSpawnAfterDeath)
+    {
+        float_t idF = (float_t)id;
+        ds.dumpFloat(idF);
+    }
 }
 
 void Character::load(DataSerialized& ds)
 {
     Entity::load(ds);
+    ds.loadString(_data->characterType);
     ds.loadVec3(_data->position);
     ds.loadFloat(_data->facingDirection);
+
+    float_t healthF;
+    ds.loadFloat(healthF);
+    _data->health = (int32_t)healthF;
+
+    // Harvestable item ids
+    float_t numHarvestableItemsF;
+    ds.loadFloat(numHarvestableItemsF);
+    _data->harvestableItemsIdsToSpawnAfterDeath.resize((size_t)numHarvestableItemsF);
+    for (size_t& idRef : _data->harvestableItemsIdsToSpawnAfterDeath)
+    {
+        float_t idF;
+        ds.loadFloat(idF);
+        idRef = (size_t)idF;
+    }
+
+    // Scannable item ids
+    float_t numScannableItemsF;
+    ds.loadFloat(numScannableItemsF);
+    _data->scannableItemsIdsToSpawnAfterDeath.resize((size_t)numScannableItemsF);
+    for (size_t& idRef : _data->scannableItemsIdsToSpawnAfterDeath)
+    {
+        float_t idF;
+        ds.loadFloat(idF);
+        idRef = (size_t)idF;
+    }
 }
 
 void updateInteractionUI()
@@ -1453,49 +1547,79 @@ bool Character::processMessage(DataSerialized& message)
 
     if (messageType == "msg_request_interaction")
     {
-        std::string guid, actionVerb;
-        message.loadString(guid);
-        message.loadString(actionVerb);
-
-        // Add to queue if not already in. Front is the current interaction field.
-        bool guidExists = false;
-        for (auto& gwv : interactionGUIDPriorityQueue)
-            if (gwv.guid == guid)
-            {
-                guidExists = true;
-                break;
-            }
-        if (!guidExists)
+        if (_data->characterType == CHARACTER_TYPE_PLAYER)
         {
-            interactionGUIDPriorityQueue.push_back({
-                .guid = guid,
-                .actionVerb = actionVerb,
-            });
-            updateInteractionUI();
+            std::string guid, actionVerb;
+            message.loadString(guid);
+            message.loadString(actionVerb);
+
+            // Add to queue if not already in. Front is the current interaction field.
+            bool guidExists = false;
+            for (auto& gwv : interactionGUIDPriorityQueue)
+                if (gwv.guid == guid)
+                {
+                    guidExists = true;
+                    break;
+                }
+            if (!guidExists)
+            {
+                interactionGUIDPriorityQueue.push_back({
+                    .guid = guid,
+                    .actionVerb = actionVerb,
+                });
+                updateInteractionUI();
+            }
         }
 
         return true;
     }
     else if (messageType == "msg_remove_interaction_request")
     {
-        std::string guid;
-        message.loadString(guid);
+        if (_data->characterType == CHARACTER_TYPE_PLAYER)
+        {
+            std::string guid;
+            message.loadString(guid);
 
-        // Remove the interaction request from the guid queue.
-        std::erase_if(
-            interactionGUIDPriorityQueue,
-            [guid](GUIDWithVerb& gwv) {
-                return gwv.guid == guid;
-            }
-        );
-        updateInteractionUI();
+            // Remove the interaction request from the guid queue.
+            std::erase_if(
+                interactionGUIDPriorityQueue,
+                [guid](GUIDWithVerb& gwv) {
+                    return gwv.guid == guid;
+                }
+            );
+            updateInteractionUI();
+        }
 
         return true;
     }
     else if (messageType == "msg_notify_scannable_item_added" || messageType == "msg_notify_harvestable_item_harvested")
     {
-        textmesh::regenerateTextMeshMesh(_data->uiMaterializeItem, getUIMaterializeItemText(_data));
+        if (_data->characterType == CHARACTER_TYPE_PLAYER)
+        {
+            textmesh::regenerateTextMeshMesh(_data->uiMaterializeItem, getUIMaterializeItemText(_data));
+        }
         return true;
+    }
+    else if (messageType == "msg_hitscan_hit")
+    {
+        // Don't react to hitscan if in invincibility frames.
+        if (_data->iframesTimer <= 0.0f)
+        {
+            float_t attackLvl;
+            message.loadFloat(attackLvl);
+            _data->health -= (int32_t)attackLvl;
+
+            message.loadVec3(_data->launchVelocity);
+            if (glm_vec3_norm2(_data->launchVelocity) > 0.0f)
+                _data->triggerLaunchVelocity = true;  // @TODO: right here, do calculations for poise and stuff!
+
+            _data->iframesTimer = _data->iframesTime;
+
+            if (_data->health <= 0)
+                processOutOfHealth(_em, this, _data);
+
+            return true;
+        }
     }
 
     return false;
@@ -1530,16 +1654,83 @@ std::vector<std::string> getListOfWazaFnames()
 
 void defaultRenderImGui(Character_XData* d)
 {
-    ImGui::DragFloat("modelSize", &d->modelSize);
-    ImGui::DragFloat("attackTwitchAngleReturnSpeed", &d->attackTwitchAngleReturnSpeed);
-    ImGui::DragFloat3("uiMaterializeItem->renderPosition", d->uiMaterializeItem->renderPosition);
-    ImGui::DragFloat3("uiStamina->renderPosition", d->uiStamina->renderPosition);
-    ImGui::InputInt("currentWeaponDurability", &d->currentWeaponDurability);
-    ImGui::DragFloat("inputMaxXZSpeed", &d->inputMaxXZSpeed);
-    ImGui::DragFloat("midairXZAcceleration", &d->midairXZAcceleration);
-    ImGui::DragFloat("midairXZDeceleration", &d->midairXZDeceleration);
-    ImGui::DragFloat("wazaHitTimescale", &d->wazaHitTimescale);
-    ImGui::DragFloat("wazaHitTimescaleReturnToOneSpeed", &d->wazaHitTimescaleReturnToOneSpeed);
+    if (ImGui::CollapsingHeader("Tweak Props", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        ImGui::DragFloat("modelSize", &d->modelSize);
+        ImGui::InputInt("health", &d->health);
+        ImGui::DragFloat("iframesTime", &d->iframesTime);
+        ImGui::DragFloat("iframesTimer", &d->iframesTimer);
+        ImGui::DragFloat("attackTwitchAngleReturnSpeed", &d->attackTwitchAngleReturnSpeed);
+        ImGui::DragFloat3("uiMaterializeItem->renderPosition", d->uiMaterializeItem->renderPosition);
+        ImGui::DragFloat3("uiStamina->renderPosition", d->uiStamina->renderPosition);
+        ImGui::InputInt("currentWeaponDurability", &d->currentWeaponDurability);
+        ImGui::DragFloat("inputMaxXZSpeed", &d->inputMaxXZSpeed);
+        ImGui::DragFloat("midairXZAcceleration", &d->midairXZAcceleration);
+        ImGui::DragFloat("midairXZDeceleration", &d->midairXZDeceleration);
+        ImGui::DragFloat("wazaHitTimescale", &d->wazaHitTimescale);
+        ImGui::DragFloat("wazaHitTimescaleReturnToOneSpeed", &d->wazaHitTimescaleReturnToOneSpeed);
+    }
+
+    if (ImGui::CollapsingHeader("Item Drops", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        // Harvestable item
+        ImGui::Text("Harvestable item drops");
+        ImGui::SameLine();
+        if (ImGui::Button("Add..##Harvestable Item Drop"))
+            ImGui::OpenPopup("add_harvestable_popup");
+        if (ImGui::BeginPopup("add_harvestable_popup"))
+        {
+            for (size_t i = 0; i < globalState::getNumHarvestableItemIds(); i++)
+            {
+                if (ImGui::Button(globalState::getHarvestableItemByIndex(i)->name.c_str()))
+                {
+                    d->harvestableItemsIdsToSpawnAfterDeath.push_back(i);
+                    ImGui::CloseCurrentPopup();
+                }
+            }
+            ImGui::EndPopup();
+        }
+        for (size_t i = 0; i < d->harvestableItemsIdsToSpawnAfterDeath.size(); i++)
+        {
+            size_t id = d->harvestableItemsIdsToSpawnAfterDeath[i];
+            ImGui::Text(globalState::getHarvestableItemByIndex(id)->name.c_str());
+            ImGui::SameLine();
+            if (ImGui::Button(("X##HIITSAD" + std::to_string(i)).c_str()))
+            {
+                d->harvestableItemsIdsToSpawnAfterDeath.erase(d->harvestableItemsIdsToSpawnAfterDeath.begin() + i);
+                break;
+            }
+        }
+
+        // Scannable item
+        ImGui::Text("Scannable item drops");
+        ImGui::SameLine();
+        if (ImGui::Button("Add..##Scannable Item Drop"))
+            ImGui::OpenPopup("add_scannable_popup");
+        if (ImGui::BeginPopup("add_scannable_popup"))
+        {
+            for (size_t i = 0; i < globalState::getNumScannableItemIds(); i++)
+            {
+                if (ImGui::Button(globalState::getAncientWeaponItemByIndex(i)->name.c_str()))
+                {
+                    d->scannableItemsIdsToSpawnAfterDeath.push_back(i);
+                    ImGui::CloseCurrentPopup();
+                }
+            }
+            ImGui::EndPopup();
+        }
+        for (size_t i = 0; i < d->scannableItemsIdsToSpawnAfterDeath.size(); i++)
+        {
+            size_t id = d->scannableItemsIdsToSpawnAfterDeath[i];
+            ImGui::Text(globalState::getAncientWeaponItemByIndex(id)->name.c_str());
+            ImGui::SameLine();
+            if (ImGui::Button(("X##SIITSAD" + std::to_string(i)).c_str()))
+            {
+                d->scannableItemsIdsToSpawnAfterDeath.erase(d->scannableItemsIdsToSpawnAfterDeath.begin() + i);
+                break;
+            }
+        }
+    }
 
     ImGui::Separator();
 

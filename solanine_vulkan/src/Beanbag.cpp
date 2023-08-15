@@ -33,35 +33,9 @@ struct Beanbag_XData
 
     vec3 velocity = GLM_VEC3_ZERO_INIT;
 
-    std::vector<size_t> harvestableItemsIdsToSpawnAfterDeath;  // @TODO: make tool to be able to add the spawn items and delete them (just use imgui popup with buttons of the model names to add and an X button to delete.)
+    std::vector<size_t> harvestableItemsIdsToSpawnAfterDeath;
     std::vector<size_t> scannableItemsIdsToSpawnAfterDeath;
 };
-
-void processOutOfHealth(EntityManager* em, Entity* e, Beanbag_XData* d)
-{
-    // Drop off items and then destroy self.
-    for (size_t id : d->harvestableItemsIdsToSpawnAfterDeath)
-    {
-        DataSerializer ds;
-        ds.dumpString(e->getGUID());  // Use this guid to force a guid recalculation.
-        ds.dumpVec3(d->position);
-        float_t hii = (float_t)id;
-        ds.dumpFloat(hii);
-        DataSerialized dsd = ds.getSerializedData();
-        new HarvestableItem(em, d->rom, &dsd);
-    }
-    for (size_t id : d->scannableItemsIdsToSpawnAfterDeath)
-    {
-        DataSerializer ds;
-        ds.dumpString(e->getGUID());  // Use this guid to force a guid recalculation.
-        ds.dumpVec3(d->position);
-        float_t hii = (float_t)id;
-        ds.dumpFloat(hii);
-        DataSerialized dsd = ds.getSerializedData();
-        new ScannableItem(em, d->rom, &dsd);
-    }
-    em->destroyEntity(e);
-}
 
 
 Beanbag::Beanbag(EntityManager* em, RenderObjectManager* rom, DataSerialized* ds) : Entity(em, ds), _data(new Beanbag_XData())
