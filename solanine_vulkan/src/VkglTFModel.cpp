@@ -2555,6 +2555,18 @@ namespace vkglTF
 					skin->skeletonRoot->getMatrix(m);
 				updateJointMatrices(skinIndexToGlobalReservedNodeIndex(i), skin, m);
 			}
+
+			// Insert in the joint matrices into list in animator.
+			for (auto& skins : model->skins)
+			{
+				for (size_t i = 0; i < skins->joints.size(); i++)
+				{
+					auto& joint = skins->joints[i];
+					mat4s jointMatrix;
+					joint->getMatrix(jointMatrix.raw);
+					jointNameToMatrix[joint->name] = jointMatrix;
+				}
+			}
 		}
 	}
 
@@ -2624,18 +2636,10 @@ namespace vkglTF
 	bool Animator::getJointMatrix(const std::string& jointName, mat4& out)
 	{
 		// Find the joint with this name
-		// @IMPROVE: don't have this, instead have a jointindex param you put into this function instead of having to do a long string search
-		for (auto& skins : model->skins)
+		if (jointNameToMatrix.find(jointName) != jointNameToMatrix.end())
 		{
-			for (size_t i = 0; i < skins->joints.size(); i++)
-			{
-				auto& joint = skins->joints[i];
-				if (joint->name == jointName)
-				{
-					joint->getMatrix(out);
-					return true;
-				}
-			}
+			glm_mat4_copy(jointNameToMatrix[jointName].raw, out);
+			return true;
 		}
 
 		std::cerr << "[GET JOINT MATRIX]" << std::endl

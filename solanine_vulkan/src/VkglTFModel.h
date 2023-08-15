@@ -415,6 +415,7 @@ namespace vkglTF
 		std::vector<AnimatorCallback> eventCallbacks;
 		float_t                       twitchAngle;
 		float_t                       speedMultiplier = 1.0f;
+		std::map<std::string, mat4s>  jointNameToMatrix;
 
 		void updateAnimation();
 		void updateJointMatrices(size_t globalNodeReservedIndex, vkglTF::Skin* skin, mat4& m);
