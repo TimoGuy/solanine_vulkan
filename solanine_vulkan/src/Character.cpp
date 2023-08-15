@@ -112,7 +112,7 @@ struct Character_XData
     vec3        wazaVelocity;
     int16_t     wazaTimer = 0;  // Used for timing chains and hitscans.
     float_t     wazaHitTimescale = 1.0f;
-    float_t     wazaHitTimescaleReturnToOneSpeed = 50.0f;
+    float_t     wazaHitTimescaleReturnToOneSpeed = 1000.0f;
 
     // Waza Editor/Viewer State
     struct AttackWazaEditor
@@ -177,6 +177,7 @@ struct Character_XData
     int32_t health = 100;
     float_t iframesTime = 0.25f;
     float_t iframesTimer = 0.0f;
+    bool    knockbackMode = false;  // @TODO: write a way to "get up" from knockback mode.
 
     std::vector<size_t> harvestableItemsIdsToSpawnAfterDeath;
     std::vector<size_t> scannableItemsIdsToSpawnAfterDeath;
@@ -324,7 +325,7 @@ void processAttack(Character_XData* d)
                 d->weaponRenderObj->renderLayer = RenderLayer::INVISIBLE;
                 AudioEngine::getInstance().playSound("res/sfx/wip_Pl_Eating_S00.wav");
                 AudioEngine::getInstance().playSound("res/sfx/wip_Sys_ExtraHeartUp_01.wav");
-                d->characterRenderObj->animator->setTrigger("goto_sheath_weapon");  // @TODO: figure out how to prevent ice breaking sfx in hokasu event.
+                d->characterRenderObj->animator->setTrigger("goto_sheath_weapon");  // @TODO: figure out how to prevent ice breaking sfx in hokasu event.  @REPLY: you need to make another animation that has character eating the item and then put away the weapon, and then goto that animation instead of the "break off" animation.
                 d->characterRenderObj->animator->setTrigger("goto_mcm_sheath_weapon");
             } break;
 
@@ -779,7 +780,7 @@ void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& phy
     if (playWazaHitSfx)
     {
         AudioEngine::getInstance().playSound("res/sfx/wip_EnemyHit_Critical.wav");
-        d->wazaHitTimescale = 0.1f;
+        d->wazaHitTimescale = 0.01f;
     }
 
     // End waza if duration has passed.
@@ -1129,7 +1130,7 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
     vec3 velocity = GLM_VEC3_ZERO_INIT;
     if (d->currentWaza == nullptr)
     {
-        if (d->prevIsGrounded)
+        if (d->prevIsGrounded && !d->knockbackMode)
             glm_vec3_scale(d->worldSpaceInput, d->inputMaxXZSpeed * physicsDeltaTime, velocity);
         else
         {
@@ -1196,7 +1197,14 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
 
     if (d->triggerLaunchVelocity)
     {
-        glm_vec3_scale(d->launchVelocity, physicsDeltaTime, velocity);
+        velocity[0] = d->launchVelocity[0] * physicsDeltaTime;
+        velocity[2] = d->launchVelocity[2] * physicsDeltaTime;
+        d->gravityForce = d->launchVelocity[1];
+        if (d->gravityForce > 0.0f)
+            d->prevIsGrounded = false;
+        d->iframesTimer = d->iframesTime;
+        d->knockbackMode = true;
+
         d->triggerLaunchVelocity = false;
     }
 
@@ -1619,8 +1627,6 @@ bool Character::processMessage(DataSerialized& message)
             if (glm_vec3_norm2(_data->launchVelocity) > 0.0f)
                 _data->triggerLaunchVelocity = true;  // @TODO: right here, do calculations for poise and stuff!
 
-            _data->iframesTimer = _data->iframesTime;
-
             if (_data->health <= 0)
                 processOutOfHealth(_em, this, _data);
 
@@ -1666,9 +1672,16 @@ void defaultRenderImGui(Character_XData* d)
         ImGui::InputInt("health", &d->health);
         ImGui::DragFloat("iframesTime", &d->iframesTime);
         ImGui::DragFloat("iframesTimer", &d->iframesTimer);
+        ImGui::Checkbox("knockbackMode", &d->knockbackMode);
         ImGui::DragFloat("attackTwitchAngleReturnSpeed", &d->attackTwitchAngleReturnSpeed);
-        ImGui::DragFloat3("uiMaterializeItem->renderPosition", d->uiMaterializeItem->renderPosition);
-        ImGui::DragFloat3("uiStamina->renderPosition", d->uiStamina->renderPosition);
+        if (d->uiMaterializeItem)
+        {
+            ImGui::DragFloat3("uiMaterializeItem->renderPosition", d->uiMaterializeItem->renderPosition);
+        }
+        if (d->uiStamina)
+        {
+            ImGui::DragFloat3("uiStamina->renderPosition", d->uiStamina->renderPosition);
+        }
         ImGui::InputInt("currentWeaponDurability", &d->currentWeaponDurability);
         ImGui::DragFloat("inputMaxXZSpeed", &d->inputMaxXZSpeed);
         ImGui::DragFloat("midairXZAcceleration", &d->midairXZAcceleration);

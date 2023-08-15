@@ -22,7 +22,7 @@
             - [x] Change hitscan lines to save the previous line in world space as the previous flow node positions.
         - [x] Add velocity param to hwac file to set what velocity enemy would go (non-normalized) if it touched the slice/hitscan.
             - [x] Write a velocity and move capsule system..... but maybe might wanna consolidate it with the player... and have them be the same thing.
-            - [ ] Fix velocity reaction.
+            - [x] Fix velocity reaction.
                 - Jump only does one frame.
                 - Some weird behavior with XZ movement too.
         - [ ] Add a "suck in nearby entities @ point x,x,x" param to hwac file for WazaAir4th_VacuumCockBack.
