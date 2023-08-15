@@ -742,7 +742,13 @@ void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& phy
                         DataSerializer ds;
                         ds.dumpString("msg_hitscan_hit");
                         ds.dumpFloat(attackLvl);
-                        ds.dumpVec3(d->currentWaza->hitscanLaunchVelocity);
+                        
+                        mat4 rotation;
+                        glm_euler_zyx(vec3{ 0.0f, d->facingDirection, 0.0f }, rotation);
+                        vec3 facingWazaHSLaunchVelocity;
+                        glm_mat4_mulv3(rotation, d->currentWaza->hitscanLaunchVelocity, 0.0f, facingWazaHSLaunchVelocity);
+                        ds.dumpVec3(facingWazaHSLaunchVelocity);
+
                         DataSerialized dsd = ds.getSerializedData();
                         if (em->sendMessage(guid, dsd))
                         {
