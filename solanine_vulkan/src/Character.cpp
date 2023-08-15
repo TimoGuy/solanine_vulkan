@@ -1,4 +1,4 @@
-#include "Player.h"
+#include "Character.h"
 
 #include <cstdlib>
 #include "Imports.h"
@@ -19,7 +19,7 @@
 #include "imgui/imgui_stdlib.h"
 
 
-struct Player_XData
+struct Character_XData
 {
     RenderObjectManager*     rom;
     Camera*                  camera;
@@ -166,7 +166,7 @@ struct Player_XData
     float_t modelSize = 0.3f;
 };
 
-void pushPlayerNotification(const std::string& message, Player_XData* d)
+void pushPlayerNotification(const std::string& message, Character_XData* d)
 {
     AudioEngine::getInstance().playSound("res/sfx/wip_bonk.ogg");
     d->notification.showMessageTimer = d->notification.showMessageTime;
@@ -183,9 +183,9 @@ void pushPlayerNotification(const std::string& message, Player_XData* d)
         textmesh::regenerateTextMeshMesh(d->notification.message, message);
 }
 
-void processWeaponAttackInput(Player_XData* d);
+void processWeaponAttackInput(Character_XData* d);
 
-std::string getUIMaterializeItemText(Player_XData* d)
+std::string getUIMaterializeItemText(Character_XData* d)
 {
     if (d->materializedItem == nullptr)
     {
@@ -209,12 +209,12 @@ std::string getUIMaterializeItemText(Player_XData* d)
     }
 }
 
-std::string getStaminaText(Player_XData* d)
+std::string getStaminaText(Character_XData* d)
 {
     return "Stamina: " + std::to_string(d->staminaData.currentStamina) + "/" + std::to_string(d->staminaData.maxStamina);
 }
 
-void changeStamina(Player_XData* d, int16_t amount)
+void changeStamina(Character_XData* d, int16_t amount)
 {
     d->staminaData.currentStamina += amount;
     d->staminaData.currentStamina = std::clamp(d->staminaData.currentStamina, (int16_t)0, d->staminaData.maxStamina);
@@ -226,7 +226,7 @@ void changeStamina(Player_XData* d, int16_t amount)
     textmesh::regenerateTextMeshMesh(d->uiStamina, getStaminaText(d));
 }
 
-void processAttack(Player_XData* d)
+void processAttack(Character_XData* d)
 {
     if (d->materializedItem == nullptr)
     {
@@ -299,7 +299,7 @@ void processAttack(Player_XData* d)
     textmesh::regenerateTextMeshMesh(d->uiMaterializeItem, getUIMaterializeItemText(d));
 }
 
-void processRelease(Player_XData* d)
+void processRelease(Character_XData* d)
 {
     if (d->materializedItem == nullptr)
     {
@@ -327,7 +327,7 @@ void parseVec3CommaSeparated(const std::string& vec3Str, vec3& outVec3)
     outVec3[2] = std::stof(strCopy);
 }
 
-void loadDataFromLine(Player_XData::AttackWaza& newWaza, const std::string& command, const std::vector<std::string>& params)
+void loadDataFromLine(Character_XData::AttackWaza& newWaza, const std::string& command, const std::vector<std::string>& params)
 {
     if (command == "entrance")
     {
@@ -360,14 +360,14 @@ void loadDataFromLine(Player_XData::AttackWaza& newWaza, const std::string& comm
     }
     else if (command == "velocity_decay")
     {
-        Player_XData::AttackWaza::VelocityDecaySetting newVelocityDecaySetting;
+        Character_XData::AttackWaza::VelocityDecaySetting newVelocityDecaySetting;
         newVelocityDecaySetting.velocityDecay = std::stof(params[0]);
         newVelocityDecaySetting.executeAtTime = std::stoi(params[1]);
         newWaza.velocityDecaySettings.push_back(newVelocityDecaySetting);
     }
     else if (command == "velocity")
     {
-        Player_XData::AttackWaza::VelocitySetting newVelocitySetting;
+        Character_XData::AttackWaza::VelocitySetting newVelocitySetting;
         vec3 velo;
         parseVec3CommaSeparated(params[0], velo);
         glm_vec3_copy(velo, newVelocitySetting.velocity);
@@ -376,7 +376,7 @@ void loadDataFromLine(Player_XData::AttackWaza& newWaza, const std::string& comm
     }
     else if (command == "hitscan")
     {
-        Player_XData::AttackWaza::HitscanFlowNode newHitscanNode;
+        Character_XData::AttackWaza::HitscanFlowNode newHitscanNode;
         vec3 end1, end2;
         parseVec3CommaSeparated(params[0], end1);
         parseVec3CommaSeparated(params[1], end2);
@@ -392,7 +392,7 @@ void loadDataFromLine(Player_XData::AttackWaza& newWaza, const std::string& comm
     }
     else if (command == "chain")
     {
-        Player_XData::AttackWaza::Chain newChain;
+        Character_XData::AttackWaza::Chain newChain;
         newChain.nextWazaName = params[0];
         newChain.inputTimeWindowStart = std::stoi(params[1]);
         newChain.inputTimeWindowEnd = std::stoi(params[2]);
@@ -410,12 +410,12 @@ void loadDataFromLine(Player_XData::AttackWaza& newWaza, const std::string& comm
     }
 }
 
-Player_XData::AttackWaza* getWazaPtrFromName(std::vector<Player_XData::AttackWaza>& wazas, const std::string& wazaName)
+Character_XData::AttackWaza* getWazaPtrFromName(std::vector<Character_XData::AttackWaza>& wazas, const std::string& wazaName)
 {
     if (wazaName == "NULL")  // Special case.
         return nullptr;
 
-    for (Player_XData::AttackWaza& waza : wazas)
+    for (Character_XData::AttackWaza& waza : wazas)
     {
         if (waza.wazaName == wazaName)
             return &waza;
@@ -426,7 +426,7 @@ Player_XData::AttackWaza* getWazaPtrFromName(std::vector<Player_XData::AttackWaz
     return nullptr;
 }
 
-void initWazaSetFromFile(std::vector<Player_XData::AttackWaza>& wazas, const std::string& fname)
+void initWazaSetFromFile(std::vector<Character_XData::AttackWaza>& wazas, const std::string& fname)
 {
     std::ifstream wazaFile(fname);
     if (!wazaFile.is_open())
@@ -440,7 +440,7 @@ void initWazaSetFromFile(std::vector<Player_XData::AttackWaza>& wazas, const std
     // Parse the commands
     //
     wazas.clear();
-    Player_XData::AttackWaza newWaza;
+    Character_XData::AttackWaza newWaza;
     std::string line;
     for (size_t lineNum = 1; std::getline(wazaFile, line); lineNum++)  // @COPYPASTA with SceneManagement.cpp
     {
@@ -463,7 +463,7 @@ void initWazaSetFromFile(std::vector<Player_XData::AttackWaza>& wazas, const std
             if (!newWaza.wazaName.empty())
             {
                 wazas.push_back(newWaza);
-                newWaza = Player_XData::AttackWaza();
+                newWaza = Character_XData::AttackWaza();
             }
         }
 
@@ -521,13 +521,13 @@ void initWazaSetFromFile(std::vector<Player_XData::AttackWaza>& wazas, const std
     if (!newWaza.wazaName.empty())
     {
         wazas.push_back(newWaza);
-        newWaza = Player_XData::AttackWaza();
+        newWaza = Character_XData::AttackWaza();
     }
 
     //
     // Bake pointers into string references.
     //
-    for (Player_XData::AttackWaza& waza : wazas)
+    for (Character_XData::AttackWaza& waza : wazas)
     {
         if (waza.wazaName == "NULL")
         {
@@ -536,7 +536,7 @@ void initWazaSetFromFile(std::vector<Player_XData::AttackWaza>& wazas, const std
             break;
         }
 
-        for (Player_XData::AttackWaza::Chain& chain : waza.chains)
+        for (Character_XData::AttackWaza::Chain& chain : waza.chains)
             chain.nextWazaPtr = getWazaPtrFromName(wazas, chain.nextWazaName);
         waza.onDurationPassedWazaPtr = getWazaPtrFromName(wazas, waza.onDurationPassedWazaName);
     }
@@ -573,9 +573,9 @@ void initWazaSetFromFile(std::vector<Player_XData::AttackWaza>& wazas, const std
     //     hsn.executeAtTime *= waza.duration;  // It scales the execution time so that the execution time is [0-1] time.
 }
 
-void processWeaponAttackInput(Player_XData* d)
+void processWeaponAttackInput(Character_XData* d)
 {
-    Player_XData::AttackWaza* nextWaza = nullptr;
+    Character_XData::AttackWaza* nextWaza = nullptr;
     bool attackFailed = false;
     int16_t staminaCost;
 
@@ -644,12 +644,12 @@ void processWeaponAttackInput(Player_XData* d)
     }
 }
 
-void processWazaUpdate(Player_XData* d, EntityManager* em, const float_t& physicsDeltaTime, const std::string& myGuid)
+void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& physicsDeltaTime, const std::string& myGuid)
 {
     //
     // Execute all velocity decay settings.
     //
-    for (Player_XData::AttackWaza::VelocityDecaySetting& vds : d->currentWaza->velocityDecaySettings)
+    for (Character_XData::AttackWaza::VelocityDecaySetting& vds : d->currentWaza->velocityDecaySettings)
         if (vds.executeAtTime == d->wazaTimer)
         {
             d->wazaVelocityDecay = vds.velocityDecay;
@@ -660,7 +660,7 @@ void processWazaUpdate(Player_XData* d, EntityManager* em, const float_t& physic
     // Execute all velocity settings corresponding to the timer.
     //
     bool setNewVelocity = false;
-    for (Player_XData::AttackWaza::VelocitySetting& velocitySetting : d->currentWaza->velocitySettings)
+    for (Character_XData::AttackWaza::VelocitySetting& velocitySetting : d->currentWaza->velocitySettings)
         if (velocitySetting.executeAtTime == d->wazaTimer)
         {
             setNewVelocity = true;
@@ -780,7 +780,7 @@ void processWazaUpdate(Player_XData* d, EntityManager* em, const float_t& physic
     }
 }
 
-Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSerialized* ds) : Entity(em, ds), _data(new Player_XData())
+Character::Character(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSerialized* ds) : Entity(em, ds), _data(new Character_XData())
 {
     Entity::_enablePhysicsUpdate = true;
     Entity::_enableUpdate = true;
@@ -951,7 +951,7 @@ Player::Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, Data
     initWazaSetFromFile(_data->airWazaSet, "res/waza/air_waza.hwac");
 }
 
-Player::~Player()
+Character::~Character()
 {
     if (_data->notification.message != nullptr)
         textmesh::destroyAndUnregisterTextMesh(_data->notification.message);
@@ -973,7 +973,7 @@ Player::~Player()
     delete _data;
 }
 
-void updateWazaTimescale(const float_t& physicsDeltaTime, Player_XData* d)
+void updateWazaTimescale(const float_t& physicsDeltaTime, Character_XData* d)
 {
     d->wazaHitTimescale = physutil::lerp(d->wazaHitTimescale, 1.0f, physicsDeltaTime * d->wazaHitTimescale * d->wazaHitTimescaleReturnToOneSpeed);
     if (d->wazaHitTimescale > 0.999f)
@@ -981,7 +981,7 @@ void updateWazaTimescale(const float_t& physicsDeltaTime, Player_XData* d)
     globalState::timescale = d->wazaHitTimescale;
 }
 
-void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Player_XData* d, EntityManager* em, const std::string& myGuid)
+void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, EntityManager* em, const std::string& myGuid)
 {
     if (d->currentWaza == nullptr)
     {
@@ -1184,7 +1184,7 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Player_XData* d, Enti
         d->gravityForce = 0.0f;
 }
 
-void calculateBladeStartEndFromHandAttachment(Player_XData* d, vec3& bladeStart, vec3& bladeEnd)
+void calculateBladeStartEndFromHandAttachment(Character_XData* d, vec3& bladeStart, vec3& bladeEnd)
 {
     mat4 attachmentJointMat;
     d->characterRenderObj->animator->getJointMatrix("Hand Attachment", attachmentJointMat);
@@ -1192,11 +1192,11 @@ void calculateBladeStartEndFromHandAttachment(Player_XData* d, vec3& bladeStart,
     glm_mat4_mulv3(attachmentJointMat, vec3{ 0.0f, d->attackWazaEditor.bladeDistanceStartEnd[1], 0.0f }, 1.0f, bladeEnd);
 }
 
-void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Player_XData* d)
+void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d)
 {
     if (d->attackWazaEditor.triggerRecalcWazaCache)
     {
-        Player_XData::AttackWaza& aw = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex];
+        Character_XData::AttackWaza& aw = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex];
 
         d->attackWazaEditor.minTick = 0;
         d->attackWazaEditor.maxTick = aw.duration;
@@ -1209,7 +1209,7 @@ void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Player_XData
 
     if (d->attackWazaEditor.triggerBakeHitscans)
     {
-        Player_XData::AttackWaza& aw = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex];
+        Character_XData::AttackWaza& aw = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex];
 
         // Fill in hitscan flow nodes according to baked range.
         aw.hitscanNodes.clear();
@@ -1217,7 +1217,7 @@ void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Player_XData
         {
             d->characterRenderObj->animator->setState(aw.animationState, i * physicsDeltaTime, true);
 
-            Player_XData::AttackWaza::HitscanFlowNode hfn;
+            Character_XData::AttackWaza::HitscanFlowNode hfn;
             calculateBladeStartEndFromHandAttachment(d, hfn.nodeEnd1, hfn.nodeEnd2);
             glm_vec3_scale(hfn.nodeEnd1, d->modelSize, hfn.nodeEnd1);
             glm_vec3_scale(hfn.nodeEnd2, d->modelSize, hfn.nodeEnd2);
@@ -1248,7 +1248,7 @@ void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Player_XData
     }
 
     // Draw flow node lines
-    std::vector<Player_XData::AttackWaza::HitscanFlowNode>& hnodes = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].hitscanNodes;
+    std::vector<Character_XData::AttackWaza::HitscanFlowNode>& hnodes = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].hitscanNodes;
     for (size_t i = 1; i < hnodes.size(); i++)
     {
         vec3 nodeEnd1_i, nodeEnd1_i1, nodeEnd2_i, nodeEnd2_i1;
@@ -1280,7 +1280,7 @@ void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Player_XData
     physengine::drawDebugVisLine(bladeStart, bladeEnd);
 }
 
-void Player::physicsUpdate(const float_t& physicsDeltaTime)
+void Character::physicsUpdate(const float_t& physicsDeltaTime)
 {
     if (_data->wazaHitTimescale < 1.0f)
         updateWazaTimescale(physicsDeltaTime, _data);
@@ -1311,7 +1311,7 @@ std::vector<GUIDWithVerb> interactionGUIDPriorityQueue;
 textmesh::TextMesh* interactionUIText;
 std::string currentText;
 
-void Player::update(const float_t& deltaTime)
+void Character::update(const float_t& deltaTime)
 {
     // @DEBUG: for level editor
     _data->disableInput = (_data->camera->freeCamMode.enabled || ImGui::GetIO().WantTextInput);
@@ -1385,7 +1385,7 @@ void Player::update(const float_t& deltaTime)
     }
 }
 
-void Player::lateUpdate(const float_t& deltaTime)
+void Character::lateUpdate(const float_t& deltaTime)
 {
     if (_data->attackWazaEditor.isEditingMode)
         _data->facingDirection = 0.0f;  // @NOTE: this needs to be facing in the default facing direction so that the hitscan node positions are facing in the default direction when baked.
@@ -1409,14 +1409,14 @@ void Player::lateUpdate(const float_t& deltaTime)
     glm_mat4_copy(_data->weaponRenderObj->transformMatrix, _data->handleRenderObj->transformMatrix);
 }
 
-void Player::dump(DataSerializer& ds)
+void Character::dump(DataSerializer& ds)
 {
     Entity::dump(ds);
     ds.dumpVec3(_data->position);
     ds.dumpFloat(_data->facingDirection);
 }
 
-void Player::load(DataSerialized& ds)
+void Character::load(DataSerialized& ds)
 {
     Entity::load(ds);
     ds.loadVec3(_data->position);
@@ -1446,7 +1446,7 @@ void updateInteractionUI()
     interactionUIText->excludeFromBulkRender = currentText.empty();
 }
 
-bool Player::processMessage(DataSerialized& message)
+bool Character::processMessage(DataSerialized& message)
 {
     std::string messageType;
     message.loadString(messageType);
@@ -1501,7 +1501,7 @@ bool Player::processMessage(DataSerialized& message)
     return false;
 }
 
-void Player::reportMoved(mat4* matrixMoved)
+void Character::reportMoved(mat4* matrixMoved)
 {
     vec4 pos;
     mat4 rot;
@@ -1528,7 +1528,7 @@ std::vector<std::string> getListOfWazaFnames()
     return wazaFnames;
 }
 
-void defaultRenderImGui(Player_XData* d)
+void defaultRenderImGui(Character_XData* d)
 {
     ImGui::DragFloat("modelSize", &d->modelSize);
     ImGui::DragFloat("attackTwitchAngleReturnSpeed", &d->attackTwitchAngleReturnSpeed);
@@ -1571,7 +1571,7 @@ void defaultRenderImGui(Player_XData* d)
     }
 }
 
-void attackWazaEditorRenderImGui(Player_XData* d)
+void attackWazaEditorRenderImGui(Character_XData* d)
 {
     if (ImGui::Button("Exit Waza Editor"))
     {
@@ -1588,7 +1588,7 @@ void attackWazaEditorRenderImGui(Player_XData* d)
     {
         for (size_t i = 0; i < d->attackWazaEditor.editingWazaSet.size(); i++)
         {
-            Player_XData::AttackWaza& aw = d->attackWazaEditor.editingWazaSet[i];
+            Character_XData::AttackWaza& aw = d->attackWazaEditor.editingWazaSet[i];
             if (ImGui::Button(aw.wazaName.c_str()))
             {
                 // Change waza within set to edit.
@@ -1653,7 +1653,7 @@ void attackWazaEditorRenderImGui(Player_XData* d)
     }
 }
 
-void Player::renderImGui()
+void Character::renderImGui()
 {
     if (_data->attackWazaEditor.isEditingMode)
         attackWazaEditorRenderImGui(_data);

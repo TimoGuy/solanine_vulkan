@@ -4,17 +4,17 @@
 class EntityManager;
 class RenderObjectManager;
 struct Camera;
-struct Player_XData;
+struct Character_XData;
 
 
-class Player : public Entity
+class Character : public Entity
 {
 public:
     static const std::string TYPE_NAME;
     std::string getTypeName() { return TYPE_NAME; };
 
-    Player(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSerialized* ds);
-    ~Player();
+    Character(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSerialized* ds);
+    ~Character();
 
     void physicsUpdate(const float_t& physicsDeltaTime);
     void update(const float_t& deltaTime);
@@ -28,5 +28,5 @@ public:
     void renderImGui();
 
 private:
-    Player_XData* _data;
+    Character_XData* _data;
 };
