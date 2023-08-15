@@ -31,6 +31,8 @@ struct Beanbag_XData
     float_t iframesTime = 0.25f;
     float_t iframesTimer = 0.0f;
 
+    vec3 velocity = GLM_VEC3_ZERO_INIT;
+
     std::vector<size_t> harvestableItemsIdsToSpawnAfterDeath;  // @TODO: make tool to be able to add the spawn items and delete them (just use imgui popup with buttons of the model names to add and an X button to delete.)
     std::vector<size_t> scannableItemsIdsToSpawnAfterDeath;
 };
@@ -102,6 +104,8 @@ void Beanbag::physicsUpdate(const float_t& physicsDeltaTime)
 {
     if (_data->iframesTimer > 0.0f)
         _data->iframesTimer -= physicsDeltaTime;
+
+    
 }
 
 void Beanbag::update(const float_t& deltaTime)
@@ -207,6 +211,10 @@ bool Beanbag::processMessage(DataSerialized& message)
             float_t attackLvl;
             message.loadFloat(attackLvl);
             _data->health -= attackLvl;
+
+            vec3 launchVelocity;
+            message.loadVec3(launchVelocity);
+            glm_vec3_copy(_data->velocity, launchVelocity);  // @TODO: @FIXME: Continue here!!!!!!!!
 
             _data->iframesTimer = _data->iframesTime;
 

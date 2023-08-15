@@ -27,6 +27,7 @@
   hitscan            -0.077162,0.960373,0.912426    0.024092,1.309631,2.056004    6
   hitscan            -0.177291,0.607920,0.880886    -0.189415,0.478069,2.073778    7
   hitscan            -0.236201,0.454443,0.768883    -0.259243,0.158105,1.931490    8
+  hs_launch_velocity 0.000000,0.000000,4.000000
   chain              WazaAir1st_To2nd_LandAndStart    10     25    press_x
   on_duration_passed WazaAir1st_SwingDownGust_ReturnToKamae
 

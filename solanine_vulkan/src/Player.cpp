@@ -83,6 +83,7 @@ struct Player_XData
         };
         uint32_t numHitscanSamples = 5;
         std::vector<HitscanFlowNode> hitscanNodes;  // Each node uses the previous node's data to create the hitscans (the first node is ignored except for using it as prev node data).
+        vec3 hitscanLaunchVelocity = GLM_VEC3_ZERO_INIT;  // Non-normalized vec3 of launch velocity of entity that gets hit by the waza.
 
         struct Chain
         {
@@ -120,7 +121,8 @@ struct Player_XData
         int16_t currentTick, minTick, maxTick;  // @NOTE: bounds are inclusive.
 
         vec2 bladeDistanceStartEnd = { 1.0f, 5.0f };
-        std::string exportString = "";
+        std::string hitscanLaunchVelocityExportString = "";
+        std::string hitscanSetExportString = "";
 
         bool triggerBakeHitscans = false;
         int16_t bakeHitscanStartTick = -1, bakeHitscanEndTick = -1;
@@ -383,6 +385,10 @@ void loadDataFromLine(Player_XData::AttackWaza& newWaza, const std::string& comm
         if (params.size() >= 3)
             newHitscanNode.executeAtTime = std::stoi(params[2]);
         newWaza.hitscanNodes.push_back(newHitscanNode);
+    }
+    else if (command == "hs_launch_velocity")
+    {
+        parseVec3CommaSeparated(params[0], newWaza.hitscanLaunchVelocity);
     }
     else if (command == "chain")
     {
@@ -725,6 +731,7 @@ void processWazaUpdate(Player_XData* d, EntityManager* em, const float_t& physic
                         DataSerializer ds;
                         ds.dumpString("msg_hitscan_hit");
                         ds.dumpFloat(attackLvl);
+                        ds.dumpVec3(d->currentWaza->hitscanLaunchVelocity);
                         DataSerialized dsd = ds.getSerializedData();
                         if (em->sendMessage(guid, dsd))
                         {
@@ -1219,10 +1226,10 @@ void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Player_XData
         }
 
         // Fill out the export string.
-        d->attackWazaEditor.exportString = "";
+        d->attackWazaEditor.hitscanSetExportString = "";
         for (size_t i = 0; i < aw.hitscanNodes.size(); i++)
         {
-            d->attackWazaEditor.exportString +=
+            d->attackWazaEditor.hitscanSetExportString +=
                 "  hitscan            " +
                 std::to_string(aw.hitscanNodes[i].nodeEnd1[0]) + "," +
                 std::to_string(aw.hitscanNodes[i].nodeEnd1[1]) + "," +
@@ -1231,9 +1238,9 @@ void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Player_XData
                 std::to_string(aw.hitscanNodes[i].nodeEnd2[1]) + "," +
                 std::to_string(aw.hitscanNodes[i].nodeEnd2[2]);
             if (i > 0)
-                d->attackWazaEditor.exportString +=
+                d->attackWazaEditor.hitscanSetExportString +=
                     "    " + std::to_string(aw.hitscanNodes[i].executeAtTime);
-            d->attackWazaEditor.exportString += "\n";
+            d->attackWazaEditor.hitscanSetExportString += "\n";
         }
 
         d->attackWazaEditor.triggerBakeHitscans = false;
@@ -1257,6 +1264,11 @@ void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Player_XData
         glm_vec3_lerp(nodeEnd1_i, nodeEnd2_i, 0.5f, nodeEndMid_i);
         physengine::drawDebugVisLine(nodeEndMid_i1, nodeEndMid_i);
     }
+
+    // Draw hitscan launch velocity vis line.
+    vec3 hsLaunchVeloWS;
+    glm_vec3_add(d->position, d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].hitscanLaunchVelocity, hsLaunchVeloWS);
+    physengine::drawDebugVisLine(d->position, hsLaunchVeloWS);
 
     // Draw visual line showing where weapon hitscan will show up.
     vec3 bladeStart, bladeEnd;
@@ -1351,7 +1363,7 @@ void Player::update(const float_t& deltaTime)
         {
             // Spin up aura sfx            
             _data->auraSfxChannelIds.push_back(
-                AudioEngine::getInstance().playSound("res/sfx/wip_hollow_knight_sfx/hero_super_dash_burst.wav")  // Burst start
+                AudioEngine::getInstance().playSound("res/sfx/wip_hollow_knight_sfx/hero_super_dash_burst.wav")  // Aura burst start
             );
             _data->auraSfxChannelIds.push_back(
                 AudioEngine::getInstance().playSound("res/sfx/wip_hollow_knight_sfx/hero_super_dash_loop.wav", true)  // Aura loop
@@ -1583,7 +1595,7 @@ void attackWazaEditorRenderImGui(Player_XData* d)
                 d->attackWazaEditor.wazaIndex = i;
                 d->attackWazaEditor.currentTick = 0;
                 d->attackWazaEditor.triggerRecalcWazaCache = true;
-                d->attackWazaEditor.exportString = "";
+                d->attackWazaEditor.hitscanSetExportString = "";
                 ImGui::CloseCurrentPopup();
                 break;
             }
@@ -1614,13 +1626,30 @@ void attackWazaEditorRenderImGui(Player_XData* d)
     }
     ImGui::EndDisabled();
 
+    ImGui::Separator();
+    if (ImGui::DragFloat3("Launch Velocity", d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].hitscanLaunchVelocity))
+    {
+        auto& lv = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].hitscanLaunchVelocity;
+        d->attackWazaEditor.hitscanLaunchVelocityExportString =
+            "  hs_launch_velocity " +
+            std::to_string(lv[0]) + "," +
+            std::to_string(lv[1]) + "," +
+            std::to_string(lv[2]);
+    }
 
-    if (!d->attackWazaEditor.exportString.empty())
+    if (!d->attackWazaEditor.hitscanLaunchVelocityExportString.empty())
+    {
+        ImGui::Separator();
+        ImGui::Text("Launch Velocity Export String");
+        ImGui::InputTextMultiline("##Attack Waza Launch Velocity Export string copying area", &d->attackWazaEditor.hitscanLaunchVelocityExportString, ImVec2(512, ImGui::GetTextLineHeight()));
+    }
+
+    if (!d->attackWazaEditor.hitscanSetExportString.empty())
     {
         ImGui::Separator();
 
         ImGui::Text("Hitscan Export String");
-        ImGui::InputTextMultiline("##Attack Waza Export string copying area", &d->attackWazaEditor.exportString, ImVec2(512, ImGui::GetTextLineHeight() * 16), ImGuiInputTextFlags_AllowTabInput);
+        ImGui::InputTextMultiline("##Attack Waza Export string copying area", &d->attackWazaEditor.hitscanSetExportString, ImVec2(512, ImGui::GetTextLineHeight() * 16), ImGuiInputTextFlags_AllowTabInput);
     }
 }
 
