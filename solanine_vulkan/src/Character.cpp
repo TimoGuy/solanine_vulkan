@@ -1392,7 +1392,7 @@ void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Character_XD
         for (size_t i = 0; i < aw.hitscanNodes.size(); i++)
         {
             d->attackWazaEditor.hitscanSetExportString +=
-                "  hitscan            " +
+                "hitscan            " +
                 std::to_string(aw.hitscanNodes[i].nodeEnd1[0]) + "," +
                 std::to_string(aw.hitscanNodes[i].nodeEnd1[1]) + "," +
                 std::to_string(aw.hitscanNodes[i].nodeEnd1[2]) + "    " +
@@ -1988,7 +1988,7 @@ void attackWazaEditorRenderImGui(Character_XData* d)
     {
         auto& lv = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].hitscanLaunchVelocity;
         d->attackWazaEditor.hitscanLaunchVelocityExportString =
-            "  hs_launch_velocity " +
+            "hs_launch_velocity " +
             std::to_string(lv[0]) + "," +
             std::to_string(lv[1]) + "," +
             std::to_string(lv[2]);
