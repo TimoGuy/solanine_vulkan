@@ -188,7 +188,7 @@ struct Character_XData
 
     enum KnockbackStage { NONE, RECOVERY, KNOCKED_UP };
     KnockbackStage knockbackMode = NONE;
-    float_t        knockedbackTime = 0.75f;
+    float_t        knockedbackTime = 0.35f;
     float_t        knockedbackTimer = 0.0f;
 
     std::vector<size_t> harvestableItemsIdsToSpawnAfterDeath;
