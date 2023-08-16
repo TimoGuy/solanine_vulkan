@@ -128,6 +128,9 @@ struct Character_XData
         int16_t currentTick, minTick, maxTick;  // @NOTE: bounds are inclusive.
 
         vec2 bladeDistanceStartEnd = { 1.0f, 5.0f };
+        std::string bladeBoneName = "Hand Attachment";
+        std::string bladeBoneName_dirty = bladeBoneName;
+
         std::string hitscanLaunchVelocityExportString = "";
         std::string hitscanSetExportString = "";
 
@@ -1273,7 +1276,7 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
 void calculateBladeStartEndFromHandAttachment(Character_XData* d, vec3& bladeStart, vec3& bladeEnd)
 {
     mat4 attachmentJointMat;
-    d->characterRenderObj->animator->getJointMatrix("Hand Attachment", attachmentJointMat);
+    d->characterRenderObj->animator->getJointMatrix(d->attackWazaEditor.bladeBoneName, attachmentJointMat);
     glm_mat4_mulv3(attachmentJointMat, vec3{ 0.0f, d->attackWazaEditor.bladeDistanceStartEnd[0], 0.0f }, 1.0f, bladeStart);
     glm_mat4_mulv3(attachmentJointMat, vec3{ 0.0f, d->attackWazaEditor.bladeDistanceStartEnd[1], 0.0f }, 1.0f, bladeEnd);
 }
@@ -2005,6 +2008,16 @@ void attackWazaEditorRenderImGui(Character_XData* d)
     }
 
     ImGui::Text("Bake hitscan with waza");
+    ImGui::DragFloat2("Hitscan-based blade start end", d->attackWazaEditor.bladeDistanceStartEnd);
+    ImGui::InputText("Hitscan-based bone", &d->attackWazaEditor.bladeBoneName_dirty);
+    if (d->attackWazaEditor.bladeBoneName_dirty != d->attackWazaEditor.bladeBoneName)
+    {
+        ImGui::SameLine();
+        if (ImGui::Button("Change!##Hitscan-based bone name"))
+        {
+            d->attackWazaEditor.bladeBoneName = d->attackWazaEditor.bladeBoneName_dirty;
+        }
+    }
     if (ImGui::Button("Set baking hitscan range start"))
         d->attackWazaEditor.bakeHitscanStartTick = d->attackWazaEditor.currentTick;
     if (ImGui::Button("Set baking hitscan range end"))
