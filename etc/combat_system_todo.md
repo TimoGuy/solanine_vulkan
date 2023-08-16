@@ -51,4 +51,4 @@
 ### Bugs
 - [ ] Landing on the ground while doing first waza and then not doing next one will trigger land animation after return-from-waza anim
 - [ ] Doing first waza while on ground and holding movement direction, then after return-from-waza anim if still holding the movement direction then only idle anim will play while still running.
-- [ ] Random bug where I got "ERROR: physics engine is running too slowly", and then it just segfaults.
+- [ ] Random bug where I got "ERROR: physics engine is running too slowly", and then it just segfaults. I wasn't running with the debugger at the time so idk what the error is.
