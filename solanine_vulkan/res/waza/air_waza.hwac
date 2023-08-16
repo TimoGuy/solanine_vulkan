@@ -100,7 +100,7 @@
   hitscan            0.525303,0.968081,-0.291023    0.143518,1.985842,-0.799357    9
   hitscan            0.686164,0.839175,-0.393454    0.536875,1.707156,-1.208515    10
   hitscan            0.782951,0.736952,-0.408686    0.768124,1.491708,-1.341490    11
-  hs_launch_velocity 0.000000,27.000000,17.500000
+  hs_launch_velocity 0.000000,18.000000,31.500000
   chain              WazaAir3rd_ShoulderLift    9    33    press_a
   on_duration_passed WazaAir3rd_ReadyForLiftoff_ReturnToKamae
 

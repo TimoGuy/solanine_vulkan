@@ -25,10 +25,12 @@
             - [x] Fix velocity reaction.
                 - Jump only does one frame.
                 - Some weird behavior with XZ movement too.
-            - [ ] Improve velocity with a knockback recovery timer.
+            - [x] Improve velocity with a knockback recovery timer.
                 - When the knockback timer depletes, then the character will "wake" up.
                     - This is of course if the character has the ability to wake up. Parametrize this in the future (idea: depending on the amount of health the player has)
                 - When the character has woken up, the primary objective is to get to a stop. Grounded ukemi friction is used here.
+            - [ ] Allow picking bone where waza hitscans are baked from.
+            - [ ] Allow immediate usage of .hwac file by hotloading.
         - [ ] Add a "suck in nearby entities @ point x,x,x" param to hwac file for WazaAir4th_VacuumCockBack.
 
 - [ ] Reiterate the "idea" of combat.

@@ -139,6 +139,8 @@ struct Character_XData
 
         bool triggerRecalcSelfVelocitySimCache = false;
         std::vector<vec3s> selfVelocitySimCache;
+
+        int32_t hitscanLaunchAndSelfVelocityAwaseIndex = 0;
     } attackWazaEditor;
 
     // Notifications
@@ -1298,6 +1300,10 @@ void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Character_XD
         vec3s currentPosition = GLM_VEC3_ZERO_INIT;
         vec3  launchVelocityCopy;
         glm_vec3_copy(aw.hitscanLaunchVelocity, launchVelocityCopy);
+
+        float_t knockedbackTimer = d->knockedbackTime;
+        Character_XData::KnockbackStage knockbackMode = Character_XData::KnockbackStage::KNOCKED_UP;
+
         for (size_t i = 0; i < 100; i++)
         {
             vec3 deltaPosition;
@@ -1313,11 +1319,36 @@ void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Character_XD
                 0.0f,
                 -launchVelocityCopy[2],
             };
-            if (glm_vec3_norm2(xzVelocityDampen) > d->midairXZDeceleration * d->midairXZDeceleration)
-                glm_vec3_scale_as(xzVelocityDampen, d->midairXZDeceleration, xzVelocityDampen);
+            
+            float_t maxAllowedDeltaMagnitude = d->midairXZDeceleration;
+            bool prevIsGrounded = (currentPosition.y <= 0.0f);
+            if (prevIsGrounded)  // @COPYPASTA
+                    if (knockbackMode == Character_XData::KnockbackStage::RECOVERY)
+                    {
+                        maxAllowedDeltaMagnitude = d->recoveryGroundedXZDeceleration;
+                    }
+                    else if (knockbackMode == Character_XData::KnockbackStage::KNOCKED_UP)
+                    {
+                        maxAllowedDeltaMagnitude = d->knockedbackGroundedXZDeceleration;
+                    }
+
+            if (glm_vec3_norm2(xzVelocityDampen) > maxAllowedDeltaMagnitude * maxAllowedDeltaMagnitude)
+                glm_vec3_scale_as(xzVelocityDampen, maxAllowedDeltaMagnitude, xzVelocityDampen);
             glm_vec3_add(launchVelocityCopy, xzVelocityDampen, launchVelocityCopy);
+
+            // @COPYPASTA
+            if (knockbackMode == Character_XData::KnockbackStage::KNOCKED_UP)
+            {
+                if (knockedbackTimer < 0.0f)
+                {
+                    knockbackMode = Character_XData::KnockbackStage::RECOVERY;
+                }
+                else
+                    knockedbackTimer -= physicsDeltaTime;
+            }
         }
 
+        d->attackWazaEditor.hitscanLaunchAndSelfVelocityAwaseIndex = 0;
         d->attackWazaEditor.triggerRecalcHitscanLaunchVelocityCache = false;
     }
 
@@ -1367,6 +1398,7 @@ void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Character_XD
             currentVelocity[1] -= 0.98f;  // @HARDCODE: Should match `constexpr float_t gravity`
         }
 
+        d->attackWazaEditor.hitscanLaunchAndSelfVelocityAwaseIndex = 0;
         d->attackWazaEditor.triggerRecalcSelfVelocitySimCache = false;
     }
 
@@ -1434,7 +1466,7 @@ void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Character_XD
         vec3 hsLaunchVeloPositionWS_i, hsLaunchVeloPositionWS_i1;
         glm_vec3_add(d->position, hslvsc[i].raw, hsLaunchVeloPositionWS_i);
         glm_vec3_add(d->position, hslvsc[i - 1].raw, hsLaunchVeloPositionWS_i1);
-        physengine::drawDebugVisLine(hsLaunchVeloPositionWS_i1, hsLaunchVeloPositionWS_i, physengine::DebugVisLineType::VELOCITY);
+        physengine::drawDebugVisLine(hsLaunchVeloPositionWS_i1, hsLaunchVeloPositionWS_i, (d->attackWazaEditor.hitscanLaunchAndSelfVelocityAwaseIndex == (int32_t)i ? physengine::DebugVisLineType::SUCCESS : physengine::DebugVisLineType::VELOCITY));
     }
 
     // Draw self launch velocity vis line.
@@ -1444,7 +1476,7 @@ void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Character_XD
         vec3 selfVeloPositionWS_i, selfVeloPositionWS_i1;
         glm_vec3_add(d->position, svsc[i].raw, selfVeloPositionWS_i);
         glm_vec3_add(d->position, svsc[i - 1].raw, selfVeloPositionWS_i1);
-        physengine::drawDebugVisLine(selfVeloPositionWS_i1, selfVeloPositionWS_i, physengine::DebugVisLineType::AUDACITY);
+        physengine::drawDebugVisLine(selfVeloPositionWS_i1, selfVeloPositionWS_i, (d->attackWazaEditor.hitscanLaunchAndSelfVelocityAwaseIndex == (int32_t)i ? physengine::DebugVisLineType::SUCCESS : physengine::DebugVisLineType::AUDACITY));
     }
 
     // Draw visual line showing where weapon hitscan will show up.
@@ -1986,6 +2018,18 @@ void attackWazaEditorRenderImGui(Character_XData* d)
     ImGui::EndDisabled();
 
     ImGui::Separator();
+
+    if (!d->attackWazaEditor.hitscanLaunchVelocitySimCache.empty() &&
+        !d->attackWazaEditor.selfVelocitySimCache.empty())
+    {
+        ImGui::SliderInt(
+            "Launch/Self Velocity Awase Step",
+            &d->attackWazaEditor.hitscanLaunchAndSelfVelocityAwaseIndex,
+            0,
+            (int32_t)std::min(d->attackWazaEditor.hitscanLaunchVelocitySimCache.size(), d->attackWazaEditor.selfVelocitySimCache.size())
+        );
+    }
+
     if (ImGui::DragFloat3("Launch Velocity", d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].hitscanLaunchVelocity))
     {
         auto& lv = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].hitscanLaunchVelocity;
