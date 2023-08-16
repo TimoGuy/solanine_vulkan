@@ -31,6 +31,12 @@
                 - When the character has woken up, the primary objective is to get to a stop. Grounded ukemi friction is used here.
             - [x] Allow picking bone where waza hitscans are baked from.
             - [ ] Allow immediate usage of .hwac file by hotloading.
+            - [ ] MAYBE: have the character that's caught in the waza hitscan to have their position be set relative to the attacker's position and facingdirection.
+                - The problem I'm trying to solve is the issue with the twisting updraft waza not placing the attacked character in the right spot to do the next attack sometimes.
+                    - It seems like it's influenced by just where in the attack did the attacked character make contact with the hitscan.
+                    - Though, now just writing it out rn, I think the theory above is incorrect, since the attacked character just gets a velocity applied to it.
+                    - I think, it's a timing issue! Different times in the animation/waza that the attacked character gets attacked will change where both characters will land.
+                        - Hmmm, well, it's probably a mix of both. Try fixing the positioning issue first and see if that resolves it!
         - [ ] Add a "suck in nearby entities @ point x,x,x" param to hwac file for WazaAir4th_VacuumCockBack.
 
 - [ ] Reiterate the "idea" of combat.
