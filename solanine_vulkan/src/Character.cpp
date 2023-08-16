@@ -112,7 +112,8 @@ struct Character_XData
     vec3        wazaVelocity;
     int16_t     wazaTimer = 0;  // Used for timing chains and hitscans.
     float_t     wazaHitTimescale = 1.0f;
-    float_t     wazaHitTimescaleReturnToOneSpeed = 1000.0f;
+    float_t     wazaHitTimescaleOnHit = 0.01f;
+    float_t     wazaHitTimescaleReturnToOneSpeed = 500.0f;
 
     // Waza Editor/Viewer State
     struct AttackWazaEditor
@@ -792,7 +793,7 @@ void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& phy
     if (playWazaHitSfx)
     {
         AudioEngine::getInstance().playSound("res/sfx/wip_EnemyHit_Critical.wav");
-        d->wazaHitTimescale = 0.01f;
+        d->wazaHitTimescale = d->wazaHitTimescaleOnHit;
     }
 
     // End waza if duration has passed.
@@ -1830,6 +1831,7 @@ void defaultRenderImGui(Character_XData* d)
         ImGui::DragFloat("midairXZAcceleration", &d->midairXZAcceleration);
         ImGui::DragFloat("midairXZDeceleration", &d->midairXZDeceleration);
         ImGui::DragFloat("wazaHitTimescale", &d->wazaHitTimescale);
+        ImGui::DragFloat("wazaHitTimescaleOnHit", &d->wazaHitTimescaleOnHit);
         ImGui::DragFloat("wazaHitTimescaleReturnToOneSpeed", &d->wazaHitTimescaleReturnToOneSpeed);
     }
 
