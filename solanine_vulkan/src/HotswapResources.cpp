@@ -127,6 +127,10 @@ namespace hotswapres
                         std::cout << "Sent message to model \"" << resource.path.stem().string() << "\" to reload." << std::endl;
                         continue;
                     }
+                    else
+                    {
+                        // @TODO: implement a big map with pathstring to list of lambdas to execute to do their respective resource reloading.  -Timo 2023/08/16
+                    }
 
                     // Nothing to do to the resource!
                     // That means there's no routine for this certain resource
