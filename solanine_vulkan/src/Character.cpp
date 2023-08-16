@@ -132,6 +132,12 @@ struct Character_XData
 
         bool triggerBakeHitscans = false;
         int16_t bakeHitscanStartTick = -1, bakeHitscanEndTick = -1;
+
+        bool triggerRecalcHitscanLaunchVelocityCache = false;
+        std::vector<vec3s> hitscanLaunchVelocitySimCache;
+
+        bool triggerRecalcSelfVelocitySimCache = false;
+        std::vector<vec3s> selfVelocitySimCache;
     } attackWazaEditor;
 
     // Notifications
@@ -165,6 +171,8 @@ struct Character_XData
     float_t inputMaxXZSpeed = 7.5f;
     float_t midairXZAcceleration = 1.0f;
     float_t midairXZDeceleration = 0.25f;
+    float_t knockedbackGroundedXZDeceleration = 0.5f;
+    float_t recoveryGroundedXZDeceleration = 0.75f;
     vec3    prevCPDBasePosition;
 
     std::vector<int32_t> auraSfxChannelIds;
@@ -177,7 +185,11 @@ struct Character_XData
     int32_t health = 100;
     float_t iframesTime = 0.25f;
     float_t iframesTimer = 0.0f;
-    bool    knockbackMode = false;  // @TODO: write a way to "get up" from knockback mode.
+
+    enum KnockbackStage { NONE, RECOVERY, KNOCKED_UP };
+    KnockbackStage knockbackMode = NONE;
+    float_t        knockedbackTime = 0.75f;
+    float_t        knockedbackTimer = 0.0f;
 
     std::vector<size_t> harvestableItemsIdsToSpawnAfterDeath;
     std::vector<size_t> scannableItemsIdsToSpawnAfterDeath;
@@ -1020,7 +1032,7 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
             input[1] += input::keyDownPressed  ? -1.0f : 0.0f;
         }
 
-        if (d->disableInput)
+        if (d->disableInput || d->knockbackMode > Character_XData::KnockbackStage::NONE)
             input[0] = input[1] = 0.0f;
 
         vec3 flatCameraFacingDirection = {
@@ -1130,7 +1142,7 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
     vec3 velocity = GLM_VEC3_ZERO_INIT;
     if (d->currentWaza == nullptr)
     {
-        if (d->prevIsGrounded && !d->knockbackMode)
+        if (d->prevIsGrounded && d->knockbackMode == Character_XData::KnockbackStage::NONE)
             glm_vec3_scale(d->worldSpaceInput, d->inputMaxXZSpeed * physicsDeltaTime, velocity);
         else
         {
@@ -1152,6 +1164,18 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
                 bool useAcceleration = (glm_vec3_dot(targetVelocityNormalized, flatDeltaPositionNormalized) < 0.0f || glm_vec3_norm2(targetVelocity) > glm_vec3_norm2(flatDeltaPosition));
                 float_t maxAllowedDeltaMagnitude = (useAcceleration ? d->midairXZAcceleration : d->midairXZDeceleration) * physicsDeltaTime;
 
+                // @NOTE: Assumption is that during recovery and knocked back stages, the input is set to 0,0
+                //        thus deceleration is the acceleration method at all times.
+                if (d->prevIsGrounded)
+                    if (d->knockbackMode == Character_XData::KnockbackStage::RECOVERY)
+                    {
+                        maxAllowedDeltaMagnitude = d->recoveryGroundedXZDeceleration * physicsDeltaTime;
+                    }
+                    else if (d->knockbackMode == Character_XData::KnockbackStage::KNOCKED_UP)
+                    {
+                        maxAllowedDeltaMagnitude = d->knockedbackGroundedXZDeceleration * physicsDeltaTime;
+                    }
+
                 if (glm_vec3_norm2(targetDelta) > maxAllowedDeltaMagnitude * maxAllowedDeltaMagnitude)
                     glm_vec3_scale_as(targetDelta, maxAllowedDeltaMagnitude, targetDelta);
 
@@ -1161,6 +1185,20 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
             {
                 glm_vec3_copy(flatDeltaPosition, velocity);
             }
+
+            // Process knockback stages. @TODO: put this into its own function/process.
+            if (d->knockbackMode == Character_XData::KnockbackStage::KNOCKED_UP)
+            {
+                if (d->knockedbackTimer < 0.0f)
+                    d->knockbackMode = Character_XData::KnockbackStage::RECOVERY;
+                else
+                    d->knockedbackTimer -= physicsDeltaTime;
+            }
+            if (d->knockbackMode == Character_XData::KnockbackStage::RECOVERY &&
+                d->prevIsGrounded &&
+                std::abs(velocity[0]) < 0.001f &&
+                std::abs(velocity[2]) < 0.001f)
+                d->knockbackMode = Character_XData::KnockbackStage::NONE;
         }
     }
     else
@@ -1203,7 +1241,9 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
         if (d->gravityForce > 0.0f)
             d->prevIsGrounded = false;
         d->iframesTimer = d->iframesTime;
-        d->knockbackMode = true;
+        d->knockbackMode = Character_XData::KnockbackStage::KNOCKED_UP;
+        d->knockedbackTimer = d->knockedbackTime;
+        d->currentWaza = nullptr;  // @TODO: fix up exiting the current waza, animation-wise.  -Timo 2023/08/15
 
         d->triggerLaunchVelocity = false;
     }
@@ -1247,7 +1287,86 @@ void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Character_XD
         d->characterRenderObj->animator->setState(aw.animationState, d->attackWazaEditor.currentTick * physicsDeltaTime);
 
         d->attackWazaEditor.triggerRecalcWazaCache = false;
-        return;
+    }
+
+    if (d->attackWazaEditor.triggerRecalcHitscanLaunchVelocityCache)
+    {
+        Character_XData::AttackWaza& aw = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex];
+
+        d->attackWazaEditor.hitscanLaunchVelocitySimCache.clear();
+        vec3s currentPosition = GLM_VEC3_ZERO_INIT;
+        vec3  launchVelocityCopy;
+        glm_vec3_copy(aw.hitscanLaunchVelocity, launchVelocityCopy);
+        for (size_t i = 0; i < 100; i++)
+        {
+            vec3 deltaPosition;
+            glm_vec3_scale(launchVelocityCopy, physicsDeltaTime, deltaPosition);
+            glm_vec3_add(currentPosition.raw, deltaPosition, currentPosition.raw);
+            currentPosition.y = std::max(0.0f, currentPosition.y);
+            d->attackWazaEditor.hitscanLaunchVelocitySimCache.push_back(currentPosition);
+
+            launchVelocityCopy[1] -= 0.98f;  // @HARDCODE: Should match `constexpr float_t gravity`
+
+            vec3 xzVelocityDampen = {
+                -launchVelocityCopy[0],
+                0.0f,
+                -launchVelocityCopy[2],
+            };
+            if (glm_vec3_norm2(xzVelocityDampen) > d->midairXZDeceleration * d->midairXZDeceleration)
+                glm_vec3_scale_as(xzVelocityDampen, d->midairXZDeceleration, xzVelocityDampen);
+            glm_vec3_add(launchVelocityCopy, xzVelocityDampen, launchVelocityCopy);
+        }
+
+        d->attackWazaEditor.triggerRecalcHitscanLaunchVelocityCache = false;
+    }
+
+    if (d->attackWazaEditor.triggerRecalcSelfVelocitySimCache)
+    {
+        Character_XData::AttackWaza& aw = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex];
+
+        d->attackWazaEditor.selfVelocitySimCache.clear();
+        vec3s   currentPosition = GLM_VEC3_ZERO_INIT;
+        vec3    currentVelocity = GLM_VEC3_ZERO_INIT;
+        float_t currentVelocityDecay = 0.0f;
+        for (size_t i = 0; i < 100; i++)
+        {
+            for (auto& velocitySetting : aw.velocitySettings)
+                if (velocitySetting.executeAtTime == i)
+                {
+                    glm_vec3_copy(velocitySetting.velocity, currentVelocity);
+                    break;
+                }
+
+            vec3 deltaPosition;
+            glm_vec3_scale(currentVelocity, physicsDeltaTime, deltaPosition);
+            glm_vec3_add(currentPosition.raw, deltaPosition, currentPosition.raw);
+            currentPosition.y = std::max(0.0f, currentPosition.y);
+            d->attackWazaEditor.selfVelocitySimCache.push_back(currentPosition);
+
+            for (auto& velocityDecaySetting : aw.velocityDecaySettings)
+                if (velocityDecaySetting.executeAtTime == i)
+                {
+                    currentVelocityDecay = velocityDecaySetting.velocityDecay;
+                    break;
+                }
+
+            if (currentVelocityDecay != 0.0f)
+            {
+                vec3 flatCurrentVelocity = {
+                    currentVelocity[0],
+                    0.0f,
+                    currentVelocity[2],
+                };
+                float_t newNorm = std::max(0.0f, glm_vec3_norm(flatCurrentVelocity) - currentVelocityDecay);
+                glm_vec3_scale_as(flatCurrentVelocity, newNorm, flatCurrentVelocity);
+                currentVelocity[0] = flatCurrentVelocity[0];
+                currentVelocity[2] = flatCurrentVelocity[2];
+            }
+
+            currentVelocity[1] -= 0.98f;  // @HARDCODE: Should match `constexpr float_t gravity`
+        }
+
+        d->attackWazaEditor.triggerRecalcSelfVelocitySimCache = false;
     }
 
     if (d->attackWazaEditor.triggerBakeHitscans)
@@ -1287,7 +1406,6 @@ void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Character_XD
         }
 
         d->attackWazaEditor.triggerBakeHitscans = false;
-        return;
     }
 
     // Draw flow node lines
@@ -1299,19 +1417,34 @@ void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Character_XD
         glm_vec3_add(hnodes[i - 1].nodeEnd1, d->position, nodeEnd1_i1);
         glm_vec3_add(hnodes[i].nodeEnd2, d->position, nodeEnd2_i);
         glm_vec3_add(hnodes[i - 1].nodeEnd2, d->position, nodeEnd2_i1);
-        physengine::drawDebugVisLine(nodeEnd1_i1, nodeEnd1_i);
-        physengine::drawDebugVisLine(nodeEnd2_i1, nodeEnd2_i);
+        physengine::drawDebugVisLine(nodeEnd1_i1, nodeEnd1_i, physengine::DebugVisLineType::KIKKOARMY);
+        physengine::drawDebugVisLine(nodeEnd2_i1, nodeEnd2_i, physengine::DebugVisLineType::KIKKOARMY);
 
         vec3 nodeEndMid_i, nodeEndMid_i1;
         glm_vec3_lerp(nodeEnd1_i1, nodeEnd2_i1, 0.5f, nodeEndMid_i1);
         glm_vec3_lerp(nodeEnd1_i, nodeEnd2_i, 0.5f, nodeEndMid_i);
-        physengine::drawDebugVisLine(nodeEndMid_i1, nodeEndMid_i);
+        physengine::drawDebugVisLine(nodeEndMid_i1, nodeEndMid_i, physengine::DebugVisLineType::KIKKOARMY);
     }
 
     // Draw hitscan launch velocity vis line.
-    vec3 hsLaunchVeloWS;
-    glm_vec3_add(d->position, d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].hitscanLaunchVelocity, hsLaunchVeloWS);
-    physengine::drawDebugVisLine(d->position, hsLaunchVeloWS);
+    std::vector<vec3s>& hslvsc = d->attackWazaEditor.hitscanLaunchVelocitySimCache;
+    for (size_t i = 1; i < hslvsc.size(); i++)
+    {
+        vec3 hsLaunchVeloPositionWS_i, hsLaunchVeloPositionWS_i1;
+        glm_vec3_add(d->position, hslvsc[i].raw, hsLaunchVeloPositionWS_i);
+        glm_vec3_add(d->position, hslvsc[i - 1].raw, hsLaunchVeloPositionWS_i1);
+        physengine::drawDebugVisLine(hsLaunchVeloPositionWS_i1, hsLaunchVeloPositionWS_i, physengine::DebugVisLineType::VELOCITY);
+    }
+
+    // Draw self launch velocity vis line.
+    std::vector<vec3s>& svsc = d->attackWazaEditor.selfVelocitySimCache;
+    for (size_t i = 1; i < svsc.size(); i++)
+    {
+        vec3 selfVeloPositionWS_i, selfVeloPositionWS_i1;
+        glm_vec3_add(d->position, svsc[i].raw, selfVeloPositionWS_i);
+        glm_vec3_add(d->position, svsc[i - 1].raw, selfVeloPositionWS_i1);
+        physengine::drawDebugVisLine(selfVeloPositionWS_i1, selfVeloPositionWS_i, physengine::DebugVisLineType::AUDACITY);
+    }
 
     // Draw visual line showing where weapon hitscan will show up.
     vec3 bladeStart, bladeEnd;
@@ -1320,11 +1453,14 @@ void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Character_XD
     glm_vec3_scale(bladeEnd, d->modelSize, bladeEnd);
     glm_vec3_add(bladeStart, d->position, bladeStart);
     glm_vec3_add(bladeEnd, d->position, bladeEnd);
-    physengine::drawDebugVisLine(bladeStart, bladeEnd);
+    physengine::drawDebugVisLine(bladeStart, bladeEnd, physengine::DebugVisLineType::YUUJUUFUDAN);
 }
 
 void Character::physicsUpdate(const float_t& physicsDeltaTime)
 {
+    // @DEBUG: for level editor
+    _data->disableInput = (_data->camera->freeCamMode.enabled || ImGui::GetIO().WantTextInput);
+    
     if (_data->wazaHitTimescale < 1.0f)
         updateWazaTimescale(physicsDeltaTime, _data);
 
@@ -1405,14 +1541,16 @@ void Character::update(const float_t& deltaTime)
     if (_data->characterType == CHARACTER_TYPE_PLAYER)
     {
         // Poll keydown inputs.
-        _data->inputFlagJump |= !_data->disableInput && input::onKeyJumpPress;
-        _data->inputFlagAttack |= !_data->disableInput && input::onLMBPress;
-        _data->inputFlagRelease |= !_data->disableInput && input::onRMBPress;
+        if (_data->knockbackMode == Character_XData::KnockbackStage::NONE)
+        {
+            _data->inputFlagJump |= !_data->disableInput && input::onKeyJumpPress;
+            _data->inputFlagAttack |= !_data->disableInput && input::onLMBPress;
+            _data->inputFlagRelease |= !_data->disableInput && input::onRMBPress;
+        }
 
-        //
         // Change aura
-        //
-        if (input::keyAuraPressed)
+        if (_data->knockbackMode == Character_XData::KnockbackStage::NONE &&
+            input::keyAuraPressed)
         {
             if (_data->auraSfxChannelIds.empty())
             {
@@ -1672,7 +1810,12 @@ void defaultRenderImGui(Character_XData* d)
         ImGui::InputInt("health", &d->health);
         ImGui::DragFloat("iframesTime", &d->iframesTime);
         ImGui::DragFloat("iframesTimer", &d->iframesTimer);
-        ImGui::Checkbox("knockbackMode", &d->knockbackMode);
+        
+        int32_t knockbackModeI = (int32_t)d->knockbackMode;
+        ImGui::Text(("knockbackMode: " + std::to_string(knockbackModeI)).c_str());
+        ImGui::DragFloat("knockedbackTime", &d->knockedbackTime);
+        ImGui::DragFloat("knockedbackTimer", &d->knockedbackTimer);
+
         ImGui::DragFloat("attackTwitchAngleReturnSpeed", &d->attackTwitchAngleReturnSpeed);
         if (d->uiMaterializeItem)
         {
@@ -1767,6 +1910,8 @@ void defaultRenderImGui(Character_XData* d)
             {
                 d->attackWazaEditor.isEditingMode = true;
                 d->attackWazaEditor.triggerRecalcWazaCache = true;
+                d->attackWazaEditor.triggerRecalcHitscanLaunchVelocityCache = true;
+                d->attackWazaEditor.triggerRecalcSelfVelocitySimCache = true;
                 d->attackWazaEditor.preEditorAnimatorSpeedMultiplier = d->characterRenderObj->animator->getUpdateSpeedMultiplier();
                 d->characterRenderObj->animator->setUpdateSpeedMultiplier(0.0f);
 
@@ -1805,6 +1950,8 @@ void attackWazaEditorRenderImGui(Character_XData* d)
                 d->attackWazaEditor.wazaIndex = i;
                 d->attackWazaEditor.currentTick = 0;
                 d->attackWazaEditor.triggerRecalcWazaCache = true;
+                d->attackWazaEditor.triggerRecalcHitscanLaunchVelocityCache = true;
+                d->attackWazaEditor.triggerRecalcSelfVelocitySimCache = true;
                 d->attackWazaEditor.hitscanSetExportString = "";
                 ImGui::CloseCurrentPopup();
                 break;
@@ -1845,6 +1992,7 @@ void attackWazaEditorRenderImGui(Character_XData* d)
             std::to_string(lv[0]) + "," +
             std::to_string(lv[1]) + "," +
             std::to_string(lv[2]);
+        d->attackWazaEditor.triggerRecalcHitscanLaunchVelocityCache = true;
     }
 
     if (!d->attackWazaEditor.hitscanLaunchVelocityExportString.empty())

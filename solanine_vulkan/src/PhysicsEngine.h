@@ -81,7 +81,8 @@ namespace physengine
     bool lineSegmentCast(vec3& pt1, vec3& pt2, size_t collisionLayer, bool getAllGuids, std::vector<std::string>& outHitGuid);
 
 #ifdef _DEVELOP
-    void drawDebugVisLine(vec3 pt1, vec3 pt2);
+    enum DebugVisLineType { PURPTEAL, AUDACITY, SUCCESS, VELOCITY, KIKKOARMY, YUUJUUFUDAN };
+    void drawDebugVisLine(vec3 pt1, vec3 pt2, DebugVisLineType type = PURPTEAL);
 
     void renderImguiPerformanceStats();
     void renderDebugVisualization(VkCommandBuffer cmd);

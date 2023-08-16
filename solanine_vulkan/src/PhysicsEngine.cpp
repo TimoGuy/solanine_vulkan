@@ -81,6 +81,7 @@ namespace physengine
     struct DebugVisLine
     {
         vec3 pt1, pt2;
+        DebugVisLineType type;
     };
     std::vector<DebugVisLine> debugVisLines;
     std::mutex mutateDebugVisLines;
@@ -1028,11 +1029,12 @@ namespace physengine
     }
 
 #ifdef _DEVELOP
-    void drawDebugVisLine(vec3 pt1, vec3 pt2)
+    void drawDebugVisLine(vec3 pt1, vec3 pt2, DebugVisLineType type)
     {
         DebugVisLine dvl = {};
         glm_vec3_copy(pt1, dvl.pt1);
         glm_vec3_copy(pt2, dvl.pt2);
+        dvl.type = type;
 
         std::lock_guard<std::mutex> lg(mutateDebugVisLines);
         debugVisLines.push_back(dvl);
@@ -1096,8 +1098,38 @@ namespace physengine
         for (DebugVisLine& dvl : visLinesCopy)
         {
             GPUVisInstancePushConst pc = {};
-            glm_vec4_copy(vec4{ 0.75f, 0.0f, 1.0f, 1.0f }, pc.color1);
-            glm_vec4_copy(vec4{ 0.0f, 0.75f, 1.0f, 1.0f }, pc.color2);
+            switch (dvl.type)
+            {
+                case PURPTEAL:
+                    glm_vec4_copy(vec4{ 0.75f, 0.0f, 1.0f, 1.0f }, pc.color1);
+                    glm_vec4_copy(vec4{ 0.0f, 0.75f, 1.0f, 1.0f }, pc.color2);
+                    break;
+
+                case AUDACITY:
+                    glm_vec4_copy(vec4{ 0.0f, 0.1f, 0.5f, 1.0f }, pc.color1);
+                    glm_vec4_copy(vec4{ 0.0f, 0.25f, 1.0f, 1.0f }, pc.color2);
+                    break;
+
+                case SUCCESS:
+                    glm_vec4_copy(vec4{ 0.1f, 0.1f, 0.1f, 1.0f }, pc.color1);
+                    glm_vec4_copy(vec4{ 0.0f, 1.0f, 0.7f, 1.0f }, pc.color2);
+                    break;
+
+                case VELOCITY:
+                    glm_vec4_copy(vec4{ 0.75f, 0.2f, 0.1f, 1.0f }, pc.color1);
+                    glm_vec4_copy(vec4{ 1.0f, 0.0f, 0.0f, 1.0f }, pc.color2);
+                    break;
+
+                case KIKKOARMY:
+                    glm_vec4_copy(vec4{ 0.0f, 0.0f, 0.0f, 1.0f }, pc.color1);
+                    glm_vec4_copy(vec4{ 0.0f, 0.25f, 0.0f, 1.0f }, pc.color2);
+                    break;
+
+                case YUUJUUFUDAN:
+                    glm_vec4_copy(vec4{ 0.69f, 0.69f, 0.69f, 1.0f }, pc.color1);
+                    glm_vec4_copy(vec4{ 1.0f, 1.0f, 1.0f, 1.0f }, pc.color2);
+                    break;
+            }
             glm_vec4(dvl.pt1, 0.0f, pc.pt1);
             glm_vec4(dvl.pt2, 0.0f, pc.pt2);
             vkCmdPushConstants(cmd, debugVisPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUVisInstancePushConst), &pc);
