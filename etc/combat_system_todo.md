@@ -39,6 +39,12 @@
                         - Hmmm, well, it's probably a mix of both. Try fixing the positioning issue first and see if that resolves it!
         - [ ] Add a "suck in nearby entities @ point x,x,x" param to hwac file for WazaAir4th_VacuumCockBack.
 
+- [ ] Attempt to reduce memory usage on gpu by reducing overdraw
+    > Since both steam deck and laptop have a hard time running with the textures close up with memory switch hitches, it's likely shader memory usage.
+    - [ ] Test that the hypothesis is correct by setting all pbr materials to white without reading texture.
+    - [ ] Do a z prepass for opaque pbr materials
+    - [ ] Set opaque pbr material pipeline to zequal depth test. NOTE: this should be fine to be on the same renderpass and framebuffer.
+
 - [ ] Reiterate the "idea" of combat.
     > The biggest goal is feeling like what you're inputting as actions is actually what you feel like you're doing.
     - [ ] Divide up the individual wazas such that you can do all of them one at a time. (THOUGHT: I think that being able to do them all individually is more important than the chain FOR NOW... bc doing them all individually all feels like a different action that you have control over doing)
