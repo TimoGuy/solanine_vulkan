@@ -172,6 +172,7 @@ vec3 atmosphere(vec3 r, vec3 r0, vec2 isectPlanet, vec3 pSun, float iSun, float 
 
 void main()
 {
+
 	// @TODO: make these uniforms
 	vec3 mainCameraPosition = vec3(0.0, 0.0, 0.0);
 	mat3 nightSkyTransform = mat3(1.0);
