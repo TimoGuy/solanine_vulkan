@@ -43,8 +43,9 @@
     > Since both steam deck and laptop have a hard time running with the textures close up with memory switch hitches, it's likely shader memory usage.
     - [x] Test that the hypothesis is correct by setting all pbr materials to white without reading texture.
         - What I discovered was causing the high gpu usage was not the pbr materials (only really used 10ms or so), but rather that the skybox (raymarched atmospheric scattering) was eating up 100ms. Also, the shadow passes could be toned down, though they didn't eat up as much as I had thought. Changing the shadows from 4k to 1024 made the biggest difference.
-    - [ ] Change skybox to use the skybox texture instead of recomputing raymarched atmospheric scattering every frame.
+    - [x] Change skybox to use the skybox texture instead of recomputing raymarched atmospheric scattering every frame.
         - I think in the future reducing the size to 512x512 for realtime atmospheric scattering every frame would be good but not now.
+	- I think I discovered that most of the slowness was bc of the shadows, however, this fix did shave off around 10ms on the igpu.
     - [ ] Test hypothesis of overdraw from pbr materials causing slowdown. I'm not sure how to test other than just acually implementing the z prepass test.
     - [ ] Do a z prepass for opaque pbr materials
     - [ ] Set opaque pbr material pipeline to zequal depth test. NOTE: this should be fine to be on the same renderpass and framebuffer.
