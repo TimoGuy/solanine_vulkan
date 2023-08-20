@@ -46,9 +46,11 @@
     - [x] Change skybox to use the skybox texture instead of recomputing raymarched atmospheric scattering every frame.
         - I think in the future reducing the size to 512x512 for realtime atmospheric scattering every frame would be good but not now.
 	- I think I discovered that most of the slowness was bc of the shadows, however, this fix did shave off around 10ms on the igpu.
-    - [ ] Test hypothesis of overdraw from pbr materials causing slowdown. I'm not sure how to test other than just acually implementing the z prepass test.
-    - [ ] Do a z prepass for opaque pbr materials
-    - [ ] Set opaque pbr material pipeline to zequal depth test. NOTE: this should be fine to be on the same renderpass and framebuffer.
+    - [x] Test hypothesis of overdraw from pbr materials causing slowdown. I'm not sure how to test other than just acually implementing the z prepass test.
+    - [x] Do a z prepass for opaque pbr materials
+    - [x] Set opaque pbr material pipeline to zequal depth test. NOTE: this should be fine to be on the same renderpass and framebuffer.
+        > NOTE: this reduced frame times from 35-40ms to 23-27ms (igpu laptop). THOUGH: the zprepass needs to test for discard alpha pixels like pbr_khr.frag does.
+    - [ ] Add discard alpha pixels to frag z prepass.
 
 - [ ] Reiterate the "idea" of combat.
     > The biggest goal is feeling like what you're inputting as actions is actually what you feel like you're doing.

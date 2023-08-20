@@ -453,6 +453,16 @@ void VulkanEngine::render()
 		// Begin renderpass
 		vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
+		// Render z prepass //
+		Material& defaultZPrepassMaterial = *getMaterial("pbrZPrepassMaterial");
+		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipeline);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 3, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(), 0, nullptr);
+		renderRenderObjects(cmd, currentFrame);
+		//////////////////////
+
 		// Render skybox //
 		// @TODO: put this into its own function!
 		Material& skyboxMaterial = *getMaterial("skyboxMaterial");
@@ -2414,6 +2424,32 @@ void VulkanEngine::initPipelines()
 		_windowExtent,
 	};
 
+	// Mesh ZPrepass Pipeline
+	VkPipeline meshZPrepassPipeline;
+	VkPipelineLayout meshZPrepassPipelineLayout;
+	vkutil::pipelinebuilder::build(
+		{},
+		{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _skeletalAnimationSetLayout },
+		{
+			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/pbr_zprepass.vert.spv" },
+			//{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/pbr_khr_zprepass.frag.spv" },
+		},
+		modelVertexDescription.attributes,
+		modelVertexDescription.bindings,
+		vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+		screenspaceViewport,
+		screenspaceScissor,
+		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT),
+		{}, // @NOCHECKIN: no color attachment for the z prepass pipeline! Only writing to depth!  //{ vkinit::colorBlendAttachmentState() },
+		vkinit::multisamplingStateCreateInfo(),
+		vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS),
+		{},
+		_mainRenderPass,
+		meshZPrepassPipeline,
+		meshZPrepassPipelineLayout
+		);
+	attachPipelineToMaterial(meshZPrepassPipeline, meshZPrepassPipelineLayout, "pbrZPrepassMaterial");
+
 	// Mesh Pipeline
 	VkPipeline meshPipeline;
 	VkPipelineLayout meshPipelineLayout;
@@ -2432,7 +2468,7 @@ void VulkanEngine::initPipelines()
 		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT),
 		{ vkinit::colorBlendAttachmentState() },
 		vkinit::multisamplingStateCreateInfo(),
-		vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL),
+		vkinit::depthStencilCreateInfo(true, false, VK_COMPARE_OP_EQUAL),
 		{},
 		_mainRenderPass,
 		meshPipeline,
@@ -2458,7 +2494,7 @@ void VulkanEngine::initPipelines()
 		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_FRONT_BIT),    // Bc we're rendering a box inside-out
 		{ vkinit::colorBlendAttachmentState() },
 		vkinit::multisamplingStateCreateInfo(),
-		vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_NEVER),
+		vkinit::depthStencilCreateInfo(true, false, VK_COMPARE_OP_LESS_OR_EQUAL),  // @NOCHECKIN: see if you can do a depth test (since z prepass is happening first). If not, then leave it as false (note: don't write to depth tho!!!)  -Timo
 		{},
 		_mainRenderPass,
 		skyboxPipeline,
@@ -2624,6 +2660,7 @@ void VulkanEngine::initPipelines()
 
 	// Destroy pipelines when recreating swapchain
 	_swapchainDependentDeletionQueue.pushFunction([=]() {
+		vkDestroyPipeline(_device, meshZPrepassPipeline, nullptr);
 		vkDestroyPipeline(_device, meshPipeline, nullptr);
 		vkDestroyPipeline(_device, skyboxPipeline, nullptr);
 		vkDestroyPipeline(_device, pickingPipeline, nullptr);
