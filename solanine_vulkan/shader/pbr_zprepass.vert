@@ -8,6 +8,9 @@ layout (location = 4) in vec4 inJoint0;
 layout (location = 5) in vec4 inWeight0;
 layout (location = 6) in vec4 inColor0;
 
+layout (location = 0) out vec2 outUV0;
+layout (location = 1) out uint baseInstanceID;
+
 
 // Camera Props
 layout(set = 0, binding = 0) uniform CameraBuffer
@@ -55,7 +58,7 @@ struct SkeletonAnimationNode
 	float jointCount;
 };
 
-layout (std140, set = 3, binding = 0) readonly buffer SkeletonAnimationNodeCollection
+layout (std140, set = 4, binding = 0) readonly buffer SkeletonAnimationNodeCollection
 {
 	SkeletonAnimationNode nodes[];
 } nodeCollection;
@@ -87,6 +90,8 @@ void main()
 		locPos = modelMatrix * nodeMatrix * vec4(inPos, 1.0);
 	}
 
+	outUV0 = inUV0;
+	baseInstanceID = gl_BaseInstance;
 	vec3 worldPos = locPos.xyz / locPos.w;
 	gl_Position =  cameraData.projectionView * vec4(worldPos, 1.0);
 }

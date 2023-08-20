@@ -453,13 +453,16 @@ void VulkanEngine::render()
 		// Begin renderpass
 		vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-		// Render z prepass //
 		Material& defaultZPrepassMaterial = *getMaterial("pbrZPrepassMaterial");
+		Material& defaultMaterial = *getMaterial("pbrMaterial");    // @HACK: @TODO: currently, the way that the pipeline is getting used is by just hardcode using it in the draw commands for models... however, each model should get its pipeline set to this material instead (or whatever material its using... that's why we can't hardcode stuff!!!)   @TODO: create some kind of way to propagate the newly created pipeline to the primMat (calculated material in the gltf model) instead of using defaultMaterial directly.  -Timo
+
+		// Render z prepass //
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipeline);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 3, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(), 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 3, 1, &defaultMaterial.textureSet, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(), 0, nullptr);
 		renderRenderObjects(cmd, currentFrame);
 		//////////////////////
 
@@ -477,7 +480,6 @@ void VulkanEngine::render()
 
 		// Bind material
 		// @TODO: put this into its own function!
-		Material& defaultMaterial = *getMaterial("pbrMaterial");    // @HACK: @TODO: currently, the way that the pipeline is getting used is by just hardcode using it in the draw commands for models... however, each model should get its pipeline set to this material instead (or whatever material its using... that's why we can't hardcode stuff!!!)   @TODO: create some kind of way to propagate the newly created pipeline to the primMat (calculated material in the gltf model) instead of using defaultMaterial directly.  -Timo
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipeline);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
@@ -2429,10 +2431,10 @@ void VulkanEngine::initPipelines()
 	VkPipelineLayout meshZPrepassPipelineLayout;
 	vkutil::pipelinebuilder::build(
 		{},
-		{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _skeletalAnimationSetLayout },
+		{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _pbrTexturesSetLayout, _skeletalAnimationSetLayout },
 		{
 			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/pbr_zprepass.vert.spv" },
-			//{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/pbr_khr_zprepass.frag.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/pbr_khr_zprepass.frag.spv" },
 		},
 		modelVertexDescription.attributes,
 		modelVertexDescription.bindings,
@@ -2440,7 +2442,7 @@ void VulkanEngine::initPipelines()
 		screenspaceViewport,
 		screenspaceScissor,
 		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT),
-		{}, // @NOCHECKIN: no color attachment for the z prepass pipeline! Only writing to depth!  //{ vkinit::colorBlendAttachmentState() },
+		{}, // No color attachment for the z prepass pipeline; only writing to depth!
 		vkinit::multisamplingStateCreateInfo(),
 		vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS),
 		{},
@@ -2494,7 +2496,7 @@ void VulkanEngine::initPipelines()
 		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_FRONT_BIT),    // Bc we're rendering a box inside-out
 		{ vkinit::colorBlendAttachmentState() },
 		vkinit::multisamplingStateCreateInfo(),
-		vkinit::depthStencilCreateInfo(true, false, VK_COMPARE_OP_LESS_OR_EQUAL),  // @NOCHECKIN: see if you can do a depth test (since z prepass is happening first). If not, then leave it as false (note: don't write to depth tho!!!)  -Timo
+		vkinit::depthStencilCreateInfo(true, false, VK_COMPARE_OP_LESS_OR_EQUAL),  // @FIX: it's not a perfect depth test bc there is some overdraw with the skybox.
 		{},
 		_mainRenderPass,
 		skyboxPipeline,

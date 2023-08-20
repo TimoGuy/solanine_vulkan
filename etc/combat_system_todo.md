@@ -50,7 +50,7 @@
     - [x] Do a z prepass for opaque pbr materials
     - [x] Set opaque pbr material pipeline to zequal depth test. NOTE: this should be fine to be on the same renderpass and framebuffer.
         > NOTE: this reduced frame times from 35-40ms to 23-27ms (igpu laptop). THOUGH: the zprepass needs to test for discard alpha pixels like pbr_khr.frag does.
-    - [ ] Add discard alpha pixels to frag z prepass.
+    - [x] Add discard alpha pixels to frag z prepass.
 
 - [ ] Reiterate the "idea" of combat.
     > The biggest goal is feeling like what you're inputting as actions is actually what you feel like you're doing.

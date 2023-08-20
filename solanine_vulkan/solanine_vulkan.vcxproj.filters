@@ -91,6 +91,8 @@
     <None Include="shader\color_textbox_bg.frag" />
     <None Include="shader\physengineDebugVis.frag" />
     <None Include="shader\physengineDebugVis.vert" />
+    <None Include="shader\pbr_khr_zprepass.frag" />
+    <None Include="shader\pbr_zprepass.vert" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\imgui\imconfig.h">

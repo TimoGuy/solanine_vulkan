@@ -133,6 +133,8 @@ copy $(SolutionDir)libs\cglm\cglm.dll $(OutDirfullPath)cglm.dll</Command>
     <None Include="shader\irradiancecube.frag" />
     <None Include="shader\pbr.vert" />
     <None Include="shader\pbr_khr.frag" />
+    <None Include="shader\pbr_khr_zprepass.frag" />
+    <None Include="shader\pbr_zprepass.vert" />
     <None Include="shader\physengineDebugVis.frag" />
     <None Include="shader\physengineDebugVis.vert" />
     <None Include="shader\picking.frag" />
