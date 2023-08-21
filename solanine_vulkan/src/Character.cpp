@@ -19,6 +19,9 @@
 #include "ScannableItem.h"
 #include "imgui/imgui.h"
 #include "imgui/imgui_stdlib.h"
+#ifdef _DEVELOP
+#include "HotswapResources.h"
+#endif
 
 
 std::string CHARACTER_TYPE_PLAYER = "PLAYER";
@@ -986,13 +989,17 @@ Character::Character(EntityManager* em, RenderObjectManager* rom, Camera* camera
         glm_vec3_copy(vec3{ 25.0f, -135.0f, 0.0f }, _data->uiStamina->renderPosition);
         _data->uiStamina->scale = 25.0f;
 
-        initWazaSetFromFile(_data->defaultWazaSet, "res/waza/default_waza.hwac");
+        initWazaSetFromFile(_data->defaultWazaSet, "res/waza/default_waza.hwac");  // @TODO: clean up this hotswap reload callback formation syntax. It requires the path 3 times per resource... probs not a good idea. Also, the lambda content and the function that gets called originally is identical.
         initWazaSetFromFile(_data->airWazaSet, "res/waza/air_waza.hwac");
+        hotswapres::addReloadCallback("res/waza/default_waza.hwac", this, [&]() { initWazaSetFromFile(_data->defaultWazaSet, "res/waza/default_waza.hwac"); });
+        hotswapres::addReloadCallback("res/waza/air_waza.hwac", this, [&]() { initWazaSetFromFile(_data->airWazaSet, "res/waza/air_waza.hwac"); });
     }
 }
 
 Character::~Character()
 {
+    hotswapres::removeOwnedCallbacks(this);
+
     if (_data->notification.message != nullptr)
         textmesh::destroyAndUnregisterTextMesh(_data->notification.message);
     textmesh::destroyAndUnregisterTextMesh(_data->uiMaterializeItem);

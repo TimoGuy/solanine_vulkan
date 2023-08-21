@@ -30,7 +30,7 @@
                     - This is of course if the character has the ability to wake up. Parametrize this in the future (idea: depending on the amount of health the player has)
                 - When the character has woken up, the primary objective is to get to a stop. Grounded ukemi friction is used here.
             - [x] Allow picking bone where waza hitscans are baked from.
-            - [ ] Allow immediate usage of .hwac file by hotloading.
+            - [x] Allow immediate usage of .hwac file by hotloading.
             - [ ] MAYBE: have the character that's caught in the waza hitscan to have their position be set relative to the attacker's position and facingdirection.
                 - The problem I'm trying to solve is the issue with the twisting updraft waza not placing the attacked character in the right spot to do the next attack sometimes.
                     - It seems like it's influenced by just where in the attack did the attacked character make contact with the hitscan.
@@ -39,7 +39,7 @@
                         - Hmmm, well, it's probably a mix of both. Try fixing the positioning issue first and see if that resolves it!
         - [ ] Add a "suck in nearby entities @ point x,x,x" param to hwac file for WazaAir4th_VacuumCockBack.
 
-- [ ] Attempt to reduce memory usage on gpu by reducing overdraw
+- [x] Attempt to reduce memory usage on gpu by reducing overdraw
     > Since both steam deck and laptop have a hard time running with the textures close up with memory switch hitches, it's likely shader memory usage.
     - [x] Test that the hypothesis is correct by setting all pbr materials to white without reading texture.
         - What I discovered was causing the high gpu usage was not the pbr materials (only really used 10ms or so), but rather that the skybox (raymarched atmospheric scattering) was eating up 100ms. Also, the shadow passes could be toned down, though they didn't eat up as much as I had thought. Changing the shadows from 4k to 1024 made the biggest difference.
