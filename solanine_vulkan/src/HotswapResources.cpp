@@ -138,6 +138,13 @@ namespace hotswapres
                         {
                             for (auto& rc : resourceReloadCallbackMap[fname])
                                 rc.callback();
+
+                            size_t callbacks = resourceReloadCallbackMap[fname].size();
+                            if (callbacks > 0)
+                            {
+                                std::cout << "Executed " << callbacks << " callback function(s) for \"" << fname << "\" to reload." << std::endl;
+                                continue;
+                            }
                         }
                     }
 
