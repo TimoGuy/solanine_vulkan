@@ -60,8 +60,12 @@ layout (std140, set = 3, binding = 1) readonly buffer MaterialCollection
 
 
 void main() 
-{	
-	float alpha = texture(textureMaps[materialCollection.params[instancePtrBuffer.pointers[baseInstanceID].materialID].colorMapIndex], inUV0).a;
-	if (alpha < 0.5)
-		discard;
+{
+	uint materialID = instancePtrBuffer.pointers[baseInstanceID].materialID;
+	if (materialCollection.params[materialID].alphaMask == 1.0)
+	{
+		float alpha = texture(textureMaps[materialCollection.params[instancePtrBuffer.pointers[baseInstanceID].materialID].colorMapIndex], inUV0).a;
+		if (alpha < 0.5)
+			discard;
+	}
 }
