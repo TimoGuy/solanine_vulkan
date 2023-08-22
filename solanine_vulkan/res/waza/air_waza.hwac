@@ -182,6 +182,7 @@
   stamina_cost       0
   duration           33
   hold_midair
+  vacuum_suck_in     0.000000,0.200000,0.750000    3.000000    1.000000
   chain              WazaAir4th_SabakiSwing    6    33     press_x
   on_duration_passed NULL
 

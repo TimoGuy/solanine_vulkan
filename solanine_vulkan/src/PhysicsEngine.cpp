@@ -602,6 +602,16 @@ namespace physengine
         return false;
     }
 
+    size_t getNumCapsules()
+    {
+        return numCapsCreated;
+    }
+
+    CapsulePhysicsData* getCapsuleByIndex(size_t index)
+    {
+        return &capsulePool[capsuleIndices[index]];
+    }
+
     //
     // Tick
     //

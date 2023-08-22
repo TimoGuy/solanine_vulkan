@@ -95,6 +95,14 @@ struct Character_XData
         vec3 hitscanLaunchVelocity = GLM_VEC3_ZERO_INIT;  // Non-normalized vec3 of launch velocity of entity that gets hit by the waza.
         vec3 hitscanLaunchRelPosition = GLM_VEC3_ZERO_INIT;  // Position relative to origin of original character to set hit character on first hit.
 
+        struct VacuumSuckIn
+        {
+            bool enabled = false;
+            vec3 position = GLM_VEC3_ZERO_INIT;  // Position relative to character to suck in nearby entities.
+            float_t radius = 3.0f;
+            float_t strength = 1.0f;
+        } vacuumSuckIn;
+
         struct Chain
         {
             int16_t inputTimeWindowStart = 0;  // Press the attack button in this window to trigger the chain.
@@ -137,6 +145,7 @@ struct Character_XData
 
         std::string hitscanLaunchVelocityExportString = "";
         std::string hitscanSetExportString = "";
+        std::string vacuumSuckInExportString = "";
 
         bool triggerBakeHitscans = false;
         int16_t bakeHitscanStartTick = -1, bakeHitscanEndTick = -1;
@@ -459,6 +468,13 @@ void loadDataFromLine(Character_XData::AttackWaza& newWaza, const std::string& c
     else if (command == "hs_rel_position")
     {
         parseVec3CommaSeparated(params[0], newWaza.hitscanLaunchRelPosition);
+    }
+    else if (command == "vacuum_suck_in")
+    {
+        newWaza.vacuumSuckIn.enabled = true;
+        parseVec3CommaSeparated(params[0], newWaza.vacuumSuckIn.position);
+        newWaza.vacuumSuckIn.radius = std::stoi(params[1]);
+        newWaza.vacuumSuckIn.strength = std::stoi(params[2]);
     }
     else if (command == "chain")
     {
@@ -813,6 +829,38 @@ void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& phy
     {
         AudioEngine::getInstance().playSound("res/sfx/wip_EnemyHit_Critical.wav");
         d->wazaHitTimescale = d->wazaHitTimescaleOnHit;
+    }
+
+    // Check for entities to suck into vacuum.
+    if (d->currentWaza->vacuumSuckIn.enabled)
+    {
+        mat4 rotation;
+        glm_euler_zyx(vec3{ 0.0f, d->facingDirection, 0.0f }, rotation);
+        vec3 positionWS;
+        glm_mat4_mulv3(rotation, d->currentWaza->vacuumSuckIn.position, 0.0f, positionWS);
+        glm_vec3_add(positionWS, d->position, positionWS);
+
+        for (size_t i = 0; i < physengine::getNumCapsules(); i++)
+        {
+            physengine::CapsulePhysicsData* otherCPD = physengine::getCapsuleByIndex(i);
+            if (otherCPD->entityGuid == myGuid)
+                continue;  // Don't vacuum self!
+
+            vec3 deltaPosition;
+            glm_vec3_sub(positionWS, otherCPD->basePosition, deltaPosition);
+            float_t radius = d->currentWaza->vacuumSuckIn.radius;
+            if (glm_vec3_norm2(deltaPosition) < radius * radius)
+            {
+                DataSerializer ds;
+                ds.dumpString("msg_vacuum_suck_in");
+                ds.dumpVec3(deltaPosition);  // @TODO: write the message receiver (NOTE: this is deltaposition, not the origin.
+                ds.dumpFloat(d->currentWaza->vacuumSuckIn.radius);  // Unneeded maybe.
+                ds.dumpFloat(d->currentWaza->vacuumSuckIn.strength);
+
+                DataSerialized dsd = ds.getSerializedData();
+                em->sendMessage(myGuid, dsd);
+            }
+        }
     }
 
     // End waza if duration has passed.
@@ -1502,6 +1550,39 @@ void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Character_XD
         physengine::drawDebugVisLine(selfVeloPositionWS_i1, selfVeloPositionWS_i, (d->attackWazaEditor.hitscanLaunchAndSelfVelocityAwaseIndex == (int32_t)i ? physengine::DebugVisLineType::SUCCESS : physengine::DebugVisLineType::AUDACITY));
     }
 
+    // Draw suck in lines.
+    Character_XData::AttackWaza::VacuumSuckIn& vsi = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].vacuumSuckIn;
+    if (vsi.enabled)
+    {
+        static vec3s line1[] = {
+            vec3s{ -1.0f, 0.0f, 0.0f },
+            vec3s{  1.0f, 0.0f, 0.0f },
+        };
+        static vec3s line2[] = {
+            vec3s{ 0.0f, -1.0f, 0.0f },
+            vec3s{ 0.0f,  1.0f, 0.0f },
+        };
+        static vec3s line3[] = {
+            vec3s{ 0.0f, 0.0f, -1.0f },
+            vec3s{ 0.0f, 0.0f,  1.0f },
+        };
+        static vec3s* lineList[] = {
+            line1, line2, line3,
+        };
+        for (size_t i = 0; i < 3; i++)
+        {
+            vec3s* line = lineList[i];
+            vec3 pt1, pt2;
+            glm_vec3_scale(line[0].raw, vsi.radius, pt1);
+            glm_vec3_scale(line[1].raw, vsi.radius, pt2);
+            glm_vec3_add(pt1, vsi.position, pt1);
+            glm_vec3_add(pt2, vsi.position, pt2);
+            glm_vec3_add(pt1, d->position, pt1);
+            glm_vec3_add(pt2, d->position, pt2);
+            physengine::drawDebugVisLine(pt1, pt2, physengine::DebugVisLineType::SUCCESS);
+        }
+    }
+
     // Draw visual line showing where weapon hitscan will show up.
     vec3 bladeStart, bladeEnd;
     calculateBladeStartEndFromHandAttachment(d, bladeStart, bladeEnd);
@@ -2079,14 +2160,25 @@ void attackWazaEditorRenderImGui(Character_XData* d)
         );
     }
 
-    if (ImGui::DragFloat3("Launch Velocity", d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].hitscanLaunchVelocity))
+    if (ImGui::DragFloat3("Launch Velocity", d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].hitscanLaunchVelocity) ||
+        ImGui::DragFloat3("Launch Rel Position", d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].hitscanLaunchRelPosition))
     {
         updateHitscanLaunchVeloRelPosExportString(d);
     }
 
-    if (ImGui::DragFloat3("Launch Rel Position", d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].hitscanLaunchRelPosition))
+    if (ImGui::DragFloat3("Vacuum Suck In Position", d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].vacuumSuckIn.position) ||
+        ImGui::DragFloat("Vacuum Suck In Radius", &d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].vacuumSuckIn.radius) || 
+        ImGui::DragFloat("Vacuum Suck In Strength", &d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].vacuumSuckIn.strength))
     {
-        updateHitscanLaunchVeloRelPosExportString(d);
+        auto& vsi = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].vacuumSuckIn;
+        d->attackWazaEditor.vacuumSuckInExportString =
+            "vacuum_suck_in     " +
+            std::to_string(vsi.position[0]) + "," +
+            std::to_string(vsi.position[1]) + "," +
+            std::to_string(vsi.position[2]) + "    " +
+            std::to_string(vsi.radius) + "    " +
+            std::to_string(vsi.strength);
+        vsi.enabled = true;
     }
 
     if (!d->attackWazaEditor.hitscanLaunchVelocityExportString.empty())
@@ -2102,6 +2194,14 @@ void attackWazaEditorRenderImGui(Character_XData* d)
 
         ImGui::Text("Hitscan Export String");
         ImGui::InputTextMultiline("##Attack Waza Export string copying area", &d->attackWazaEditor.hitscanSetExportString, ImVec2(512, ImGui::GetTextLineHeight() * 16), ImGuiInputTextFlags_AllowTabInput);
+    }
+
+    if (!d->attackWazaEditor.vacuumSuckInExportString.empty())
+    {
+        ImGui::Separator();
+
+        ImGui::Text("Vacuum Suckin Export String");
+        ImGui::InputText("##Vacuum suckin export string copying area", &d->attackWazaEditor.vacuumSuckInExportString);
     }
 }
 
