@@ -28,6 +28,7 @@
   hitscan            -0.177291,0.607920,0.880886    -0.189415,0.478069,2.073778    7
   hitscan            -0.236201,0.454443,0.768883    -0.259243,0.158105,1.931490    8
   hs_launch_velocity 0.000000,0.000000,29.000000
+  hs_rel_position    0.000000,0.000000,1.000000
   chain              WazaAir1st_To2nd_LandAndStart    10     25    press_x
   on_duration_passed WazaAir1st_SwingDownGust_ReturnToKamae
 
@@ -102,6 +103,7 @@
   hitscan            0.782951,0.736952,-0.408686    0.768124,1.491708,-1.341490    11
   #hs_launch_velocity 0.000000,15.000000,22.500000   # This one works sometimes
   hs_launch_velocity 0.000000,18.000000,20.500000    # This one also works... sometimes
+  hs_rel_position    0.000000,1.000000,1.000000
   chain              WazaAir3rd_ShoulderLift    9    33    press_a
   on_duration_passed WazaAir3rd_ReadyForLiftoff_ReturnToKamae
 

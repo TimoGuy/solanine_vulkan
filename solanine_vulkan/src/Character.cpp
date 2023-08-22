@@ -93,6 +93,7 @@ struct Character_XData
         uint32_t numHitscanSamples = 5;
         std::vector<HitscanFlowNode> hitscanNodes;  // Each node uses the previous node's data to create the hitscans (the first node is ignored except for using it as prev node data).
         vec3 hitscanLaunchVelocity = GLM_VEC3_ZERO_INIT;  // Non-normalized vec3 of launch velocity of entity that gets hit by the waza.
+        vec3 hitscanLaunchRelPosition = GLM_VEC3_ZERO_INIT;  // Position relative to origin of original character to set hit character on first hit.
 
         struct Chain
         {
@@ -171,6 +172,7 @@ struct Character_XData
     vec3    prevGroundNormal = GLM_VEC3_ZERO_INIT;
 
     vec3    launchVelocity;
+    vec3    launchSetPosition;
     bool    triggerLaunchVelocity = false;
 
     bool    prevIsMoving = false;
@@ -453,6 +455,10 @@ void loadDataFromLine(Character_XData::AttackWaza& newWaza, const std::string& c
     else if (command == "hs_launch_velocity")
     {
         parseVec3CommaSeparated(params[0], newWaza.hitscanLaunchVelocity);
+    }
+    else if (command == "hs_rel_position")
+    {
+        parseVec3CommaSeparated(params[0], newWaza.hitscanLaunchRelPosition);
     }
     else if (command == "chain")
     {
@@ -770,6 +776,11 @@ void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& phy
                         vec3 facingWazaHSLaunchVelocity;
                         glm_mat4_mulv3(rotation, d->currentWaza->hitscanLaunchVelocity, 0.0f, facingWazaHSLaunchVelocity);
                         ds.dumpVec3(facingWazaHSLaunchVelocity);
+
+                        vec3 setPosition;
+                        glm_mat4_mulv3(rotation, d->currentWaza->hitscanLaunchRelPosition, 0.0f, setPosition);
+                        glm_vec3_add(d->position, setPosition, setPosition);
+                        ds.dumpVec3(setPosition);
 
                         DataSerialized dsd = ds.getSerializedData();
                         if (em->sendMessage(guid, dsd))
@@ -1248,6 +1259,7 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
 
     if (d->triggerLaunchVelocity)
     {
+        glm_vec3_copy(d->launchSetPosition, d->cpd->basePosition);  // @NOTE: this is a bit hacky, but the physics object `cpd` needs to get its position set.  -Timo 2023/08/21
         velocity[0] = d->launchVelocity[0] * physicsDeltaTime;
         velocity[2] = d->launchVelocity[2] * physicsDeltaTime;
         d->gravityForce = d->launchVelocity[1];
@@ -1307,7 +1319,8 @@ void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Character_XD
         Character_XData::AttackWaza& aw = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex];
 
         d->attackWazaEditor.hitscanLaunchVelocitySimCache.clear();
-        vec3s currentPosition = GLM_VEC3_ZERO_INIT;
+        vec3s currentPosition;
+        glm_vec3_copy(aw.hitscanLaunchRelPosition, currentPosition.raw);
         vec3  launchVelocityCopy;
         glm_vec3_copy(aw.hitscanLaunchVelocity, launchVelocityCopy);
 
@@ -1805,8 +1818,8 @@ bool Character::processMessage(DataSerialized& message)
             _data->health -= (int32_t)attackLvl;
 
             message.loadVec3(_data->launchVelocity);
-            if (glm_vec3_norm2(_data->launchVelocity) > 0.0f)
-                _data->triggerLaunchVelocity = true;  // @TODO: right here, do calculations for poise and stuff!
+            message.loadVec3(_data->launchSetPosition);
+            _data->triggerLaunchVelocity = true;  // @TODO: right here, do calculations for poise and stuff!
 
             if (_data->health <= 0)
                 processOutOfHealth(_em, this, _data);
@@ -1970,6 +1983,22 @@ void defaultRenderImGui(Character_XData* d)
     }
 }
 
+void updateHitscanLaunchVeloRelPosExportString(Character_XData* d)
+{
+    auto& lv = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].hitscanLaunchVelocity;
+    auto& rp = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].hitscanLaunchRelPosition;
+    d->attackWazaEditor.hitscanLaunchVelocityExportString =
+        "hs_launch_velocity " +
+        std::to_string(lv[0]) + "," +
+        std::to_string(lv[1]) + "," +
+        std::to_string(lv[2]) + "\n" +
+        "hs_rel_position    " +
+        std::to_string(rp[0]) + "," +
+        std::to_string(rp[1]) + "," +
+        std::to_string(rp[2]);
+    d->attackWazaEditor.triggerRecalcHitscanLaunchVelocityCache = true;
+}
+
 void attackWazaEditorRenderImGui(Character_XData* d)
 {
     if (ImGui::Button("Exit Waza Editor"))
@@ -2052,20 +2081,19 @@ void attackWazaEditorRenderImGui(Character_XData* d)
 
     if (ImGui::DragFloat3("Launch Velocity", d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].hitscanLaunchVelocity))
     {
-        auto& lv = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].hitscanLaunchVelocity;
-        d->attackWazaEditor.hitscanLaunchVelocityExportString =
-            "hs_launch_velocity " +
-            std::to_string(lv[0]) + "," +
-            std::to_string(lv[1]) + "," +
-            std::to_string(lv[2]);
-        d->attackWazaEditor.triggerRecalcHitscanLaunchVelocityCache = true;
+        updateHitscanLaunchVeloRelPosExportString(d);
+    }
+
+    if (ImGui::DragFloat3("Launch Rel Position", d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].hitscanLaunchRelPosition))
+    {
+        updateHitscanLaunchVeloRelPosExportString(d);
     }
 
     if (!d->attackWazaEditor.hitscanLaunchVelocityExportString.empty())
     {
         ImGui::Separator();
         ImGui::Text("Launch Velocity Export String");
-        ImGui::InputTextMultiline("##Attack Waza Launch Velocity Export string copying area", &d->attackWazaEditor.hitscanLaunchVelocityExportString, ImVec2(512, ImGui::GetTextLineHeight()));
+        ImGui::InputTextMultiline("##Attack Waza Launch Velocity Export string copying area", &d->attackWazaEditor.hitscanLaunchVelocityExportString, ImVec2(512, ImGui::GetTextLineHeight() * 5));
     }
 
     if (!d->attackWazaEditor.hitscanSetExportString.empty())
