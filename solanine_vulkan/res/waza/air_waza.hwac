@@ -182,7 +182,7 @@
   stamina_cost       0
   duration           33
   hold_midair
-  vacuum_suck_in     0.000000,0.200000,0.750000    3.000000    1.000000
+  vacuum_suck_in     0.000000,0.200000,0.750000    6.000000    4.000000
   chain              WazaAir4th_SabakiSwing    6    33     press_x
   on_duration_passed NULL
 
@@ -200,6 +200,8 @@
   hitscan            0.006142,1.129247,0.728543    0.076479,0.859397,1.895691    6
   hitscan            0.010630,0.936213,0.710592    0.095992,0.241766,1.685507    7
   hitscan            0.006732,0.830382,0.698525    0.050627,-0.040518,1.522907    8
+  hs_launch_velocity 0.000000,-26.000000,6.000000
+  hs_rel_position    0.000000,-0.500000,1.000000
   chain              WazaAir4th_To5th_ReadyAirDrill    9    32    press_a
   on_duration_passed NULL
 

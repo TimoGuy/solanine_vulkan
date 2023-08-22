@@ -38,7 +38,8 @@
                     - I think, it's a timing issue! Different times in the animation/waza that the attacked character gets attacked will change where both characters will land.
                         - Hmmm, well, it's probably a mix of both. Try fixing the positioning issue first and see if that resolves it!
 			- REPLY: the position getting set upon getting hit tightens it up so much that the animation where the character gets hit doesn't seem to make any difference. The problem is solved!(TM)
-        - [ ] Add a "suck in nearby entities @ point x,x,x" param to hwac file for WazaAir4th_VacuumCockBack.
+        - [x] Add a "suck in nearby entities @ point x,x,x" param to hwac file for WazaAir4th_VacuumCockBack.
+        - [ ] Add "push entities in this cylinder this direction" param to hwac file for spinny spinny move.
 
 - [x] Attempt to reduce memory usage on gpu by reducing overdraw
     > Since both steam deck and laptop have a hard time running with the textures close up with memory switch hitches, it's likely shader memory usage.

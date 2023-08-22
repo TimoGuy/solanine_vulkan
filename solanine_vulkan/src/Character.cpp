@@ -25,6 +25,7 @@
 
 
 std::string CHARACTER_TYPE_PLAYER = "PLAYER";
+std::string CHARACTER_TYPE_NPC = "NPC";
 
 struct Character_XData
 {
@@ -183,6 +184,10 @@ struct Character_XData
     vec3    launchVelocity;
     vec3    launchSetPosition;
     bool    triggerLaunchVelocity = false;
+
+    vec3    suckInVelocity;
+    vec3    suckInTargetPosition;
+    bool    triggerSuckIn = false;
 
     bool    prevIsMoving = false;
     bool    prevPrevIsGrounded = false;
@@ -853,12 +858,28 @@ void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& phy
             {
                 DataSerializer ds;
                 ds.dumpString("msg_vacuum_suck_in");
-                ds.dumpVec3(deltaPosition);  // @TODO: write the message receiver (NOTE: this is deltaposition, not the origin.
+                ds.dumpVec3(positionWS);
+                ds.dumpVec3(deltaPosition);
                 ds.dumpFloat(d->currentWaza->vacuumSuckIn.radius);  // Unneeded maybe.
                 ds.dumpFloat(d->currentWaza->vacuumSuckIn.strength);
 
                 DataSerialized dsd = ds.getSerializedData();
-                em->sendMessage(myGuid, dsd);
+                em->sendMessage(otherCPD->entityGuid, dsd);
+            }
+
+            // @DEBUG: visualization that shows how far away vacuum radius is.
+            vec3 midpt;
+            float_t t = radius / glm_vec3_norm(deltaPosition);
+            glm_vec3_lerp(positionWS, otherCPD->basePosition, t, midpt);
+            if (glm_vec3_norm2(deltaPosition) < radius * radius)
+            {
+                physengine::drawDebugVisLine(positionWS, otherCPD->basePosition, physengine::DebugVisLineType::SUCCESS);
+                physengine::drawDebugVisLine(otherCPD->basePosition, midpt, physengine::DebugVisLineType::KIKKOARMY);
+            }
+            else
+            {
+                physengine::drawDebugVisLine(positionWS, midpt, physengine::DebugVisLineType::AUDACITY);
+                physengine::drawDebugVisLine(midpt, otherCPD->basePosition, physengine::DebugVisLineType::VELOCITY);
             }
         }
     }
@@ -1331,6 +1352,20 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
     }
 
     velocity[1] += d->gravityForce * physicsDeltaTime;
+
+    if (d->triggerSuckIn)
+    {
+        glm_vec3_scale(d->suckInVelocity, physicsDeltaTime, velocity);  // Completely overwrite velocity.
+
+        vec3 deltaPosition;  // Check if going to move past target position. If so, cut the velocity short.
+        glm_vec3_sub(d->suckInTargetPosition, d->cpd->basePosition, deltaPosition);
+        if (glm_vec3_norm2(deltaPosition) < glm_vec3_norm2(velocity))
+            glm_vec3_copy(deltaPosition, velocity);
+
+        d->gravityForce = velocity[1];
+        d->triggerSuckIn = false;
+    }
+
     glm_vec3_copy(d->cpd->basePosition, d->prevCPDBasePosition);
     physengine::moveCapsuleAccountingForCollision(*d->cpd, velocity, d->prevIsGrounded, d->prevGroundNormal);
     glm_vec3_copy(d->cpd->basePosition, d->position);
@@ -1907,6 +1942,31 @@ bool Character::processMessage(DataSerialized& message)
 
             return true;
         }
+    }
+    else if (messageType == "msg_vacuum_suck_in")
+    {
+        message.loadVec3(_data->suckInTargetPosition);
+        vec3 deltaPosition;
+        message.loadVec3(deltaPosition);
+        float_t radius;
+        message.loadFloat(radius);
+        float_t strength;
+        message.loadFloat(strength);
+
+        float_t deltaPosDist = glm_vec3_norm(deltaPosition);
+        float_t oneMinusPropo = 1.0f - (deltaPosDist / radius);  // Strength attenuation saturated to [0-1].
+        float_t strengthCooked = strength * oneMinusPropo;
+        glm_vec3_scale_as(deltaPosition, strengthCooked * radius, deltaPosition);
+
+        glm_vec3_copy(deltaPosition, _data->suckInVelocity);
+        // @DEBUG: vis
+        vec3 nxt;
+        glm_vec3_add(_data->position, deltaPosition, nxt);
+        physengine::drawDebugVisLine(_data->position, nxt);
+
+        std::cout << "\tSuccessful suck in!" << std::endl;
+        _data->triggerSuckIn = true;
+        return true;
     }
 
     return false;
