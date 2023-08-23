@@ -104,6 +104,16 @@ struct Character_XData
             float_t strength = 1.0f;
         } vacuumSuckIn;
 
+        struct ForceZone
+        {
+            bool enabled = false;
+            vec3 origin = GLM_VEC3_ZERO_INIT;  // Relative position from character origin.
+            vec3 bounds = { 1.0f, 1.0f, 1.0f };  // @NOTE: this is an aabb.
+            vec3 forceVelocity = { 1.0f, 0.0f, 0.0f };
+            int16_t timeFrom = -1;
+            int16_t timeTo = -1;
+        } forceZone;
+
         struct Chain
         {
             int16_t inputTimeWindowStart = 0;  // Press the attack button in this window to trigger the chain.
@@ -147,6 +157,7 @@ struct Character_XData
         std::string hitscanLaunchVelocityExportString = "";
         std::string hitscanSetExportString = "";
         std::string vacuumSuckInExportString = "";
+        std::string forceZoneExportString = "";
 
         bool triggerBakeHitscans = false;
         int16_t bakeHitscanStartTick = -1, bakeHitscanEndTick = -1;
@@ -188,6 +199,9 @@ struct Character_XData
     vec3    suckInVelocity;
     vec3    suckInTargetPosition;
     bool    triggerSuckIn = false;
+
+    vec3    forceZoneVelocity;
+    bool    triggerApplyForceZone = false;
 
     bool    prevIsMoving = false;
     bool    prevPrevIsGrounded = false;
@@ -480,6 +494,15 @@ void loadDataFromLine(Character_XData::AttackWaza& newWaza, const std::string& c
         parseVec3CommaSeparated(params[0], newWaza.vacuumSuckIn.position);
         newWaza.vacuumSuckIn.radius = std::stoi(params[1]);
         newWaza.vacuumSuckIn.strength = std::stoi(params[2]);
+    }
+    else if (command == "force_zone")
+    {
+        newWaza.forceZone.enabled = true;
+        parseVec3CommaSeparated(params[0], newWaza.forceZone.origin);
+        parseVec3CommaSeparated(params[1], newWaza.forceZone.bounds);
+        parseVec3CommaSeparated(params[2], newWaza.forceZone.forceVelocity);
+        newWaza.forceZone.timeFrom = std::stoi(params[3]);
+        newWaza.forceZone.timeTo = std::stoi(params[4]);
     }
     else if (command == "chain")
     {
@@ -825,7 +848,7 @@ void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& phy
             glm_vec3_copy(nodeEnd1WS, d->prevWazaHitscanNodeEnd1);
             glm_vec3_copy(nodeEnd2WS, d->prevWazaHitscanNodeEnd2);
 
-            break;  // @NOTE: there should only be one waza hitscan per step, so since this one got processed, then no need to keep searching for another.  -Timo 2023/08/10
+            break;  // @NOTE: there should only be one waza hitscan at a certain time, so since this one got processed, then no need to keep searching for another.  -Timo 2023/08/10
         }
     }
 
@@ -836,52 +859,101 @@ void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& phy
         d->wazaHitTimescale = d->wazaHitTimescaleOnHit;
     }
 
-    // Check for entities to suck into vacuum.
-    if (d->currentWaza->vacuumSuckIn.enabled)
+    // Check for entities to suck into vacuum OR force in a force zone.
+    bool forceZoneEnabled = (d->currentWaza->forceZone.enabled && d->wazaTimer >= d->currentWaza->forceZone.timeFrom && d->wazaTimer <= d->currentWaza->forceZone.timeTo);
+    if (d->currentWaza->vacuumSuckIn.enabled ||
+        forceZoneEnabled)
     {
         mat4 rotation;
         glm_euler_zyx(vec3{ 0.0f, d->facingDirection, 0.0f }, rotation);
-        vec3 positionWS;
-        glm_mat4_mulv3(rotation, d->currentWaza->vacuumSuckIn.position, 0.0f, positionWS);
-        glm_vec3_add(positionWS, d->position, positionWS);
+        vec3 suckPositionWS, forceZoneOriginWS;
+        if (d->currentWaza->vacuumSuckIn.enabled)
+        {
+            glm_mat4_mulv3(rotation, d->currentWaza->vacuumSuckIn.position, 0.0f, suckPositionWS);
+            glm_vec3_add(suckPositionWS, d->position, suckPositionWS);
+        }
+        if (forceZoneEnabled)
+        {
+            glm_mat4_mulv3(rotation, d->currentWaza->forceZone.origin, 0.0f, forceZoneOriginWS);
+            glm_vec3_add(forceZoneOriginWS, d->position, forceZoneOriginWS);
+        }
 
         for (size_t i = 0; i < physengine::getNumCapsules(); i++)
         {
             physengine::CapsulePhysicsData* otherCPD = physengine::getCapsuleByIndex(i);
             if (otherCPD->entityGuid == myGuid)
-                continue;  // Don't vacuum self!
+                continue;  // Don't vacuum/force self!
 
-            vec3 deltaPosition;
-            glm_vec3_sub(positionWS, otherCPD->basePosition, deltaPosition);
-            float_t radius = d->currentWaza->vacuumSuckIn.radius;
-            if (glm_vec3_norm2(deltaPosition) < radius * radius)
+            // Vacuum suck in.
+            if (d->currentWaza->vacuumSuckIn.enabled)
             {
-                DataSerializer ds;
-                ds.dumpString("msg_vacuum_suck_in");
-                ds.dumpVec3(positionWS);
-                ds.dumpVec3(deltaPosition);
-                ds.dumpFloat(d->currentWaza->vacuumSuckIn.radius);  // Unneeded maybe.
-                ds.dumpFloat(d->currentWaza->vacuumSuckIn.strength);
+                vec3 deltaPosition;
+                glm_vec3_sub(suckPositionWS, otherCPD->basePosition, deltaPosition);
+                float_t radius = d->currentWaza->vacuumSuckIn.radius;
+                if (glm_vec3_norm2(deltaPosition) < radius * radius)
+                {
+                    DataSerializer ds;
+                    ds.dumpString("msg_vacuum_suck_in");
+                    ds.dumpVec3(suckPositionWS);
+                    ds.dumpVec3(deltaPosition);
+                    ds.dumpFloat(d->currentWaza->vacuumSuckIn.radius);  // Unneeded maybe.
+                    ds.dumpFloat(d->currentWaza->vacuumSuckIn.strength);
 
-                DataSerialized dsd = ds.getSerializedData();
-                em->sendMessage(otherCPD->entityGuid, dsd);
+                    DataSerialized dsd = ds.getSerializedData();
+                    em->sendMessage(otherCPD->entityGuid, dsd);
+                }
+
+                // @DEBUG: visualization that shows how far away vacuum radius is.
+                vec3 midpt;
+                float_t t = radius / glm_vec3_norm(deltaPosition);
+                glm_vec3_lerp(suckPositionWS, otherCPD->basePosition, t, midpt);
+                if (glm_vec3_norm2(deltaPosition) < radius * radius)
+                {
+                    physengine::drawDebugVisLine(suckPositionWS, otherCPD->basePosition, physengine::DebugVisLineType::SUCCESS);
+                    physengine::drawDebugVisLine(otherCPD->basePosition, midpt, physengine::DebugVisLineType::KIKKOARMY);
+                }
+                else
+                {
+                    physengine::drawDebugVisLine(suckPositionWS, midpt, physengine::DebugVisLineType::AUDACITY);
+                    physengine::drawDebugVisLine(midpt, otherCPD->basePosition, physengine::DebugVisLineType::VELOCITY);
+                }
             }
 
-            // @DEBUG: visualization that shows how far away vacuum radius is.
-            vec3 midpt;
-            float_t t = radius / glm_vec3_norm(deltaPosition);
-            glm_vec3_lerp(positionWS, otherCPD->basePosition, t, midpt);
-            if (glm_vec3_norm2(deltaPosition) < radius * radius)
+            // Force zone.
+            if (forceZoneEnabled)
             {
-                physengine::drawDebugVisLine(positionWS, otherCPD->basePosition, physengine::DebugVisLineType::SUCCESS);
-                physengine::drawDebugVisLine(otherCPD->basePosition, midpt, physengine::DebugVisLineType::KIKKOARMY);
-            }
-            else
-            {
-                physengine::drawDebugVisLine(positionWS, midpt, physengine::DebugVisLineType::AUDACITY);
-                physengine::drawDebugVisLine(midpt, otherCPD->basePosition, physengine::DebugVisLineType::VELOCITY);
+                vec3 deltaPosition;
+                glm_vec3_sub(forceZoneOriginWS, otherCPD->basePosition, deltaPosition);
+                vec3 deltaPositionAbs;
+                glm_vec3_abs(deltaPosition, deltaPositionAbs);
+                vec3 boundsComparison;
+                glm_vec3_sub(d->currentWaza->forceZone.bounds, deltaPositionAbs, boundsComparison);
+                if (deltaPositionAbs[0] > d->currentWaza->forceZone.bounds[0] &&
+                    deltaPositionAbs[1] > d->currentWaza->forceZone.bounds[1] &&
+                    deltaPositionAbs[2] > d->currentWaza->forceZone.bounds[2])
+                {
+                    // Within force zone.
+                    DataSerializer ds;
+                    ds.dumpString("msg_apply_force_zone");
+                    ds.dumpVec3(d->currentWaza->forceZone.forceVelocity);
+
+                    DataSerialized dsd = ds.getSerializedData();
+                    em->sendMessage(otherCPD->entityGuid, dsd);
+                }
             }
         }
+    }
+
+    // Check for entities to force in force zone.
+    if ()
+    {
+        mat4 rotation;
+        glm_euler_zyx(vec3{ 0.0f, d->facingDirection, 0.0f }, rotation);
+        vec3 positionWS;
+        glm_mat4_mulv3(rotation, d->currentWaza->forceZone.origin, 0.0f, positionWS);
+        glm_vec3_add(positionWS, d->position, positionWS);
+
+
     }
 
     // End waza if duration has passed.
@@ -1342,6 +1414,18 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
         d->triggerLaunchVelocity = false;
     }
 
+    if (d->triggerApplyForceZone)
+    {
+        velocity[0] = d->launchVelocity[0] * physicsDeltaTime;  // @COPYPASTA
+        velocity[2] = d->launchVelocity[2] * physicsDeltaTime;
+        d->gravityForce = d->launchVelocity[1];
+        if (d->gravityForce > 0.0f)
+            d->prevIsGrounded = false;
+        d->currentWaza = nullptr;  // @TODO: fix up exiting the current waza, animation-wise.  -Timo 2023/08/23
+
+        d->triggerApplyForceZone = false;
+    }
+
     if (d->prevIsGrounded && d->prevGroundNormal[1] < 0.999f)
     {
         versor groundNormalRotation;
@@ -1616,6 +1700,53 @@ void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Character_XD
             glm_vec3_add(pt2, d->position, pt2);
             physengine::drawDebugVisLine(pt1, pt2, physengine::DebugVisLineType::SUCCESS);
         }
+    }
+
+    // Draw force zone.
+    Character_XData::AttackWaza::ForceZone& fz = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].forceZone;
+    if (fz.enabled)
+    {
+        // Force zone aabb
+        static vec3s points[] = {
+            vec3s{ -1.0f,  1.0f,  1.0f },
+            vec3s{  1.0f,  1.0f,  1.0f },
+            vec3s{  1.0f,  1.0f, -1.0f },
+            vec3s{ -1.0f,  1.0f, -1.0f },
+            vec3s{ -1.0f, -1.0f,  1.0f },
+            vec3s{  1.0f, -1.0f,  1.0f },
+            vec3s{  1.0f, -1.0f, -1.0f },
+            vec3s{ -1.0f, -1.0f, -1.0f },
+        };
+        static size_t indices[] = {
+            0, 1,
+            1, 2,
+            2, 3,
+            3, 0,
+            4, 5,
+            5, 6,
+            6, 7,
+            7, 4,
+            0, 4,
+            1, 5,
+            2, 6,
+            3, 7,
+        };
+        for (size_t i = 0; i < 12; i++)
+        {
+            vec3 pt1, pt2;
+            glm_vec3_mul(points[indices[i * 2 + 0]].raw, fz.bounds, pt1);
+            glm_vec3_mul(points[indices[i * 2 + 1]].raw, fz.bounds, pt2);
+            glm_vec3_add(pt1, fz.origin, pt1);
+            glm_vec3_add(pt2, fz.origin, pt2);
+            glm_vec3_add(pt1, d->position, pt1);
+            glm_vec3_add(pt2, d->position, pt2);
+            physengine::drawDebugVisLine(pt1, pt2, physengine::DebugVisLineType::VELOCITY);
+        }
+
+        // Velocity line
+        vec3 veloTo;
+        glm_vec3_add(d->position, fz.forceVelocity, veloTo);
+        physengine::drawDebugVisLine(d->position, veloTo, physengine::DebugVisLineType::PURPTEAL);
     }
 
     // Draw visual line showing where weapon hitscan will show up.
@@ -1964,9 +2095,13 @@ bool Character::processMessage(DataSerialized& message)
         glm_vec3_add(_data->position, deltaPosition, nxt);
         physengine::drawDebugVisLine(_data->position, nxt);
 
-        std::cout << "\tSuccessful suck in!" << std::endl;
         _data->triggerSuckIn = true;
         return true;
+    }
+    else if (messageType == "msg_apply_force_zone")
+    {
+        message.loadVec3(_data->forceZoneVelocity);
+        _data->triggerApplyForceZone = true;
     }
 
     return false;
@@ -2226,19 +2361,58 @@ void attackWazaEditorRenderImGui(Character_XData* d)
         updateHitscanLaunchVeloRelPosExportString(d);
     }
 
-    if (ImGui::DragFloat3("Vacuum Suck In Position", d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].vacuumSuckIn.position) ||
-        ImGui::DragFloat("Vacuum Suck In Radius", &d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].vacuumSuckIn.radius) || 
-        ImGui::DragFloat("Vacuum Suck In Strength", &d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].vacuumSuckIn.strength))
+    auto& vsi = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].vacuumSuckIn;
+    ImGui::Separator();
+    ImGui::Checkbox("Enable Vacuum Suck In", &vsi.enabled);
+    if (vsi.enabled)
     {
-        auto& vsi = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].vacuumSuckIn;
-        d->attackWazaEditor.vacuumSuckInExportString =
-            "vacuum_suck_in     " +
-            std::to_string(vsi.position[0]) + "," +
-            std::to_string(vsi.position[1]) + "," +
-            std::to_string(vsi.position[2]) + "    " +
-            std::to_string(vsi.radius) + "    " +
-            std::to_string(vsi.strength);
-        vsi.enabled = true;
+        if (ImGui::DragFloat3("Vacuum Suck In Position", vsi.position) ||
+            ImGui::DragFloat("Vacuum Suck In Radius", &vsi.radius) ||
+            ImGui::DragFloat("Vacuum Suck In Strength", &vsi.strength))
+        {
+            d->attackWazaEditor.vacuumSuckInExportString =
+                "vacuum_suck_in     " +
+                std::to_string(vsi.position[0]) + "," +
+                std::to_string(vsi.position[1]) + "," +
+                std::to_string(vsi.position[2]) + "    " +
+                std::to_string(vsi.radius) + "    " +
+                std::to_string(vsi.strength);
+            vsi.enabled = true;
+        }
+    }
+
+    auto& fz = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].forceZone;
+    ImGui::Separator();
+    bool updateFZ = false;
+    updateFZ |= ImGui::Checkbox("Enable Force Zone", &fz.enabled);
+    if (fz.enabled)
+    {
+        updateFZ |= ImGui::DragFloat3("Force Zone origin", fz.origin);
+        updateFZ |= ImGui::DragFloat3("Force Zone bounds", fz.bounds);
+        updateFZ |= ImGui::DragFloat3("Force Zone forceVelocity", fz.forceVelocity);
+        int32_t timeFrom = fz.timeFrom;
+        int32_t timeTo = fz.timeTo;
+        updateFZ |= ImGui::DragInt("Force Zone time from", &timeFrom);
+        updateFZ |= ImGui::DragInt("Force Zone time to", &timeTo);
+        if (updateFZ)
+        {
+            fz.timeFrom = timeFrom;
+            fz.timeTo = timeTo;
+
+            d->attackWazaEditor.forceZoneExportString =
+                "force_zone         " +
+                std::to_string(fz.origin[0]) + "," +
+                std::to_string(fz.origin[1]) + "," +
+                std::to_string(fz.origin[2]) + "    " +
+                std::to_string(fz.bounds[0]) + "," +
+                std::to_string(fz.bounds[1]) + "," +
+                std::to_string(fz.bounds[2]) + "    " +
+                std::to_string(fz.forceVelocity[0]) + "," +
+                std::to_string(fz.forceVelocity[1]) + "," +
+                std::to_string(fz.forceVelocity[2]) + "    " +
+                std::to_string(fz.timeFrom) + "    " +
+                std::to_string(fz.timeTo);
+        }
     }
 
     if (!d->attackWazaEditor.hitscanLaunchVelocityExportString.empty())
@@ -2261,7 +2435,7 @@ void attackWazaEditorRenderImGui(Character_XData* d)
         ImGui::Separator();
 
         ImGui::Text("Vacuum Suckin Export String");
-        ImGui::InputText("##Vacuum suckin export string copying area", &d->attackWazaEditor.vacuumSuckInExportString);
+        ImGui::InputTextMultiline("##Vacuum suckin export string copying area", &d->attackWazaEditor.vacuumSuckInExportString, ImVec2(512, ImGui::GetTextLineHeight() * 5));
     }
 }
 
