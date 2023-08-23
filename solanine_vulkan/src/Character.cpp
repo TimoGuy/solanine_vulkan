@@ -944,18 +944,6 @@ void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& phy
         }
     }
 
-    // Check for entities to force in force zone.
-    if ()
-    {
-        mat4 rotation;
-        glm_euler_zyx(vec3{ 0.0f, d->facingDirection, 0.0f }, rotation);
-        vec3 positionWS;
-        glm_mat4_mulv3(rotation, d->currentWaza->forceZone.origin, 0.0f, positionWS);
-        glm_vec3_add(positionWS, d->position, positionWS);
-
-
-    }
-
     // End waza if duration has passed.
     if (++d->wazaTimer > d->currentWaza->duration)
     {
