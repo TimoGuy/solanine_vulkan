@@ -861,8 +861,10 @@ void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& phy
 
     // Check for entities to suck into vacuum OR force in a force zone.
     bool forceZoneEnabled = (d->currentWaza->forceZone.enabled && d->wazaTimer >= d->currentWaza->forceZone.timeFrom && d->wazaTimer <= d->currentWaza->forceZone.timeTo);
-    if (d->currentWaza->vacuumSuckIn.enabled ||
-        forceZoneEnabled)
+    if (forceZoneEnabled)
+        std::cout << "Trying force zone" << std::endl;  // @DEBUG
+
+    if (d->currentWaza->vacuumSuckIn.enabled || forceZoneEnabled)
     {
         mat4 rotation;
         glm_euler_zyx(vec3{ 0.0f, d->facingDirection, 0.0f }, rotation);
@@ -1404,6 +1406,7 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
 
     if (d->triggerApplyForceZone)
     {
+        std::cout << "AHHHH force zone!" << std::endl;
         velocity[0] = d->launchVelocity[0] * physicsDeltaTime;  // @COPYPASTA
         velocity[2] = d->launchVelocity[2] * physicsDeltaTime;
         d->gravityForce = d->launchVelocity[1];
@@ -2289,7 +2292,11 @@ void attackWazaEditorRenderImGui(Character_XData* d)
                 d->attackWazaEditor.triggerRecalcWazaCache = true;
                 d->attackWazaEditor.triggerRecalcHitscanLaunchVelocityCache = true;
                 d->attackWazaEditor.triggerRecalcSelfVelocitySimCache = true;
+
+                d->attackWazaEditor.hitscanLaunchVelocityExportString = "";
                 d->attackWazaEditor.hitscanSetExportString = "";
+                d->attackWazaEditor.vacuumSuckInExportString = "";
+                d->attackWazaEditor.forceZoneExportString = "";
                 ImGui::CloseCurrentPopup();
                 break;
             }
@@ -2424,6 +2431,14 @@ void attackWazaEditorRenderImGui(Character_XData* d)
 
         ImGui::Text("Vacuum Suckin Export String");
         ImGui::InputTextMultiline("##Vacuum suckin export string copying area", &d->attackWazaEditor.vacuumSuckInExportString, ImVec2(512, ImGui::GetTextLineHeight() * 5));
+    }
+
+    if (!d->attackWazaEditor.forceZoneExportString.empty())
+    {
+        ImGui::Separator();
+
+        ImGui::Text("Force Zone Export String");
+        ImGui::InputTextMultiline("##Force zone export string copying area", &d->attackWazaEditor.forceZoneExportString, ImVec2(512, ImGui::GetTextLineHeight() * 5));
     }
 }
 
