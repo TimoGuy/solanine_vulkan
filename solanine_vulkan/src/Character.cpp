@@ -861,9 +861,6 @@ void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& phy
 
     // Check for entities to suck into vacuum OR force in a force zone.
     bool forceZoneEnabled = (d->currentWaza->forceZone.enabled && d->wazaTimer >= d->currentWaza->forceZone.timeFrom && d->wazaTimer <= d->currentWaza->forceZone.timeTo);
-    if (forceZoneEnabled)
-        std::cout << "Trying force zone" << std::endl;  // @DEBUG
-
     if (d->currentWaza->vacuumSuckIn.enabled || forceZoneEnabled)
     {
         mat4 rotation;
@@ -930,9 +927,9 @@ void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& phy
                 glm_vec3_abs(deltaPosition, deltaPositionAbs);
                 vec3 boundsComparison;
                 glm_vec3_sub(d->currentWaza->forceZone.bounds, deltaPositionAbs, boundsComparison);
-                if (deltaPositionAbs[0] > d->currentWaza->forceZone.bounds[0] &&
-                    deltaPositionAbs[1] > d->currentWaza->forceZone.bounds[1] &&
-                    deltaPositionAbs[2] > d->currentWaza->forceZone.bounds[2])
+                if (deltaPositionAbs[0] < d->currentWaza->forceZone.bounds[0] &&
+                    deltaPositionAbs[1] < d->currentWaza->forceZone.bounds[1] &&
+                    deltaPositionAbs[2] < d->currentWaza->forceZone.bounds[2])
                 {
                     // Within force zone.
                     DataSerializer ds;
@@ -1406,10 +1403,9 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
 
     if (d->triggerApplyForceZone)
     {
-        std::cout << "AHHHH force zone!" << std::endl;
-        velocity[0] = d->launchVelocity[0] * physicsDeltaTime;  // @COPYPASTA
-        velocity[2] = d->launchVelocity[2] * physicsDeltaTime;
-        d->gravityForce = d->launchVelocity[1];
+        velocity[0] = d->forceZoneVelocity[0] * physicsDeltaTime;  // @COPYPASTA
+        velocity[2] = d->forceZoneVelocity[2] * physicsDeltaTime;
+        d->gravityForce = d->forceZoneVelocity[1];
         if (d->gravityForce > 0.0f)
             d->prevIsGrounded = false;
         d->currentWaza = nullptr;  // @TODO: fix up exiting the current waza, animation-wise.  -Timo 2023/08/23
@@ -2093,6 +2089,7 @@ bool Character::processMessage(DataSerialized& message)
     {
         message.loadVec3(_data->forceZoneVelocity);
         _data->triggerApplyForceZone = true;
+        return true;
     }
 
     return false;
