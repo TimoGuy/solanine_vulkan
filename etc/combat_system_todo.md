@@ -58,8 +58,9 @@
 
 - [ ] Improve the combat (ending areas)
     - [x] Weight shift double slice: move velocity properly
-    - [ ] BUGFIX: fix character getting pushed into the ground with the first weight shift slice.
-        - [ ] Add param to hitscan rel position to "keep character in same spot, and use the `position` param as moving it relative from the hit character's position, not the hitting character", maybe just by adding a keyword "hit_char_origin".
+    - [x] BUGFIX: fix character getting pushed into the ground with the first weight shift slice.
+        - [x] Add param to hitscan rel position to "keep character in same spot, and use the `position` param as moving it relative from the hit character's position, not the hitting character", maybe just by adding a keyword "hit_char_origin".
+	- [x] That worked, but then there was a separate issue that arose where it was impossible to tune what was the correct relative amount, so the variable was changed to an `ignore_y` tag that would assign all of the positions except the y axis (this would solve the challenge of keeping the hit char in the same 'position' without shoving it into the ground).
     - [ ] Add "being pressed" animation
     > Ideally, adding something like "cancel waza when shift is released or when character touches the ground"-type params would be great for making sure that the waza won't get put out when the character is sitting on the ground on their head or something like that.
 
@@ -87,3 +88,4 @@
 - [ ] Random bug where I got "ERROR: physics engine is running too slowly", and then it just segfaults. I wasn't running with the debugger at the time so idk what the error is.
 - [ ] Bug where when falling at high speed in very slow motion, then returning to 1.0 timescale will cause character to tunnel thru floor.
 - [ ] Upon defeating a character, the destroy command breaks the program.
+- [ ] Hotswap resource checker crashes when a file gets deleted (i.e. if you started the game with a .swp file from having the file loaded in vim and then you do `:wq`)

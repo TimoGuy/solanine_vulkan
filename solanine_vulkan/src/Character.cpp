@@ -95,6 +95,7 @@ struct Character_XData
         std::vector<HitscanFlowNode> hitscanNodes;  // Each node uses the previous node's data to create the hitscans (the first node is ignored except for using it as prev node data).
         vec3 hitscanLaunchVelocity = GLM_VEC3_ZERO_INIT;  // Non-normalized vec3 of launch velocity of entity that gets hit by the waza.
         vec3 hitscanLaunchRelPosition = GLM_VEC3_ZERO_INIT;  // Position relative to origin of original character to set hit character on first hit.
+        bool hitscanLaunchRelPositionIgnoreY = false;  // Flag to not set the Y relative position.
 
         struct VacuumSuckIn
         {
@@ -194,6 +195,7 @@ struct Character_XData
 
     vec3    launchVelocity;
     vec3    launchSetPosition;
+    bool    launchRelPosIgnoreY;
     bool    triggerLaunchVelocity = false;
 
     vec3    suckInVelocity;
@@ -487,6 +489,8 @@ void loadDataFromLine(Character_XData::AttackWaza& newWaza, const std::string& c
     else if (command == "hs_rel_position")
     {
         parseVec3CommaSeparated(params[0], newWaza.hitscanLaunchRelPosition);
+        if (params.size() >= 2 && params[1] == "ignore_y")
+            newWaza.hitscanLaunchRelPositionIgnoreY = true;
     }
     else if (command == "vacuum_suck_in")
     {
@@ -825,6 +829,9 @@ void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& phy
                         glm_mat4_mulv3(rotation, d->currentWaza->hitscanLaunchRelPosition, 0.0f, setPosition);
                         glm_vec3_add(d->position, setPosition, setPosition);
                         ds.dumpVec3(setPosition);
+
+                        float_t ignoreYF = (float_t)d->currentWaza->hitscanLaunchRelPositionIgnoreY;
+                        ds.dumpFloat(ignoreYF);
 
                         DataSerialized dsd = ds.getSerializedData();
                         if (em->sendMessage(guid, dsd))
@@ -1387,7 +1394,13 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
 
     if (d->triggerLaunchVelocity)
     {
-        glm_vec3_copy(d->launchSetPosition, d->cpd->basePosition);  // @NOTE: this is a bit hacky, but the physics object `cpd` needs to get its position set.  -Timo 2023/08/21
+        if (d->launchRelPosIgnoreY)
+        {
+            d->cpd->basePosition[0] = d->launchSetPosition[0];
+            d->cpd->basePosition[2] = d->launchSetPosition[2];
+        }
+        else
+            glm_vec3_copy(d->launchSetPosition, d->cpd->basePosition);
         velocity[0] = d->launchVelocity[0] * physicsDeltaTime;
         velocity[2] = d->launchVelocity[2] * physicsDeltaTime;
         d->gravityForce = d->launchVelocity[1];
@@ -2053,6 +2066,11 @@ bool Character::processMessage(DataSerialized& message)
 
             message.loadVec3(_data->launchVelocity);
             message.loadVec3(_data->launchSetPosition);
+
+            float_t ignoreYF;
+            message.loadFloat(ignoreYF);
+            _data->launchRelPosIgnoreY = (bool)ignoreYF;
+
             _data->triggerLaunchVelocity = true;  // @TODO: right here, do calculations for poise and stuff!
 
             if (_data->health <= 0)
@@ -2259,7 +2277,10 @@ void updateHitscanLaunchVeloRelPosExportString(Character_XData* d)
         "hs_rel_position    " +
         std::to_string(rp[0]) + "," +
         std::to_string(rp[1]) + "," +
-        std::to_string(rp[2]);
+        std::to_string(rp[2]) +
+        (d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].hitscanLaunchRelPositionIgnoreY ?
+            "    ignore_y" :
+            "");
     d->attackWazaEditor.triggerRecalcHitscanLaunchVelocityCache = true;
 }
 
@@ -2348,7 +2369,8 @@ void attackWazaEditorRenderImGui(Character_XData* d)
     }
 
     if (ImGui::DragFloat3("Launch Velocity", d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].hitscanLaunchVelocity) ||
-        ImGui::DragFloat3("Launch Rel Position", d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].hitscanLaunchRelPosition))
+        ImGui::DragFloat3("Launch Rel Position", d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].hitscanLaunchRelPosition) ||
+        ImGui::Checkbox("Ignore Rel Position Y", &d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].hitscanLaunchRelPositionIgnoreY))
     {
         updateHitscanLaunchVeloRelPosExportString(d);
     }

@@ -273,7 +273,7 @@
   hitscan            0.019767,0.820049,0.758830    0.024299,-0.146287,1.470289    4
   hitscan            0.017932,0.687713,0.279456    0.019525,-0.483034,0.016107    5
   hitscan            0.007860,0.626258,0.284364    -0.004754,-0.544271,0.020344    6
-  hs_rel_position    0.000000,-1.500000,0.000000
+  hs_rel_position    0.000000,0.000000,0.000000    ignore_y
   chain              WazaAir6th_WeightShiftReleverage    5    50    press_a
   on_duration_passed NULL
 
@@ -282,7 +282,7 @@
   stamina_cost       0
   duration           50
   hold_midair
-  velocity           0.0,0.0,8.0    0
+  velocity           0.0,0.0,6.0    0
   velocity           0.0,0.0,0.5    6
   velocity           0.0,0.0,0.0    9
   chain              WazaAir6th_BreakthruAndLanding    7    50    any
@@ -292,15 +292,15 @@
   animation_state    StateAirWaza6thFormPart3
   stamina_cost       0
   duration           83
-  velocity           0.0,4.0,4.0    0
-  velocity_decay     0.5    0
+  velocity           0.0,4.0,6.0    0
+  velocity_decay     0.25    0
   hitscan            0.018277,0.651009,-0.806539    0.022365,-0.516533,-1.083727
   hitscan            -0.012071,1.308560,-0.777974    0.162830,1.113119,-1.948963    1
   hitscan            0.081521,1.417593,-0.510169    0.329303,2.142105,-1.434122    2
   hitscan            0.067988,1.698671,-0.191325    0.275345,2.850611,0.073325    3
   hitscan            0.017790,1.707948,-0.042715    0.019162,2.714119,0.611211    4
   hs_launch_velocity 0.0,2.0,-7.0
-  hs_rel_position    0.000000,-1.500000,-1.000000
+  hs_rel_position    0.000000,0.000000,-2.000000    ignore_y
   chain              WazaAir6th_Chiburi    17    83    any
   on_duration_passed WazaAir6th_Chiburi
 
