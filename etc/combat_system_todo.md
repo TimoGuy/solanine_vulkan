@@ -1,4 +1,4 @@
-- [ ] Improve the combat animation and feel of it.
+- [x] Improve the combat animation and feel of it.
     - [x] Decide how weapon materialization will work.
         - You can turn your materials into weapons, but once they're created, you can't put them back into the materials since there's durability and stuff.
         - Maybe put the created blades into your inventory? They wouldn't be able to stack if that's the case.
@@ -39,7 +39,7 @@
                         - Hmmm, well, it's probably a mix of both. Try fixing the positioning issue first and see if that resolves it!
 			- REPLY: the position getting set upon getting hit tightens it up so much that the animation where the character gets hit doesn't seem to make any difference. The problem is solved!(TM)
         - [x] Add a "suck in nearby entities @ point x,x,x" param to hwac file for WazaAir4th_VacuumCockBack.
-        - [ ] Add "push entities in this cylinder this direction" param to hwac file for spinny spinny move.
+        - [x] Add "push entities in this cylinder this direction" param to hwac file for spinny spinny move.
 
 - [x] Attempt to reduce memory usage on gpu by reducing overdraw
     > Since both steam deck and laptop have a hard time running with the textures close up with memory switch hitches, it's likely shader memory usage.
@@ -55,6 +55,11 @@
     - [x] Add discard alpha pixels to frag z prepass.
     - [x] Check that the albedo texture is cutout rendered with the alpha before sampling texture.
     	> NOTE: this improved performance by 2-3ms
+
+- [ ] Improve the combat (ending areas)
+    - [ ] Weight shift double slice: move velocity properly
+    - [ ] 
+    - [ ] Add "being pressed" animation
 
 - [ ] Reiterate the "idea" of combat.
     > This is an important "fix" I want to the combat:
@@ -79,3 +84,4 @@
 - [ ] Doing first waza while on ground and holding movement direction, then after return-from-waza anim if still holding the movement direction then only idle anim will play while still running.
 - [ ] Random bug where I got "ERROR: physics engine is running too slowly", and then it just segfaults. I wasn't running with the debugger at the time so idk what the error is.
 - [ ] Bug where when falling at high speed in very slow motion, then returning to 1.0 timescale will cause character to tunnel thru floor.
+- [ ] Upon defeating a character, the destroy command breaks the program.
