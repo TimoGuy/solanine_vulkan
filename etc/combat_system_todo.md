@@ -57,9 +57,11 @@
     	> NOTE: this improved performance by 2-3ms
 
 - [ ] Improve the combat (ending areas)
-    - [ ] Weight shift double slice: move velocity properly
-    - [ ] 
+    - [x] Weight shift double slice: move velocity properly
+    - [ ] BUGFIX: fix character getting pushed into the ground with the first weight shift slice.
+        - [ ] Add param to hitscan rel position to "keep character in same spot, and use the `position` param as moving it relative from the hit character's position, not the hitting character", maybe just by adding a keyword "hit_char_origin".
     - [ ] Add "being pressed" animation
+    > Ideally, adding something like "cancel waza when shift is released or when character touches the ground"-type params would be great for making sure that the waza won't get put out when the character is sitting on the ground on their head or something like that.
 
 - [ ] Reiterate the "idea" of combat.
     > This is an important "fix" I want to the combat:
