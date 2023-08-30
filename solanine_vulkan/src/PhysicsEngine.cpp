@@ -281,6 +281,7 @@ namespace physengine
             vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_NEVER),
             {},
             mainRenderPass,
+            1,
             debugVisPipeline,
             debugVisPipelineLayout
             );

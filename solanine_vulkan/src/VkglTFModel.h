@@ -11,6 +11,7 @@
 #include "ImportGLM.h"
 #include <taskflow/taskflow.hpp>
 #include "VkDataStructures.h"
+#include "Settings.h"
 
 class VulkanEngine;
 
@@ -410,7 +411,7 @@ namespace vkglTF
 
 	private:
 		vkglTF::Model*                model;
-		VulkanEngine*                 engine;
+		static VulkanEngine*          engine;
 		StateMachine                  animStateMachineCopy;
 		std::vector<AnimatorCallback> eventCallbacks;
 		float_t                       twitchAngle;
@@ -438,7 +439,7 @@ namespace vkglTF
 			VkDescriptorSet descriptorSet;
 			GPUAnimatorNode* mapped;
 		};
-		static AnimatorNodeCollectionBuffer nodeCollectionBuffer;
+		static AnimatorNodeCollectionBuffer nodeCollectionBuffers[FRAME_OVERLAP];
 		static std::vector<size_t> reservedNodeCollectionIndices;
 
 		std::vector<size_t> myReservedNodeCollectionIndices;

@@ -283,6 +283,9 @@ float textureProj(vec4 shadowCoord, vec2 offset, uint cascadeIndex)
 
 void main()
 {
+	// outFragColor = vec4(vec3(inViewPos.z / uboParams.cascadeSplits.w), 1.0);
+	// return;
+
 	// outFragColor = vec4(voxelFieldLightingGridPos, 1.0);
 	// return;
 

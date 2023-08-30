@@ -180,6 +180,7 @@ namespace textbox
             vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_NEVER),
             {},
             engine->_uiRenderPass,
+            0,
             textboxBgPipeline,
             textboxBgPipelineLayout
             );

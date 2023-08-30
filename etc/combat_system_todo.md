@@ -83,6 +83,9 @@
 - [ ] When doing weight shift slice, just do simple flip vertical slice if there is nothing to hit (air) or the thing being sliced is super easy to slice. It's only when the thing being sliced is super strong that the blade gets "stuck", which requires the weight shift. The weight shift adds double "poise" to the attack, and if even then that's not enough, then have the blade snap off (scratch idea of doing a button mash) and stay on the enemy.
 
 ### Bugs
+- [x] HIGH PRIORITY: Nvidia gpu doesn't do the z prepass correctly. Add a renderpass (with colorattachment of 0) to keep multiple writes on the z buffer.
+    - [x] HIGH PRIORITY: turns out this fix didn't fix the issue. I realize that the issue is that the z buffer getting written and the next subpass occurring will sometimes get an animator update before this, causing the bone transformations to be different slightly and then the animated meshes can't render. DOD: get the animators to insert the data into a `currentFrame`-based data structure.
+    > NOTE: this provided a big speed increase (400fps to 460fps)... probably bc the gpu is being scheduled properly now.
 - [ ] Landing on the ground while doing first waza and then not doing next one will trigger land animation after return-from-waza anim
 - [ ] Doing first waza while on ground and holding movement direction, then after return-from-waza anim if still holding the movement direction then only idle anim will play while still running.
 - [ ] Random bug where I got "ERROR: physics engine is running too slowly", and then it just segfaults. I wasn't running with the debugger at the time so idk what the error is.

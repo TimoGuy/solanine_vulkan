@@ -2015,8 +2015,9 @@ namespace vkglTF
 	//
 	// Animator
 	//
+	VulkanEngine* Animator::engine = nullptr;
 	Animator::GPUAnimatorNode Animator::uniformBlocks[RENDER_OBJECTS_MAX_CAPACITY];
-	Animator::AnimatorNodeCollectionBuffer Animator::nodeCollectionBuffer;
+	Animator::AnimatorNodeCollectionBuffer Animator::nodeCollectionBuffers[FRAME_OVERLAP];
 	std::vector<size_t> Animator::reservedNodeCollectionIndices;
 
 	Animator::Animator(vkglTF::Model* model, std::vector<AnimatorCallback>& eventCallbacks) : model(model), eventCallbacks(eventCallbacks), twitchAngle(0.0f)
@@ -2062,7 +2063,8 @@ namespace vkglTF
 					node->mesh->animatorSkinIndex = myReservedNodeCollectionIndices.size() - 1;
 			uniformBlocks[reserveIndexCandidate] = newAnimatorNode;
 
-			memcpy(nodeCollectionBuffer.mapped + reserveIndexCandidate, &newAnimatorNode, sizeof(GPUAnimatorNode));
+			for (size_t i = 0; i < FRAME_OVERLAP; i++)
+				memcpy(nodeCollectionBuffers[i].mapped + reserveIndexCandidate, &newAnimatorNode, sizeof(GPUAnimatorNode));
 		}
 
 		// Calculate Initial Pose
@@ -2119,39 +2121,45 @@ namespace vkglTF
 		//
 		// @SPECIAL: create an empty animator and don't update the animation
 		//
-		nodeCollectionBuffer.buffer = engine->createBuffer(sizeof(GPUAnimatorNode) * RENDER_OBJECTS_MAX_CAPACITY, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+		for (size_t i = 0; i < FRAME_OVERLAP; i++)
+		{
+			nodeCollectionBuffers[i].buffer = engine->createBuffer(sizeof(GPUAnimatorNode) * RENDER_OBJECTS_MAX_CAPACITY, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
-		VkDescriptorBufferInfo nodeCollectionBufferInfo = {
-			.buffer = nodeCollectionBuffer.buffer._buffer,
-			.offset = 0,
-			.range = sizeof(GPUAnimatorNode) * RENDER_OBJECTS_MAX_CAPACITY,
-		};
+			VkDescriptorBufferInfo nodeCollectionBufferInfo = {
+				.buffer = nodeCollectionBuffers[i].buffer._buffer,
+				.offset = 0,
+				.range = sizeof(GPUAnimatorNode) * RENDER_OBJECTS_MAX_CAPACITY,
+			};
 
-		vkutil::DescriptorBuilder::begin()
-			.bindBuffer(0, &nodeCollectionBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_VERTEX_BIT)
-			.build(nodeCollectionBuffer.descriptorSet, engine->_skeletalAnimationSetLayout);
+			vkutil::DescriptorBuilder::begin()
+				.bindBuffer(0, &nodeCollectionBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_VERTEX_BIT)
+				.build(nodeCollectionBuffers[i].descriptorSet, engine->_skeletalAnimationSetLayout);
 
-		// Copy non-skinned default animator
-		GPUAnimatorNode defaultAnimatorNode = {};
-		glm_mat4_identity(defaultAnimatorNode.matrix);
+			// Copy non-skinned default animator
+			GPUAnimatorNode defaultAnimatorNode = {};
+			glm_mat4_identity(defaultAnimatorNode.matrix);
 
-		reservedNodeCollectionIndices.push_back(0);
+			reservedNodeCollectionIndices.push_back(0);
 
-		void* mappedMem;
-		vmaMapMemory(engine->_allocator, nodeCollectionBuffer.buffer._allocation, &mappedMem);
-		nodeCollectionBuffer.mapped = (GPUAnimatorNode*)mappedMem;
-		memcpy(nodeCollectionBuffer.mapped, &defaultAnimatorNode, sizeof(GPUAnimatorNode));
+			void* mappedMem;
+			vmaMapMemory(engine->_allocator, nodeCollectionBuffers[i].buffer._allocation, &mappedMem);
+			nodeCollectionBuffers[i].mapped = (GPUAnimatorNode*)mappedMem;
+			memcpy(nodeCollectionBuffers[i].mapped, &defaultAnimatorNode, sizeof(GPUAnimatorNode));
+		}
 	}
 
 	void Animator::destroyEmpty(VulkanEngine* engine)
 	{
-		vmaUnmapMemory(engine->_allocator, nodeCollectionBuffer.buffer._allocation);
-		vmaDestroyBuffer(engine->_allocator, nodeCollectionBuffer.buffer._buffer, nodeCollectionBuffer.buffer._allocation);
+		for (size_t i = 0; i < FRAME_OVERLAP; i++)
+		{
+			vmaUnmapMemory(engine->_allocator, nodeCollectionBuffers[i].buffer._allocation);
+			vmaDestroyBuffer(engine->_allocator, nodeCollectionBuffers[i].buffer._buffer, nodeCollectionBuffers[i].buffer._allocation);
+		}
 	}
 
 	VkDescriptorSet* Animator::getGlobalAnimatorNodeCollectionDescriptorSet()
 	{
-		return &nodeCollectionBuffer.descriptorSet;
+		return &nodeCollectionBuffers[engine->_frameNumber % FRAME_OVERLAP].descriptorSet;
 	}
 
 	void Animator::playAnimation(size_t maskIndex, uint32_t animationIndex, bool loop, float_t time)
@@ -2630,7 +2638,7 @@ namespace vkglTF
 #endif
 
 		uniformBlock.jointcount = (float)numJoints;
-		memcpy(nodeCollectionBuffer.mapped + globalNodeReservedIndex, &uniformBlock, sizeof(GPUAnimatorNode));
+		memcpy(nodeCollectionBuffers[engine->_frameNumber % FRAME_OVERLAP].mapped + globalNodeReservedIndex, &uniformBlock, sizeof(GPUAnimatorNode));
 	}
 
 	bool Animator::getJointMatrix(const std::string& jointName, mat4& out)

@@ -467,6 +467,9 @@ void VulkanEngine::render()
 		renderRenderObjects(cmd, currentFrame);
 		//////////////////////
 
+		// Switch from zprepass subpass to main subpass
+		vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_INLINE);
+
 		// Render skybox //
 		// @TODO: put this into its own function!
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipeline);
@@ -1595,7 +1598,13 @@ void VulkanEngine::initMainRenderpass()
 	//
 	// Define the subpass to render to the default renderpass
 	//
-	VkSubpassDescription subpass = {
+	VkSubpassDescription zPrepassSubpass = {
+		.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+		.colorAttachmentCount = 0,
+		.pColorAttachments = nullptr,
+		.pDepthStencilAttachment = &depthAttachmentRef
+	};
+	VkSubpassDescription mainSubpass = {
 		.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
 		.colorAttachmentCount = 1,
 		.pColorAttachments = &colorAttachmentRef,
@@ -1607,15 +1616,23 @@ void VulkanEngine::initMainRenderpass()
 	//
 	VkSubpassDependency colorDependency = {
 		.srcSubpass = VK_SUBPASS_EXTERNAL,
-		.dstSubpass = 0,
+		.dstSubpass = 1,
 		.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
 		.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
 		.srcAccessMask = 0,
 		.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
 	};
-	VkSubpassDependency depthDependency = {
+	VkSubpassDependency zPrepassDepthDependency = {
 		.srcSubpass = VK_SUBPASS_EXTERNAL,
 		.dstSubpass = 0,
+		.srcStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+		.dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+		.srcAccessMask = 0,
+		.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT
+	};
+	VkSubpassDependency mainDepthDependency = {
+		.srcSubpass = 0,
+		.dstSubpass = 1,
 		.srcStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
 		.dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
 		.srcAccessMask = 0,
@@ -1625,15 +1642,16 @@ void VulkanEngine::initMainRenderpass()
 	//
 	// Create the renderpass for the subpass
 	//
-	VkSubpassDependency dependencies[] = { colorDependency, depthDependency };
+	VkSubpassDependency dependencies[] = { colorDependency, zPrepassDepthDependency, mainDepthDependency };
 	VkAttachmentDescription attachments[] = { colorAttachment, depthAttachment };
+	VkSubpassDescription subpasses[] = { zPrepassSubpass, mainSubpass };
 	VkRenderPassCreateInfo renderPassInfo = {
 		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
 		.attachmentCount = 2,
 		.pAttachments = &attachments[0],
-		.subpassCount = 1,
-		.pSubpasses = &subpass,
-		.dependencyCount = 2,
+		.subpassCount = 2,
+		.pSubpasses = &subpasses[0],
+		.dependencyCount = 3,
 		.pDependencies = &dependencies[0]
 	};
 
@@ -2447,6 +2465,7 @@ void VulkanEngine::initPipelines()
 		vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS),
 		{},
 		_mainRenderPass,
+		0,
 		meshZPrepassPipeline,
 		meshZPrepassPipelineLayout
 		);
@@ -2473,6 +2492,7 @@ void VulkanEngine::initPipelines()
 		vkinit::depthStencilCreateInfo(true, false, VK_COMPARE_OP_EQUAL),
 		{},
 		_mainRenderPass,
+		1,
 		meshPipeline,
 		meshPipelineLayout
 		);
@@ -2499,6 +2519,7 @@ void VulkanEngine::initPipelines()
 		vkinit::depthStencilCreateInfo(true, false, VK_COMPARE_OP_LESS_OR_EQUAL),  // @FIX: it's not a perfect depth test bc there is some overdraw with the skybox.
 		{},
 		_mainRenderPass,
+		1,
 		skyboxPipeline,
 		skyboxPipelineLayout
 		);
@@ -2525,6 +2546,7 @@ void VulkanEngine::initPipelines()
 		vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL),
 		{ VK_DYNAMIC_STATE_SCISSOR },
 		_pickingRenderPass,
+		0,
 		pickingPipeline,
 		pickingPipelineLayout
 		);
@@ -2557,6 +2579,7 @@ void VulkanEngine::initPipelines()
 		vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL),
 		{},
 		_mainRenderPass,
+		1,
 		wireframePipeline,
 		wireframePipelineLayout
 		);
@@ -2587,6 +2610,7 @@ void VulkanEngine::initPipelines()
 		vkinit::depthStencilCreateInfo(true, false, VK_COMPARE_OP_GREATER),
 		{},
 		_mainRenderPass,
+		1,
 		wireframeBehindPipeline,
 		wireframePipelineLayout
 		);
@@ -2629,6 +2653,7 @@ void VulkanEngine::initPipelines()
 		vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL),
 		{},
 		_shadowRenderPass,
+		0,
 		shadowDepthPassPipeline,
 		shadowDepthPassPipelineLayout
 		);
@@ -2655,6 +2680,7 @@ void VulkanEngine::initPipelines()
 		vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_ALWAYS),
 		{},
 		_postprocessRenderPass,
+		0,
 		postprocessPipeline,
 		postprocessPipelineLayout
 	);
