@@ -89,6 +89,7 @@
 - [ ] Landing on the ground while doing first waza and then not doing next one will trigger land animation after return-from-waza anim
 - [ ] Doing first waza while on ground and holding movement direction, then after return-from-waza anim if still holding the movement direction then only idle anim will play while still running.
 - [ ] Random bug where I got "ERROR: physics engine is running too slowly", and then it just segfaults. I wasn't running with the debugger at the time so idk what the error is.
+    > I think this is a duplicate of the segfault when defeating a character. I was hammering the npc character for a long time when it just segfaulted.
 - [ ] Bug where when falling at high speed in very slow motion, then returning to 1.0 timescale will cause character to tunnel thru floor.
 - [ ] Upon defeating a character, the destroy command breaks the program.
 - [ ] Hotswap resource checker crashes when a file gets deleted (i.e. if you started the game with a .swp file from having the file loaded in vim and then you do `:wq`)
