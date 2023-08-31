@@ -17,6 +17,7 @@
   trans     goto_draw_weapon                  StateDrawWeapon
   trans     goto_sheath_weapon                StateSheathWeapon
   trans     goto_combat_execute_airborne      StateCombatAirborneAttack
+  trans     goto_getting_pressed              StateGettingPressed
 
 
 :StateDrawWeapon  # @NOTE: meant to be a copy of StateIdle (except for on_finish)
@@ -33,6 +34,7 @@
   trans     goto_draw_weapon                  StateDrawWeapon
   trans     goto_sheath_weapon                StateSheathWeapon
   trans     goto_combat_execute_airborne      StateCombatAirborneAttack
+  trans     goto_getting_pressed              StateGettingPressed
   on_finish StateIdle
 
 
@@ -50,6 +52,7 @@
   trans     goto_draw_weapon                  StateDrawWeapon
   trans     goto_sheath_weapon                StateSheathWeapon
   trans     goto_combat_execute_airborne      StateCombatAirborneAttack
+  trans     goto_getting_pressed              StateGettingPressed
   on_finish StateIdle
 
 
@@ -64,6 +67,7 @@
   trans     goto_fall_combat_prepause_ready   StateFallCombatAirbornePrepauseReady
   trans     goto_combat_execute_grounded      StateCombatGroundedAttack
   trans     goto_combat_execute_airborne      StateCombatAirborneAttack
+  trans     goto_getting_pressed              StateGettingPressed
 
 
 # @NOTE This is a test #
@@ -207,6 +211,7 @@
   trans     goto_fall_combat_prepause_ready   StateFallCombatAirbornePrepauseReady
   trans     goto_combat_execute_grounded      StateCombatGroundedAttack
   trans     goto_combat_execute_airborne      StateCombatAirborneAttack
+  trans     goto_getting_pressed              StateGettingPressed
 
 
 :StateLandRun
@@ -221,6 +226,7 @@
   trans     goto_fall_combat_prepause_ready   StateFallCombatAirbornePrepauseReady
   trans     goto_combat_execute_grounded      StateCombatGroundedAttack
   trans     goto_combat_execute_airborne      StateCombatAirborneAttack
+  trans     goto_getting_pressed              StateGettingPressed
 
 
 :StateJumpFromIdle
@@ -250,6 +256,16 @@
   trans     goto_combat_prepause              StateCombatAirbornePrepause
   trans     goto_fall_combat_prepause_ready   StateFallCombatAirbornePrepauseReady
 
+:StateGettingPressed
+  animation Getting_Pressed
+  loop      0
+  trans     goto_get_out_getting_pressed      StateGetOutGettingPressed
+
+:StateGetOutGettingPressed
+  animation Get_Out_Getting_Pressed
+  loop      0
+  on_finish StateIdle
+  trans     goto_getting_pressed              StateGettingPressed
 
 :StateFallCombatAirbornePrepauseReady
   animation DW_Dive_Attack_Start  # @NOTE: this is a temporary animation. Have some anim that is just a 1 frame thingo like this in the future though.

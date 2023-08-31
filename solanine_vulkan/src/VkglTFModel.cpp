@@ -2118,9 +2118,6 @@ namespace vkglTF
 
 	void Animator::initializeEmpty(VulkanEngine* engine)  // @TODO: rename this to "initialize animator descriptor set/buffer"
 	{
-		//
-		// @SPECIAL: create an empty animator and don't update the animation
-		//
 		for (size_t i = 0; i < FRAME_OVERLAP; i++)
 		{
 			nodeCollectionBuffers[i].buffer = engine->createBuffer(sizeof(GPUAnimatorNode) * RENDER_OBJECTS_MAX_CAPACITY, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
@@ -2144,7 +2141,7 @@ namespace vkglTF
 			void* mappedMem;
 			vmaMapMemory(engine->_allocator, nodeCollectionBuffers[i].buffer._allocation, &mappedMem);
 			nodeCollectionBuffers[i].mapped = (GPUAnimatorNode*)mappedMem;
-			memcpy(nodeCollectionBuffers[i].mapped, &defaultAnimatorNode, sizeof(GPUAnimatorNode));
+			memcpy(nodeCollectionBuffers[i].mapped, &defaultAnimatorNode, sizeof(GPUAnimatorNode));  // Insert non-skinned default animator into gpu memory.
 		}
 	}
 

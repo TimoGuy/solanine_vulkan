@@ -439,7 +439,7 @@ namespace vkglTF
 			VkDescriptorSet descriptorSet;
 			GPUAnimatorNode* mapped;
 		};
-		static AnimatorNodeCollectionBuffer nodeCollectionBuffers[FRAME_OVERLAP];
+		static AnimatorNodeCollectionBuffer nodeCollectionBuffers[FRAME_OVERLAP];  // @NOTE: The buffer size created in this is 78mb per AnimatorNodeCollectionBuffer... pretty big. Especially since very few render objects are animator attached ones.
 		static std::vector<size_t> reservedNodeCollectionIndices;
 
 		std::vector<size_t> myReservedNodeCollectionIndices;

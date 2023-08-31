@@ -204,6 +204,7 @@ struct Character_XData
 
     vec3    forceZoneVelocity;
     bool    triggerApplyForceZone = false;
+    bool    inGettingPressedAnim = false;
 
     bool    prevIsMoving = false;
     bool    prevPrevIsGrounded = false;
@@ -1423,7 +1424,21 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
             d->prevIsGrounded = false;
         d->currentWaza = nullptr;  // @TODO: fix up exiting the current waza, animation-wise.  -Timo 2023/08/23
 
+        if (d->forceZoneVelocity[1] < 0.0f && d->prevIsGrounded)
+        {
+            d->characterRenderObj->animator->setTrigger("goto_getting_pressed");
+            d->inGettingPressedAnim = true;
+        }
+
         d->triggerApplyForceZone = false;
+    }
+    else
+    {
+        if (d->inGettingPressedAnim)  // Exit pressed animation
+        {
+            d->characterRenderObj->animator->setTrigger("goto_get_out_getting_pressed");
+            d->inGettingPressedAnim = false;
+        }
     }
 
     if (d->prevIsGrounded && d->prevGroundNormal[1] < 0.999f)

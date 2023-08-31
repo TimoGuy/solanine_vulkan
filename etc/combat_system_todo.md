@@ -56,12 +56,14 @@
     - [x] Check that the albedo texture is cutout rendered with the alpha before sampling texture.
     	> NOTE: this improved performance by 2-3ms
 
-- [ ] Improve the combat (ending areas)
+- [x] Improve the combat (ending areas)
     - [x] Weight shift double slice: move velocity properly
     - [x] BUGFIX: fix character getting pushed into the ground with the first weight shift slice.
         - [x] Add param to hitscan rel position to "keep character in same spot, and use the `position` param as moving it relative from the hit character's position, not the hitting character", maybe just by adding a keyword "hit_char_origin".
 	- [x] That worked, but then there was a separate issue that arose where it was impossible to tune what was the correct relative amount, so the variable was changed to an `ignore_y` tag that would assign all of the positions except the y axis (this would solve the challenge of keeping the hit char in the same 'position' without shoving it into the ground).
-    - [ ] Add "being pressed" animation
+    - [x] Add "being pressed" animation
+        - [x] Create the animation
+        - [x] Create the state and the transitions to the animation
     > Ideally, adding something like "cancel waza when shift is released or when character touches the ground"-type params would be great for making sure that the waza won't get put out when the character is sitting on the ground on their head or something like that.
 
 - [ ] Reiterate the "idea" of combat.
