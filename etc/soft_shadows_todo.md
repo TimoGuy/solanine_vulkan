@@ -1,12 +1,13 @@
 > Reference: https://www.youtube.com/watch?v=NCptEJ1Uevg
 > Better Reference: https://developer.nvidia.com/gpugems/gpugems2/part-ii-shading-lighting-and-shadows/chapter-17-efficient-soft-edged-shadows-using
 
-- [ ] Advanced, fast pcf stochastic shadows.
-    - [ ] Generate sample points
-        - [ ] Transform into the ringed form, with the outer ring first.
-        - [ ] Fix bug where the loaded 3d texture with the offsets get weirdly large numbers in red and blue channels.
+- [x] Advanced, fast pcf stochastic shadows.
+    - [x] Generate sample points
+        - [x] Transform into the ringed form, with the outer ring first.
+        - [x] Fix bug where the loaded 3d texture with the offsets get weirdly large numbers in red and blue channels.
+            > It was because the texture format was using 16bit floats but the input data had 32bit floats. I ended up changing the texture format to 32bit floats but blitting it to 16bit floats or 8bit floats would give back performance.
     - ~~[ ] Render the sample points into the screenspace random sampling texture.~~
-    - [ ] Write the sample points into a buffer and create the image from a buffer.
+    - [x] Write the sample points into a buffer and create the image from a buffer.
     - [x] Read from the texture to sample from shadowmap.
 - [ ] Cascade fading.
     - [ ] Change the cascade borders for near field to include some of the previous cascade.
