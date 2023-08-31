@@ -36,6 +36,9 @@ layout (set = 0, binding = 1) uniform UBOParams
 	float scaleIBLAmbient;
 	vec4  cascadeSplits;
 	mat4  cascadeViewProjMat[SHADOW_MAP_CASCADE_COUNT];
+	float shadowMapScale;
+	float shadowJitterMapXScale;
+	float shadowJitterMapYScale;
 	float debugViewInputs;
 	float debugViewEquation;
 } uboParams;
@@ -44,6 +47,13 @@ layout (set = 0, binding = 2) uniform samplerCube    samplerIrradiance;
 layout (set = 0, binding = 3) uniform samplerCube    prefilteredMap;
 layout (set = 0, binding = 4) uniform sampler2D      samplerBRDFLUT;
 layout (set = 0, binding = 5) uniform sampler2DArray shadowMap;
+layout (set = 0, binding = 6) uniform sampler3D      shadowJitterMap;
+#define SMOOTH_SHADOWS_ON
+#define SMOOTH_SHADOWS_SAMPLES_SQRT 4  // 4x4 samples
+#define SMOOTH_SHADOWS_SAMPLES_COUNT 16
+#define SMOOTH_SHADOWS_INV_SAMPLES_COUNT (1.0 / SMOOTH_SHADOWS_SAMPLES_COUNT)
+#define SMOOTH_SHADOWS_SAMPLES_COUNT_DIV_2 8
+#define SMOOTH_SHADOWS_INV_SAMPLES_COUNT_DIV_2 (1.0 / SMOOTH_SHADOWS_SAMPLES_COUNT_DIV_2)
 
 
 // Instance ID Pointers
@@ -280,6 +290,42 @@ float textureProj(vec4 shadowCoord, vec2 offset, uint cascadeIndex)
 	return shadow;
 }
 
+#ifdef SMOOTH_SHADOWS_ON
+float smoothShadow(vec4 shadowCoord, uint cascadeIndex)
+{
+	float shadow = 0.0;
+	vec3 jcoord = vec3(gl_FragCoord.x * uboParams.shadowJitterMapXScale, gl_FragCoord.y * uboParams.shadowJitterMapYScale, 0.0);
+
+	// Cheap shadow samples first
+	for (int i = 0; i < SMOOTH_SHADOWS_SAMPLES_SQRT / 2; i++)
+	{
+		vec4 offset = texture(shadowJitterMap, jcoord);
+		jcoord.z += SMOOTH_SHADOWS_INV_SAMPLES_COUNT_DIV_2;
+
+		shadow += textureProj(shadowCoord, offset.xy * uboParams.shadowMapScale, cascadeIndex) / SMOOTH_SHADOWS_SAMPLES_SQRT;  // Two sets of offsets are stored in rg and ba channels of the textures.
+		shadow += textureProj(shadowCoord, offset.zw * uboParams.shadowMapScale, cascadeIndex) / SMOOTH_SHADOWS_SAMPLES_SQRT;
+	}
+
+	if ((shadow - 1.0) * shadow != 0)
+	{
+		// If shadow is partial, then likely in penumbra. Do expensive samples!
+		shadow *= 1.0 / SMOOTH_SHADOWS_SAMPLES_SQRT;
+
+		for (int i = 0; i < SMOOTH_SHADOWS_SAMPLES_COUNT_DIV_2 - (SMOOTH_SHADOWS_SAMPLES_SQRT / 2); i++)
+		{
+			// @COPYPASTA.
+			vec4 offset = texture(shadowJitterMap, jcoord);
+			jcoord.z += SMOOTH_SHADOWS_INV_SAMPLES_COUNT_DIV_2;
+
+			shadow += textureProj(shadowCoord, offset.xy * uboParams.shadowMapScale, cascadeIndex) * SMOOTH_SHADOWS_INV_SAMPLES_COUNT;  // Two sets of offsets are stored in rg and ba channels of the textures.
+			shadow += textureProj(shadowCoord, offset.zw * uboParams.shadowMapScale, cascadeIndex) * SMOOTH_SHADOWS_INV_SAMPLES_COUNT;
+		}
+	}
+
+	return shadow;
+}
+#endif
+
 
 void main()
 {
@@ -440,12 +486,12 @@ void main()
 	// Depth compare for shadowing
 	vec4 shadowCoord = (BIAS_MAT * uboParams.cascadeViewProjMat[cascadeIndex]) * vec4(inWorldPos, 1.0);
 
-	float shadow = 0;
-	//if (enablePCF == 1) {
-	//	shadow = filterPCF(shadowCoord / shadowCoord.w, cascadeIndex);
-	//} else {
+	float shadow = 0.0;
+#ifdef SMOOTH_SHADOWS_ON
+	shadow = smoothShadow(shadowCoord / shadowCoord.w, cascadeIndex);
+#else
 	shadow = textureProj(shadowCoord / shadowCoord.w, vec2(0.0), cascadeIndex);
-	//}
+#endif
 	shadow = shadow * NdotL;
 
 	// Obtain final intensity as reflectance (BRDF) scaled by the energy of the light (cosine law)

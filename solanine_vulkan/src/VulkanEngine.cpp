@@ -1074,6 +1074,63 @@ void VulkanEngine::loadImages()
 		_loadedTextures["imguiTextureLayerCollision"] = textureLayerCollision;
 	}
 
+	// Initialize the shadow jitter image
+	{
+		size_t pixelSize = 4 * SHADOWMAP_JITTERMAP_DIMENSION_X * SHADOWMAP_JITTERMAP_DIMENSION_Y * SHADOWMAP_JITTERMAP_DIMENSION_Z;
+		float_t* pixels = new float_t[pixelSize];
+
+		std::default_random_engine generator;
+		std::uniform_real_distribution<float_t> distribution(0.0f, 1.0f);
+
+		constexpr uint32_t SHADOWMAP_JITTERMAP_DIMENSION_Z_2 = SHADOWMAP_JITTERMAP_DIMENSION_Z * 2;
+		uint32_t offsetDimension = (uint32_t)std::sqrt(SHADOWMAP_JITTERMAP_DIMENSION_Z_2);
+
+		for (uint32_t i = 0; i < SHADOWMAP_JITTERMAP_DIMENSION_X; i++)
+		for (uint32_t j = 0; j < SHADOWMAP_JITTERMAP_DIMENSION_Y; j++)
+		{
+			size_t cursor = j * SHADOWMAP_JITTERMAP_DIMENSION_X + i;
+			for (uint32_t z = 0; z < SHADOWMAP_JITTERMAP_DIMENSION_Z_2; z++)
+			{
+				uint32_t reversedZ = SHADOWMAP_JITTERMAP_DIMENSION_Z_2 - z - 1;  // Reverse so that first samples are the outermost ring.
+				vec2 uv = {
+					reversedZ % offsetDimension + distribution(generator),
+					reversedZ / offsetDimension + distribution(generator),
+				};
+				vec2 uvWarped = {
+					std::sqrt(uv[1]) * std::cos(2.0f * M_PI * uv[0]),
+					std::sqrt(uv[1]) * std::sin(2.0f * M_PI * uv[0]),
+				};
+
+				if (z % 2 == 0)
+				{
+					pixels[cursor + 0] = uvWarped[0];
+					pixels[cursor + 1] = uvWarped[1];
+				}
+				else
+				{
+					pixels[cursor + 2] = uvWarped[0];
+					pixels[cursor + 3] = uvWarped[1];
+					cursor += SHADOWMAP_JITTERMAP_DIMENSION_X * SHADOWMAP_JITTERMAP_DIMENSION_Y;
+				}
+			}
+		}
+
+		vkutil::loadImage3DFromBuffer(*this, SHADOWMAP_JITTERMAP_DIMENSION_X, SHADOWMAP_JITTERMAP_DIMENSION_Y, SHADOWMAP_JITTERMAP_DIMENSION_Z, pixelSize * sizeof(float_t), VK_FORMAT_R16G16B16A16_SFLOAT, (void*)pixels, _pbrSceneTextureSet.shadowJitterMap.image);
+		delete[] pixels;
+
+		VkImageViewCreateInfo shadowJitterImageViewInfo = vkinit::imageview3DCreateInfo(VK_FORMAT_R16G16B16A16_SFLOAT, _pbrSceneTextureSet.shadowJitterMap.image._image, VK_IMAGE_ASPECT_COLOR_BIT, 1);
+		VK_CHECK(vkCreateImageView(_device, &shadowJitterImageViewInfo, nullptr, &_pbrSceneTextureSet.shadowJitterMap.imageView));
+
+		VkSamplerCreateInfo jitterSamplerInfo = vkinit::samplerCreateInfo(1.0f, VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_REPEAT, false);
+		VK_CHECK(vkCreateSampler(_device, &jitterSamplerInfo, nullptr, &_pbrSceneTextureSet.shadowJitterMap.sampler));
+
+		_mainDeletionQueue.pushFunction([=]() {
+			vkDestroySampler(_device, _pbrSceneTextureSet.shadowJitterMap.sampler, nullptr);
+			vkDestroyImageView(_device, _pbrSceneTextureSet.shadowJitterMap.imageView, nullptr);
+			vmaDestroyImage(_allocator, _pbrSceneTextureSet.shadowJitterMap.image._image, _pbrSceneTextureSet.shadowJitterMap.image._allocation);
+			});
+	}
+
 	//
 	// @TODO: add a thing to destroy all the loaded images from _loadedTextures hashmap
 	//
@@ -1527,7 +1584,7 @@ void VulkanEngine::initShadowImages()
 		vmaDestroyImage(_allocator, _pbrSceneTextureSet.shadowMap.image._image, _pbrSceneTextureSet.shadowMap.image._allocation);
 		});
 
-	// Once framebuffer and imageview per layer of shadow image
+	// One framebuffer and imageview per layer of shadow image
 	for (uint32_t i = 0; i < SHADOWMAP_CASCADES; i++)
 	{
 		VkImageViewCreateInfo individualViewInfo = vkinit::imageviewCreateInfo(_depthFormat, _pbrSceneTextureSet.shadowMap.image._image, VK_IMAGE_ASPECT_DEPTH_BIT, 1);
@@ -2221,6 +2278,11 @@ void VulkanEngine::initDescriptors()    // @TODO: don't destroy and then recreat
 			.imageView = _pbrSceneTextureSet.shadowMap.imageView,
 			.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
 		};
+		VkDescriptorImageInfo shadowJitterMapImageInfo = {
+			.sampler = _pbrSceneTextureSet.shadowJitterMap.sampler,
+			.imageView = _pbrSceneTextureSet.shadowJitterMap.imageView,
+			.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		};
 
 		vkutil::DescriptorBuilder::begin()
 			.bindBuffer(0, &cameraInfo, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT)
@@ -2229,6 +2291,7 @@ void VulkanEngine::initDescriptors()    // @TODO: don't destroy and then recreat
 			.bindImage(3, &prefilteredImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
 			.bindImage(4, &brdfLUTImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
 			.bindImage(5, &shadowMapImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+			.bindImage(6, &shadowJitterMapImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
 			.build(_frames[i].globalDescriptor, _globalSetLayout);
 
 		//
