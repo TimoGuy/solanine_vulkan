@@ -4,11 +4,15 @@
 
 
 // @INCOMPLETE: this is very rough.... but settings from an ini file or something like that is the ideal/goal... or further?
-constexpr uint32_t SHADOWMAP_DIMENSION             = 1024;
+constexpr uint32_t SHADOWMAP_DIMENSION             = 1024;  // @NOTE: for higher quality shadows, 2048 is really the highest you'll have to go imo  -Timo 2023/08/31
 constexpr uint32_t SHADOWMAP_CASCADES              = 4;
 constexpr uint32_t SHADOWMAP_JITTERMAP_DIMENSION_X = 256;
 constexpr uint32_t SHADOWMAP_JITTERMAP_DIMENSION_Y = 144;
-constexpr uint32_t SHADOWMAP_JITTERMAP_DIMENSION_Z = 16 / 2;  // 4x4 samples
+
+// @NOTE: for noisiness comparison, look at files in `etc/soft_shadow_sample_size_pixel_peeping`.
+// constexpr uint32_t SHADOWMAP_JITTERMAP_DIMENSION_Z = 64 / 2;  // 8x8 samples (~1.0ms on 2080 Ti)
+// constexpr uint32_t SHADOWMAP_JITTERMAP_DIMENSION_Z = 36 / 2;  // 6x6 samples (??ms on 2080 Ti)
+constexpr uint32_t SHADOWMAP_JITTERMAP_DIMENSION_Z = 16 / 2;  // 4x4 samples (??ms on 2080 Ti)
 
 constexpr unsigned int FRAME_OVERLAP = 2;
 

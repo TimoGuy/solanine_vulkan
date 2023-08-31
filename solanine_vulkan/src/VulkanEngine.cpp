@@ -1088,7 +1088,7 @@ void VulkanEngine::loadImages()
 		for (uint32_t i = 0; i < SHADOWMAP_JITTERMAP_DIMENSION_X; i++)
 		for (uint32_t j = 0; j < SHADOWMAP_JITTERMAP_DIMENSION_Y; j++)
 		{
-			size_t cursor = j * SHADOWMAP_JITTERMAP_DIMENSION_X + i;
+			size_t cursor = 4 * (j * SHADOWMAP_JITTERMAP_DIMENSION_X + i);
 			for (uint32_t z = 0; z < SHADOWMAP_JITTERMAP_DIMENSION_Z_2; z++)
 			{
 				uint32_t reversedZ = SHADOWMAP_JITTERMAP_DIMENSION_Z_2 - z - 1;  // Reverse so that first samples are the outermost ring.
@@ -1110,15 +1110,16 @@ void VulkanEngine::loadImages()
 				{
 					pixels[cursor + 2] = uvWarped[0];
 					pixels[cursor + 3] = uvWarped[1];
-					cursor += SHADOWMAP_JITTERMAP_DIMENSION_X * SHADOWMAP_JITTERMAP_DIMENSION_Y;
+					cursor += 4 * SHADOWMAP_JITTERMAP_DIMENSION_X * SHADOWMAP_JITTERMAP_DIMENSION_Y;
 				}
 			}
 		}
 
-		vkutil::loadImage3DFromBuffer(*this, SHADOWMAP_JITTERMAP_DIMENSION_X, SHADOWMAP_JITTERMAP_DIMENSION_Y, SHADOWMAP_JITTERMAP_DIMENSION_Z, pixelSize * sizeof(float_t), VK_FORMAT_R16G16B16A16_SFLOAT, (void*)pixels, _pbrSceneTextureSet.shadowJitterMap.image);
+		// @NOTE: in the future, you could blit this into an RGBA16 float (there isn't a native cpp half float (which is why the buffer is uploaded as RGBA32) so it'd have to be a blit), or an RGBA8 SNORM if they allow it, just to save on vram.
+		vkutil::loadImage3DFromBuffer(*this, SHADOWMAP_JITTERMAP_DIMENSION_X, SHADOWMAP_JITTERMAP_DIMENSION_Y, SHADOWMAP_JITTERMAP_DIMENSION_Z, pixelSize * sizeof(float_t), VK_FORMAT_R32G32B32A32_SFLOAT, (void*)pixels, _pbrSceneTextureSet.shadowJitterMap.image);
 		delete[] pixels;
 
-		VkImageViewCreateInfo shadowJitterImageViewInfo = vkinit::imageview3DCreateInfo(VK_FORMAT_R16G16B16A16_SFLOAT, _pbrSceneTextureSet.shadowJitterMap.image._image, VK_IMAGE_ASPECT_COLOR_BIT, 1);
+		VkImageViewCreateInfo shadowJitterImageViewInfo = vkinit::imageview3DCreateInfo(VK_FORMAT_R32G32B32A32_SFLOAT, _pbrSceneTextureSet.shadowJitterMap.image._image, VK_IMAGE_ASPECT_COLOR_BIT, 1);
 		VK_CHECK(vkCreateImageView(_device, &shadowJitterImageViewInfo, nullptr, &_pbrSceneTextureSet.shadowJitterMap.imageView));
 
 		VkSamplerCreateInfo jitterSamplerInfo = vkinit::samplerCreateInfo(1.0f, VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_REPEAT, false);
