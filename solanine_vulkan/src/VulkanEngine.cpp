@@ -4284,6 +4284,8 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 		ImGui::DragFloat("Gamma", &_pbrRendering.gpuSceneShadingProps.gamma, 0.1f, 0.1f, 4.0f);
 		ImGui::DragFloat("IBL Strength", &_pbrRendering.gpuSceneShadingProps.scaleIBLAmbient, 0.1f, 0.0f, 2.0f);
 
+		ImGui::DragFloat("Shadow Jitter Strength", &_pbrRendering.gpuSceneShadingProps.shadowJitterMapOffsetScale, 0.1f);
+
 		static int debugViewIndex = 0;
 		if (ImGui::Combo("Debug View Input", &debugViewIndex, "none\0Base color\0Normal\0Occlusion\0Emissive\0Metallic\0Roughness"))
 			_pbrRendering.gpuSceneShadingProps.debugViewInputs = (float_t)debugViewIndex;

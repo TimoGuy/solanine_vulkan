@@ -32,6 +32,7 @@ struct GPUPBRShadingProps
 	float_t shadowMapScale        = 1.0f / SHADOWMAP_DIMENSION;
 	float_t shadowJitterMapXScale = 1.0f / SHADOWMAP_JITTERMAP_DIMENSION_X;
 	float_t shadowJitterMapYScale = 1.0f / SHADOWMAP_JITTERMAP_DIMENSION_Y;
+	float_t shadowJitterMapOffsetScale = 1.0f;
 	float_t debugViewInputs = 0;
 	float_t debugViewEquation = 0;
 };

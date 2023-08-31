@@ -39,6 +39,7 @@ layout (set = 0, binding = 1) uniform UBOParams
 	float shadowMapScale;
 	float shadowJitterMapXScale;
 	float shadowJitterMapYScale;
+	float shadowJitterMapOffsetScale;
 	float debugViewInputs;
 	float debugViewEquation;
 } uboParams;
@@ -311,7 +312,7 @@ float smoothShadow(vec4 shadowCoord, uint cascadeIndex)
 	// Cheap shadow samples first
 	for (int i = 0; i < SMOOTH_SHADOWS_SAMPLES_SQRT / 2; i++)
 	{
-		vec4 offset = texture(shadowJitterMap, jcoord);
+		vec4 offset = texture(shadowJitterMap, jcoord) * uboParams.shadowJitterMapOffsetScale;
 		jcoord.z += SMOOTH_SHADOWS_INV_SAMPLES_COUNT_DIV_2;
 
 		shadow += textureProj(shadowCoord, offset.xy * uboParams.shadowMapScale, cascadeIndex) / SMOOTH_SHADOWS_SAMPLES_SQRT;  // Two sets of offsets are stored in rg and ba channels of the textures.
@@ -326,7 +327,7 @@ float smoothShadow(vec4 shadowCoord, uint cascadeIndex)
 		for (int i = 0; i < SMOOTH_SHADOWS_SAMPLES_COUNT_DIV_2 - (SMOOTH_SHADOWS_SAMPLES_SQRT / 2); i++)
 		{
 			// @COPYPASTA.
-			vec4 offset = texture(shadowJitterMap, jcoord);
+			vec4 offset = texture(shadowJitterMap, jcoord) * uboParams.shadowJitterMapOffsetScale;
 			jcoord.z += SMOOTH_SHADOWS_INV_SAMPLES_COUNT_DIV_2;
 
 			shadow += textureProj(shadowCoord, offset.xy * uboParams.shadowMapScale, cascadeIndex) * SMOOTH_SHADOWS_INV_SAMPLES_COUNT;  // Two sets of offsets are stored in rg and ba channels of the textures.
@@ -489,21 +490,35 @@ void main()
 	vec3 diffuseContrib = (1.0 - F) * diffuse(pbrInputs);
 	vec3 specContrib = F * G * D / (4.0 * NdotL * NdotV);
 
-	// Get shadow cascade index for the current fragment's view position
-	uint cascadeIndex = 0;
-	for (uint i = 0; i < SHADOW_MAP_CASCADE_COUNT - 1; i++)
-		if (inViewPos.z < uboParams.cascadeSplits[i])
-			cascadeIndex = i + 1;
+	float shadow = 1.0;
+	if (inViewPos.z > uboParams.cascadeSplits[SHADOW_MAP_CASCADE_COUNT - 1])  // @NOTE: this feels really short, but it's the right amount. Any more, and corners will get cut off.  -Timo 2023/08/31
+	{
+		// Get shadow cascade index for the current fragment's view position
+		uint cascadeIndex = 0;
+		for (uint i = 0; i < SHADOW_MAP_CASCADE_COUNT - 1; i++)
+			if (inViewPos.z < uboParams.cascadeSplits[i])
+				cascadeIndex = i + 1;
 
-	// Depth compare for shadowing
-	vec4 shadowCoord = (BIAS_MAT * uboParams.cascadeViewProjMat[cascadeIndex]) * vec4(inWorldPos, 1.0);
+		// @DEBUG: for seeing the cascade colors.
+		// vec3 colors[] = {
+		// 	vec3(1.0, 0.0, 0.0),
+		// 	vec3(1.0, 1.0, 0.0),
+		// 	vec3(1.0, 0.0, 1.0),
+		// 	vec3(0.0, 1.0, 0.0),
+		// };
+		// outFragColor = vec4(colors[cascadeIndex], 1.0);
+		// return;
 
-	float shadow = 0.0;
+		// Depth compare for shadowing
+		vec4 shadowCoord = (BIAS_MAT * uboParams.cascadeViewProjMat[cascadeIndex]) * vec4(inWorldPos, 1.0);
+
+		shadowCoord /= shadowCoord.w;
 #ifdef SMOOTH_SHADOWS_ON
-	shadow = smoothShadow(shadowCoord / shadowCoord.w, cascadeIndex);
+		shadow = smoothShadow(shadowCoord, cascadeIndex);
 #else
-	shadow = textureProj(shadowCoord / shadowCoord.w, vec2(0.0), cascadeIndex);
+		shadow = textureProj(shadowCoord, vec2(0.0), cascadeIndex);
 #endif
+	}
 	shadow = shadow * NdotL;
 
 	// Obtain final intensity as reflectance (BRDF) scaled by the energy of the light (cosine law)

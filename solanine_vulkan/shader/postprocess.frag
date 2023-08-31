@@ -17,6 +17,7 @@ layout (set = 0, binding = 1) uniform UBOParams  // @TODO: just add in the globa
 	//float shadowMapScale;
 	//float shadowJitterMapXScale;
 	//float shadowJitterMapYScale;
+	//float shadowJitterMapOffsetScale;
 	//float debugViewInputs;
 	//float debugViewEquation;
 } uboParams;
