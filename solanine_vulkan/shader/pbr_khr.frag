@@ -514,7 +514,28 @@ void main()
 
 		shadowCoord /= shadowCoord.w;
 #ifdef SMOOTH_SHADOWS_ON
+		float fadeBias[] = {
+			10.0,
+			2.85,
+			2.0,
+			1.0,
+		};
+		float shadowDistanceFade = (inViewPos.z - uboParams.cascadeSplits[cascadeIndex]) * fadeBias[cascadeIndex];
 		shadow = smoothShadow(shadowCoord, cascadeIndex);
+
+		float nextShadow = 1.0;
+		if (shadowDistanceFade < 1.0 && cascadeIndex != SHADOW_MAP_CASCADE_COUNT)
+		{
+			vec4 nextShadowCoord = (BIAS_MAT * uboParams.cascadeViewProjMat[cascadeIndex + 1]) * vec4(inWorldPos, 1.0);
+			nextShadow = smoothShadow(nextShadowCoord, cascadeIndex + 1);
+			// @DEBUG: for seeing where the fade areas are.
+			// outFragColor = vec4(1, 0, 0, 1);
+			// return;
+		}
+		shadow = mix(nextShadow, shadow, min(1.0, shadowDistanceFade));
+		// @DEBUG: for seeing where the fade areas are.
+		// outFragColor = vec4(1, 1, 0, 1);
+		// return;
 #else
 		shadow = textureProj(shadowCoord, vec2(0.0), cascadeIndex);
 #endif
