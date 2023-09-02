@@ -70,6 +70,7 @@
     > This is an important "fix" I want to the combat:
     - [ ] When facing an opponent and using the waza breathing pattern, the camera should be focusing on the nearest facing character that the player could be facing.
         - [ ] That is, holding <shift> would cause the camera to show both the player and the focused character in frame with a slight angle, and try to keep both in the shot.
+            - [x] Pressing and holding shift adds the nearest capsule as a camera targeting object.
     > The biggest goal is feeling like what you're inputting as actions is actually what you feel like you're doing.
     - [ ] Divide up the individual wazas such that you can do all of them one at a time. (THOUGHT: I think that being able to do them all individually is more important than the chain FOR NOW... bc doing them all individually all feels like a different action that you have control over doing)
     - [ ] Require holding shift to do the aura-based wazas.

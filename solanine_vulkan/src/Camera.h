@@ -5,6 +5,7 @@
 class VulkanEngine;
 struct RenderObject;
 struct GPUPBRShadingProps;
+namespace physengine { struct CapsulePhysicsData; }
 
 
 struct GPUCameraData
@@ -51,6 +52,7 @@ enum class CameraModeChangeEvent { NONE, ENTER, EXIT };
 struct MainCamMode
 {
 	RenderObject* targetObject = nullptr;
+	physengine::CapsulePhysicsData* opponentTargetObject = nullptr;
 	vec3 focusPosition = GLM_VEC3_ZERO_INIT;
 	vec2 sensitivity = { 0.1f, 0.1f };
 	vec2 orbitAngles = { glm_rad(45.0f), 0.0f };
@@ -65,6 +67,7 @@ struct MainCamMode
 	vec3      focusPositionOffset = { 0, 2.333333f, 0 };
 
 	void setMainCamTargetObject(RenderObject* targetObject);
+	void setOpponentCamTargetObject(physengine::CapsulePhysicsData* targetObject);
 };
 
 #ifdef _DEVELOP

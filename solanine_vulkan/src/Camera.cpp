@@ -6,6 +6,7 @@
 #include "ImportGLM.h"
 #include "InputManager.h"
 #include "RenderObject.h"
+#include "PhysicsEngine.h"
 #include "VulkanEngine.h"  // VulkanEngine
 #include "Debug.h"
 
@@ -157,6 +158,11 @@ void MainCamMode::setMainCamTargetObject(RenderObject* targetObject)
 	MainCamMode::targetObject = targetObject;
 }
 
+void MainCamMode::setOpponentCamTargetObject(physengine::CapsulePhysicsData* targetObject)
+{
+	MainCamMode::opponentTargetObject = targetObject;
+}
+
 
 //
 // Camera
@@ -226,12 +232,20 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 	if (mainCamMode.targetObject != nullptr)
 	{
 		// Update the focus position
-		vec4 pos;
-		mat4 rot;
-		vec3 sca;
-		glm_decompose(mainCamMode.targetObject->transformMatrix, pos, rot, sca);
 		vec3 targetPosition;
-		glm_vec4_copy3(pos, targetPosition);
+		{
+			vec4 pos;
+			mat4 rot;
+			vec3 sca;
+			glm_decompose(mainCamMode.targetObject->transformMatrix, pos, rot, sca);
+			glm_vec4_copy3(pos, targetPosition);
+		}
+
+		if (mainCamMode.opponentTargetObject != nullptr)  // Opponent target position mixing in.
+		{
+			glm_vec3_lerp(targetPosition, mainCamMode.opponentTargetObject->interpolBasePosition, 0.3f, targetPosition);
+		}
+
 		if (mainCamMode.focusRadiusXZ > 0.0f || mainCamMode.focusRadiusY > 0.0f)
 		{
 			vec3 delta;
