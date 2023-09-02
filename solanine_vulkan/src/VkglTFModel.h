@@ -11,6 +11,7 @@
 #include "ImportGLM.h"
 #include <taskflow/taskflow.hpp>
 #include "VkDataStructures.h"
+#include "Settings.h"
 
 class VulkanEngine;
 
@@ -230,7 +231,7 @@ namespace vkglTF
 
 		struct Event
 		{
-			float_t     eventCallAt = 0.0f;  // @NOTE: at least for now this is a percentage value
+			float_t     eventCallAt = 0.0f;  // @NOTE: this is number of realtime seconds (i.e. typically number of frames / 24.0) elapsed to call the event.
 			std::string eventName;  // @NOTE: just for setup
 			size_t      eventIndex  = (size_t)-1;  // @NOTE: this will be compiled at the animator-owned copy level
 		};
@@ -401,16 +402,21 @@ namespace vkglTF
 		void update(const float_t& deltaTime);
 
 		void runEvent(const std::string& eventName);  // @NOTE: this is really naive btw
+		void setState(const std::string& stateName, float_t time = 0.0f, bool forceImmediateUpdate = false);
 		void setTrigger(const std::string& triggerName);
 		void setMask(const std::string& maskName, bool enabled);
 		void setTwitchAngle(float_t radians);
+		void setUpdateSpeedMultiplier(const float_t& multiplier);
+		float_t getUpdateSpeedMultiplier();
 
 	private:
 		vkglTF::Model*                model;
-		VulkanEngine*                 engine;
+		static VulkanEngine*          engine;
 		StateMachine                  animStateMachineCopy;
 		std::vector<AnimatorCallback> eventCallbacks;
 		float_t                       twitchAngle;
+		float_t                       speedMultiplier = 1.0f;
+		std::map<std::string, mat4s>  jointNameToMatrix;
 
 		void updateAnimation();
 		void updateJointMatrices(size_t globalNodeReservedIndex, vkglTF::Skin* skin, mat4& m);
@@ -433,7 +439,7 @@ namespace vkglTF
 			VkDescriptorSet descriptorSet;
 			GPUAnimatorNode* mapped;
 		};
-		static AnimatorNodeCollectionBuffer nodeCollectionBuffer;
+		static AnimatorNodeCollectionBuffer nodeCollectionBuffers[FRAME_OVERLAP];  // @NOTE: The buffer size created in this is 78mb per AnimatorNodeCollectionBuffer... pretty big. Especially since very few render objects are animator attached ones.
 		static std::vector<size_t> reservedNodeCollectionIndices;
 
 		std::vector<size_t> myReservedNodeCollectionIndices;

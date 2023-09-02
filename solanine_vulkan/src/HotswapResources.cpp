@@ -66,6 +66,8 @@ namespace hotswapres
                 }
             }
     }
+
+    std::unordered_map<std::string, std::vector<ReloadCallback>> resourceReloadCallbackMap;
     
 	std::mutex* startResourceChecker(VulkanEngine* engine, bool* recreateSwapchain, RenderObjectManager* roManager)
     {
@@ -127,6 +129,24 @@ namespace hotswapres
                         std::cout << "Sent message to model \"" << resource.path.stem().string() << "\" to reload." << std::endl;
                         continue;
                     }
+                    else
+                    {
+                        // Execute all callback functions attached to resource name.
+                        std::string fname = resource.path.string();
+                        auto it = resourceReloadCallbackMap.find(fname);
+                        if (it != resourceReloadCallbackMap.end())
+                        {
+                            for (auto& rc : resourceReloadCallbackMap[fname])
+                                rc.callback();
+
+                            size_t callbacks = resourceReloadCallbackMap[fname].size();
+                            if (callbacks > 0)
+                            {
+                                std::cout << "Executed " << callbacks << " callback function(s) for \"" << fname << "\" to reload." << std::endl;
+                                continue;
+                            }
+                        }
+                    }
 
                     // Nothing to do to the resource!
                     // That means there's no routine for this certain resource
@@ -157,6 +177,33 @@ namespace hotswapres
         // @NOTE: nothing is around to tear down!
         //        There are just filesystem entries, so they only go until the lifetime
         //        of the VulkanEngine object, so we don't need to tear that down!
+    }
+
+    void addReloadCallback(const std::string& fname, void* owner, std::function<void()>&& reloadCallback)
+    {
+        ReloadCallback rc = {
+            .owner = owner,
+            .callback = reloadCallback,
+        };
+        std::string fnamePathified =
+            std::filesystem::path(fname)
+                .make_preferred()  // Changes slashes to what the os preferred slashing style (i.e. '/' or '\\') is.
+                .string();
+        resourceReloadCallbackMap[fnamePathified].push_back(rc);
+    }
+
+    void removeOwnedCallbacks(void* owner)
+    {
+        for (auto it = resourceReloadCallbackMap.begin(); it != resourceReloadCallbackMap.end(); it++)
+        {
+            auto& rcs = it->second;
+            std::erase_if(
+                rcs,
+                [owner](ReloadCallback x) {
+                    return x.owner == owner;
+                }
+            );
+        }
     }
 }
 #endif

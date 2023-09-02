@@ -96,6 +96,7 @@ namespace vkutil
             VkPipelineDepthStencilStateCreateInfo            depthStencilState,
             std::vector<VkDynamicState>                      dynamicStates,
             VkRenderPass                                     renderPass,
+            uint32_t                                         subpass,
             VkPipeline&                                      outPipeline,
             VkPipelineLayout&                                outPipelineLayout)
         {
@@ -163,7 +164,7 @@ namespace vkutil
                 .pDynamicState = &dynamicStateCreateInfo,
                 .layout = outPipelineLayout,
                 .renderPass = renderPass,
-                .subpass = 0,
+                .subpass = subpass,
                 .basePipelineHandle = VK_NULL_HANDLE,
             };
 

@@ -29,6 +29,10 @@ struct GPUPBRShadingProps
 	float_t scaleIBLAmbient = 1.0f;
 	vec4 cascadeSplits;
 	mat4 cascadeViewProjMats[SHADOWMAP_CASCADES];
+	float_t shadowMapScale        = 1.0f / SHADOWMAP_DIMENSION;
+	float_t shadowJitterMapXScale = 1.0f / SHADOWMAP_JITTERMAP_DIMENSION_X;
+	float_t shadowJitterMapYScale = 1.0f / SHADOWMAP_JITTERMAP_DIMENSION_Y;
+	float_t shadowJitterMapOffsetScale = 1.0f;
 	float_t debugViewInputs = 0;
 	float_t debugViewEquation = 0;
 };
@@ -115,8 +119,8 @@ public:
 	bool _isInitialized{ false };
 	uint32_t _frameNumber{ 0 };
 
-	VkExtent2D _windowExtent{ 1920, 1080 };
-	// VkExtent2D _windowExtent{ 1280, 720 };
+	//VkExtent2D _windowExtent{ 1920, 1080 };
+	VkExtent2D _windowExtent{ 1280, 720 };
 	struct SDL_Window* _window{ nullptr };
 	bool _isWindowMinimized = false;    // @NOTE: if we don't handle window minimization correctly, we can get the VK_ERROR_DEVICE_LOST(-4) error
 	bool _recreateSwapchain = false;
@@ -165,8 +169,8 @@ public:
 
 	// Main Depth Buffer
 	AllocatedImage _depthImage;
-	VkImageView _depthImageView;
-	VkFormat _depthFormat;
+	VkImageView    _depthImageView;
+	VkFormat       _depthFormat;
 
 	//
 	// UI Renderpass
@@ -185,13 +189,13 @@ public:
 	//
 	// Picking Renderpass
 	//
-	VkRenderPass _pickingRenderPass;
-	VkFramebuffer _pickingFramebuffer;
-	VkImageView _pickingImageView;
+	VkRenderPass   _pickingRenderPass;
+	VkFramebuffer  _pickingFramebuffer;
+	VkImageView    _pickingImageView;
 	AllocatedImage _pickingImage;
 
 	// Picking Depth Buffer
-	VkImageView _pickingDepthImageView;
+	VkImageView    _pickingDepthImageView;
 	AllocatedImage _pickingDepthImage;
 
 	// VMA Lib Allocator
@@ -241,6 +245,7 @@ public:
 		Texture prefilteredCubemap;
 		Texture brdfLUTTexture;
 		Texture shadowMap;
+		Texture shadowJitterMap;
 	} _pbrSceneTextureSet;
 
 	//

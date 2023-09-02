@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<objects serializationModel="Studio.02.02.00">
+	<object class="AudioFile" id="{2985bd79-aa82-4f02-bc07-d49de14b0112}">
+		<property name="note">
+			<value>Aura let go/end</value>
+		</property>
+		<property name="assetPath">
+			<value>hero_super_dash_ready.wav</value>
+		</property>
+		<property name="frequencyInKHz">
+			<value>44.0999985</value>
+		</property>
+		<property name="channelCount">
+			<value>1</value>
+		</property>
+		<property name="length">
+			<value>0.67333333333333334</value>
+		</property>
+		<relationship name="masterAssetFolder">
+			<destination>{e7ba0bcb-fb1d-41aa-bda6-1712b6d0ff86}</destination>
+		</relationship>
+	</object>
+</objects>

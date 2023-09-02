@@ -91,6 +91,8 @@
     <None Include="shader\color_textbox_bg.frag" />
     <None Include="shader\physengineDebugVis.frag" />
     <None Include="shader\physengineDebugVis.vert" />
+    <None Include="shader\pbr_khr_zprepass.frag" />
+    <None Include="shader\pbr_zprepass.vert" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\imgui\imconfig.h">
@@ -162,7 +164,7 @@
     <ClInclude Include="src\Entity.h">
       <Filter>Header Files\entity</Filter>
     </ClInclude>
-    <ClInclude Include="src\Player.h">
+    <ClInclude Include="src\Character.h">
       <Filter>Header Files\entity</Filter>
     </ClInclude>
     <ClInclude Include="src\VkDataStructures.h">
@@ -237,9 +239,6 @@
     <ClInclude Include="src\HarvestableItem.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\Beanbag.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Main.cpp">
@@ -308,7 +307,7 @@
     <ClCompile Include="src\Entity.cpp">
       <Filter>Source Files\entity</Filter>
     </ClCompile>
-    <ClCompile Include="src\Player.cpp">
+    <ClCompile Include="src\Character.cpp">
       <Filter>Source Files\entity</Filter>
     </ClCompile>
     <ClCompile Include="src\Debug.cpp">
@@ -369,9 +368,6 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\HarvestableItem.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="src\Beanbag.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

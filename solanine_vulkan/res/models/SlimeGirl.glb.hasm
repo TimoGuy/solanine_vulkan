@@ -14,6 +14,46 @@
   trans     goto_fall_combat_prepause_ready   StateFallCombatAirbornePrepauseReady
   trans     goto_combat_execute_grounded      StateCombatGroundedAttack
   trans     goto_combat_execute_airborne      StateCombatAirborneAttack
+  trans     goto_draw_weapon                  StateDrawWeapon
+  trans     goto_sheath_weapon                StateSheathWeapon
+  trans     goto_combat_execute_airborne      StateCombatAirborneAttack
+  trans     goto_getting_pressed              StateGettingPressed
+
+
+:StateDrawWeapon  # @NOTE: meant to be a copy of StateIdle (except for on_finish)
+  animation Draw_Weapon
+  loop      0
+  trans     goto_run                          StateRun
+  trans     goto_jump                         StateJumpFromIdle
+  trans     goto_fall                         StateFall
+  trans     goto_grabbed                      StateGrabbed
+  trans     goto_combat_prepause              StateCombatGroundedPrepause
+  trans     goto_fall_combat_prepause_ready   StateFallCombatAirbornePrepauseReady
+  trans     goto_combat_execute_grounded      StateCombatGroundedAttack
+  trans     goto_combat_execute_airborne      StateCombatAirborneAttack
+  trans     goto_draw_weapon                  StateDrawWeapon
+  trans     goto_sheath_weapon                StateSheathWeapon
+  trans     goto_combat_execute_airborne      StateCombatAirborneAttack
+  trans     goto_getting_pressed              StateGettingPressed
+  on_finish StateIdle
+
+
+:StateSheathWeapon  # @NOTE: meant to be a copy of StateIdle (except for on_finish)
+  animation Sheath_Weapon
+  loop      0
+  trans     goto_run                          StateRun
+  trans     goto_jump                         StateJumpFromIdle
+  trans     goto_fall                         StateFall
+  trans     goto_grabbed                      StateGrabbed
+  trans     goto_combat_prepause              StateCombatGroundedPrepause
+  trans     goto_fall_combat_prepause_ready   StateFallCombatAirbornePrepauseReady
+  trans     goto_combat_execute_grounded      StateCombatGroundedAttack
+  trans     goto_combat_execute_airborne      StateCombatAirborneAttack
+  trans     goto_draw_weapon                  StateDrawWeapon
+  trans     goto_sheath_weapon                StateSheathWeapon
+  trans     goto_combat_execute_airborne      StateCombatAirborneAttack
+  trans     goto_getting_pressed              StateGettingPressed
+  on_finish StateIdle
 
 
 :StateRun
@@ -27,7 +67,137 @@
   trans     goto_fall_combat_prepause_ready   StateFallCombatAirbornePrepauseReady
   trans     goto_combat_execute_grounded      StateCombatGroundedAttack
   trans     goto_combat_execute_airborne      StateCombatAirborneAttack
+  trans     goto_getting_pressed              StateGettingPressed
 
+
+# @NOTE This is a test #
+
+# @IDEA: what if there's an attack that if you enter the form, you can't get out unless if you take damage.
+
+# 1st Form: Gust Wall.
+
+:StateAirWaza1stFormEntrance
+  animation Air_Waza_1_Enter
+  loop 0
+
+:StateAirWaza1stFormEntranceExit  # @TODO: create hte animation for this.
+  animation Air_Waza_1_Enter_Exit
+  loop 0
+  on_finish StateIdle
+
+:StateAirWaza1stFormPart1
+  animation Air_Waza_1_1
+  loop 0
+  on_finish StateAirWaza1stFormPart1Exit
+
+:StateAirWaza1stFormPart1Exit
+  animation Air_Waza_1_1_Exit
+  loop 0
+  on_finish StateIdle
+
+# 2nd Form: Updraft.
+
+:StateAirWaza1stFormTo2ndForm
+  animation Air_Waza_1_to_2
+  loop 0
+
+
+:StateAirWaza2ndFormEntrance
+  animation Air_Waza_2_Enter
+  loop 0
+
+:StateAirWaza2ndFormEntranceExit
+  animation Air_Waza_2_Enter_Exit
+  loop 0
+
+:StateAirWaza2ndFormPart1
+  animation Air_Waza_2_1
+  loop 0
+
+:StateAirWaza2ndFormPart1Exit
+  animation Air_Waza_2_1_Exit
+  loop 0
+  on_finish StateIdle
+
+:StateAirWaza2ndFormPart2
+  animation Air_Waza_2_2
+  loop 0
+
+:StateAirWaza2ndFormPart2Exit
+  animation Air_Waza_2_2_Exit
+  loop 0
+  on_finish StateIdle
+
+# 3rd Form: Takeoff.
+
+:StateAirWaza3rdFormEntrance
+  animation Air_Waza_3_Enter
+  loop 0
+
+:StateAirWaza3rdFormPart1
+  animation Air_Waza_3_1
+  loop 0
+
+# 4th Form: Vacuum
+
+:StateAirWaza3rdFormTo4thForm
+  animation Air_Waza_3_to_4
+  loop 0
+
+:StateAirWaza4thFormEntrance
+  animation Air_Waza_4_Enter
+  loop 0
+
+:StateAirWaza4thFormPart1
+  animation Air_Waza_4_1
+  loop 0
+
+:StateAirWaza4thFormPart2
+  animation Air_Waza_4_2
+  loop 0
+
+# 5th Form: Compression
+
+:StateAirWaza4thFormTo5thForm  # @NOTE: there is no normal entrance into the 5th form.
+  animation Air_Waza_4_to_5
+  loop 0
+
+:StateAirWaza5thFormPart1
+  animation Air_Waza_5_1
+  loop 0
+
+:StateAirWaza5thFormPart2
+  animation Air_Waza_5_2
+  loop 0
+
+:StateAirWaza5thFormPart3
+  animation Air_Waza_5_3
+  loop 0
+
+# 6th Form: Path of Most Resistance
+
+:StateAirWaza5thFormTo6thForm  # @NOTE: there is no normal entrance into the 6th form.
+  animation Air_Waza_5_to_6
+  loop 0
+
+:StateAirWaza6thFormPart1
+  animation Air_Waza_6_1
+  loop 0
+
+:StateAirWaza6thFormPart2
+  animation Air_Waza_6_2
+  loop 0
+
+:StateAirWaza6thFormPart3
+  animation Air_Waza_6_3
+  loop 0
+
+:StateAirWaza6thFormPart3Exit
+  animation Air_Waza_6_3_Exit
+  loop 0
+  on_finish StateIdle
+
+########################
 
 :StateLandIdle
   animation Land_From_Jumping_From_Idle
@@ -41,6 +211,7 @@
   trans     goto_fall_combat_prepause_ready   StateFallCombatAirbornePrepauseReady
   trans     goto_combat_execute_grounded      StateCombatGroundedAttack
   trans     goto_combat_execute_airborne      StateCombatAirborneAttack
+  trans     goto_getting_pressed              StateGettingPressed
 
 
 :StateLandRun
@@ -55,6 +226,7 @@
   trans     goto_fall_combat_prepause_ready   StateFallCombatAirbornePrepauseReady
   trans     goto_combat_execute_grounded      StateCombatGroundedAttack
   trans     goto_combat_execute_airborne      StateCombatAirborneAttack
+  trans     goto_getting_pressed              StateGettingPressed
 
 
 :StateJumpFromIdle
@@ -84,6 +256,16 @@
   trans     goto_combat_prepause              StateCombatAirbornePrepause
   trans     goto_fall_combat_prepause_ready   StateFallCombatAirbornePrepauseReady
 
+:StateGettingPressed
+  animation Getting_Pressed
+  loop      0
+  trans     goto_get_out_getting_pressed      StateGetOutGettingPressed
+
+:StateGetOutGettingPressed
+  animation Get_Out_Getting_Pressed
+  loop      0
+  on_finish StateIdle
+  trans     goto_getting_pressed              StateGettingPressed
 
 :StateFallCombatAirbornePrepauseReady
   animation DW_Dive_Attack_Start  # @NOTE: this is a temporary animation. Have some anim that is just a 1 frame thingo like this in the future though.
@@ -111,7 +293,7 @@
 
 
 :StateCombatGroundedPrepause
-  animation DW_Charge_Weapon_Initial_Attack
+  animation Demo_Air_Waza #DW_Charge_Weapon_Initial_Attack
   loop      0
   trans     goto_grabbed                    StateGrabbed
   trans     goto_finish_prepause_grounded   StateIdle
@@ -269,7 +451,7 @@
 # This masks the upper body starting with the Mid Back bone. Everything else should still get controlled normally by whatever layers aren't taking the bones
 ~MaskCombatMode
   enabled   0
-  bone      Shoulder.L  # @NOTE: you need to have some way of doing errors in case if these bones are named incorrectly
+  bone      Shoulder.L  # @TODO: you need to have some way of doing errors in case if these bones are named incorrectly
   bone      Upper Arm.L
   bone      Forearm.L
   bone      Hand.L
@@ -310,6 +492,8 @@
   animation DW_Idle
   loop      1
   trans     current_state                       StateRun       StateMCMRun
+  trans     goto_mcm_draw_weapon                StateMCMDrawWeapon
+  trans     goto_mcm_sheath_weapon              StateMCMSheathWeapon
   trans     goto_mcm_grounded_prepause_ready    StateMCMGroundedPrepauseReady
 
 
@@ -318,7 +502,26 @@
   animation DW_Run
   loop      1
   trans     not_current_state                   StateRun       StateMCMIdle
+  trans     goto_mcm_draw_weapon                StateMCMDrawWeapon
+  trans     goto_mcm_sheath_weapon              StateMCMSheathWeapon
   trans     goto_mcm_grounded_prepause_ready    StateMCMGroundedPrepauseReady
+
+
+:StateMCMDrawWeapon
+  mask      MaskCombatMode
+  animation Draw_Weapon
+  event     0.0                                 EventEnableMCM
+  event     0.0                                 EventSetAttachmentToHand
+  event     0.4166666667                        EventMaterializeBlade
+  on_finish StateMCMIdle
+
+:StateMCMSheathWeapon
+  mask      MaskCombatMode
+  animation Sheath_Weapon
+  event     0.25                                EventHokasuBlade
+  event     0.6666666667                        EventSetAttachmentToBack
+  event     1.0                                 EventDisableMCM
+  on_finish StateMCMIdle
 
 
 :StateMCMGroundedPrepauseReady

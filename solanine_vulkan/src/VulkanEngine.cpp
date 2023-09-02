@@ -453,9 +453,25 @@ void VulkanEngine::render()
 		// Begin renderpass
 		vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
+		Material& defaultMaterial = *getMaterial("pbrMaterial");    // @HACK: @TODO: currently, the way that the pipeline is getting used is by just hardcode using it in the draw commands for models... however, each model should get its pipeline set to this material instead (or whatever material its using... that's why we can't hardcode stuff!!!)   @TODO: create some kind of way to propagate the newly created pipeline to the primMat (calculated material in the gltf model) instead of using defaultMaterial directly.  -Timo
+		Material& defaultZPrepassMaterial = *getMaterial("pbrZPrepassMaterial");
+		Material& skyboxMaterial = *getMaterial("skyboxMaterial");
+
+		// Render z prepass //
+		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipeline);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 3, 1, &defaultMaterial.textureSet, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(), 0, nullptr);
+		renderRenderObjects(cmd, currentFrame);
+		//////////////////////
+
+		// Switch from zprepass subpass to main subpass
+		vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_INLINE);
+
 		// Render skybox //
 		// @TODO: put this into its own function!
-		Material& skyboxMaterial = *getMaterial("skyboxMaterial");
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipeline);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipelineLayout, 1, 1, &skyboxMaterial.textureSet, 0, nullptr);
@@ -467,7 +483,6 @@ void VulkanEngine::render()
 
 		// Bind material
 		// @TODO: put this into its own function!
-		Material& defaultMaterial = *getMaterial("pbrMaterial");    // @HACK: @TODO: currently, the way that the pipeline is getting used is by just hardcode using it in the draw commands for models... however, each model should get its pipeline set to this material instead (or whatever material its using... that's why we can't hardcode stuff!!!)   @TODO: create some kind of way to propagate the newly created pipeline to the primMat (calculated material in the gltf model) instead of using defaultMaterial directly.  -Timo
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipeline);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
@@ -1059,6 +1074,64 @@ void VulkanEngine::loadImages()
 		_loadedTextures["imguiTextureLayerCollision"] = textureLayerCollision;
 	}
 
+	// Initialize the shadow jitter image
+	{
+		size_t pixelSize = 4 * SHADOWMAP_JITTERMAP_DIMENSION_X * SHADOWMAP_JITTERMAP_DIMENSION_Y * SHADOWMAP_JITTERMAP_DIMENSION_Z;
+		float_t* pixels = new float_t[pixelSize];
+
+		std::default_random_engine generator;
+		std::uniform_real_distribution<float_t> distribution(0.0f, 1.0f);
+
+		constexpr uint32_t SHADOWMAP_JITTERMAP_DIMENSION_Z_2 = SHADOWMAP_JITTERMAP_DIMENSION_Z * 2;
+		uint32_t offsetDimension = (uint32_t)std::sqrt(SHADOWMAP_JITTERMAP_DIMENSION_Z_2);
+
+		for (uint32_t i = 0; i < SHADOWMAP_JITTERMAP_DIMENSION_X; i++)
+		for (uint32_t j = 0; j < SHADOWMAP_JITTERMAP_DIMENSION_Y; j++)
+		{
+			size_t cursor = 4 * (j * SHADOWMAP_JITTERMAP_DIMENSION_X + i);
+			for (uint32_t z = 0; z < SHADOWMAP_JITTERMAP_DIMENSION_Z_2; z++)
+			{
+				uint32_t reversedZ = SHADOWMAP_JITTERMAP_DIMENSION_Z_2 - z - 1;  // Reverse so that first samples are the outermost ring.
+				vec2 uv = {
+					reversedZ % offsetDimension + distribution(generator),
+					reversedZ / offsetDimension + distribution(generator),
+				};
+				vec2 uvWarped = {
+					std::sqrt(uv[1]) * std::cos(2.0f * M_PI * uv[0]),
+					std::sqrt(uv[1]) * std::sin(2.0f * M_PI * uv[0]),
+				};
+
+				if (z % 2 == 0)
+				{
+					pixels[cursor + 0] = uvWarped[0];
+					pixels[cursor + 1] = uvWarped[1];
+				}
+				else
+				{
+					pixels[cursor + 2] = uvWarped[0];
+					pixels[cursor + 3] = uvWarped[1];
+					cursor += 4 * SHADOWMAP_JITTERMAP_DIMENSION_X * SHADOWMAP_JITTERMAP_DIMENSION_Y;
+				}
+			}
+		}
+
+		// @NOTE: in the future, you could blit this into an RGBA16 float (there isn't a native cpp half float (which is why the buffer is uploaded as RGBA32) so it'd have to be a blit), or an RGBA8 SNORM if they allow it, just to save on vram.
+		vkutil::loadImage3DFromBuffer(*this, SHADOWMAP_JITTERMAP_DIMENSION_X, SHADOWMAP_JITTERMAP_DIMENSION_Y, SHADOWMAP_JITTERMAP_DIMENSION_Z, pixelSize * sizeof(float_t), VK_FORMAT_R32G32B32A32_SFLOAT, (void*)pixels, _pbrSceneTextureSet.shadowJitterMap.image);
+		delete[] pixels;
+
+		VkImageViewCreateInfo shadowJitterImageViewInfo = vkinit::imageview3DCreateInfo(VK_FORMAT_R32G32B32A32_SFLOAT, _pbrSceneTextureSet.shadowJitterMap.image._image, VK_IMAGE_ASPECT_COLOR_BIT, 1);
+		VK_CHECK(vkCreateImageView(_device, &shadowJitterImageViewInfo, nullptr, &_pbrSceneTextureSet.shadowJitterMap.imageView));
+
+		VkSamplerCreateInfo jitterSamplerInfo = vkinit::samplerCreateInfo(1.0f, VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_REPEAT, false);
+		VK_CHECK(vkCreateSampler(_device, &jitterSamplerInfo, nullptr, &_pbrSceneTextureSet.shadowJitterMap.sampler));
+
+		_mainDeletionQueue.pushFunction([=]() {
+			vkDestroySampler(_device, _pbrSceneTextureSet.shadowJitterMap.sampler, nullptr);
+			vkDestroyImageView(_device, _pbrSceneTextureSet.shadowJitterMap.imageView, nullptr);
+			vmaDestroyImage(_allocator, _pbrSceneTextureSet.shadowJitterMap.image._image, _pbrSceneTextureSet.shadowJitterMap.image._allocation);
+			});
+	}
+
 	//
 	// @TODO: add a thing to destroy all the loaded images from _loadedTextures hashmap
 	//
@@ -1512,7 +1585,7 @@ void VulkanEngine::initShadowImages()
 		vmaDestroyImage(_allocator, _pbrSceneTextureSet.shadowMap.image._image, _pbrSceneTextureSet.shadowMap.image._allocation);
 		});
 
-	// Once framebuffer and imageview per layer of shadow image
+	// One framebuffer and imageview per layer of shadow image
 	for (uint32_t i = 0; i < SHADOWMAP_CASCADES; i++)
 	{
 		VkImageViewCreateInfo individualViewInfo = vkinit::imageviewCreateInfo(_depthFormat, _pbrSceneTextureSet.shadowMap.image._image, VK_IMAGE_ASPECT_DEPTH_BIT, 1);
@@ -1583,7 +1656,13 @@ void VulkanEngine::initMainRenderpass()
 	//
 	// Define the subpass to render to the default renderpass
 	//
-	VkSubpassDescription subpass = {
+	VkSubpassDescription zPrepassSubpass = {
+		.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+		.colorAttachmentCount = 0,
+		.pColorAttachments = nullptr,
+		.pDepthStencilAttachment = &depthAttachmentRef
+	};
+	VkSubpassDescription mainSubpass = {
 		.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
 		.colorAttachmentCount = 1,
 		.pColorAttachments = &colorAttachmentRef,
@@ -1595,15 +1674,23 @@ void VulkanEngine::initMainRenderpass()
 	//
 	VkSubpassDependency colorDependency = {
 		.srcSubpass = VK_SUBPASS_EXTERNAL,
-		.dstSubpass = 0,
+		.dstSubpass = 1,
 		.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
 		.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
 		.srcAccessMask = 0,
 		.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
 	};
-	VkSubpassDependency depthDependency = {
+	VkSubpassDependency zPrepassDepthDependency = {
 		.srcSubpass = VK_SUBPASS_EXTERNAL,
 		.dstSubpass = 0,
+		.srcStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+		.dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+		.srcAccessMask = 0,
+		.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT
+	};
+	VkSubpassDependency mainDepthDependency = {
+		.srcSubpass = 0,
+		.dstSubpass = 1,
 		.srcStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
 		.dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
 		.srcAccessMask = 0,
@@ -1613,15 +1700,16 @@ void VulkanEngine::initMainRenderpass()
 	//
 	// Create the renderpass for the subpass
 	//
-	VkSubpassDependency dependencies[] = { colorDependency, depthDependency };
+	VkSubpassDependency dependencies[] = { colorDependency, zPrepassDepthDependency, mainDepthDependency };
 	VkAttachmentDescription attachments[] = { colorAttachment, depthAttachment };
+	VkSubpassDescription subpasses[] = { zPrepassSubpass, mainSubpass };
 	VkRenderPassCreateInfo renderPassInfo = {
 		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
 		.attachmentCount = 2,
 		.pAttachments = &attachments[0],
-		.subpassCount = 1,
-		.pSubpasses = &subpass,
-		.dependencyCount = 2,
+		.subpassCount = 2,
+		.pSubpasses = &subpasses[0],
+		.dependencyCount = 3,
 		.pDependencies = &dependencies[0]
 	};
 
@@ -2191,6 +2279,11 @@ void VulkanEngine::initDescriptors()    // @TODO: don't destroy and then recreat
 			.imageView = _pbrSceneTextureSet.shadowMap.imageView,
 			.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
 		};
+		VkDescriptorImageInfo shadowJitterMapImageInfo = {
+			.sampler = _pbrSceneTextureSet.shadowJitterMap.sampler,
+			.imageView = _pbrSceneTextureSet.shadowJitterMap.imageView,
+			.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		};
 
 		vkutil::DescriptorBuilder::begin()
 			.bindBuffer(0, &cameraInfo, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT)
@@ -2199,6 +2292,7 @@ void VulkanEngine::initDescriptors()    // @TODO: don't destroy and then recreat
 			.bindImage(3, &prefilteredImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
 			.bindImage(4, &brdfLUTImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
 			.bindImage(5, &shadowMapImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+			.bindImage(6, &shadowJitterMapImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
 			.build(_frames[i].globalDescriptor, _globalSetLayout);
 
 		//
@@ -2414,6 +2508,33 @@ void VulkanEngine::initPipelines()
 		_windowExtent,
 	};
 
+	// Mesh ZPrepass Pipeline
+	VkPipeline meshZPrepassPipeline;
+	VkPipelineLayout meshZPrepassPipelineLayout;
+	vkutil::pipelinebuilder::build(
+		{},
+		{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _pbrTexturesSetLayout, _skeletalAnimationSetLayout },
+		{
+			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/pbr_zprepass.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/pbr_khr_zprepass.frag.spv" },
+		},
+		modelVertexDescription.attributes,
+		modelVertexDescription.bindings,
+		vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+		screenspaceViewport,
+		screenspaceScissor,
+		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT),
+		{}, // No color attachment for the z prepass pipeline; only writing to depth!
+		vkinit::multisamplingStateCreateInfo(),
+		vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS),
+		{},
+		_mainRenderPass,
+		0,
+		meshZPrepassPipeline,
+		meshZPrepassPipelineLayout
+		);
+	attachPipelineToMaterial(meshZPrepassPipeline, meshZPrepassPipelineLayout, "pbrZPrepassMaterial");
+
 	// Mesh Pipeline
 	VkPipeline meshPipeline;
 	VkPipelineLayout meshPipelineLayout;
@@ -2432,9 +2553,10 @@ void VulkanEngine::initPipelines()
 		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT),
 		{ vkinit::colorBlendAttachmentState() },
 		vkinit::multisamplingStateCreateInfo(),
-		vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL),
+		vkinit::depthStencilCreateInfo(true, false, VK_COMPARE_OP_EQUAL),
 		{},
 		_mainRenderPass,
+		1,
 		meshPipeline,
 		meshPipelineLayout
 		);
@@ -2458,9 +2580,10 @@ void VulkanEngine::initPipelines()
 		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_FRONT_BIT),    // Bc we're rendering a box inside-out
 		{ vkinit::colorBlendAttachmentState() },
 		vkinit::multisamplingStateCreateInfo(),
-		vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_NEVER),
+		vkinit::depthStencilCreateInfo(true, false, VK_COMPARE_OP_LESS_OR_EQUAL),  // @FIX: it's not a perfect depth test bc there is some overdraw with the skybox.
 		{},
 		_mainRenderPass,
+		1,
 		skyboxPipeline,
 		skyboxPipelineLayout
 		);
@@ -2487,6 +2610,7 @@ void VulkanEngine::initPipelines()
 		vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL),
 		{ VK_DYNAMIC_STATE_SCISSOR },
 		_pickingRenderPass,
+		0,
 		pickingPipeline,
 		pickingPipelineLayout
 		);
@@ -2519,6 +2643,7 @@ void VulkanEngine::initPipelines()
 		vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL),
 		{},
 		_mainRenderPass,
+		1,
 		wireframePipeline,
 		wireframePipelineLayout
 		);
@@ -2549,6 +2674,7 @@ void VulkanEngine::initPipelines()
 		vkinit::depthStencilCreateInfo(true, false, VK_COMPARE_OP_GREATER),
 		{},
 		_mainRenderPass,
+		1,
 		wireframeBehindPipeline,
 		wireframePipelineLayout
 		);
@@ -2591,6 +2717,7 @@ void VulkanEngine::initPipelines()
 		vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL),
 		{},
 		_shadowRenderPass,
+		0,
 		shadowDepthPassPipeline,
 		shadowDepthPassPipelineLayout
 		);
@@ -2617,6 +2744,7 @@ void VulkanEngine::initPipelines()
 		vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_ALWAYS),
 		{},
 		_postprocessRenderPass,
+		0,
 		postprocessPipeline,
 		postprocessPipelineLayout
 	);
@@ -2624,6 +2752,7 @@ void VulkanEngine::initPipelines()
 
 	// Destroy pipelines when recreating swapchain
 	_swapchainDependentDeletionQueue.pushFunction([=]() {
+		vkDestroyPipeline(_device, meshZPrepassPipeline, nullptr);
 		vkDestroyPipeline(_device, meshPipeline, nullptr);
 		vkDestroyPipeline(_device, skyboxPipeline, nullptr);
 		vkDestroyPipeline(_device, pickingPipeline, nullptr);
@@ -4154,6 +4283,8 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 		ImGui::DragFloat("Exposure", &_pbrRendering.gpuSceneShadingProps.exposure, 0.1f, 0.1f, 10.0f);
 		ImGui::DragFloat("Gamma", &_pbrRendering.gpuSceneShadingProps.gamma, 0.1f, 0.1f, 4.0f);
 		ImGui::DragFloat("IBL Strength", &_pbrRendering.gpuSceneShadingProps.scaleIBLAmbient, 0.1f, 0.0f, 2.0f);
+
+		ImGui::DragFloat("Shadow Jitter Strength", &_pbrRendering.gpuSceneShadingProps.shadowJitterMapOffsetScale, 0.1f);
 
 		static int debugViewIndex = 0;
 		if (ImGui::Combo("Debug View Input", &debugViewIndex, "none\0Base color\0Normal\0Occlusion\0Emissive\0Metallic\0Roughness"))

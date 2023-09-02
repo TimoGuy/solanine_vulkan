@@ -55,7 +55,7 @@ VkPipelineInputAssemblyStateCreateInfo vkinit::inputAssemblyCreateInfo(VkPrimiti
 	info.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
 	info.pNext = nullptr;
 	info.topology = topology;
-	info.primitiveRestartEnable = VK_FALSE;		// IDK what the heck this does
+	info.primitiveRestartEnable = VK_FALSE;		// @NOTE: this is for restarting a primitive (i.e. line strip, triangle strip) with 0xffff
 	return info;
 }
 

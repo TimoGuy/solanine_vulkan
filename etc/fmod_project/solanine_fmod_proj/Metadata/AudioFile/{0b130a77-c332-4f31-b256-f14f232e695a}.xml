@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<objects serializationModel="Studio.02.02.00">
+	<object class="AudioFile" id="{0b130a77-c332-4f31-b256-f14f232e695a}">
+		<property name="note">
+			<value>Heartbeat sound</value>
+		</property>
+		<property name="assetPath">
+			<value>hero_fury_charm_loop.wav</value>
+		</property>
+		<property name="frequencyInKHz">
+			<value>44.0999985</value>
+		</property>
+		<property name="channelCount">
+			<value>1</value>
+		</property>
+		<property name="length">
+			<value>2.8586621315192744</value>
+		</property>
+		<relationship name="masterAssetFolder">
+			<destination>{e7ba0bcb-fb1d-41aa-bda6-1712b6d0ff86}</destination>
+		</relationship>
+	</object>
+</objects>

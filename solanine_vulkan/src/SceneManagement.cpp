@@ -9,29 +9,26 @@
 #include "StringHelper.h"
 #include "GlobalState.h"
 
-#include "Player.h"
+#include "Character.h"
 #include "NoteTaker.h"
 #include "VoxelField.h"
 #include "ScannableItem.h"
 #include "HarvestableItem.h"
-#include "Beanbag.h"
 
 
 // @PALETTE: where to add serialized names for the entities
 const std::vector<std::string> ENTITY_TYPE_NAMES = {
-    ":player",
+    ":character",
     ":notetaker",
     ":voxelfield",
     ":scannableitem",
     ":harvestableitem",
-    ":beanbag",
 };
-const std::string Player::TYPE_NAME           = ENTITY_TYPE_NAMES[0];
+const std::string Character::TYPE_NAME        = ENTITY_TYPE_NAMES[0];
 const std::string NoteTaker::TYPE_NAME        = ENTITY_TYPE_NAMES[1];
 const std::string VoxelField::TYPE_NAME       = ENTITY_TYPE_NAMES[2];
 const std::string ScannableItem::TYPE_NAME    = ENTITY_TYPE_NAMES[3];
 const std::string HarvestableItem::TYPE_NAME  = ENTITY_TYPE_NAMES[4];
-const std::string Beanbag::TYPE_NAME          = ENTITY_TYPE_NAMES[5];
 
 
 namespace scene
@@ -44,8 +41,8 @@ namespace scene
     Entity* spinupNewObject(const std::string& objectName, VulkanEngine* engine, DataSerialized* ds)
     {
         Entity* ent = nullptr;
-        if (objectName == Player::TYPE_NAME)
-            ent = new Player(engine->_entityManager, engine->_roManager, engine->_camera, ds);
+        if (objectName == Character::TYPE_NAME)
+            ent = new Character(engine->_entityManager, engine->_roManager, engine->_camera, ds);
         if (objectName == NoteTaker::TYPE_NAME)
             ent = new NoteTaker(engine->_entityManager, engine->_roManager, ds);
         if (objectName == VoxelField::TYPE_NAME)
@@ -54,8 +51,6 @@ namespace scene
             ent = new ScannableItem(engine->_entityManager, engine->_roManager, ds);
         if (objectName == HarvestableItem::TYPE_NAME)
             ent = new HarvestableItem(engine->_entityManager, engine->_roManager, ds);
-        if (objectName == Beanbag::TYPE_NAME)
-            ent = new Beanbag(engine->_entityManager, engine->_roManager, ds);
 
         if (ent == nullptr)
         {

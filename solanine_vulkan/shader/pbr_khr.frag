@@ -36,6 +36,10 @@ layout (set = 0, binding = 1) uniform UBOParams
 	float scaleIBLAmbient;
 	vec4  cascadeSplits;
 	mat4  cascadeViewProjMat[SHADOW_MAP_CASCADE_COUNT];
+	float shadowMapScale;
+	float shadowJitterMapXScale;
+	float shadowJitterMapYScale;
+	float shadowJitterMapOffsetScale;
 	float debugViewInputs;
 	float debugViewEquation;
 } uboParams;
@@ -44,6 +48,25 @@ layout (set = 0, binding = 2) uniform samplerCube    samplerIrradiance;
 layout (set = 0, binding = 3) uniform samplerCube    prefilteredMap;
 layout (set = 0, binding = 4) uniform sampler2D      samplerBRDFLUT;
 layout (set = 0, binding = 5) uniform sampler2DArray shadowMap;
+layout (set = 0, binding = 6) uniform sampler3D      shadowJitterMap;
+#define SMOOTH_SHADOWS_ON
+// #define SMOOTH_SHADOWS_SAMPLES_SQRT 8  // 8x8 samples
+// #define SMOOTH_SHADOWS_SAMPLES_COUNT 64
+// #define SMOOTH_SHADOWS_INV_SAMPLES_COUNT (1.0 / SMOOTH_SHADOWS_SAMPLES_COUNT)
+// #define SMOOTH_SHADOWS_SAMPLES_COUNT_DIV_2 32
+// #define SMOOTH_SHADOWS_INV_SAMPLES_COUNT_DIV_2 (1.0 / SMOOTH_SHADOWS_SAMPLES_COUNT_DIV_2)
+
+// #define SMOOTH_SHADOWS_SAMPLES_SQRT 6  // 6x6 samples
+// #define SMOOTH_SHADOWS_SAMPLES_COUNT 36
+// #define SMOOTH_SHADOWS_INV_SAMPLES_COUNT (1.0 / SMOOTH_SHADOWS_SAMPLES_COUNT)
+// #define SMOOTH_SHADOWS_SAMPLES_COUNT_DIV_2 18
+// #define SMOOTH_SHADOWS_INV_SAMPLES_COUNT_DIV_2 (1.0 / SMOOTH_SHADOWS_SAMPLES_COUNT_DIV_2)
+
+#define SMOOTH_SHADOWS_SAMPLES_SQRT 4  // 4x4 samples
+#define SMOOTH_SHADOWS_SAMPLES_COUNT 16
+#define SMOOTH_SHADOWS_INV_SAMPLES_COUNT (1.0 / SMOOTH_SHADOWS_SAMPLES_COUNT)
+#define SMOOTH_SHADOWS_SAMPLES_COUNT_DIV_2 8
+#define SMOOTH_SHADOWS_INV_SAMPLES_COUNT_DIV_2 (1.0 / SMOOTH_SHADOWS_SAMPLES_COUNT_DIV_2)
 
 
 // Instance ID Pointers
@@ -280,9 +303,48 @@ float textureProj(vec4 shadowCoord, vec2 offset, uint cascadeIndex)
 	return shadow;
 }
 
+#ifdef SMOOTH_SHADOWS_ON
+float smoothShadow(vec4 shadowCoord, uint cascadeIndex)
+{
+	float shadow = 0.0;
+	vec3 jcoord = vec3(gl_FragCoord.x * uboParams.shadowJitterMapXScale, gl_FragCoord.y * uboParams.shadowJitterMapYScale, 0.0);
+
+	// Cheap shadow samples first
+	for (int i = 0; i < SMOOTH_SHADOWS_SAMPLES_SQRT / 2; i++)
+	{
+		vec4 offset = texture(shadowJitterMap, jcoord) * uboParams.shadowJitterMapOffsetScale;
+		jcoord.z += SMOOTH_SHADOWS_INV_SAMPLES_COUNT_DIV_2;
+
+		shadow += textureProj(shadowCoord, offset.xy * uboParams.shadowMapScale, cascadeIndex) / SMOOTH_SHADOWS_SAMPLES_SQRT;  // Two sets of offsets are stored in rg and ba channels of the textures.
+		shadow += textureProj(shadowCoord, offset.zw * uboParams.shadowMapScale, cascadeIndex) / SMOOTH_SHADOWS_SAMPLES_SQRT;
+	}
+
+	if ((shadow - 1.0) * shadow != 0)
+	{
+		// If shadow is partial, then likely in penumbra. Do expensive samples!
+		shadow *= 1.0 / SMOOTH_SHADOWS_SAMPLES_SQRT;
+
+		for (int i = 0; i < SMOOTH_SHADOWS_SAMPLES_COUNT_DIV_2 - (SMOOTH_SHADOWS_SAMPLES_SQRT / 2); i++)
+		{
+			// @COPYPASTA.
+			vec4 offset = texture(shadowJitterMap, jcoord) * uboParams.shadowJitterMapOffsetScale;
+			jcoord.z += SMOOTH_SHADOWS_INV_SAMPLES_COUNT_DIV_2;
+
+			shadow += textureProj(shadowCoord, offset.xy * uboParams.shadowMapScale, cascadeIndex) * SMOOTH_SHADOWS_INV_SAMPLES_COUNT;  // Two sets of offsets are stored in rg and ba channels of the textures.
+			shadow += textureProj(shadowCoord, offset.zw * uboParams.shadowMapScale, cascadeIndex) * SMOOTH_SHADOWS_INV_SAMPLES_COUNT;
+		}
+	}
+
+	return shadow;
+}
+#endif
+
 
 void main()
 {
+	// outFragColor = vec4(vec3(inViewPos.z / uboParams.cascadeSplits.w), 1.0);
+	// return;
+
 	// outFragColor = vec4(voxelFieldLightingGridPos, 1.0);
 	// return;
 
@@ -428,21 +490,56 @@ void main()
 	vec3 diffuseContrib = (1.0 - F) * diffuse(pbrInputs);
 	vec3 specContrib = F * G * D / (4.0 * NdotL * NdotV);
 
-	// Get shadow cascade index for the current fragment's view position
-	uint cascadeIndex = 0;
-	for (uint i = 0; i < SHADOW_MAP_CASCADE_COUNT - 1; i++)
-		if (inViewPos.z < uboParams.cascadeSplits[i])
-			cascadeIndex = i + 1;
+	float shadow = 1.0;
+	if (inViewPos.z > uboParams.cascadeSplits[SHADOW_MAP_CASCADE_COUNT - 1])  // @NOTE: this feels really short, but it's the right amount. Any more, and corners will get cut off.  -Timo 2023/08/31
+	{
+		// Get shadow cascade index for the current fragment's view position
+		uint cascadeIndex = 0;
+		for (uint i = 0; i < SHADOW_MAP_CASCADE_COUNT - 1; i++)
+			if (inViewPos.z < uboParams.cascadeSplits[i])
+				cascadeIndex = i + 1;
 
-	// Depth compare for shadowing
-	vec4 shadowCoord = (BIAS_MAT * uboParams.cascadeViewProjMat[cascadeIndex]) * vec4(inWorldPos, 1.0);
+		// @DEBUG: for seeing the cascade colors.
+		// vec3 colors[] = {
+		// 	vec3(1.0, 0.0, 0.0),
+		// 	vec3(1.0, 1.0, 0.0),
+		// 	vec3(1.0, 0.0, 1.0),
+		// 	vec3(0.0, 1.0, 0.0),
+		// };
+		// outFragColor = vec4(colors[cascadeIndex], 1.0);
+		// return;
 
-	float shadow = 0;
-	//if (enablePCF == 1) {
-	//	shadow = filterPCF(shadowCoord / shadowCoord.w, cascadeIndex);
-	//} else {
-	shadow = textureProj(shadowCoord / shadowCoord.w, vec2(0.0), cascadeIndex);
-	//}
+		// Depth compare for shadowing
+		vec4 shadowCoord = (BIAS_MAT * uboParams.cascadeViewProjMat[cascadeIndex]) * vec4(inWorldPos, 1.0);
+
+		shadowCoord /= shadowCoord.w;
+#ifdef SMOOTH_SHADOWS_ON
+		float fadeBias[] = {
+			10.0,
+			2.85,
+			2.0,
+			1.0,
+		};
+		float shadowDistanceFade = (inViewPos.z - uboParams.cascadeSplits[cascadeIndex]) * fadeBias[cascadeIndex];
+		shadow = smoothShadow(shadowCoord, cascadeIndex);
+
+		float nextShadow = 1.0;
+		if (shadowDistanceFade < 1.0 && cascadeIndex != SHADOW_MAP_CASCADE_COUNT)
+		{
+			vec4 nextShadowCoord = (BIAS_MAT * uboParams.cascadeViewProjMat[cascadeIndex + 1]) * vec4(inWorldPos, 1.0);
+			nextShadow = smoothShadow(nextShadowCoord, cascadeIndex + 1);
+			// @DEBUG: for seeing where the fade areas are.
+			// outFragColor = vec4(1, 0, 0, 1);
+			// return;
+		}
+		shadow = mix(nextShadow, shadow, min(1.0, shadowDistanceFade));
+		// @DEBUG: for seeing where the fade areas are.
+		// outFragColor = vec4(1, 1, 0, 1);
+		// return;
+#else
+		shadow = textureProj(shadowCoord, vec2(0.0), cascadeIndex);
+#endif
+	}
 	shadow = shadow * NdotL;
 
 	// Obtain final intensity as reflectance (BRDF) scaled by the energy of the light (cosine law)

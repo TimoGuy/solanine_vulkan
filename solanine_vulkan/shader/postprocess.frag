@@ -7,14 +7,17 @@ layout (location = 0) out vec4 outColor;
 
 layout (set = 0, binding = 1) uniform UBOParams  // @TODO: just add in the global descriptor set
 {
-	vec4 lightDir;  // PAD
+	vec4  lightDir;  // PAD
 	float exposure;
 	float gamma;
 	//float prefilteredCubemapMipLevels;
 	//float scaleIBLAmbient;
 	//vec4 cascadeSplits;
 	//mat4 cascadeViewProjMat[SHADOW_MAP_CASCADE_COUNT];
-	//float zFarShadowZFarRatio;
+	//float shadowMapScale;
+	//float shadowJitterMapXScale;
+	//float shadowJitterMapYScale;
+	//float shadowJitterMapOffsetScale;
 	//float debugViewInputs;
 	//float debugViewEquation;
 } uboParams;

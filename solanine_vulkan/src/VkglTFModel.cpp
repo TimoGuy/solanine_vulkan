@@ -2015,8 +2015,9 @@ namespace vkglTF
 	//
 	// Animator
 	//
+	VulkanEngine* Animator::engine = nullptr;
 	Animator::GPUAnimatorNode Animator::uniformBlocks[RENDER_OBJECTS_MAX_CAPACITY];
-	Animator::AnimatorNodeCollectionBuffer Animator::nodeCollectionBuffer;
+	Animator::AnimatorNodeCollectionBuffer Animator::nodeCollectionBuffers[FRAME_OVERLAP];
 	std::vector<size_t> Animator::reservedNodeCollectionIndices;
 
 	Animator::Animator(vkglTF::Model* model, std::vector<AnimatorCallback>& eventCallbacks) : model(model), eventCallbacks(eventCallbacks), twitchAngle(0.0f)
@@ -2062,7 +2063,8 @@ namespace vkglTF
 					node->mesh->animatorSkinIndex = myReservedNodeCollectionIndices.size() - 1;
 			uniformBlocks[reserveIndexCandidate] = newAnimatorNode;
 
-			memcpy(nodeCollectionBuffer.mapped + reserveIndexCandidate, &newAnimatorNode, sizeof(GPUAnimatorNode));
+			for (size_t i = 0; i < FRAME_OVERLAP; i++)
+				memcpy(nodeCollectionBuffers[i].mapped + reserveIndexCandidate, &newAnimatorNode, sizeof(GPUAnimatorNode));
 		}
 
 		// Calculate Initial Pose
@@ -2116,42 +2118,45 @@ namespace vkglTF
 
 	void Animator::initializeEmpty(VulkanEngine* engine)  // @TODO: rename this to "initialize animator descriptor set/buffer"
 	{
-		//
-		// @SPECIAL: create an empty animator and don't update the animation
-		//
-		nodeCollectionBuffer.buffer = engine->createBuffer(sizeof(GPUAnimatorNode) * RENDER_OBJECTS_MAX_CAPACITY, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+		for (size_t i = 0; i < FRAME_OVERLAP; i++)
+		{
+			nodeCollectionBuffers[i].buffer = engine->createBuffer(sizeof(GPUAnimatorNode) * RENDER_OBJECTS_MAX_CAPACITY, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
-		VkDescriptorBufferInfo nodeCollectionBufferInfo = {
-			.buffer = nodeCollectionBuffer.buffer._buffer,
-			.offset = 0,
-			.range = sizeof(GPUAnimatorNode) * RENDER_OBJECTS_MAX_CAPACITY,
-		};
+			VkDescriptorBufferInfo nodeCollectionBufferInfo = {
+				.buffer = nodeCollectionBuffers[i].buffer._buffer,
+				.offset = 0,
+				.range = sizeof(GPUAnimatorNode) * RENDER_OBJECTS_MAX_CAPACITY,
+			};
 
-		vkutil::DescriptorBuilder::begin()
-			.bindBuffer(0, &nodeCollectionBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_VERTEX_BIT)
-			.build(nodeCollectionBuffer.descriptorSet, engine->_skeletalAnimationSetLayout);
+			vkutil::DescriptorBuilder::begin()
+				.bindBuffer(0, &nodeCollectionBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_VERTEX_BIT)
+				.build(nodeCollectionBuffers[i].descriptorSet, engine->_skeletalAnimationSetLayout);
 
-		// Copy non-skinned default animator
-		GPUAnimatorNode defaultAnimatorNode = {};
-		glm_mat4_identity(defaultAnimatorNode.matrix);
+			// Copy non-skinned default animator
+			GPUAnimatorNode defaultAnimatorNode = {};
+			glm_mat4_identity(defaultAnimatorNode.matrix);
 
-		reservedNodeCollectionIndices.push_back(0);
+			reservedNodeCollectionIndices.push_back(0);
 
-		void* mappedMem;
-		vmaMapMemory(engine->_allocator, nodeCollectionBuffer.buffer._allocation, &mappedMem);
-		nodeCollectionBuffer.mapped = (GPUAnimatorNode*)mappedMem;
-		memcpy(nodeCollectionBuffer.mapped, &defaultAnimatorNode, sizeof(GPUAnimatorNode));
+			void* mappedMem;
+			vmaMapMemory(engine->_allocator, nodeCollectionBuffers[i].buffer._allocation, &mappedMem);
+			nodeCollectionBuffers[i].mapped = (GPUAnimatorNode*)mappedMem;
+			memcpy(nodeCollectionBuffers[i].mapped, &defaultAnimatorNode, sizeof(GPUAnimatorNode));  // Insert non-skinned default animator into gpu memory.
+		}
 	}
 
 	void Animator::destroyEmpty(VulkanEngine* engine)
 	{
-		vmaUnmapMemory(engine->_allocator, nodeCollectionBuffer.buffer._allocation);
-		vmaDestroyBuffer(engine->_allocator, nodeCollectionBuffer.buffer._buffer, nodeCollectionBuffer.buffer._allocation);
+		for (size_t i = 0; i < FRAME_OVERLAP; i++)
+		{
+			vmaUnmapMemory(engine->_allocator, nodeCollectionBuffers[i].buffer._allocation);
+			vmaDestroyBuffer(engine->_allocator, nodeCollectionBuffers[i].buffer._buffer, nodeCollectionBuffers[i].buffer._allocation);
+		}
 	}
 
 	VkDescriptorSet* Animator::getGlobalAnimatorNodeCollectionDescriptorSet()
 	{
-		return &nodeCollectionBuffer.descriptorSet;
+		return &nodeCollectionBuffers[engine->_frameNumber % FRAME_OVERLAP].descriptorSet;
 	}
 
 	void Animator::playAnimation(size_t maskIndex, uint32_t animationIndex, bool loop, float_t time)
@@ -2184,7 +2189,7 @@ namespace vkglTF
 		for (auto& mp : animStateMachineCopy.maskPlayers)
 		{
 			mp.timeRange[0] = mp.time;
-			mp.time += deltaTime;
+			mp.time += deltaTime * speedMultiplier;
 			mp.timeRange[1] = mp.time;  // @NOTE: this has to be pre-clamped/pre-repeat because the 2nd time is exclusive in the check
 
 			mp.animEndedThisFrame = false;
@@ -2221,7 +2226,7 @@ namespace vkglTF
 				auto& mp   = animStateMachineCopy.maskPlayers[i];
 
 				auto& currentState = mask.states[mask.asmStateIndex];
-				glm_vec2_scale(mp.timeRange, 1.0f / mp.animDuration, mp.timeRange);
+				// glm_vec2_scale(mp.timeRange, 1.0f / mp.animDuration, mp.timeRange);  @NOTE: remove this because I want animation events to play according to the time elapsed, not a percentage of the duration.  -Timo 2023/08/09
 				for (auto& event : currentState.events)
 				{
 					if (mp.timeRange[0] <= event.eventCallAt && event.eventCallAt < mp.timeRange[1])
@@ -2243,127 +2248,138 @@ namespace vkglTF
 			//          use any of the active triggers, then turn off all the triggers in that case and move on!
 			//        - HOWEVER, make sure to give priority to the onFinish event!!!!! over the Transitions
 			//
-			bool keepLooking;
-			for (size_t i = 0; i < animStateMachineCopy.masks.size(); i++)
+			bool keepLookingOuter;
+			do
 			{
-				auto& mask = animStateMachineCopy.masks[i];
-				auto& mp   = animStateMachineCopy.maskPlayers[i];
+				keepLookingOuter = false;
 
-				bool stateChanged = false;
-
-				do
+				for (size_t i = 0; i < animStateMachineCopy.masks.size(); i++)
 				{
-					keepLooking = false;
+					auto& mask = animStateMachineCopy.masks[i];
+					auto& mp   = animStateMachineCopy.maskPlayers[i];
 
-					auto& currentState = mask.states[mask.asmStateIndex];
-				
-					// First priority, see if onFinish should get triggered
-					if (mp.animEndedThisFrame && currentState.onFinish.useOnFinish)
+					bool stateChanged = false;
+
+					bool keepLookingInner;
+					do
 					{
-						mask.asmStateIndex = currentState.onFinish.toStateIndex;
-						stateChanged = true;
-						keepLooking = true;
-						mp.animEndedThisFrame = false;  // New state entered; anim just started so reset this!
-						continue;
-					}
+						keepLookingInner = false;
 
-					// Second priority, everything else (special transitions, triggers)
-					else
-					{
-						bool end = false;
-
-						// Special transitions
-						for (auto& transition : currentState.transitions)
+						auto& currentState = mask.states[mask.asmStateIndex];
+					
+						// First priority, see if onFinish should get triggered
+						if (mp.animEndedThisFrame && currentState.onFinish.useOnFinish)
 						{
-							// @NOTE: @TODO: @CHECK: I just noticed that the special CURRENT_STATE and NOT_CURRENT_STATE transitions happen
-							//                       one frame after the trigger transformations, as in they're not reliable to happen on the
-							//                       same frame that the transition happened on a different mask. Maybe this code should only
-							//                       run when the state actually changes for a layer? Or... it's not actually a problem and it
-							//                       can be left the way it is right now. Idk but for now I'm leaving it like this.
-							//                         -Timo 2022/11/20
-							switch (transition.type)
-							{
-							case StateMachine::TransitionType::CURRENT_STATE:
-							{
-								if (animStateMachineCopy.masks[transition.checkingMaskIndex].asmStateIndex == transition.checkingStateIndex)
-								{
-									// Apply transition
-									mask.asmStateIndex = transition.toStateIndex;
-									stateChanged = true;
-									keepLooking = true;
-									mp.animEndedThisFrame = false;
-
-									end = true;
-								}
-								break;
-							}
-
-							case StateMachine::TransitionType::NOT_CURRENT_STATE:
-							{
-								if (animStateMachineCopy.masks[transition.checkingMaskIndex].asmStateIndex != transition.checkingStateIndex)
-								{
-									// Apply transition @COPYPASTA
-									mask.asmStateIndex = transition.toStateIndex;
-									stateChanged = true;
-									keepLooking = true;
-									mp.animEndedThisFrame = false;
-
-									end = true;
-								}
-								break;
-							}
-
-							case StateMachine::TransitionType::TRIGGER_ACTIVATED:
-								break;  // Skip this (triggers are handled separately)
-							}
-
-							if (end)
-								break;
+							mask.asmStateIndex = currentState.onFinish.toStateIndex;
+							stateChanged = true;
+							keepLookingInner = true;
+							keepLookingOuter = true;
+							mp.animEndedThisFrame = false;  // New state entered; anim just started so reset this!
+							continue;
 						}
 
-						if (end)
-							continue;
-
-						// Triggers
-						for (size_t i = 0; i < animStateMachineCopy.triggers.size(); i++)
+						// Second priority, everything else (special transitions, triggers)
+						else
 						{
-							if (!animStateMachineCopy.triggers[i].activated)
-								continue;
+							bool end = false;
 
+							// Special transitions
 							for (auto& transition : currentState.transitions)
 							{
-								if (transition.triggerIndex != i)
-									continue;
+								// @NOTE: @TODO: @CHECK: I just noticed that the special CURRENT_STATE and NOT_CURRENT_STATE transitions happen
+								//                       one frame after the trigger transformations, as in they're not reliable to happen on the
+								//                       same frame that the transition happened on a different mask. Maybe this code should only
+								//                       run when the state actually changes for a layer? Or... it's not actually a problem and it
+								//                       can be left the way it is right now. Idk but for now I'm leaving it like this.
+								//                         -Timo 2022/11/20
+								// @REPLY: With adding the outer do while loop, everything is guaranteed to stay in sync with the (NOT_)CURRENT_STATE
+								//         transitions... I believe. It works with the MCM use case now at least.  -Timo 2023/08/09
+								switch (transition.type)
+								{
+								case StateMachine::TransitionType::CURRENT_STATE:
+								{
+									if (animStateMachineCopy.masks[transition.checkingMaskIndex].asmStateIndex == transition.checkingStateIndex)
+									{
+										// Apply transition
+										mask.asmStateIndex = transition.toStateIndex;
+										stateChanged = true;
+										keepLookingInner = true;
+										keepLookingOuter = true;
+										mp.animEndedThisFrame = false;
 
-								// Apply transition via trigger
-								mask.asmStateIndex = transition.toStateIndex;
-								animStateMachineCopy.triggers[i].activated = false;  // Reset that one trigger used
-								stateChanged = true;
-								keepLooking = true;
-								mp.animEndedThisFrame = false;  // New state entered; anim just started so reset this!
+										end = true;
+									}
+									break;
+								}
 
-								end = true;
-								break;
+								case StateMachine::TransitionType::NOT_CURRENT_STATE:
+								{
+									if (animStateMachineCopy.masks[transition.checkingMaskIndex].asmStateIndex != transition.checkingStateIndex)
+									{
+										// Apply transition @COPYPASTA
+										mask.asmStateIndex = transition.toStateIndex;
+										stateChanged = true;
+										keepLookingInner = true;
+										keepLookingOuter = true;
+										mp.animEndedThisFrame = false;
+
+										end = true;
+									}
+									break;
+								}
+
+								case StateMachine::TransitionType::TRIGGER_ACTIVATED:
+									break;  // Skip this (triggers are handled separately)
+								}
+
+								if (end)
+									break;
 							}
 
 							if (end)
-								break;
+								continue;
+
+							// Triggers
+							for (size_t i = 0; i < animStateMachineCopy.triggers.size(); i++)
+							{
+								if (!animStateMachineCopy.triggers[i].activated)
+									continue;
+
+								for (auto& transition : currentState.transitions)
+								{
+									if (transition.triggerIndex != i)
+										continue;
+
+									// Apply transition via trigger
+									mask.asmStateIndex = transition.toStateIndex;
+									animStateMachineCopy.triggers[i].activated = false;  // Reset that one trigger used
+									stateChanged = true;
+									keepLookingInner = true;
+									keepLookingOuter = true;
+									mp.animEndedThisFrame = false;  // New state entered; anim just started so reset this!
+
+									end = true;
+									break;
+								}
+
+								if (end)
+									break;
+							}
 						}
+					} while (keepLookingInner);
+
+					// Apply new animation if changed
+					if (stateChanged)
+					{
+						// @DEBUG: for testing when the animator state changes
+						std::cout << "[ANIMATOR RUN EVENT]" << std::endl
+							<< "INFO: ASM: State changed to " << mask.states[mask.asmStateIndex].stateName << std::endl;
+
+						auto& state = mask.states[mask.asmStateIndex];
+						playAnimation(i, state.animationIndex, state.loop);
 					}
 				}
-				while (keepLooking);
-
-				// Apply new animation if changed
-				if (stateChanged)
-				{
-					// @DEBUG: for testing when the animator state changes
-					std::cout << "[ANIMATOR RUN EVENT]" << std::endl
-						<< "INFO: ASM: State changed to " << mask.states[mask.asmStateIndex].stateName << std::endl;
-
-					auto& state = mask.states[mask.asmStateIndex];
-					playAnimation(i, state.animationIndex, state.loop);
-				}
-			}
+			} while (keepLookingOuter);
 
 			// Reset triggers
 			for (auto& trigger : animStateMachineCopy.triggers)
@@ -2387,6 +2403,32 @@ namespace vkglTF
 
 		std::cerr << "[ANIMATOR RUN EVENT]" << std::endl
 			<< "WARNING: Event name \"" << eventName << "\" not found in list of event callbacks" << std::endl;
+	}
+
+	void Animator::setState(const std::string& stateName, float_t time, bool forceImmediateUpdate)
+	{
+		// @TODO: It seems like since there will be a butt-ton of animator states, there should be a hash map.
+		//        Though, for now it's just a linear search. Change it when you feel like it.  -Timo 2023/07/31
+		for (size_t i = 0; i < animStateMachineCopy.masks.size(); i++)
+		{
+			auto& mask = animStateMachineCopy.masks[i];
+			for (auto& state : mask.states)
+			{
+				if (state.stateName == stateName)
+				{
+					playAnimation(i, state.animationIndex, state.loop, time);
+					if (forceImmediateUpdate)
+						updateAnimation();
+
+					// Turn off all triggers
+					// @NOTE: this is to prevent a trigger changing the state after the state was just changed with this function!  -Timo 2023/08/08
+					for (auto& trigger : animStateMachineCopy.triggers)
+						trigger.activated = false;
+
+					return;
+				}
+			}
+		}
 	}
 
 	void Animator::setTrigger(const std::string& triggerName)
@@ -2422,6 +2464,16 @@ namespace vkglTF
 	void Animator::setTwitchAngle(float_t radians)
 	{
 		twitchAngle = radians;
+	}
+
+	void Animator::setUpdateSpeedMultiplier(const float_t& multiplier)
+	{
+		speedMultiplier = multiplier;
+	}
+
+	float_t Animator::getUpdateSpeedMultiplier()
+	{
+		return speedMultiplier;
 	}
 
 	void Animator::updateAnimation()
@@ -2508,6 +2560,18 @@ namespace vkglTF
 					skin->skeletonRoot->getMatrix(m);
 				updateJointMatrices(skinIndexToGlobalReservedNodeIndex(i), skin, m);
 			}
+
+			// Insert in the joint matrices into list in animator.
+			for (auto& skins : model->skins)
+			{
+				for (size_t i = 0; i < skins->joints.size(); i++)
+				{
+					auto& joint = skins->joints[i];
+					mat4s jointMatrix;
+					joint->getMatrix(jointMatrix.raw);
+					jointNameToMatrix[joint->name] = jointMatrix;
+				}
+			}
 		}
 	}
 
@@ -2571,24 +2635,16 @@ namespace vkglTF
 #endif
 
 		uniformBlock.jointcount = (float)numJoints;
-		memcpy(nodeCollectionBuffer.mapped + globalNodeReservedIndex, &uniformBlock, sizeof(GPUAnimatorNode));
+		memcpy(nodeCollectionBuffers[engine->_frameNumber % FRAME_OVERLAP].mapped + globalNodeReservedIndex, &uniformBlock, sizeof(GPUAnimatorNode));
 	}
 
 	bool Animator::getJointMatrix(const std::string& jointName, mat4& out)
 	{
 		// Find the joint with this name
-		// @IMPROVE: don't have this, instead have a jointindex param you put into this function instead of having to do a long string search
-		for (auto& skins : model->skins)
+		if (jointNameToMatrix.find(jointName) != jointNameToMatrix.end())
 		{
-			for (size_t i = 0; i < skins->joints.size(); i++)
-			{
-				auto& joint = skins->joints[i];
-				if (joint->name == jointName)
-				{
-					joint->getMatrix(out);
-					return true;
-				}
-			}
+			glm_mat4_copy(jointNameToMatrix[jointName].raw, out);
+			return true;
 		}
 
 		std::cerr << "[GET JOINT MATRIX]" << std::endl

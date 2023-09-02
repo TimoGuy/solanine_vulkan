@@ -72,6 +72,8 @@ namespace physengine
 
     CapsulePhysicsData* createCapsule(const std::string& entityGuid, const float_t& radius, const float_t& height);
     bool destroyCapsule(CapsulePhysicsData* cpd);
+    size_t getNumCapsules();
+    CapsulePhysicsData* getCapsuleByIndex(size_t index);
 
     void moveCapsuleAccountingForCollision(CapsulePhysicsData& cpd, vec3 deltaPosition, bool stickToGround, vec3& outNormal, float_t ccdDistance = 0.25f);  // @NOTE: `ccdDistance` is fine as long as it's below the capsule radius (or the radius of the voxels, whichever is smaller)
 
@@ -81,7 +83,8 @@ namespace physengine
     bool lineSegmentCast(vec3& pt1, vec3& pt2, size_t collisionLayer, bool getAllGuids, std::vector<std::string>& outHitGuid);
 
 #ifdef _DEVELOP
-    void drawDebugVisLine(vec3 pt1, vec3 pt2);
+    enum DebugVisLineType { PURPTEAL, AUDACITY, SUCCESS, VELOCITY, KIKKOARMY, YUUJUUFUDAN };
+    void drawDebugVisLine(vec3 pt1, vec3 pt2, DebugVisLineType type = PURPTEAL);
 
     void renderImguiPerformanceStats();
     void renderDebugVisualization(VkCommandBuffer cmd);

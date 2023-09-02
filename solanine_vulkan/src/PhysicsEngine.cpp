@@ -81,6 +81,7 @@ namespace physengine
     struct DebugVisLine
     {
         vec3 pt1, pt2;
+        DebugVisLineType type;
     };
     std::vector<DebugVisLine> debugVisLines;
     std::mutex mutateDebugVisLines;
@@ -280,6 +281,7 @@ namespace physengine
             vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_NEVER),
             {},
             mainRenderPass,
+            1,
             debugVisPipeline,
             debugVisPipelineLayout
             );
@@ -601,6 +603,16 @@ namespace physengine
         return false;
     }
 
+    size_t getNumCapsules()
+    {
+        return numCapsCreated;
+    }
+
+    CapsulePhysicsData* getCapsuleByIndex(size_t index)
+    {
+        return &capsulePool[capsuleIndices[index]];
+    }
+
     //
     // Tick
     //
@@ -834,18 +846,22 @@ namespace physengine
                 float_t penetrationDepth;
                 bool collided = physengine::debugCheckCapsuleColliding(cpd, normal, penetrationDepth);
 
-                // Subsequent iterations of collision are just to resolve until sitting in empty space,
-                // so only double check 1st iteration if expecting to stick to the ground.
-                if (iterations == 0 && !collided && stickToGround)
-                {
-                    vec3 oldPosition;
-                    glm_vec3_copy(cpd.basePosition, oldPosition);
+                // @NOTE: this was to stick the capsule to the ground for high humps, but caused the capsule
+                //        to fly off at twice the speed sometimes bc of nicking the side of the capsule with the
+                //        collision resolution. Without sticking (and if voxels are the way), then there is no need
+                //        to keep the capsule stuck onto the ground.  -Timo 2023/08/08
+                // // Subsequent iterations of collision are just to resolve until sitting in empty space,
+                // // so only double check 1st iteration if expecting to stick to the ground.
+                // if (iterations == 0 && !collided && stickToGround)
+                // {
+                //     vec3 oldPosition;
+                //     glm_vec3_copy(cpd.basePosition, oldPosition);
 
-                    cpd.basePosition[1] += -ccdDistance;  // Just push straight down maximum amount to see if collides
-                    collided = physengine::debugCheckCapsuleColliding(cpd, normal, penetrationDepth);
-                    if (!collided)
-                        glm_vec3_copy(oldPosition, cpd.basePosition);  // I guess this empty space was where the capsule was supposed to go to after all!
-                }
+                //     cpd.basePosition[1] += -ccdDistance;  // Just push straight down maximum amount to see if collides
+                //     collided = physengine::debugCheckCapsuleColliding(cpd, normal, penetrationDepth);
+                //     if (!collided)
+                //         glm_vec3_copy(oldPosition, cpd.basePosition);  // I guess this empty space was where the capsule was supposed to go to after all!
+                // }
 
                 // Resolved into empty space.
                 // Do not proceed to do collision resolution.
@@ -1024,11 +1040,12 @@ namespace physengine
     }
 
 #ifdef _DEVELOP
-    void drawDebugVisLine(vec3 pt1, vec3 pt2)
+    void drawDebugVisLine(vec3 pt1, vec3 pt2, DebugVisLineType type)
     {
         DebugVisLine dvl = {};
         glm_vec3_copy(pt1, dvl.pt1);
         glm_vec3_copy(pt2, dvl.pt2);
+        dvl.type = type;
 
         std::lock_guard<std::mutex> lg(mutateDebugVisLines);
         debugVisLines.push_back(dvl);
@@ -1092,8 +1109,38 @@ namespace physengine
         for (DebugVisLine& dvl : visLinesCopy)
         {
             GPUVisInstancePushConst pc = {};
-            glm_vec4_copy(vec4{ 0.75f, 0.0f, 1.0f, 1.0f }, pc.color1);
-            glm_vec4_copy(vec4{ 0.0f, 0.75f, 1.0f, 1.0f }, pc.color2);
+            switch (dvl.type)
+            {
+                case PURPTEAL:
+                    glm_vec4_copy(vec4{ 0.75f, 0.0f, 1.0f, 1.0f }, pc.color1);
+                    glm_vec4_copy(vec4{ 0.0f, 0.75f, 1.0f, 1.0f }, pc.color2);
+                    break;
+
+                case AUDACITY:
+                    glm_vec4_copy(vec4{ 0.0f, 0.1f, 0.5f, 1.0f }, pc.color1);
+                    glm_vec4_copy(vec4{ 0.0f, 0.25f, 1.0f, 1.0f }, pc.color2);
+                    break;
+
+                case SUCCESS:
+                    glm_vec4_copy(vec4{ 0.1f, 0.1f, 0.1f, 1.0f }, pc.color1);
+                    glm_vec4_copy(vec4{ 0.0f, 1.0f, 0.7f, 1.0f }, pc.color2);
+                    break;
+
+                case VELOCITY:
+                    glm_vec4_copy(vec4{ 0.75f, 0.2f, 0.1f, 1.0f }, pc.color1);
+                    glm_vec4_copy(vec4{ 1.0f, 0.0f, 0.0f, 1.0f }, pc.color2);
+                    break;
+
+                case KIKKOARMY:
+                    glm_vec4_copy(vec4{ 0.0f, 0.0f, 0.0f, 1.0f }, pc.color1);
+                    glm_vec4_copy(vec4{ 0.0f, 0.25f, 0.0f, 1.0f }, pc.color2);
+                    break;
+
+                case YUUJUUFUDAN:
+                    glm_vec4_copy(vec4{ 0.69f, 0.69f, 0.69f, 1.0f }, pc.color1);
+                    glm_vec4_copy(vec4{ 1.0f, 1.0f, 1.0f, 1.0f }, pc.color2);
+                    break;
+            }
             glm_vec4(dvl.pt1, 0.0f, pc.pt1);
             glm_vec4(dvl.pt2, 0.0f, pc.pt2);
             vkCmdPushConstants(cmd, debugVisPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUVisInstancePushConst), &pc);
