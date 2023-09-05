@@ -243,7 +243,26 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 
 		if (mainCamMode.opponentTargetObject != nullptr)  // Opponent target position mixing in.
 		{
-			glm_vec3_lerp(targetPosition, mainCamMode.opponentTargetObject->interpolBasePosition, 0.3f, targetPosition);
+			// Use law of sines to calculate the camera target position.
+			// @NOTE: See `etc/opponent_targeting_angles_plan.png` for reference.
+			vec2 flatTargetPosition = { targetPosition[0], targetPosition[2] };
+			vec2 flatOpponentPosition = { mainCamMode.opponentTargetObject->interpolBasePosition[0], mainCamMode.opponentTargetObject->interpolBasePosition[2] };
+			float_t l = glm_vec2_distance(flatTargetPosition, flatOpponentPosition);
+			float_t theta3 = GLM_PI - mainCamMode.opponentTargetingAngles.theta1 - mainCamMode.opponentTargetingAngles.theta2;
+			float_t d = l * std::sinf(theta3) / std::sinf(mainCamMode.opponentTargetingAngles.theta2);
+			
+			vec2 normFlatOppoToTarg;
+			glm_vec2_sub(flatTargetPosition, flatOpponentPosition, normFlatOppoToTarg);
+			glm_vec2_normalize(normFlatOppoToTarg);
+			vec2 camPosRelFromOppo1;
+			vec2 camPosRelFromOppo2;
+			glm_vec2_rotate(normFlatOppoToTarg,  mainCamMode.opponentTargetingAngles.theta2, camPosRelFromOppo1);
+			glm_vec2_rotate(normFlatOppoToTarg, -mainCamMode.opponentTargetingAngles.theta2, camPosRelFromOppo2);
+			glm_vec2_scale(camPosRelFromOppo1, d, camPosRelFromOppo1);
+			glm_vec2_scale(camPosRelFromOppo2, d, camPosRelFromOppo2);
+			vec2 possibleCamPosition1;
+			vec2 possibleCamPosition2;
+			glm_vec
 		}
 
 		if (mainCamMode.focusRadiusXZ > 0.0f || mainCamMode.focusRadiusY > 0.0f)

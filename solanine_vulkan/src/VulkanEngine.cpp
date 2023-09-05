@@ -4405,6 +4405,8 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 			ImGui::DragFloat("focusRadiusY", &_camera->mainCamMode.focusRadiusY, 1.0f, 0.0f);
 			ImGui::SliderFloat("focusCentering", &_camera->mainCamMode.focusCentering, 0.0f, 1.0f);
 			ImGui::DragFloat3("focusPositionOffset", _camera->mainCamMode.focusPositionOffset);
+			ImGui::DragFloat("opponentTargetingAngles.theta1", &_camera->mainCamMode.opponentTargetingAngles.theta1, 0.01f);
+			ImGui::DragFloat("opponentTargetingAngles.theta2", &_camera->mainCamMode.opponentTargetingAngles.theta2, 0.01f);
 		}
 
 		if (ImGui::CollapsingHeader("Textbox Properties", ImGuiTreeNodeFlags_DefaultOpen))
