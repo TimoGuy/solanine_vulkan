@@ -58,6 +58,17 @@ struct MainCamMode
 	vec2 orbitAngles = { glm_rad(45.0f), 0.0f };
 	vec3 calculatedCameraPosition = GLM_VEC3_ZERO_INIT;
 	vec3 calculatedLookDirection = { 0, -0.707106781, 0.707106781 };
+	struct OpponentTargetTransition
+	{
+		bool active = false;
+		bool firstTick = false;
+		float_t fromYOrbitAngle, toYOrbitAngle;
+		float_t fromXOrbitAngle;
+		float_t transitionT;
+		float_t transitionSpeed = 10.0f;
+		float_t targetYOrbitAngleSideOffset = glm_rad(30.0f);
+		float_t targetXOrbitAngle = glm_rad(-5.75f);
+	} opponentTargetTransition;
 
 	// Tweak variables
 	float_t   lookDistance        = 5.0f;
@@ -65,11 +76,6 @@ struct MainCamMode
 	float_t   focusRadiusY        = 2.333333f;
 	float_t   focusCentering      = 0.75f;
 	vec3      focusPositionOffset = { 0, 2.333333f, 0 };
-	struct OpponentTargetingAngles  // @NOTE: See `etc/opponent_targeting_angles_plan.png` for reference.
-	{
-		float_t theta1 = glm_rad(25.0f);
-		float_t theta2 = glm_rad(70.0f / 3.0f);  // @HARDCODE: supposed to be scenecamera.fov / 3.0
-	} opponentTargetingAngles;
 
 	void setMainCamTargetObject(RenderObject* targetObject);
 	void setOpponentCamTargetObject(physengine::CapsulePhysicsData* targetObject);

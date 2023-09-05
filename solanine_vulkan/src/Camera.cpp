@@ -161,6 +161,8 @@ void MainCamMode::setMainCamTargetObject(RenderObject* targetObject)
 void MainCamMode::setOpponentCamTargetObject(physengine::CapsulePhysicsData* targetObject)
 {
 	MainCamMode::opponentTargetObject = targetObject;
+	MainCamMode::opponentTargetTransition.active = true;
+	MainCamMode::opponentTargetTransition.firstTick = true;
 }
 
 
@@ -243,26 +245,65 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 
 		if (mainCamMode.opponentTargetObject != nullptr)  // Opponent target position mixing in.
 		{
-			// Use law of sines to calculate the camera target position.
-			// @NOTE: See `etc/opponent_targeting_angles_plan.png` for reference.
+			// Use dot product between opponent facing direction
+			// and current camera direction to find focus position.
 			vec2 flatTargetPosition = { targetPosition[0], targetPosition[2] };
 			vec2 flatOpponentPosition = { mainCamMode.opponentTargetObject->interpolBasePosition[0], mainCamMode.opponentTargetObject->interpolBasePosition[2] };
-			float_t l = glm_vec2_distance(flatTargetPosition, flatOpponentPosition);
-			float_t theta3 = GLM_PI - mainCamMode.opponentTargetingAngles.theta1 - mainCamMode.opponentTargetingAngles.theta2;
-			float_t d = l * std::sinf(theta3) / std::sinf(mainCamMode.opponentTargetingAngles.theta2);
+			vec2 normFlatDeltaPosition;
+			glm_vec2_sub(flatOpponentPosition, flatTargetPosition, normFlatDeltaPosition);
+			glm_vec2_normalize(normFlatDeltaPosition);
+			vec2 normFlatLookDirection = { mainCamMode.calculatedLookDirection[0], mainCamMode.calculatedLookDirection[2] };
+			glm_vec2_normalize(normFlatLookDirection);
 			
-			vec2 normFlatOppoToTarg;
-			glm_vec2_sub(flatTargetPosition, flatOpponentPosition, normFlatOppoToTarg);
-			glm_vec2_normalize(normFlatOppoToTarg);
-			vec2 camPosRelFromOppo1;
-			vec2 camPosRelFromOppo2;
-			glm_vec2_rotate(normFlatOppoToTarg,  mainCamMode.opponentTargetingAngles.theta2, camPosRelFromOppo1);
-			glm_vec2_rotate(normFlatOppoToTarg, -mainCamMode.opponentTargetingAngles.theta2, camPosRelFromOppo2);
-			glm_vec2_scale(camPosRelFromOppo1, d, camPosRelFromOppo1);
-			glm_vec2_scale(camPosRelFromOppo2, d, camPosRelFromOppo2);
-			vec2 possibleCamPosition1;
-			vec2 possibleCamPosition2;
-			glm_vec
+			float_t t = glm_vec2_dot(normFlatDeltaPosition, normFlatLookDirection);
+			glm_vec3_lerp(targetPosition, mainCamMode.opponentTargetObject->interpolBasePosition, 1.0f - (t * 0.5f + 0.5f), targetPosition);
+
+			if (mainCamMode.opponentTargetTransition.active)
+			{
+				allowInput = false;
+				auto& ott = mainCamMode.opponentTargetTransition;
+
+				if (ott.firstTick)
+				{
+					// Start the transition.
+					ott.transitionT = 0.0f;
+
+					while (mainCamMode.orbitAngles[1] >= glm_rad(360.0f))  // "Normalize" I guess... the Y axis orbit angle.
+						mainCamMode.orbitAngles[1] -= glm_rad(360.0f);
+					while (mainCamMode.orbitAngles[1] < glm_rad(0.0f))
+						mainCamMode.orbitAngles[1] += glm_rad(360.0f);
+						
+					ott.fromYOrbitAngle = mainCamMode.orbitAngles[1];
+					ott.fromXOrbitAngle = mainCamMode.orbitAngles[0];
+
+					vec3 lookDirectionRight;
+					glm_vec3_crossn(mainCamMode.calculatedLookDirection, vec3{ 0.0f, 1.0f, 0.0f }, lookDirectionRight);
+
+					vec3 normCameraDeltaPosition;
+					glm_vec3_sub(mainCamMode.calculatedCameraPosition, targetPosition, normCameraDeltaPosition);
+					glm_vec3_normalize(normCameraDeltaPosition);
+
+					float_t side = glm_vec3_dot(lookDirectionRight, normCameraDeltaPosition) > 0.0f ? -1.0f : 1.0f;
+					ott.toYOrbitAngle = atan2f(normFlatDeltaPosition[0], normFlatDeltaPosition[1]) + side * ott.targetYOrbitAngleSideOffset;
+
+					ott.firstTick = false;
+				}
+				else
+				{
+					ott.transitionT += deltaTime * ott.transitionSpeed;
+					if (ott.transitionT > 1.0f)
+					{
+						// Finish the transition.
+						ott.transitionT = 1.0f;
+						ott.active = false;
+					}
+
+					// Update the transition.
+					float_t easeT = glm_ease_quad_inout(ott.transitionT);
+					mainCamMode.orbitAngles[0] = glm_lerp(ott.fromXOrbitAngle, ott.targetXOrbitAngle, easeT);
+					mainCamMode.orbitAngles[1] = glm_lerp(ott.fromYOrbitAngle, ott.toYOrbitAngle, easeT);
+				}
+			}
 		}
 
 		if (mainCamMode.focusRadiusXZ > 0.0f || mainCamMode.focusRadiusY > 0.0f)
