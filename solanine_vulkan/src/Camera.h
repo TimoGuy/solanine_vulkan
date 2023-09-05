@@ -62,7 +62,7 @@ struct MainCamMode
 	{
 		bool active = false;
 		bool firstTick = false;
-		float_t fromYOrbitAngle, toYOrbitAngle;
+		float_t fromYOrbitAngle, deltaYOrbitAngle;
 		float_t fromXOrbitAngle;
 		float_t transitionT;
 		float_t transitionSpeed = 10.0f;

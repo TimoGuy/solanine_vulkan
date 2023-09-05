@@ -267,11 +267,6 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 				{
 					// Start the transition.
 					ott.transitionT = 0.0f;
-
-					while (mainCamMode.orbitAngles[1] >= glm_rad(360.0f))  // "Normalize" I guess... the Y axis orbit angle.
-						mainCamMode.orbitAngles[1] -= glm_rad(360.0f);
-					while (mainCamMode.orbitAngles[1] < glm_rad(0.0f))
-						mainCamMode.orbitAngles[1] += glm_rad(360.0f);
 						
 					ott.fromYOrbitAngle = mainCamMode.orbitAngles[1];
 					ott.fromXOrbitAngle = mainCamMode.orbitAngles[0];
@@ -284,7 +279,13 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 					glm_vec3_normalize(normCameraDeltaPosition);
 
 					float_t side = glm_vec3_dot(lookDirectionRight, normCameraDeltaPosition) > 0.0f ? -1.0f : 1.0f;
-					ott.toYOrbitAngle = atan2f(normFlatDeltaPosition[0], normFlatDeltaPosition[1]) + side * ott.targetYOrbitAngleSideOffset;
+					float_t toYOrbitAngle = atan2f(normFlatDeltaPosition[0], normFlatDeltaPosition[1]) + side * ott.targetYOrbitAngleSideOffset;
+
+					ott.deltaYOrbitAngle = toYOrbitAngle - ott.fromYOrbitAngle;
+					while (ott.deltaYOrbitAngle >= glm_rad(180.0f))  // "Normalize" I guess... the Y axis orbit delta angle.
+						ott.deltaYOrbitAngle -= glm_rad(360.0f);
+					while (ott.deltaYOrbitAngle < glm_rad(-180.0f))
+						ott.deltaYOrbitAngle += glm_rad(360.0f);
 
 					ott.firstTick = false;
 				}
@@ -301,7 +302,7 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 					// Update the transition.
 					float_t easeT = glm_ease_quad_inout(ott.transitionT);
 					mainCamMode.orbitAngles[0] = glm_lerp(ott.fromXOrbitAngle, ott.targetXOrbitAngle, easeT);
-					mainCamMode.orbitAngles[1] = glm_lerp(ott.fromYOrbitAngle, ott.toYOrbitAngle, easeT);
+					mainCamMode.orbitAngles[1] = ott.fromYOrbitAngle + easeT * ott.deltaYOrbitAngle;
 				}
 			}
 		}
