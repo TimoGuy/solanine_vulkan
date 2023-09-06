@@ -70,6 +70,9 @@ struct MainCamMode
 		float_t targetXOrbitAngle = glm_rad(-5.75f);
 
 		float_t prevOpponentDeltaAngle;  // For turning camera as character orbits opponent.
+		float_t calculatedLookDistance;
+		float_t lookDistanceBaseAmount = 3.75f;
+		float_t lookDistanceObliqueAmount = 0.375f;
 	} opponentTargetTransition;
 
 	// Tweak variables

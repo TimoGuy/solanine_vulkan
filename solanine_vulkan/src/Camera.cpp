@@ -231,6 +231,7 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 	//
 	// Focus onto target object
 	//
+	float_t lookDistance = mainCamMode.lookDistance;
 	if (mainCamMode.targetObject != nullptr)
 	{
 		// Update the focus position
@@ -245,6 +246,9 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 
 		if (mainCamMode.opponentTargetObject != nullptr)  // Opponent target position mixing in.
 		{
+			// Calculate the total distance for opponent look distance calculation.
+			float_t totalDistance = glm_vec3_distance(targetPosition, mainCamMode.opponentTargetObject->interpolBasePosition);
+
 			// Use dot product between opponent facing direction
 			// and current camera direction to find focus position.
 			vec2 flatTargetPosition = { targetPosition[0], targetPosition[2] };
@@ -275,10 +279,10 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 			mainCamMode.opponentTargetTransition.prevOpponentDeltaAngle = newOpponentDeltaAngle;
 
 			// Process transition (start of targeting opponent)
-			if (mainCamMode.opponentTargetTransition.active)
+			auto& ott = mainCamMode.opponentTargetTransition;
+			if (ott.active)
 			{
 				allowInput = false;
-				auto& ott = mainCamMode.opponentTargetTransition;
 
 				if (ott.firstTick)
 				{
@@ -322,6 +326,11 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 					mainCamMode.orbitAngles[1] = ott.fromYOrbitAngle + easeT * ott.deltaYOrbitAngle;
 				}
 			}
+
+			// Calculate the opponent look distance.
+			float_t obliqueMultiplier = 1.0f - std::abs(glm_vec2_dot(normFlatDeltaPosition, normFlatLookDirection));
+			ott.calculatedLookDistance = ott.lookDistanceBaseAmount + ott.lookDistanceObliqueAmount * totalDistance * obliqueMultiplier;
+			lookDistance = glm_lerp(lookDistance, ott.calculatedLookDistance, glm_ease_quad_inout(ott.transitionT));
 		}
 
 		if (mainCamMode.focusRadiusXZ > 0.0f || mainCamMode.focusRadiusY > 0.0f)
@@ -383,7 +392,6 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 
 	vec3 focusPositionCooked;
 	glm_vec3_add(mainCamMode.focusPosition, mainCamMode.focusPositionOffset, focusPositionCooked);
-	float_t lookDistance = mainCamMode.lookDistance;
 
 	vec3 calcLookDirectionScaled;
 	glm_vec3_scale(mainCamMode.calculatedLookDirection, lookDistance, calcLookDirectionScaled);

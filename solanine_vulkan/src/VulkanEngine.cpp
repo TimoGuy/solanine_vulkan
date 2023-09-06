@@ -4408,6 +4408,8 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 			ImGui::DragFloat("opponentTargetTransition.transitionSpeed", &_camera->mainCamMode.opponentTargetTransition.transitionSpeed, 0.1f);
 			ImGui::DragFloat("opponentTargetTransition.targetYOrbitAngleSideOffset", &_camera->mainCamMode.opponentTargetTransition.targetYOrbitAngleSideOffset, 0.01f);
 			ImGui::DragFloat("opponentTargetTransition.targetXOrbitAngle", &_camera->mainCamMode.opponentTargetTransition.targetXOrbitAngle, 0.01f);
+			ImGui::DragFloat("opponentTargetTransition.lookDistanceBaseAmount", &_camera->mainCamMode.opponentTargetTransition.lookDistanceBaseAmount, 0.1f);
+			ImGui::DragFloat("opponentTargetTransition.lookDistanceObliqueAmount", &_camera->mainCamMode.opponentTargetTransition.lookDistanceObliqueAmount, 0.1f);
 		}
 
 		if (ImGui::CollapsingHeader("Textbox Properties", ImGuiTreeNodeFlags_DefaultOpen))
