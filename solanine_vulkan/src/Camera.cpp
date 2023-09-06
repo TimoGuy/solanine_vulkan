@@ -258,6 +258,23 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 			float_t t = glm_vec2_dot(normFlatDeltaPosition, normFlatLookDirection);
 			glm_vec3_lerp(targetPosition, mainCamMode.opponentTargetObject->interpolBasePosition, 1.0f - (t * 0.5f + 0.5f), targetPosition);
 
+			// Update look direction based off previous delta angle.
+			float_t newOpponentDeltaAngle = atan2f(normFlatDeltaPosition[0], normFlatDeltaPosition[1]);
+			if (!mainCamMode.opponentTargetTransition.active || !mainCamMode.opponentTargetTransition.firstTick)
+			{
+				float_t deltaAngle = newOpponentDeltaAngle - mainCamMode.opponentTargetTransition.prevOpponentDeltaAngle;
+				while (deltaAngle >= glm_rad(180.0f))  // "Normalize" I guess... delta angle.  @COPYPASTA
+					deltaAngle -= glm_rad(360.0f);
+				while (deltaAngle < glm_rad(-180.0f))
+					deltaAngle += glm_rad(360.0f);
+
+				mainCamMode.orbitAngles[1] += deltaAngle;
+				if (mainCamMode.opponentTargetTransition.active)
+					mainCamMode.opponentTargetTransition.fromYOrbitAngle += deltaAngle;  // @HACK: over the duration of the transition, this is the only way to move the orbit angles.
+			}
+			mainCamMode.opponentTargetTransition.prevOpponentDeltaAngle = newOpponentDeltaAngle;
+
+			// Process transition (start of targeting opponent)
 			if (mainCamMode.opponentTargetTransition.active)
 			{
 				allowInput = false;
@@ -282,7 +299,7 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 					float_t toYOrbitAngle = atan2f(normFlatDeltaPosition[0], normFlatDeltaPosition[1]) + side * ott.targetYOrbitAngleSideOffset;
 
 					ott.deltaYOrbitAngle = toYOrbitAngle - ott.fromYOrbitAngle;
-					while (ott.deltaYOrbitAngle >= glm_rad(180.0f))  // "Normalize" I guess... the Y axis orbit delta angle.
+					while (ott.deltaYOrbitAngle >= glm_rad(180.0f))  // "Normalize" I guess... the Y axis orbit delta angle.  @COPYPASTA
 						ott.deltaYOrbitAngle -= glm_rad(360.0f);
 					while (ott.deltaYOrbitAngle < glm_rad(-180.0f))
 						ott.deltaYOrbitAngle += glm_rad(360.0f);

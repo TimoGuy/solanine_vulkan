@@ -68,6 +68,8 @@ struct MainCamMode
 		float_t transitionSpeed = 10.0f;
 		float_t targetYOrbitAngleSideOffset = glm_rad(30.0f);
 		float_t targetXOrbitAngle = glm_rad(-5.75f);
+
+		float_t prevOpponentDeltaAngle;  // For turning camera as character orbits opponent.
 	} opponentTargetTransition;
 
 	// Tweak variables
