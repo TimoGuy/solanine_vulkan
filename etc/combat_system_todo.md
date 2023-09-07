@@ -75,7 +75,7 @@
             - [x] As deltaposition (char and oppo) angle changes, move the orbitangle Y in the same way.
             - [x] Change the distance the camera zooms in/out depending on the distance of the deltaposition (char and oppo).
                 - [x] Tune the params.
-            - [ ] Move the X orbitangle to face the opponent.
+            - [x] Move the X orbitangle to face the opponent.
     > The biggest goal is feeling like what you're inputting as actions is actually what you feel like you're doing.
     - [ ] Divide up the individual wazas such that you can do all of them one at a time. (THOUGHT: I think that being able to do them all individually is more important than the chain FOR NOW... bc doing them all individually all feels like a different action that you have control over doing)
     - [ ] Require holding shift to do the aura-based wazas.

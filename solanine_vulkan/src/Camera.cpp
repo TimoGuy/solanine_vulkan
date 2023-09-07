@@ -208,7 +208,8 @@ void Camera::update(const float_t& deltaTime)
 
 void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent changeEvent)
 {
-	bool allowInput = true;
+	bool allowInputX = true;
+	bool allowInputY = true;
 	if (changeEvent != CameraModeChangeEvent::NONE)
 	{
 		// Calculate orbit angles from the delta angle to focus position
@@ -223,7 +224,7 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 		if (changeEvent == CameraModeChangeEvent::EXIT)  // Not doing a warp on enter prevents the orbit camera from moving the delta to snap the cursor to the center of the screen which is disorienting
 			SDL_WarpMouseInWindow(_engine->_window, _engine->_windowExtent.width / 2, _engine->_windowExtent.height / 2);
 
-		allowInput = false;
+		allowInputX = allowInputY = false;
 	}
 	if (_cameraMode != _cameraMode_mainCamMode)
 		return;
@@ -246,21 +247,27 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 
 		if (mainCamMode.opponentTargetObject != nullptr)  // Opponent target position mixing in.
 		{
+			auto& ott = mainCamMode.opponentTargetTransition;
+
 			// Calculate the total distance for opponent look distance calculation.
 			float_t totalDistance = glm_vec3_distance(targetPosition, mainCamMode.opponentTargetObject->interpolBasePosition);
+			float_t deltaYPosition = mainCamMode.opponentTargetObject->interpolBasePosition[1] - targetPosition[1];
 
 			// Use dot product between opponent facing direction
 			// and current camera direction to find focus position.
 			vec2 flatTargetPosition = { targetPosition[0], targetPosition[2] };
 			vec2 flatOpponentPosition = { mainCamMode.opponentTargetObject->interpolBasePosition[0], mainCamMode.opponentTargetObject->interpolBasePosition[2] };
+
+			vec2 flatDeltaPosition;
 			vec2 normFlatDeltaPosition;
-			glm_vec2_sub(flatOpponentPosition, flatTargetPosition, normFlatDeltaPosition);
-			glm_vec2_normalize(normFlatDeltaPosition);
+			glm_vec2_sub(flatOpponentPosition, flatTargetPosition, flatDeltaPosition);
+			glm_vec2_normalize_to(flatDeltaPosition, normFlatDeltaPosition);
+
 			vec2 normFlatLookDirection = { mainCamMode.calculatedLookDirection[0], mainCamMode.calculatedLookDirection[2] };
 			glm_vec2_normalize(normFlatLookDirection);
 			
-			float_t t = glm_vec2_dot(normFlatDeltaPosition, normFlatLookDirection);
-			glm_vec3_lerp(targetPosition, mainCamMode.opponentTargetObject->interpolBasePosition, 1.0f - (t * 0.5f + 0.5f), targetPosition);
+			float_t fDeltaPosDotfLookDir = glm_vec2_dot(normFlatDeltaPosition, normFlatLookDirection);
+			glm_vec3_lerp(targetPosition, mainCamMode.opponentTargetObject->interpolBasePosition, 1.0f - (fDeltaPosDotfLookDir * 0.5f + 0.5f), targetPosition);
 
 			// Update look direction based off previous delta angle.
 			float_t newOpponentDeltaAngle = atan2f(normFlatDeltaPosition[0], normFlatDeltaPosition[1]);
@@ -278,11 +285,23 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 			}
 			mainCamMode.opponentTargetTransition.prevOpponentDeltaAngle = newOpponentDeltaAngle;
 
+			// Update look direction (x axis) from delta position.
+			allowInputY = false;  // Mouse Y input controls the x axis orbit angles.
+			                      // @NOTE: if the user input desires to use the mouse/joystick Y input,
+								  //        then allow it, and just cause the x orbit angle to not be set
+								  //        anymore until the next time the user starts targeting an opponent.
+								  //          -Timo 2023/09/07
+			float_t flatDistance = glm_vec2_norm(flatDeltaPosition);
+			float_t xOrbitAngle = -atan2f(deltaYPosition, flatDistance) * fDeltaPosDotfLookDir;
+			if (mainCamMode.opponentTargetTransition.active)
+				ott.targetXOrbitAngle = xOrbitAngle;
+			else
+				mainCamMode.orbitAngles[0] = xOrbitAngle;
+
 			// Process transition (start of targeting opponent)
-			auto& ott = mainCamMode.opponentTargetTransition;
 			if (ott.active)
 			{
-				allowInput = false;
+				allowInputX = allowInputY = false;
 
 				if (ott.firstTick)
 				{
@@ -328,11 +347,12 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 			}
 
 			// Calculate the opponent look distance.
-			float_t obliqueMultiplier = 1.0f - std::abs(glm_vec2_dot(normFlatDeltaPosition, normFlatLookDirection));
+			float_t obliqueMultiplier = 1.0f - std::abs(fDeltaPosDotfLookDir);
 			ott.calculatedLookDistance = ott.lookDistanceBaseAmount + ott.lookDistanceObliqueAmount * totalDistance * obliqueMultiplier;
 			lookDistance = glm_lerp(lookDistance, ott.calculatedLookDistance, glm_ease_quad_inout(ott.transitionT));
 		}
 
+		// Update camera focus position based off the targetPosition.
 		if (mainCamMode.focusRadiusXZ > 0.0f || mainCamMode.focusRadiusY > 0.0f)
 		{
 			vec3 delta;
@@ -366,8 +386,8 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 	//
 	// Manual rotation via mouse input
 	//
-	vec2 mouseDeltaFloatSwizzled = { input::mouseDelta[1], -input::mouseDelta[0] };
-	if (allowInput && glm_vec3_norm2(mouseDeltaFloatSwizzled) > 0.000001f)
+	vec2 mouseDeltaFloatSwizzled = { allowInputY ? input::mouseDelta[1] : 0.0f, allowInputX ? -input::mouseDelta[0] : 0.0f };
+	if (glm_vec3_norm2(mouseDeltaFloatSwizzled) > 0.000001f)
 	{
 		vec2 sensitivityRadians = {
 			glm_rad(mainCamMode.sensitivity[0]),
