@@ -278,6 +278,10 @@ void VulkanEngine::run()
 
 void VulkanEngine::cleanup()
 {
+	std::cout << std::endl
+		<< "[CLEANUP PROCEDURE BEGIN]" << std::endl
+		<< "===================================================================================================" << std::endl << std::endl;
+
 #ifdef _DEVELOP
 	hotswapres::flagStopRunning();
 #endif
@@ -316,6 +320,8 @@ void VulkanEngine::cleanup()
 		hotswapres::waitForShutdownAndTeardownResourceList();
 #endif
 	}
+
+	std::cout << "Cleanup procedure finished." << std::endl;
 }
 
 void VulkanEngine::render()
@@ -1128,7 +1134,6 @@ void VulkanEngine::loadImages()
 		_mainDeletionQueue.pushFunction([=]() {
 			vkDestroySampler(_device, _pbrSceneTextureSet.shadowJitterMap.sampler, nullptr);
 			vkDestroyImageView(_device, _pbrSceneTextureSet.shadowJitterMap.imageView, nullptr);
-			vmaDestroyImage(_allocator, _pbrSceneTextureSet.shadowJitterMap.image._image, _pbrSceneTextureSet.shadowJitterMap.image._allocation);
 			});
 	}
 
@@ -3394,10 +3399,6 @@ void VulkanEngine::generatePBRCubemaps()
 		case ENVIRONMENT:
 			cubemapTypeName = "environment";
 			_loadedTextures["CubemapSkybox"] = cubemapTexture;
-			_mainDeletionQueue.pushFunction([=]() {
-				vkDestroySampler(_device, cubemapTexture.sampler, nullptr);
-				vkDestroyImageView(_device, cubemapTexture.imageView, nullptr);
-			});
 			break;
 		case IRRADIANCE:
 			cubemapTypeName = "irradiance";

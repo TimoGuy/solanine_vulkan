@@ -229,11 +229,14 @@ namespace physengine
             .build(debugVisDescriptor, debugVisDescriptorLayout);
     }
 
-    VkPipeline debugVisPipeline;
+    VkPipeline debugVisPipeline = VK_NULL_HANDLE;
     VkPipelineLayout debugVisPipelineLayout;
 
     void initDebugVisPipelines(VkRenderPass mainRenderPass, VkViewport& screenspaceViewport, VkRect2D& screenspaceScissor)
     {
+        if (debugVisPipeline != VK_NULL_HANDLE)
+            vkDestroyPipeline(engine->_device, debugVisPipeline, nullptr);
+
         // Setup vertex descriptions
         VkVertexInputAttributeDescription posAttribute = {
             .location = 0,
