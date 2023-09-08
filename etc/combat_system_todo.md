@@ -77,6 +77,10 @@
                 - [x] Tune the params.
             - [x] Move the X orbitangle to face the opponent.
         - [ ] Reigai: RESEARCH: figure out what is needed to make doing the waza play nice with this camera system.
+            - [x] Try limiting changing the Y axis orbit angle when the X axis orbit angle is relatively flat (+-60deg)
+                > This wasn't the best. It made the camera act weirdly, and after doing the waza, the camera wouldn't return back to what the user's original camera angle was.
+            - [ ] Try implementing the smoothdampangle function
+                - [ ] Try making the speed of the smoothdampangle change depending on the distance away from the opponent (closer = slower change of Y orbit angle)
     > The biggest goal is feeling like what you're inputting as actions is actually what you feel like you're doing.
     - [ ] Divide up the individual wazas such that you can do all of them one at a time. (THOUGHT: I think that being able to do them all individually is more important than the chain FOR NOW... bc doing them all individually all feels like a different action that you have control over doing)
     - [ ] Require holding shift to do the aura-based wazas.

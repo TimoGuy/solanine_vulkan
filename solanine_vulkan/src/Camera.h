@@ -73,6 +73,8 @@ struct MainCamMode
 		float_t calculatedLookDistance;
 		float_t lookDistanceBaseAmount = 3.75f;
 		float_t lookDistanceObliqueAmount = 0.375f;
+		
+		// float_t 
 	} opponentTargetTransition;
 
 	// Tweak variables

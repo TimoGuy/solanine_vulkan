@@ -271,19 +271,26 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 
 			// Update look direction based off previous delta angle.
 			float_t newOpponentDeltaAngle = atan2f(normFlatDeltaPosition[0], normFlatDeltaPosition[1]);
-			if (!mainCamMode.opponentTargetTransition.active || !mainCamMode.opponentTargetTransition.firstTick)
+			if (!ott.active || !ott.firstTick)
 			{
-				float_t deltaAngle = newOpponentDeltaAngle - mainCamMode.opponentTargetTransition.prevOpponentDeltaAngle;
+				float_t deltaAngle = newOpponentDeltaAngle - ott.prevOpponentDeltaAngle;
 				while (deltaAngle >= glm_rad(180.0f))  // "Normalize" I guess... delta angle.  @COPYPASTA
 					deltaAngle -= glm_rad(360.0f);
 				while (deltaAngle < glm_rad(-180.0f))
 					deltaAngle += glm_rad(360.0f);
 
-				mainCamMode.orbitAngles[1] += deltaAngle;
-				if (mainCamMode.opponentTargetTransition.active)
-					mainCamMode.opponentTargetTransition.fromYOrbitAngle += deltaAngle;  // @HACK: over the duration of the transition, this is the only way to move the orbit angles.
+				// if (std::abs(deltaAngle) > glm_rad(1.0f))
+				// 	std::cout << "DELTAANGLE: " << deltaAngle << std::endl;
+
+				std::cout << "ASDFASDF: " << glm_deg(newOpponentDeltaAngle) << "\t" << glm_vec2_norm(flatDeltaPosition)/*@COPYPASTA*/ << std::endl;
+
+				if (std::abs(mainCamMode.orbitAngles[0]) < glm_rad(60.0f))
+					mainCamMode.orbitAngles[1] += deltaAngle;
+
+				if (ott.active)
+					ott.fromYOrbitAngle += deltaAngle;  // @HACK: over the duration of the transition, this is the only way to move the orbit angles.
 			}
-			mainCamMode.opponentTargetTransition.prevOpponentDeltaAngle = newOpponentDeltaAngle;
+			ott.prevOpponentDeltaAngle = newOpponentDeltaAngle;
 
 			// Update look direction (x axis) from delta position.
 			allowInputY = false;  // Mouse Y input controls the x axis orbit angles.
@@ -293,7 +300,7 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 								  //          -Timo 2023/09/07
 			float_t flatDistance = glm_vec2_norm(flatDeltaPosition);
 			float_t xOrbitAngle = -atan2f(deltaYPosition, flatDistance) * fDeltaPosDotfLookDir;
-			if (mainCamMode.opponentTargetTransition.active)
+			if (ott.active)
 				ott.targetXOrbitAngle = xOrbitAngle;
 			else
 				mainCamMode.orbitAngles[0] = xOrbitAngle;
