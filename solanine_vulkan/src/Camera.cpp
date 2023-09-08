@@ -206,19 +206,10 @@ void Camera::update(const float_t& deltaTime)
 		_changeEvents[i] = CameraModeChangeEvent::NONE;
 }
 
-// @NOTE: based off: https://github.com/Unity-Technologies/UnityCsReference/blob/0aa4923aa67e701940c22821c137c8d0184159b2/Runtime/Export/Math/Mathf.cs#L309
-float_t smoothDampAngle(float_t current, float_t target, float_t& inoutCurrentVelocity, float_t smoothTime, float_t maxSpeed, const float_t& deltaTime)
+// @NOTE: https://github.com/Unity-Technologies/UnityCsReference/blob/0aa4923aa67e701940c22821c137c8d0184159b2/Runtime/Export/Math/Mathf.cs#L309
+inline float_t smoothDamp(float_t current, float_t target, float_t& inoutCurrentVelocity, float_t smoothTime, float_t maxSpeed, const float_t& deltaTime)
 {
-	// Get closest delta angle within the same 360deg to the target.
-	float_t normalizedDeltaAngle = target - current;
-	while (normalizedDeltaAngle >= glm_rad(180.0f))  // "Normalize" I guess... delta angle.
-		normalizedDeltaAngle -= glm_rad(360.0f);
-	while (normalizedDeltaAngle < glm_rad(-180.0f))
-		normalizedDeltaAngle += glm_rad(360.0f);
-	target = current + normalizedDeltaAngle;
-
-	// Do smoothDamp algorithm.
-	// (Based on Game Programming Gems 4 Chapter 1.10)
+	// Based on Game Programming Gems 4 Chapter 1.10
 	smoothTime = std::max(0.000001f, smoothTime);
 	float_t omega = 2.0f / smoothTime;
 
@@ -244,6 +235,19 @@ float_t smoothDampAngle(float_t current, float_t target, float_t& inoutCurrentVe
 	}
 
 	return output;
+}
+
+inline float_t smoothDampAngle(float_t current, float_t target, float_t& inoutCurrentVelocity, float_t smoothTime, float_t maxSpeed, const float_t& deltaTime)
+{
+	// Get closest delta angle within the same 360deg to the target.
+	float_t normalizedDeltaAngle = target - current;
+	while (normalizedDeltaAngle >= glm_rad(180.0f))  // "Normalize" I guess... delta angle.
+		normalizedDeltaAngle -= glm_rad(360.0f);
+	while (normalizedDeltaAngle < glm_rad(-180.0f))
+		normalizedDeltaAngle += glm_rad(360.0f);
+	target = current + normalizedDeltaAngle;
+
+	return smoothDamp(current, target, inoutCurrentVelocity, smoothTime, maxSpeed, deltaTime);
 }
 
 void clampXOrbitAngle(float_t& outXOrbitAngle)
