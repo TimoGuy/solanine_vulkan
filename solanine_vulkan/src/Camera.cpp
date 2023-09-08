@@ -272,6 +272,9 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 		if (changeEvent == CameraModeChangeEvent::EXIT)  // Not doing a warp on enter prevents the orbit camera from moving the delta to snap the cursor to the center of the screen which is disorienting
 			SDL_WarpMouseInWindow(_engine->_window, _engine->_windowExtent.width / 2, _engine->_windowExtent.height / 2);
 
+		mainCamMode.actualLookDistance = mainCamMode.lookDistance;
+		mainCamMode.actualLookDistanceVelocity = 0.0f;
+
 		allowInput = false;
 	}
 	if (_cameraMode != _cameraMode_mainCamMode)
@@ -280,7 +283,7 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 	//
 	// Focus onto target object
 	//
-	float_t lookDistance = mainCamMode.lookDistance;
+	float_t targetLookDistance = mainCamMode.lookDistance;
 	if (mainCamMode.targetObject != nullptr)
 	{
 		// Update the focus position
@@ -370,8 +373,7 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 			// Calculate the opponent look distance.
 			float_t obliqueMultiplier = 1.0f - std::abs(fDeltaPosDotfLookDir);
 			ott.calculatedLookDistance = ott.lookDistanceBaseAmount + ott.lookDistanceObliqueAmount * totalDistance * obliqueMultiplier;
-			// lookDistance = glm_lerp(lookDistance, ott.calculatedLookDistance, glm_ease_quad_inout(ott.transitionT));
-			lookDistance = ott.calculatedLookDistance;  // Very shotty, but fix
+			targetLookDistance = ott.calculatedLookDistance;
 
 			if (ott.first)
 				ott.first = false;
@@ -424,6 +426,17 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 			mainCamMode.opponentTargetTransition.targetYOrbitAngle += mouseDeltaFloatSwizzled[1] * sensitivityRadians[1];
 	}
 
+	// Update actual look distance.
+	mainCamMode.actualLookDistance =
+		smoothDamp(
+			mainCamMode.actualLookDistance,
+			targetLookDistance,
+			mainCamMode.actualLookDistanceVelocity,
+			mainCamMode.lookDistanceSmoothTime,
+			std::numeric_limits<float_t>::max(),
+			deltaTime
+		);
+
 	//
 	// Recalculate camera
 	//
@@ -442,7 +455,7 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 	glm_vec3_add(mainCamMode.focusPosition, mainCamMode.focusPositionOffset, focusPositionCooked);
 
 	vec3 calcLookDirectionScaled;
-	glm_vec3_scale(mainCamMode.calculatedLookDirection, lookDistance, calcLookDirectionScaled);
+	glm_vec3_scale(mainCamMode.calculatedLookDirection, mainCamMode.actualLookDistance, calcLookDirectionScaled);
 	glm_vec3_sub(focusPositionCooked, calcLookDirectionScaled, mainCamMode.calculatedCameraPosition);
 
 	if (glm_vec3_distance2(sceneCamera.facingDirection, mainCamMode.calculatedLookDirection) > 0.0f ||
