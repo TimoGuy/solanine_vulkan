@@ -206,6 +206,52 @@ void Camera::update(const float_t& deltaTime)
 		_changeEvents[i] = CameraModeChangeEvent::NONE;
 }
 
+// @NOTE: based off: https://github.com/Unity-Technologies/UnityCsReference/blob/0aa4923aa67e701940c22821c137c8d0184159b2/Runtime/Export/Math/Mathf.cs#L309
+float_t smoothDampAngle(float_t current, float_t target, float_t& inoutCurrentVelocity, float_t smoothTime, float_t maxSpeed, const float_t& deltaTime)
+{
+	// Get closest delta angle within the same 360deg to the target.
+	float_t normalizedDeltaAngle = target - current;
+	while (normalizedDeltaAngle >= glm_rad(180.0f))  // "Normalize" I guess... delta angle.
+		normalizedDeltaAngle -= glm_rad(360.0f);
+	while (normalizedDeltaAngle < glm_rad(-180.0f))
+		normalizedDeltaAngle += glm_rad(360.0f);
+	target = current + normalizedDeltaAngle;
+
+	// Do smoothDamp algorithm.
+	// (Based on Game Programming Gems 4 Chapter 1.10)
+	smoothTime = std::max(0.000001f, smoothTime);
+	float_t omega = 2.0f / smoothTime;
+
+	float_t x = omega * deltaTime;
+	float_t exp = 1.0f / (1.0f + x + 0.48f * x * x + 0.235f * x * x * x);
+	float_t change = current - target;
+	float_t originalTo = target;
+
+	// Clamp maximum speed
+	float_t maxChange = maxSpeed * smoothTime;
+	change = glm_clamp(change, -maxChange, maxChange);
+	target = current - change;
+
+	float_t temp = (inoutCurrentVelocity + omega * change) * deltaTime;
+	inoutCurrentVelocity = (inoutCurrentVelocity - omega * temp) * exp;
+	float_t output = target + (change + temp) * exp;
+
+	// Prevent overshooting
+	if (originalTo - current > 0.0f == output > originalTo)
+	{
+		output = originalTo;
+		inoutCurrentVelocity = (output - originalTo) / deltaTime;
+	}
+
+	return output;
+}
+
+void clampXOrbitAngle(float_t& outXOrbitAngle)
+{
+	const static float_t ANGLE_LIMIT = glm_rad(85.0f);
+	outXOrbitAngle = glm_clamp(outXOrbitAngle, -ANGLE_LIMIT, ANGLE_LIMIT);
+}
+
 void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent changeEvent)
 {
 	bool allowInputX = true;
@@ -274,21 +320,16 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 			if (!ott.active || !ott.firstTick)
 			{
 				float_t deltaAngle = newOpponentDeltaAngle - ott.prevOpponentDeltaAngle;
-				while (deltaAngle >= glm_rad(180.0f))  // "Normalize" I guess... delta angle.  @COPYPASTA
-					deltaAngle -= glm_rad(360.0f);
-				while (deltaAngle < glm_rad(-180.0f))
-					deltaAngle += glm_rad(360.0f);
-
-				// if (std::abs(deltaAngle) > glm_rad(1.0f))
-				// 	std::cout << "DELTAANGLE: " << deltaAngle << std::endl;
-
-				std::cout << "ASDFASDF: " << glm_deg(newOpponentDeltaAngle) << "\t" << glm_vec2_norm(flatDeltaPosition)/*@COPYPASTA*/ << std::endl;
-
-				if (std::abs(mainCamMode.orbitAngles[0]) < glm_rad(60.0f))
-					mainCamMode.orbitAngles[1] += deltaAngle;
-
-				if (ott.active)
-					ott.fromYOrbitAngle += deltaAngle;  // @HACK: over the duration of the transition, this is the only way to move the orbit angles.
+				ott.targetYOrbitAngle += deltaAngle;
+				mainCamMode.orbitAngles[1] =
+					smoothDampAngle(
+						mainCamMode.orbitAngles[1],
+						ott.targetYOrbitAngle,
+						ott.yOrbitAngleDampVelocity,
+						ott.yOrbitAngleSmoothTime,
+						std::numeric_limits<float_t>::max(),
+						deltaTime
+					);
 			}
 			ott.prevOpponentDeltaAngle = newOpponentDeltaAngle;
 
@@ -314,8 +355,8 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 				{
 					// Start the transition.
 					ott.transitionT = 0.0f;
-						
-					ott.fromYOrbitAngle = mainCamMode.orbitAngles[1];
+					ott.yOrbitAngleDampVelocity = 0.0f;
+
 					ott.fromXOrbitAngle = mainCamMode.orbitAngles[0];
 
 					vec3 lookDirectionRight;
@@ -326,13 +367,7 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 					glm_vec3_normalize(normCameraDeltaPosition);
 
 					float_t side = glm_vec3_dot(lookDirectionRight, normCameraDeltaPosition) > 0.0f ? -1.0f : 1.0f;
-					float_t toYOrbitAngle = atan2f(normFlatDeltaPosition[0], normFlatDeltaPosition[1]) + side * ott.targetYOrbitAngleSideOffset;
-
-					ott.deltaYOrbitAngle = toYOrbitAngle - ott.fromYOrbitAngle;
-					while (ott.deltaYOrbitAngle >= glm_rad(180.0f))  // "Normalize" I guess... the Y axis orbit delta angle.  @COPYPASTA
-						ott.deltaYOrbitAngle -= glm_rad(360.0f);
-					while (ott.deltaYOrbitAngle < glm_rad(-180.0f))
-						ott.deltaYOrbitAngle += glm_rad(360.0f);
+					ott.targetYOrbitAngle = atan2f(normFlatDeltaPosition[0], normFlatDeltaPosition[1]) + side * ott.targetYOrbitAngleSideOffset;
 
 					ott.firstTick = false;
 				}
@@ -349,7 +384,6 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 					// Update the transition.
 					float_t easeT = glm_ease_quad_inout(ott.transitionT);
 					mainCamMode.orbitAngles[0] = glm_lerp(ott.fromXOrbitAngle, ott.targetXOrbitAngle, easeT);
-					mainCamMode.orbitAngles[1] = ott.fromYOrbitAngle + easeT * ott.deltaYOrbitAngle;
 				}
 			}
 
@@ -406,7 +440,7 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 	//
 	// Recalculate camera
 	//
-	mainCamMode.orbitAngles[0] = glm_clamp(mainCamMode.orbitAngles[0], glm_rad(-85.0f), glm_rad(85.0f));
+	clampXOrbitAngle(mainCamMode.orbitAngles[0]);
 	vec3 lookRotationEuler = {
 		mainCamMode.orbitAngles[0],
 		mainCamMode.orbitAngles[1],

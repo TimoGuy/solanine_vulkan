@@ -62,10 +62,15 @@ struct MainCamMode
 	{
 		bool active = false;
 		bool firstTick = false;
-		float_t fromYOrbitAngle, deltaYOrbitAngle;
+
+		float_t targetYOrbitAngle;
+		float_t yOrbitAngleDampVelocity;
+		float_t yOrbitAngleSmoothTime = 0.3f;
+
 		float_t fromXOrbitAngle;
 		float_t transitionT;
 		float_t transitionSpeed = 10.0f;
+
 		float_t targetYOrbitAngleSideOffset = glm_rad(30.0f);
 		float_t targetXOrbitAngle = glm_rad(-5.75f);
 
@@ -73,8 +78,6 @@ struct MainCamMode
 		float_t calculatedLookDistance;
 		float_t lookDistanceBaseAmount = 3.75f;
 		float_t lookDistanceObliqueAmount = 0.375f;
-		
-		// float_t 
 	} opponentTargetTransition;
 
 	// Tweak variables
