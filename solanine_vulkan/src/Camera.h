@@ -60,19 +60,16 @@ struct MainCamMode
 	vec3 calculatedLookDirection = { 0, -0.707106781, 0.707106781 };
 	struct OpponentTargetTransition
 	{
-		bool active = false;
-		bool firstTick = false;
-
-		float_t targetYOrbitAngle;
-		float_t yOrbitAngleDampVelocity;
-		float_t yOrbitAngleSmoothTime = 0.3f;
-
-		float_t fromXOrbitAngle;
-		float_t transitionT;
-		float_t transitionSpeed = 10.0f;
+		bool first = false;
 
 		float_t targetYOrbitAngleSideOffset = glm_rad(30.0f);
-		float_t targetXOrbitAngle = glm_rad(-5.75f);
+		float_t targetYOrbitAngle;
+		float_t yOrbitAngleDampVelocity;
+
+		float_t targetXOrbitAngleSSSSSS;
+		float_t xOrbitAngleDampVelocity;
+
+		float_t orbitAngleSmoothTime = 0.3f;
 
 		float_t prevOpponentDeltaAngle;  // For turning camera as character orbits opponent.
 		float_t calculatedLookDistance;

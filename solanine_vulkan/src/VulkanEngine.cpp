@@ -4405,12 +4405,10 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 			ImGui::DragFloat("focusRadiusY", &_camera->mainCamMode.focusRadiusY, 1.0f, 0.0f);
 			ImGui::SliderFloat("focusCentering", &_camera->mainCamMode.focusCentering, 0.0f, 1.0f);
 			ImGui::DragFloat3("focusPositionOffset", _camera->mainCamMode.focusPositionOffset);
-			ImGui::DragFloat("opponentTargetTransition.transitionSpeed", &_camera->mainCamMode.opponentTargetTransition.transitionSpeed, 0.1f);
 			ImGui::DragFloat("opponentTargetTransition.targetYOrbitAngleSideOffset", &_camera->mainCamMode.opponentTargetTransition.targetYOrbitAngleSideOffset, 0.01f);
-			ImGui::DragFloat("opponentTargetTransition.targetXOrbitAngle", &_camera->mainCamMode.opponentTargetTransition.targetXOrbitAngle, 0.01f);
+			ImGui::DragFloat("opponentTargetTransition.orbitAngleSmoothTime", &_camera->mainCamMode.opponentTargetTransition.orbitAngleSmoothTime, 0.01f);
 			ImGui::DragFloat("opponentTargetTransition.lookDistanceBaseAmount", &_camera->mainCamMode.opponentTargetTransition.lookDistanceBaseAmount, 0.1f);
 			ImGui::DragFloat("opponentTargetTransition.lookDistanceObliqueAmount", &_camera->mainCamMode.opponentTargetTransition.lookDistanceObliqueAmount, 0.1f);
-			ImGui::DragFloat("opponentTargetTransition.yOrbitAngleSmoothTime", &_camera->mainCamMode.opponentTargetTransition.yOrbitAngleSmoothTime, 0.01f);
 		}
 
 		if (ImGui::CollapsingHeader("Textbox Properties", ImGuiTreeNodeFlags_DefaultOpen))
