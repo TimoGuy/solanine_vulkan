@@ -355,12 +355,12 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 
 			// Update look direction (x axis) from delta position.
 			float_t flatDistance = glm_vec2_norm(flatDeltaPosition);
-			ott.targetXOrbitAngleSSSSSS = -atan2f(deltaYPosition, flatDistance) * fDeltaPosDotfLookDir;
-			clampXOrbitAngle(ott.targetXOrbitAngleSSSSSS);
+			ott.targetXOrbitAngle = -atan2f(deltaYPosition, flatDistance) * fDeltaPosDotfLookDir;
+			clampXOrbitAngle(ott.targetXOrbitAngle);
 			mainCamMode.orbitAngles[0] =
 				smoothDamp(
 					mainCamMode.orbitAngles[0],
-					ott.targetXOrbitAngleSSSSSS,
+					ott.targetXOrbitAngle,
 					ott.xOrbitAngleDampVelocity,
 					ott.orbitAngleSmoothTime,
 					std::numeric_limits<float_t>::max(),

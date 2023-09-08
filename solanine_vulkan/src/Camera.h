@@ -66,7 +66,7 @@ struct MainCamMode
 		float_t targetYOrbitAngle;
 		float_t yOrbitAngleDampVelocity;
 
-		float_t targetXOrbitAngleSSSSSS;
+		float_t targetXOrbitAngle;
 		float_t xOrbitAngleDampVelocity;
 
 		float_t orbitAngleSmoothTime = 0.3f;
