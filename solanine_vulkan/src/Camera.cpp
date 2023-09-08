@@ -205,6 +205,64 @@ void Camera::update(const float_t& deltaTime)
 		_changeEvents[i] = CameraModeChangeEvent::NONE;
 }
 
+// @NOTE: https://github.com/Unity-Technologies/UnityCsReference/blob/0aa4923aa67e701940c22821c137c8d0184159b2/Runtime/Export/Math/Vector2.cs#L289
+inline void smoothDampVec2(vec2& inoutCurrent, vec2 target, vec2& inoutCurrentVelocity, float_t smoothTime, float_t maxSpeed, const float_t& deltaTime)
+{
+	// Based on Game Programming Gems 4 Chapter 1.10
+	smoothTime = std::max(0.000001f, smoothTime);
+	float_t omega = 2.0f / smoothTime;
+
+	float_t x = omega * deltaTime;
+	float_t exp = 1.0f / (1.0f + x + 0.48f * x * x + 0.235f * x * x * x);
+
+	float_t change_x = inoutCurrent[0] - target[0];
+	float_t change_y = inoutCurrent[1] - target[1];
+
+	vec2 originalTo;
+	glm_vec2_copy(target, originalTo);
+
+	// Clamp maximum speed
+	float_t maxChange = maxSpeed * smoothTime;
+
+	float_t sqDist = change_x * change_x + change_y * change_y;  // @TODO: use `glm_vec2_norm2()`
+	if (sqDist > maxChange * maxChange)
+	{
+		float_t mag = std::sqrtf(sqDist);
+		change_x = change_x / mag * maxChange;
+		change_y = change_y / mag * maxChange;
+	}
+
+	target[0] = inoutCurrent[0] - change_x;
+	target[1] = inoutCurrent[1] - change_y;
+
+	float_t temp_x = (inoutCurrentVelocity[0] + omega * change_x) * deltaTime;
+	float_t temp_y = (inoutCurrentVelocity[1] + omega * change_y) * deltaTime;
+
+	inoutCurrentVelocity[0] = (inoutCurrentVelocity[0] - omega * temp_x) * exp;
+	inoutCurrentVelocity[1] = (inoutCurrentVelocity[1] - omega * temp_y) * exp;
+
+	float_t output_x = target[0] + (change_x + temp_x) * exp;
+	float_t output_y = target[1] + (change_y + temp_y) * exp;
+
+	// Prevent overshooting
+	float_t origMinusCurrent_x = originalTo[0] - inoutCurrent[0];
+	float_t origMinusCurrent_y = originalTo[1] - inoutCurrent[1];
+	float_t outMinusOrig_x = output_x - originalTo[0];
+	float_t outMinusOrig_y = output_y - originalTo[1];
+
+	if (origMinusCurrent_x * outMinusOrig_x + origMinusCurrent_y * outMinusOrig_y > 0)
+	{
+		output_x = originalTo[0];
+		output_y = originalTo[1];
+
+		inoutCurrentVelocity[0] = (output_x - originalTo[0]) / deltaTime;
+		inoutCurrentVelocity[1] = (output_y - originalTo[1]) / deltaTime;
+	}
+
+	inoutCurrent[0] = output_x;
+	inoutCurrent[1] = output_y;
+}
+
 // @NOTE: https://github.com/Unity-Technologies/UnityCsReference/blob/0aa4923aa67e701940c22821c137c8d0184159b2/Runtime/Export/Math/Mathf.cs#L309
 inline float_t smoothDamp(float_t current, float_t target, float_t& inoutCurrentVelocity, float_t smoothTime, float_t maxSpeed, const float_t& deltaTime)
 {
@@ -272,8 +330,15 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 		if (changeEvent == CameraModeChangeEvent::EXIT)  // Not doing a warp on enter prevents the orbit camera from moving the delta to snap the cursor to the center of the screen which is disorienting
 			SDL_WarpMouseInWindow(_engine->_window, _engine->_windowExtent.width / 2, _engine->_windowExtent.height / 2);
 
-		mainCamMode.actualLookDistance = mainCamMode.lookDistance;
-		mainCamMode.actualLookDistanceVelocity = 0.0f;
+		if (changeEvent == CameraModeChangeEvent::ENTER)
+		{
+			glm_vec2_zero(mainCamMode.focusPositionVelocityXZ);
+			mainCamMode.focusPositionVelocityY = 0.0f;
+			mainCamMode.actualLookDistanceVelocity = 0.0f;
+
+			glm_vec3_sub(sceneCamera.gpuCameraData.cameraPosition, mainCamMode.focusPositionOffset, mainCamMode.focusPosition);
+			mainCamMode.actualLookDistance = 0.0f;
+		}
 
 		allowInput = false;
 	}
@@ -380,34 +445,47 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 		}
 
 		// Update camera focus position based off the targetPosition.
-		if (mainCamMode.focusRadiusXZ > 0.0f || mainCamMode.focusRadiusY > 0.0f)
+		if (mainCamMode.focusSmoothTimeXZ > 0.0f)
 		{
-			vec3 delta;
-			glm_vec3_sub(mainCamMode.focusPosition, targetPosition, delta);
-
-			// XZ axes focusing
-			vec2 delta_xz = { delta[0], delta[2] };
-			float_t distanceXZ = glm_vec2_norm(delta_xz);
-			float_t tXZ = 1.0f;
-			if (distanceXZ > 0.01f && mainCamMode.focusCentering > 0.0f)
-				tXZ = std::pow(1.0f - mainCamMode.focusCentering, deltaTime);
-			if (distanceXZ > mainCamMode.focusRadiusXZ)
-				tXZ = std::min(tXZ, mainCamMode.focusRadiusXZ / distanceXZ);
-
-			// Y axis focusing
-			float_t distanceY = std::abs(delta[1]);
-			float_t tY = 1.0f;
-			if (distanceY > 0.01f && mainCamMode.focusCentering > 0.0f)
-				tY = std::pow(1.0f - mainCamMode.focusCentering, deltaTime);
-			if (distanceY > mainCamMode.focusRadiusY)
-				tY = std::min(tY, mainCamMode.focusRadiusY / distanceY);
-
-			vec3 focusingT = { tXZ, tY, tXZ };
-			glm_vec3_mul(delta, focusingT, focusingT);
-			glm_vec3_add(targetPosition, focusingT, mainCamMode.focusPosition);
+			vec2 inoutFocusPositionXZ = {
+				mainCamMode.focusPosition[0],
+				mainCamMode.focusPosition[2],
+			};
+			vec2 targetPositionXZ = {
+				targetPosition[0],
+				targetPosition[2],
+			};
+			smoothDampVec2(
+				inoutFocusPositionXZ,
+				targetPositionXZ,
+				mainCamMode.focusPositionVelocityXZ,
+				mainCamMode.focusSmoothTimeXZ,
+				std::numeric_limits<float_t>::max(),
+				deltaTime
+			);
+			mainCamMode.focusPosition[0] = inoutFocusPositionXZ[0];
+			mainCamMode.focusPosition[2] = inoutFocusPositionXZ[1];
 		}
 		else
-			glm_vec3_copy(targetPosition, mainCamMode.focusPosition);
+		{
+			mainCamMode.focusPosition[0] = targetPosition[0];
+			mainCamMode.focusPosition[2] = targetPosition[2];
+		}
+
+		if (mainCamMode.focusSmoothTimeY > 0.0f)
+		{
+			mainCamMode.focusPosition[1] =
+				smoothDamp(
+					mainCamMode.focusPosition[1],
+					targetPosition[1],
+					mainCamMode.focusPositionVelocityY,
+					mainCamMode.focusSmoothTimeY,
+					std::numeric_limits<float_t>::max(),
+					deltaTime
+				);
+		}
+		else
+			mainCamMode.focusPosition[1] = targetPosition[1];
 	}
 
 	//

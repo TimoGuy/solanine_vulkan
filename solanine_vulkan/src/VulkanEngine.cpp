@@ -4403,10 +4403,8 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 
 			ImGui::SliderFloat("lookDistance", &_camera->mainCamMode.lookDistance, 1.0f, 100.0f);
 			ImGui::DragFloat("lookDistanceSmoothTime", &_camera->mainCamMode.lookDistanceSmoothTime, 0.01f);
-			ImGui::SliderFloat("lookDistance", &_camera->mainCamMode.lookDistance, 1.0f, 100.0f);
-			ImGui::DragFloat("focusRadiusXZ", &_camera->mainCamMode.focusRadiusXZ, 1.0f, 0.0f);
-			ImGui::DragFloat("focusRadiusY", &_camera->mainCamMode.focusRadiusY, 1.0f, 0.0f);
-			ImGui::SliderFloat("focusCentering", &_camera->mainCamMode.focusCentering, 0.0f, 1.0f);
+			ImGui::DragFloat("focusSmoothTimeXZ", &_camera->mainCamMode.focusSmoothTimeXZ, 0.01f);
+			ImGui::DragFloat("focusSmoothTimeY", &_camera->mainCamMode.focusSmoothTimeY, 0.01f);
 			ImGui::DragFloat3("focusPositionOffset", _camera->mainCamMode.focusPositionOffset);
 			ImGui::DragFloat("opponentTargetTransition.targetYOrbitAngleSideOffset", &_camera->mainCamMode.opponentTargetTransition.targetYOrbitAngleSideOffset, 0.01f);
 			ImGui::DragFloat("opponentTargetTransition.orbitAngleSmoothTime", &_camera->mainCamMode.opponentTargetTransition.orbitAngleSmoothTime, 0.01f);

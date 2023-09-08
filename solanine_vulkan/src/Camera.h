@@ -54,6 +54,9 @@ struct MainCamMode
 	RenderObject* targetObject = nullptr;
 	physengine::CapsulePhysicsData* opponentTargetObject = nullptr;
 	vec3 focusPosition = GLM_VEC3_ZERO_INIT;
+	vec2 focusPositionVelocityXZ;
+	float_t focusPositionVelocityY;
+
 	vec2 sensitivity = { 0.1f, 0.1f };
 	vec2 orbitAngles = { glm_rad(45.0f), 0.0f };
 	vec3 calculatedCameraPosition = GLM_VEC3_ZERO_INIT;
@@ -83,9 +86,8 @@ struct MainCamMode
 	// Tweak variables
 	float_t   lookDistance           = 5.0f;
 	float_t   lookDistanceSmoothTime = 0.15f;
-	float_t   focusRadiusXZ          = 1.0f;
-	float_t   focusRadiusY           = 2.333333f;
-	float_t   focusCentering         = 0.75f;
+	float_t   focusSmoothTimeXZ      = 0.075f;
+	float_t   focusSmoothTimeY       = 0.3f;
 	vec3      focusPositionOffset    = { 0, 2.333333f, 0 };
 
 	void setMainCamTargetObject(RenderObject* targetObject);
