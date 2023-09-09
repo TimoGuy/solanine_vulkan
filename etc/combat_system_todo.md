@@ -82,6 +82,7 @@
             - [ ] Try implementing the smoothdampangle function
                 - [x] Make X and Y axes orbit angles use smooth damp.
                     > This is a really good change, honestly. It really makes the camera make sense of where it's tracking.
+                - [x] Implement smoothdamp on XZ and Y focus positions.
                 - [ ] Continuously check for which side of the character is the best side when moving the camera around.
                     - [ ] Have mouse input (x axis) change the Y orbit angle side offset.
                 - [ ] Try making the speed of the smoothdampangle change depending on the distance away from the opponent (closer = slower change of Y orbit angle)
