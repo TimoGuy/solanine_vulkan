@@ -6,6 +6,7 @@
 #include "ImportGLM.h"
 #include "InputManager.h"
 #include "RenderObject.h"
+#include "PhysicsEngine.h"
 #include "VulkanEngine.h"  // VulkanEngine
 #include "Debug.h"
 
@@ -157,6 +158,12 @@ void MainCamMode::setMainCamTargetObject(RenderObject* targetObject)
 	MainCamMode::targetObject = targetObject;
 }
 
+void MainCamMode::setOpponentCamTargetObject(physengine::CapsulePhysicsData* targetObject)
+{
+	MainCamMode::opponentTargetObject = targetObject;
+	MainCamMode::opponentTargetTransition.first = true;
+}
+
 
 //
 // Camera
@@ -198,6 +205,118 @@ void Camera::update(const float_t& deltaTime)
 		_changeEvents[i] = CameraModeChangeEvent::NONE;
 }
 
+inline float_t deltaAngle(float_t fromRad, float_t toRad)
+{
+	// Get closest delta angle within the same 360deg to the target.
+	float_t normalizedDeltaAngle = toRad - fromRad;
+	while (normalizedDeltaAngle >= glm_rad(180.0f))  // "Normalize" I guess... delta angle.
+		normalizedDeltaAngle -= glm_rad(360.0f);
+	while (normalizedDeltaAngle < glm_rad(-180.0f))
+		normalizedDeltaAngle += glm_rad(360.0f);
+	return normalizedDeltaAngle;
+}
+
+// @NOTE: https://github.com/Unity-Technologies/UnityCsReference/blob/0aa4923aa67e701940c22821c137c8d0184159b2/Runtime/Export/Math/Vector2.cs#L289
+inline void smoothDampVec2(vec2& inoutCurrent, vec2 target, vec2& inoutCurrentVelocity, float_t smoothTime, float_t maxSpeed, const float_t& deltaTime)
+{
+	// Based on Game Programming Gems 4 Chapter 1.10
+	smoothTime = std::max(0.000001f, smoothTime);
+	float_t omega = 2.0f / smoothTime;
+
+	float_t x = omega * deltaTime;
+	float_t exp = 1.0f / (1.0f + x + 0.48f * x * x + 0.235f * x * x * x);
+
+	float_t change_x = inoutCurrent[0] - target[0];
+	float_t change_y = inoutCurrent[1] - target[1];
+
+	vec2 originalTo;
+	glm_vec2_copy(target, originalTo);
+
+	// Clamp maximum speed
+	float_t maxChange = maxSpeed * smoothTime;
+
+	float_t sqDist = change_x * change_x + change_y * change_y;  // @TODO: use `glm_vec2_norm2()`
+	if (sqDist > maxChange * maxChange)
+	{
+		float_t mag = std::sqrtf(sqDist);
+		change_x = change_x / mag * maxChange;
+		change_y = change_y / mag * maxChange;
+	}
+
+	target[0] = inoutCurrent[0] - change_x;
+	target[1] = inoutCurrent[1] - change_y;
+
+	float_t temp_x = (inoutCurrentVelocity[0] + omega * change_x) * deltaTime;
+	float_t temp_y = (inoutCurrentVelocity[1] + omega * change_y) * deltaTime;
+
+	inoutCurrentVelocity[0] = (inoutCurrentVelocity[0] - omega * temp_x) * exp;
+	inoutCurrentVelocity[1] = (inoutCurrentVelocity[1] - omega * temp_y) * exp;
+
+	float_t output_x = target[0] + (change_x + temp_x) * exp;
+	float_t output_y = target[1] + (change_y + temp_y) * exp;
+
+	// Prevent overshooting
+	float_t origMinusCurrent_x = originalTo[0] - inoutCurrent[0];
+	float_t origMinusCurrent_y = originalTo[1] - inoutCurrent[1];
+	float_t outMinusOrig_x = output_x - originalTo[0];
+	float_t outMinusOrig_y = output_y - originalTo[1];
+
+	if (origMinusCurrent_x * outMinusOrig_x + origMinusCurrent_y * outMinusOrig_y > 0)
+	{
+		output_x = originalTo[0];
+		output_y = originalTo[1];
+
+		inoutCurrentVelocity[0] = (output_x - originalTo[0]) / deltaTime;
+		inoutCurrentVelocity[1] = (output_y - originalTo[1]) / deltaTime;
+	}
+
+	inoutCurrent[0] = output_x;
+	inoutCurrent[1] = output_y;
+}
+
+// @NOTE: https://github.com/Unity-Technologies/UnityCsReference/blob/0aa4923aa67e701940c22821c137c8d0184159b2/Runtime/Export/Math/Mathf.cs#L309
+inline float_t smoothDamp(float_t current, float_t target, float_t& inoutCurrentVelocity, float_t smoothTime, float_t maxSpeed, const float_t& deltaTime)
+{
+	// Based on Game Programming Gems 4 Chapter 1.10
+	smoothTime = std::max(0.000001f, smoothTime);
+	float_t omega = 2.0f / smoothTime;
+
+	float_t x = omega * deltaTime;
+	float_t exp = 1.0f / (1.0f + x + 0.48f * x * x + 0.235f * x * x * x);
+	float_t change = current - target;
+	float_t originalTo = target;
+
+	// Clamp maximum speed
+	float_t maxChange = maxSpeed * smoothTime;
+	change = glm_clamp(change, -maxChange, maxChange);
+	target = current - change;
+
+	float_t temp = (inoutCurrentVelocity + omega * change) * deltaTime;
+	inoutCurrentVelocity = (inoutCurrentVelocity - omega * temp) * exp;
+	float_t output = target + (change + temp) * exp;
+
+	// Prevent overshooting
+	if (originalTo - current > 0.0f == output > originalTo)
+	{
+		output = originalTo;
+		inoutCurrentVelocity = (output - originalTo) / deltaTime;
+	}
+
+	return output;
+}
+
+inline float_t smoothDampAngle(float_t current, float_t target, float_t& inoutCurrentVelocity, float_t smoothTime, float_t maxSpeed, const float_t& deltaTime)
+{
+	target = current + deltaAngle(current, target);
+	return smoothDamp(current, target, inoutCurrentVelocity, smoothTime, maxSpeed, deltaTime);
+}
+
+void clampXOrbitAngle(float_t& outXOrbitAngle)
+{
+	const static float_t ANGLE_LIMIT = glm_rad(85.0f);
+	outXOrbitAngle = glm_clamp(outXOrbitAngle, -ANGLE_LIMIT, ANGLE_LIMIT);
+}
+
 void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent changeEvent)
 {
 	bool allowInput = true;
@@ -215,6 +334,16 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 		if (changeEvent == CameraModeChangeEvent::EXIT)  // Not doing a warp on enter prevents the orbit camera from moving the delta to snap the cursor to the center of the screen which is disorienting
 			SDL_WarpMouseInWindow(_engine->_window, _engine->_windowExtent.width / 2, _engine->_windowExtent.height / 2);
 
+		if (changeEvent == CameraModeChangeEvent::ENTER)
+		{
+			glm_vec2_zero(mainCamMode.focusPositionVelocityXZ);
+			mainCamMode.focusPositionVelocityY = 0.0f;
+			mainCamMode.actualLookDistanceVelocity = 0.0f;
+
+			glm_vec3_sub(sceneCamera.gpuCameraData.cameraPosition, mainCamMode.focusPositionOffset, mainCamMode.focusPosition);
+			mainCamMode.actualLookDistance = 0.0f;
+		}
+
 		allowInput = false;
 	}
 	if (_cameraMode != _cameraMode_mainCamMode)
@@ -223,43 +352,153 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 	//
 	// Focus onto target object
 	//
+	float_t targetLookDistance = mainCamMode.lookDistance;
 	if (mainCamMode.targetObject != nullptr)
 	{
 		// Update the focus position
-		vec4 pos;
-		mat4 rot;
-		vec3 sca;
-		glm_decompose(mainCamMode.targetObject->transformMatrix, pos, rot, sca);
 		vec3 targetPosition;
-		glm_vec4_copy3(pos, targetPosition);
-		if (mainCamMode.focusRadiusXZ > 0.0f || mainCamMode.focusRadiusY > 0.0f)
 		{
-			vec3 delta;
-			glm_vec3_sub(mainCamMode.focusPosition, targetPosition, delta);
+			vec4 pos;
+			mat4 rot;
+			vec3 sca;
+			glm_decompose(mainCamMode.targetObject->transformMatrix, pos, rot, sca);
+			glm_vec4_copy3(pos, targetPosition);
+		}
 
-			// XZ axes focusing
-			vec2 delta_xz = { delta[0], delta[2] };
-			float_t distanceXZ = glm_vec2_norm(delta_xz);
-			float_t tXZ = 1.0f;
-			if (distanceXZ > 0.01f && mainCamMode.focusCentering > 0.0f)
-				tXZ = std::pow(1.0f - mainCamMode.focusCentering, deltaTime);
-			if (distanceXZ > mainCamMode.focusRadiusXZ)
-				tXZ = std::min(tXZ, mainCamMode.focusRadiusXZ / distanceXZ);
+		if (mainCamMode.opponentTargetObject != nullptr)  // Opponent target position mixing in.
+		{
+			auto& ott = mainCamMode.opponentTargetTransition;
 
-			// Y axis focusing
-			float_t distanceY = std::abs(delta[1]);
-			float_t tY = 1.0f;
-			if (distanceY > 0.01f && mainCamMode.focusCentering > 0.0f)
-				tY = std::pow(1.0f - mainCamMode.focusCentering, deltaTime);
-			if (distanceY > mainCamMode.focusRadiusY)
-				tY = std::min(tY, mainCamMode.focusRadiusY / distanceY);
+			// Pre-mutation calcs.
+			float_t deltaYPosition = mainCamMode.opponentTargetObject->interpolBasePosition[1] - targetPosition[1];
 
-			vec3 focusingT = { tXZ, tY, tXZ };
-			glm_vec3_mul(delta, focusingT, focusingT);
-			glm_vec3_add(targetPosition, focusingT, mainCamMode.focusPosition);
+			// Use dot product between opponent facing direction
+			// and current camera direction to find focus position.
+			vec2 flatTargetPosition = { targetPosition[0], targetPosition[2] };
+			vec2 flatOpponentPosition = { mainCamMode.opponentTargetObject->interpolBasePosition[0], mainCamMode.opponentTargetObject->interpolBasePosition[2] };
+
+			vec2 flatDeltaPosition;
+			vec2 normFlatDeltaPosition;
+			glm_vec2_sub(flatOpponentPosition, flatTargetPosition, flatDeltaPosition);
+			glm_vec2_normalize_to(flatDeltaPosition, normFlatDeltaPosition);
+
+			vec2 normFlatLookDirection = {
+				mainCamMode.calculatedLookDirection[0],
+				mainCamMode.calculatedLookDirection[2]
+			};
+			glm_vec2_normalize(normFlatLookDirection);
+			
+			float_t fDeltaPosDotfLookDir = glm_vec2_dot(normFlatDeltaPosition, normFlatLookDirection);
+
+			float_t midY = glm_lerp(mainCamMode.opponentTargetObject->interpolBasePosition[1], targetPosition[1], 0.5f);
+			glm_vec3_lerp(targetPosition, mainCamMode.opponentTargetObject->interpolBasePosition, 1.0f - (fDeltaPosDotfLookDir * 0.5f + 0.5f), targetPosition);
+			targetPosition[1] = midY + ott.focusPositionExtraYOffsetWhenTargeting;
+
+			// Update look direction based off previous delta angle.
+			float_t newOpponentDeltaAngle = atan2f(normFlatDeltaPosition[0], normFlatDeltaPosition[1]);
+
+			if (ott.first)
+			{
+				ott.prevOpponentDeltaAngle = newOpponentDeltaAngle;
+				ott.yOrbitAngleDampVelocity = 0.0f;
+				ott.xOrbitAngleDampVelocity = 0.0f;
+				ott.targetYOrbitAngle = newOpponentDeltaAngle + ott.targetYOrbitAngleSideOffset;  // @NOTE: just set arbitrary side and then `altTargetYOrbitAngle` will get switched as needed.
+			}
+
+			ott.targetYOrbitAngle += newOpponentDeltaAngle - ott.prevOpponentDeltaAngle;
+
+			float_t altTargetYOrbitAngle =  // Try to calc an alternate/mirrored Y orbit angle. @NOTE: See `etc/altTargetYOrbitAngle_math.png`
+				ott.targetYOrbitAngle +
+				2.0f * (glm_rad(180.0f) - deltaAngle(newOpponentDeltaAngle, ott.targetYOrbitAngle));
+			if (std::abs(deltaAngle(mainCamMode.orbitAngles[1], altTargetYOrbitAngle)) < std::abs(deltaAngle(mainCamMode.orbitAngles[1], ott.targetYOrbitAngle)))
+				ott.targetYOrbitAngle = altTargetYOrbitAngle;
+
+			float_t flatDistance = glm_vec2_norm(flatDeltaPosition);
+			float_t yOrbitAngleSmoothTime =
+				glm_lerpc(
+					ott.yOrbitAngleSmoothTimeSlow,
+					ott.yOrbitAngleSmoothTimeFast,
+					flatDistance / ott.slowFastTransitionRadius
+				);
+
+			mainCamMode.orbitAngles[1] =
+				smoothDampAngle(
+					mainCamMode.orbitAngles[1],
+					ott.targetYOrbitAngle,
+					ott.yOrbitAngleDampVelocity,
+					yOrbitAngleSmoothTime,
+					std::numeric_limits<float_t>::max(),
+					deltaTime
+				);
+			ott.prevOpponentDeltaAngle = newOpponentDeltaAngle;
+
+			// Update look direction (x axis) from delta position.
+			// ott.targetXOrbitAngle = -atan2f(deltaYPosition, flatDistance) * fDeltaPosDotfLookDir;
+			// clampXOrbitAngle(ott.targetXOrbitAngle);
+			mainCamMode.orbitAngles[0] =
+				smoothDamp(
+					mainCamMode.orbitAngles[0],
+					ott.targetXOrbitAngle,
+					ott.xOrbitAngleDampVelocity,
+					ott.xOrbitAngleSmoothTime,
+					std::numeric_limits<float_t>::max(),
+					deltaTime
+				);
+
+			// Calculate the opponent look distance.
+			float_t obliqueMultiplier = 1.0f - std::abs(fDeltaPosDotfLookDir);
+			ott.calculatedLookDistance =
+				ott.lookDistanceBaseAmount +
+				ott.lookDistanceObliqueAmount * flatDistance * obliqueMultiplier +
+				ott.lookDistanceHeightAmount * std::abs(deltaYPosition);
+			targetLookDistance = ott.calculatedLookDistance;
+
+			if (ott.first)
+				ott.first = false;
+		}
+
+		// Update camera focus position based off the targetPosition.
+		if (mainCamMode.focusSmoothTimeXZ > 0.0f)
+		{
+			vec2 inoutFocusPositionXZ = {
+				mainCamMode.focusPosition[0],
+				mainCamMode.focusPosition[2],
+			};
+			vec2 targetPositionXZ = {
+				targetPosition[0],
+				targetPosition[2],
+			};
+			smoothDampVec2(
+				inoutFocusPositionXZ,
+				targetPositionXZ,
+				mainCamMode.focusPositionVelocityXZ,
+				mainCamMode.focusSmoothTimeXZ,
+				std::numeric_limits<float_t>::max(),
+				deltaTime
+			);
+			mainCamMode.focusPosition[0] = inoutFocusPositionXZ[0];
+			mainCamMode.focusPosition[2] = inoutFocusPositionXZ[1];
 		}
 		else
-			glm_vec3_copy(targetPosition, mainCamMode.focusPosition);
+		{
+			mainCamMode.focusPosition[0] = targetPosition[0];
+			mainCamMode.focusPosition[2] = targetPosition[2];
+		}
+
+		if (mainCamMode.focusSmoothTimeY > 0.0f)
+		{
+			mainCamMode.focusPosition[1] =
+				smoothDamp(
+					mainCamMode.focusPosition[1],
+					targetPosition[1],
+					mainCamMode.focusPositionVelocityY,
+					mainCamMode.focusSmoothTimeY,
+					std::numeric_limits<float_t>::max(),
+					deltaTime
+				);
+		}
+		else
+			mainCamMode.focusPosition[1] = targetPosition[1];
 	}
 
 	//
@@ -273,12 +512,26 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 			glm_rad(mainCamMode.sensitivity[1]),
 		};
 		glm_vec2_muladd(mouseDeltaFloatSwizzled, sensitivityRadians, mainCamMode.orbitAngles);
+
+		if (mainCamMode.opponentTargetObject != nullptr)  // Add to target Y orbit angle if opponent. (smol @HACK)
+			mainCamMode.opponentTargetTransition.targetYOrbitAngle += mouseDeltaFloatSwizzled[1] * sensitivityRadians[1];
 	}
+
+	// Update actual look distance.
+	mainCamMode.actualLookDistance =
+		smoothDamp(
+			mainCamMode.actualLookDistance,
+			targetLookDistance,
+			mainCamMode.actualLookDistanceVelocity,
+			mainCamMode.lookDistanceSmoothTime,
+			std::numeric_limits<float_t>::max(),
+			deltaTime
+		);
 
 	//
 	// Recalculate camera
 	//
-	mainCamMode.orbitAngles[0] = glm_clamp(mainCamMode.orbitAngles[0], glm_rad(-85.0f), glm_rad(85.0f));
+	clampXOrbitAngle(mainCamMode.orbitAngles[0]);
 	vec3 lookRotationEuler = {
 		mainCamMode.orbitAngles[0],
 		mainCamMode.orbitAngles[1],
@@ -291,10 +544,9 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 
 	vec3 focusPositionCooked;
 	glm_vec3_add(mainCamMode.focusPosition, mainCamMode.focusPositionOffset, focusPositionCooked);
-	float_t lookDistance = mainCamMode.lookDistance;
 
 	vec3 calcLookDirectionScaled;
-	glm_vec3_scale(mainCamMode.calculatedLookDirection, lookDistance, calcLookDirectionScaled);
+	glm_vec3_scale(mainCamMode.calculatedLookDirection, mainCamMode.actualLookDistance, calcLookDirectionScaled);
 	glm_vec3_sub(focusPositionCooked, calcLookDirectionScaled, mainCamMode.calculatedCameraPosition);
 
 	if (glm_vec3_distance2(sceneCamera.facingDirection, mainCamMode.calculatedLookDirection) > 0.0f ||

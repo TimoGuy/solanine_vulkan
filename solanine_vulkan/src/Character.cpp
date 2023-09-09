@@ -885,6 +885,7 @@ void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& phy
             glm_vec3_add(forceZoneOriginWS, d->position, forceZoneOriginWS);
         }
 
+        // @COPYPASTA
         for (size_t i = 0; i < physengine::getNumCapsules(); i++)
         {
             physengine::CapsulePhysicsData* otherCPD = physengine::getCapsuleByIndex(i);
@@ -1882,6 +1883,25 @@ void Character::update(const float_t& deltaTime)
                 _data->auraSfxChannelIds.push_back(
                     AudioEngine::getInstance().playSound("res/sfx/wip_hollow_knight_sfx/hero_fury_charm_loop.wav", true)  // Heartbeat loop
                 );
+
+                // Search for opponent to target.
+                // @COPYPASTA
+                physengine::CapsulePhysicsData* closestCPD = nullptr;
+                float_t closestDistance = -1.0f;
+                for (size_t i = 0; i < physengine::getNumCapsules(); i++)
+                {
+                    physengine::CapsulePhysicsData* otherCPD = physengine::getCapsuleByIndex(i);
+                    if (otherCPD->entityGuid == getGUID())
+                        continue;  // Don't target self!
+
+                    float_t thisDistance = glm_vec3_distance2(_data->cpd->basePosition, otherCPD->basePosition);
+                    if (closestDistance < 0.0 || thisDistance < closestDistance)
+                    {
+                        closestCPD = otherCPD;
+                        closestDistance = thisDistance;
+                    }
+                }
+                _data->camera->mainCamMode.setOpponentCamTargetObject(closestCPD);
             }
         }
         else
@@ -1895,6 +1915,9 @@ void Character::update(const float_t& deltaTime)
                 
                 // Play ending sound
                 AudioEngine::getInstance().playSound("res/sfx/wip_hollow_knight_sfx/hero_super_dash_ready.wav");
+
+                // Release targeting opponent.
+                _data->camera->mainCamMode.setOpponentCamTargetObject(nullptr);
             }
         }
     }

@@ -66,10 +66,31 @@
         - [x] Create the state and the transitions to the animation
     > Ideally, adding something like "cancel waza when shift is released or when character touches the ground"-type params would be great for making sure that the waza won't get put out when the character is sitting on the ground on their head or something like that.
 
-- [ ] Reiterate the "idea" of combat.
+- [x] Reiterate the "idea" of combat.
     > This is an important "fix" I want to the combat:
-    - [ ] When facing an opponent and using the waza breathing pattern, the camera should be focusing on the nearest facing character that the player could be facing.
-        - [ ] That is, holding <shift> would cause the camera to show both the player and the focused character in frame with a slight angle, and try to keep both in the shot.
+    - [x] When facing an opponent and using the waza breathing pattern, the camera should be focusing on the nearest facing character that the player could be facing.
+        - [x] That is, holding <shift> would cause the camera to show both the player and the focused character in frame with a slight angle, and try to keep both in the shot.
+            - [x] Pressing and holding shift adds the nearest capsule as a camera targeting object.
+            - [x] Move the camera at an angle, lerping the focus position based off the look direction and deltaposition (between character and opponent) dot product.
+            - [x] As deltaposition (char and oppo) angle changes, move the orbitangle Y in the same way.
+            - [x] Change the distance the camera zooms in/out depending on the distance of the deltaposition (char and oppo).
+                - [x] Tune the params.
+            - [x] Move the X orbitangle to face the opponent.
+        - [x] Reigai: RESEARCH: figure out what is needed to make doing the waza play nice with this camera system.
+            - [x] Try limiting changing the Y axis orbit angle when the X axis orbit angle is relatively flat (+-60deg)
+                > This wasn't the best. It made the camera act weirdly, and after doing the waza, the camera wouldn't return back to what the user's original camera angle was.
+            - [x] Try implementing the smoothdampangle function
+                - [x] Make X and Y axes orbit angles use smooth damp.
+                    > This is a really good change, honestly. It really makes the camera make sense of where it's tracking.
+                - [x] Implement smoothdamp on XZ and Y focus positions.
+                - [x] Continuously check for which side of the character is the best side when moving the camera around.
+                    - [x] Have mouse input (x axis) change the Y orbit angle side offset.
+                    > This really smooths out the camera movement and makes everything a lot more readable, especially when the char and the oppo change positions and the camera wants to "flip" to the other side. The mirrored alternate angle stops the camera from flipping things around and keeps the readability good by being on the same "side".
+                - [x] Try making the speed of the smoothdampangle change depending on the distance away from the opponent (closer = slower change of Y orbit angle)
+                    > This ended up being a pretty good thing. Didn't really affect much for me though.
+                > All in all, the best thing to do was to not change the X orbit angle and rather keep it at 0deg, flat. Then, as the Y distance gets larger, zoom out the camera so that both subjects can still be seen easily. It takes away from the "shoot down" feel of the waza where the player character jumps off their weapon and rockets downward, but the speed of the jumpdown is accentuated very well with the zoomed out camera.
+
+- [ ] Reiterate the "idea" of combat. PART II
     > The biggest goal is feeling like what you're inputting as actions is actually what you feel like you're doing.
     - [ ] Divide up the individual wazas such that you can do all of them one at a time. (THOUGHT: I think that being able to do them all individually is more important than the chain FOR NOW... bc doing them all individually all feels like a different action that you have control over doing)
     - [ ] Require holding shift to do the aura-based wazas.

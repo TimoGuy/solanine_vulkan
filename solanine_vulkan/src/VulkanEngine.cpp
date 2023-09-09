@@ -278,6 +278,10 @@ void VulkanEngine::run()
 
 void VulkanEngine::cleanup()
 {
+	std::cout << std::endl
+		<< "[CLEANUP PROCEDURE BEGIN]" << std::endl
+		<< "===================================================================================================" << std::endl << std::endl;
+
 #ifdef _DEVELOP
 	hotswapres::flagStopRunning();
 #endif
@@ -316,6 +320,8 @@ void VulkanEngine::cleanup()
 		hotswapres::waitForShutdownAndTeardownResourceList();
 #endif
 	}
+
+	std::cout << "Cleanup procedure finished." << std::endl;
 }
 
 void VulkanEngine::render()
@@ -1128,7 +1134,6 @@ void VulkanEngine::loadImages()
 		_mainDeletionQueue.pushFunction([=]() {
 			vkDestroySampler(_device, _pbrSceneTextureSet.shadowJitterMap.sampler, nullptr);
 			vkDestroyImageView(_device, _pbrSceneTextureSet.shadowJitterMap.imageView, nullptr);
-			vmaDestroyImage(_allocator, _pbrSceneTextureSet.shadowJitterMap.image._image, _pbrSceneTextureSet.shadowJitterMap.image._allocation);
 			});
 	}
 
@@ -3394,10 +3399,6 @@ void VulkanEngine::generatePBRCubemaps()
 		case ENVIRONMENT:
 			cubemapTypeName = "environment";
 			_loadedTextures["CubemapSkybox"] = cubemapTexture;
-			_mainDeletionQueue.pushFunction([=]() {
-				vkDestroySampler(_device, cubemapTexture.sampler, nullptr);
-				vkDestroyImageView(_device, cubemapTexture.imageView, nullptr);
-			});
 			break;
 		case IRRADIANCE:
 			cubemapTypeName = "irradiance";
@@ -4401,10 +4402,19 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 			ImGui::Text("NOTE: press F10 to change camera types");
 
 			ImGui::SliderFloat("lookDistance", &_camera->mainCamMode.lookDistance, 1.0f, 100.0f);
-			ImGui::DragFloat("focusRadiusXZ", &_camera->mainCamMode.focusRadiusXZ, 1.0f, 0.0f);
-			ImGui::DragFloat("focusRadiusY", &_camera->mainCamMode.focusRadiusY, 1.0f, 0.0f);
-			ImGui::SliderFloat("focusCentering", &_camera->mainCamMode.focusCentering, 0.0f, 1.0f);
+			ImGui::DragFloat("lookDistanceSmoothTime", &_camera->mainCamMode.lookDistanceSmoothTime, 0.01f);
+			ImGui::DragFloat("focusSmoothTimeXZ", &_camera->mainCamMode.focusSmoothTimeXZ, 0.01f);
+			ImGui::DragFloat("focusSmoothTimeY", &_camera->mainCamMode.focusSmoothTimeY, 0.01f);
 			ImGui::DragFloat3("focusPositionOffset", _camera->mainCamMode.focusPositionOffset);
+			ImGui::DragFloat("opponentTargetTransition.targetYOrbitAngleSideOffset", &_camera->mainCamMode.opponentTargetTransition.targetYOrbitAngleSideOffset, 0.01f);
+			ImGui::DragFloat("opponentTargetTransition.xOrbitAngleSmoothTime", &_camera->mainCamMode.opponentTargetTransition.xOrbitAngleSmoothTime, 0.01f);
+			ImGui::DragFloat("opponentTargetTransition.yOrbitAngleSmoothTimeSlow", &_camera->mainCamMode.opponentTargetTransition.yOrbitAngleSmoothTimeSlow, 0.01f);
+			ImGui::DragFloat("opponentTargetTransition.yOrbitAngleSmoothTimeFast", &_camera->mainCamMode.opponentTargetTransition.yOrbitAngleSmoothTimeFast, 0.01f);
+			ImGui::DragFloat("opponentTargetTransition.slowFastTransitionRadius", &_camera->mainCamMode.opponentTargetTransition.slowFastTransitionRadius, 0.1f);
+			ImGui::DragFloat("opponentTargetTransition.lookDistanceBaseAmount", &_camera->mainCamMode.opponentTargetTransition.lookDistanceBaseAmount, 0.1f);
+			ImGui::DragFloat("opponentTargetTransition.lookDistanceObliqueAmount", &_camera->mainCamMode.opponentTargetTransition.lookDistanceObliqueAmount, 0.1f);
+			ImGui::DragFloat("opponentTargetTransition.lookDistanceHeightAmount", &_camera->mainCamMode.opponentTargetTransition.lookDistanceHeightAmount, 0.1f);
+			ImGui::DragFloat("opponentTargetTransition.focusPositionExtraYOffsetWhenTargeting", &_camera->mainCamMode.opponentTargetTransition.focusPositionExtraYOffsetWhenTargeting, 0.1f);
 		}
 
 		if (ImGui::CollapsingHeader("Textbox Properties", ImGuiTreeNodeFlags_DefaultOpen))

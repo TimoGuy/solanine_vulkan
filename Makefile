@@ -31,3 +31,7 @@ run_release:
 clean:
 	@msbuild.exe -m -noLogo -t:Clean
 
+.PHONY: clean_release
+clean_release:
+	@msbuild.exe -m -noLogo -t:Clean -p:Configuration=Release
+
