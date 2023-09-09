@@ -205,6 +205,17 @@ void Camera::update(const float_t& deltaTime)
 		_changeEvents[i] = CameraModeChangeEvent::NONE;
 }
 
+inline float_t deltaAngle(float_t fromRad, float_t toRad)
+{
+	// Get closest delta angle within the same 360deg to the target.
+	float_t normalizedDeltaAngle = toRad - fromRad;
+	while (normalizedDeltaAngle >= glm_rad(180.0f))  // "Normalize" I guess... delta angle.
+		normalizedDeltaAngle -= glm_rad(360.0f);
+	while (normalizedDeltaAngle < glm_rad(-180.0f))
+		normalizedDeltaAngle += glm_rad(360.0f);
+	return normalizedDeltaAngle;
+}
+
 // @NOTE: https://github.com/Unity-Technologies/UnityCsReference/blob/0aa4923aa67e701940c22821c137c8d0184159b2/Runtime/Export/Math/Vector2.cs#L289
 inline void smoothDampVec2(vec2& inoutCurrent, vec2 target, vec2& inoutCurrentVelocity, float_t smoothTime, float_t maxSpeed, const float_t& deltaTime)
 {
@@ -296,14 +307,7 @@ inline float_t smoothDamp(float_t current, float_t target, float_t& inoutCurrent
 
 inline float_t smoothDampAngle(float_t current, float_t target, float_t& inoutCurrentVelocity, float_t smoothTime, float_t maxSpeed, const float_t& deltaTime)
 {
-	// Get closest delta angle within the same 360deg to the target.
-	float_t normalizedDeltaAngle = target - current;
-	while (normalizedDeltaAngle >= glm_rad(180.0f))  // "Normalize" I guess... delta angle.
-		normalizedDeltaAngle -= glm_rad(360.0f);
-	while (normalizedDeltaAngle < glm_rad(-180.0f))
-		normalizedDeltaAngle += glm_rad(360.0f);
-	target = current + normalizedDeltaAngle;
-
+	target = current + deltaAngle(current, target);
 	return smoothDamp(current, target, inoutCurrentVelocity, smoothTime, maxSpeed, deltaTime);
 }
 
@@ -410,8 +414,14 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 			float_t newOpponentDeltaAngle = atan2f(normFlatDeltaPosition[0], normFlatDeltaPosition[1]);
 			if (!ott.first)
 			{
-				float_t deltaAngle = newOpponentDeltaAngle - ott.prevOpponentDeltaAngle;
-				ott.targetYOrbitAngle += deltaAngle;
+				ott.targetYOrbitAngle += newOpponentDeltaAngle - ott.prevOpponentDeltaAngle;
+
+				float_t altTargetYOrbitAngle =  // Try to calc an alternate/mirrored Y orbit angle. @NOTE: See `etc/altTargetYOrbitAngle_math.png`
+					ott.targetYOrbitAngle +
+					2.0f * (glm_rad(180.0f) - deltaAngle(newOpponentDeltaAngle, ott.targetYOrbitAngle));
+				if (std::abs(deltaAngle(mainCamMode.orbitAngles[1], altTargetYOrbitAngle)) < std::abs(deltaAngle(mainCamMode.orbitAngles[1], ott.targetYOrbitAngle)))
+					ott.targetYOrbitAngle = altTargetYOrbitAngle;
+
 				mainCamMode.orbitAngles[1] =
 					smoothDampAngle(
 						mainCamMode.orbitAngles[1],
