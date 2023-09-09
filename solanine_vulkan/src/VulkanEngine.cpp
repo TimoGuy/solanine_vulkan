@@ -1417,20 +1417,24 @@ void VulkanEngine::initSwapchain()
 	};
 
 	_depthFormat = VK_FORMAT_D32_SFLOAT;
-	VkImageCreateInfo depthImgInfo = vkinit::imageCreateInfo(_depthFormat, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, depthImgExtent, 1);
+	VkImageCreateInfo depthImgInfo = vkinit::imageCreateInfo(_depthFormat, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, depthImgExtent, 1);
 	VmaAllocationCreateInfo depthImgAllocInfo = {
 		.usage = VMA_MEMORY_USAGE_GPU_ONLY,
 		.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
 	};
-	vmaCreateImage(_allocator, &depthImgInfo, &depthImgAllocInfo, &_depthImage._image, &_depthImage._allocation, nullptr);
+	vmaCreateImage(_allocator, &depthImgInfo, &depthImgAllocInfo, &_depthImage.image._image, &_depthImage.image._allocation, nullptr);
 
-	VkImageViewCreateInfo depthViewInfo = vkinit::imageviewCreateInfo(_depthFormat, _depthImage._image, VK_IMAGE_ASPECT_DEPTH_BIT, 1);
-	VK_CHECK(vkCreateImageView(_device, &depthViewInfo, nullptr, &_depthImageView));
+	VkImageViewCreateInfo depthViewInfo = vkinit::imageviewCreateInfo(_depthFormat, _depthImage.image._image, VK_IMAGE_ASPECT_DEPTH_BIT, 1);
+	VK_CHECK(vkCreateImageView(_device, &depthViewInfo, nullptr, &_depthImage.imageView));
+
+	VkSamplerCreateInfo depthSamplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(_depthImage.image._mipLevels), VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
+	vkCreateSampler(_device, &depthSamplerInfo, nullptr, &_depthImage.sampler);
 
 	// Add destroy command
 	_swapchainDependentDeletionQueue.pushFunction([=]() {
-		vkDestroyImageView(_device, _depthImageView, nullptr);
-		vmaDestroyImage(_allocator, _depthImage._image, _depthImage._allocation);
+		vkDestroySampler(_device, _depthImage.sampler, nullptr);
+		vkDestroyImageView(_device, _depthImage.imageView, nullptr);
+		vmaDestroyImage(_allocator, _depthImage.image._image, _depthImage.image._allocation);
 		});
 }
 
@@ -1651,7 +1655,7 @@ void VulkanEngine::initMainRenderpass()
 		.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
 		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
 		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-		.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+		.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
 	};
 	VkAttachmentReference depthAttachmentRef = {
 		.attachment = 1,
@@ -1947,11 +1951,17 @@ void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is 
 		.imageView = _bloomPostprocessImage.imageView,
 		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 	};
+	VkDescriptorImageInfo depthBufferImageInfo = {
+		.sampler = _depthImage.sampler,
+		.imageView = _depthImage.imageView,
+		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	};
 	VkDescriptorSet postprocessingTextureSet;
 	vkutil::DescriptorBuilder::begin()
 		.bindImage(0, &mainHDRImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
 		.bindImage(1, &uiImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
 		.bindImage(2, &bloomImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+		.bindImage(3, &depthBufferImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
 		.build(postprocessingTextureSet, _postprocessSetLayout);
 	attachTextureSetToMaterial(postprocessingTextureSet, "postprocessMaterial");
 
@@ -2132,7 +2142,7 @@ void VulkanEngine::initFramebuffers()
 	{
 		VkImageView attachments[] = {
 			_mainImage.imageView,
-			_depthImageView,
+			_depthImage.imageView,
 		};
 		fbInfo.renderPass = _mainRenderPass;
 		fbInfo.attachmentCount = 2;

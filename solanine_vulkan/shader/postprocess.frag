@@ -25,6 +25,7 @@ layout (set = 0, binding = 1) uniform UBOParams  // @TODO: just add in the globa
 layout (set = 1, binding = 0) uniform sampler2D mainImage;
 layout (set = 1, binding = 1) uniform sampler2D uiImage;
 layout (set = 1, binding = 2) uniform sampler2D bloomImage;
+layout (set = 1, binding = 3) uniform sampler2D depthImage;
 
 
 #define MANUAL_SRGB 1
@@ -65,6 +66,8 @@ vec4 SRGBtoLINEAR(vec4 srgbIn)
 
 void main()
 {
+	
+
 	vec4 combinedBloom =
 		textureLod(bloomImage, inUV, 0.0) +
 		textureLod(bloomImage, inUV, 1.0) +
@@ -74,6 +77,24 @@ void main()
 	vec4 rawColor = mix(texture(mainImage, inUV), combinedBloom, 0.04);
 	vec3 color = SRGBtoLINEAR(tonemap(rawColor)).rgb;
 	vec4 uiColor = texture(uiImage, inUV);
+
+	const float zNear = 1.0;
+	const float zFar = 1000.0;
+	float depth = texture(depthImage, inUV).r;
+	depth = zNear * zFar / (zFar + depth * (zNear - zFar));
+
+	// const float focusDepth = zFar * 0.5;
+	// const float focusExtent = zFar * 0.5;
+	const float focusDepth = 10.5;
+	const float focusExtent = 7.5;
+	const float blurExtent = focusExtent * 2.0;
+	float depthRelativeToFocusDepth = abs(depth - focusDepth);
+	if (depthRelativeToFocusDepth > focusExtent)
+	{
+		// color = vec3(0.0);  // @DEBUG: for seeing the in focus field.
+		float blurAmount = clamp((depthRelativeToFocusDepth - focusExtent) / blurExtent, 0.0, 1.0);
+		color = mix(color, combinedBloom.rgb, blurAmount);
+	}
 
 	outColor = vec4(
 		mix(color, uiColor.rgb, uiColor.a),

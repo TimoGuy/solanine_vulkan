@@ -168,8 +168,7 @@ public:
 	Texture       _mainImage;
 
 	// Main Depth Buffer
-	AllocatedImage _depthImage;
-	VkImageView    _depthImageView;
+	Texture        _depthImage;
 	VkFormat       _depthFormat;
 
 	//
