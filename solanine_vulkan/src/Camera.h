@@ -84,7 +84,7 @@ struct MainCamMode
 		float_t lookDistanceObliqueAmount = 0.375f;
 		float_t lookDistanceHeightAmount = 1.0f;
 
-		float_t focusPositionExtraYOffsetWhenTargeting = -1.166667f;
+		float_t focusPositionExtraYOffsetWhenTargeting = -0.583333f;
 	} opponentTargetTransition;
 
 	// Tweak variables
