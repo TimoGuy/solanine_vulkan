@@ -382,7 +382,10 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 			glm_vec2_sub(flatOpponentPosition, flatTargetPosition, flatDeltaPosition);
 			glm_vec2_normalize_to(flatDeltaPosition, normFlatDeltaPosition);
 
-			vec2 normFlatLookDirection = { mainCamMode.calculatedLookDirection[0], mainCamMode.calculatedLookDirection[2] };
+			vec2 normFlatLookDirection = {
+				mainCamMode.calculatedLookDirection[0],
+				mainCamMode.calculatedLookDirection[2]
+			};
 			glm_vec2_normalize(normFlatLookDirection);
 			
 			float_t fDeltaPosDotfLookDir = glm_vec2_dot(normFlatDeltaPosition, normFlatLookDirection);
@@ -410,19 +413,26 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 			if (std::abs(deltaAngle(mainCamMode.orbitAngles[1], altTargetYOrbitAngle)) < std::abs(deltaAngle(mainCamMode.orbitAngles[1], ott.targetYOrbitAngle)))
 				ott.targetYOrbitAngle = altTargetYOrbitAngle;
 
+			float_t flatDistance = glm_vec2_norm(flatDeltaPosition);
+			float_t yOrbitAngleSmoothTime =
+				glm_lerpc(
+					ott.yOrbitAngleSmoothTimeSlow,
+					ott.yOrbitAngleSmoothTimeFast,
+					flatDistance / ott.slowFastTransitionRadius
+				);
+
 			mainCamMode.orbitAngles[1] =
 				smoothDampAngle(
 					mainCamMode.orbitAngles[1],
 					ott.targetYOrbitAngle,
 					ott.yOrbitAngleDampVelocity,
-					ott.yOrbitAngleSmoothTime,
+					yOrbitAngleSmoothTime,
 					std::numeric_limits<float_t>::max(),
 					deltaTime
 				);
 			ott.prevOpponentDeltaAngle = newOpponentDeltaAngle;
 
 			// Update look direction (x axis) from delta position.
-			float_t flatDistance = glm_vec2_norm(flatDeltaPosition);
 			// ott.targetXOrbitAngle = -atan2f(deltaYPosition, flatDistance) * fDeltaPosDotfLookDir;
 			// clampXOrbitAngle(ott.targetXOrbitAngle);
 			mainCamMode.orbitAngles[0] =

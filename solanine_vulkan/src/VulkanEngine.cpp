@@ -4408,7 +4408,9 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 			ImGui::DragFloat3("focusPositionOffset", _camera->mainCamMode.focusPositionOffset);
 			ImGui::DragFloat("opponentTargetTransition.targetYOrbitAngleSideOffset", &_camera->mainCamMode.opponentTargetTransition.targetYOrbitAngleSideOffset, 0.01f);
 			ImGui::DragFloat("opponentTargetTransition.xOrbitAngleSmoothTime", &_camera->mainCamMode.opponentTargetTransition.xOrbitAngleSmoothTime, 0.01f);
-			ImGui::DragFloat("opponentTargetTransition.yOrbitAngleSmoothTime", &_camera->mainCamMode.opponentTargetTransition.yOrbitAngleSmoothTime, 0.01f);
+			ImGui::DragFloat("opponentTargetTransition.yOrbitAngleSmoothTimeSlow", &_camera->mainCamMode.opponentTargetTransition.yOrbitAngleSmoothTimeSlow, 0.01f);
+			ImGui::DragFloat("opponentTargetTransition.yOrbitAngleSmoothTimeFast", &_camera->mainCamMode.opponentTargetTransition.yOrbitAngleSmoothTimeFast, 0.01f);
+			ImGui::DragFloat("opponentTargetTransition.slowFastTransitionRadius", &_camera->mainCamMode.opponentTargetTransition.slowFastTransitionRadius, 0.1f);
 			ImGui::DragFloat("opponentTargetTransition.lookDistanceBaseAmount", &_camera->mainCamMode.opponentTargetTransition.lookDistanceBaseAmount, 0.1f);
 			ImGui::DragFloat("opponentTargetTransition.lookDistanceObliqueAmount", &_camera->mainCamMode.opponentTargetTransition.lookDistanceObliqueAmount, 0.1f);
 			ImGui::DragFloat("opponentTargetTransition.lookDistanceHeightAmount", &_camera->mainCamMode.opponentTargetTransition.lookDistanceHeightAmount, 0.1f);
