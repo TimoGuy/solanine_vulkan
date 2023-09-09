@@ -369,8 +369,7 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 		{
 			auto& ott = mainCamMode.opponentTargetTransition;
 
-			// Calculate the total distance for opponent look distance calculation.
-			float_t totalDistance = glm_vec3_distance(targetPosition, mainCamMode.opponentTargetObject->interpolBasePosition);
+			// Pre-mutation calcs.
 			float_t deltaYPosition = mainCamMode.opponentTargetObject->interpolBasePosition[1] - targetPosition[1];
 
 			// Use dot product between opponent facing direction
@@ -392,46 +391,34 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 			glm_vec3_lerp(targetPosition, mainCamMode.opponentTargetObject->interpolBasePosition, 1.0f - (fDeltaPosDotfLookDir * 0.5f + 0.5f), targetPosition);
 			targetPosition[1] = midY + ott.focusPositionExtraYOffsetWhenTargeting;
 
-			// Initialize state for first time around.
-			if (ott.first)
-			{
-				ott.yOrbitAngleDampVelocity = 0.0f;
-				ott.xOrbitAngleDampVelocity = 0.0f;
-
-				// Calculate the target Y orbit angle.
-				vec3 lookDirectionRight;
-				glm_vec3_crossn(mainCamMode.calculatedLookDirection, vec3{ 0.0f, 1.0f, 0.0f }, lookDirectionRight);
-
-				vec3 normCameraDeltaPosition;
-				glm_vec3_sub(mainCamMode.calculatedCameraPosition, targetPosition, normCameraDeltaPosition);
-				glm_vec3_normalize(normCameraDeltaPosition);
-
-				float_t side = glm_vec3_dot(lookDirectionRight, normCameraDeltaPosition) > 0.0f ? -1.0f : 1.0f;
-				ott.targetYOrbitAngle = atan2f(normFlatDeltaPosition[0], normFlatDeltaPosition[1]) + side * ott.targetYOrbitAngleSideOffset;
-			}
-
 			// Update look direction based off previous delta angle.
 			float_t newOpponentDeltaAngle = atan2f(normFlatDeltaPosition[0], normFlatDeltaPosition[1]);
-			if (!ott.first)
+
+			if (ott.first)
 			{
-				ott.targetYOrbitAngle += newOpponentDeltaAngle - ott.prevOpponentDeltaAngle;
-
-				float_t altTargetYOrbitAngle =  // Try to calc an alternate/mirrored Y orbit angle. @NOTE: See `etc/altTargetYOrbitAngle_math.png`
-					ott.targetYOrbitAngle +
-					2.0f * (glm_rad(180.0f) - deltaAngle(newOpponentDeltaAngle, ott.targetYOrbitAngle));
-				if (std::abs(deltaAngle(mainCamMode.orbitAngles[1], altTargetYOrbitAngle)) < std::abs(deltaAngle(mainCamMode.orbitAngles[1], ott.targetYOrbitAngle)))
-					ott.targetYOrbitAngle = altTargetYOrbitAngle;
-
-				mainCamMode.orbitAngles[1] =
-					smoothDampAngle(
-						mainCamMode.orbitAngles[1],
-						ott.targetYOrbitAngle,
-						ott.yOrbitAngleDampVelocity,
-						ott.yOrbitAngleSmoothTime,
-						std::numeric_limits<float_t>::max(),
-						deltaTime
-					);
+				ott.prevOpponentDeltaAngle = newOpponentDeltaAngle;
+				ott.yOrbitAngleDampVelocity = 0.0f;
+				ott.xOrbitAngleDampVelocity = 0.0f;
+				ott.targetYOrbitAngle = newOpponentDeltaAngle + ott.targetYOrbitAngleSideOffset;  // @NOTE: just set arbitrary side and then `altTargetYOrbitAngle` will get switched as needed.
 			}
+
+			ott.targetYOrbitAngle += newOpponentDeltaAngle - ott.prevOpponentDeltaAngle;
+
+			float_t altTargetYOrbitAngle =  // Try to calc an alternate/mirrored Y orbit angle. @NOTE: See `etc/altTargetYOrbitAngle_math.png`
+				ott.targetYOrbitAngle +
+				2.0f * (glm_rad(180.0f) - deltaAngle(newOpponentDeltaAngle, ott.targetYOrbitAngle));
+			if (std::abs(deltaAngle(mainCamMode.orbitAngles[1], altTargetYOrbitAngle)) < std::abs(deltaAngle(mainCamMode.orbitAngles[1], ott.targetYOrbitAngle)))
+				ott.targetYOrbitAngle = altTargetYOrbitAngle;
+
+			mainCamMode.orbitAngles[1] =
+				smoothDampAngle(
+					mainCamMode.orbitAngles[1],
+					ott.targetYOrbitAngle,
+					ott.yOrbitAngleDampVelocity,
+					ott.yOrbitAngleSmoothTime,
+					std::numeric_limits<float_t>::max(),
+					deltaTime
+				);
 			ott.prevOpponentDeltaAngle = newOpponentDeltaAngle;
 
 			// Update look direction (x axis) from delta position.
