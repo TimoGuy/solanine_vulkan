@@ -324,6 +324,508 @@ void VulkanEngine::cleanup()
 	std::cout << "Cleanup procedure finished." << std::endl;
 }
 
+void VulkanEngine::renderPickingRenderpass(const FrameData& currentFrame)
+{
+	VK_CHECK(vkResetFences(_device, 1, &currentFrame.pickingRenderFence));
+
+	// Reset the command buffer and start the render pass
+	VK_CHECK(vkResetCommandBuffer(currentFrame.pickingCommandBuffer, 0));
+	VkCommandBuffer cmd = currentFrame.pickingCommandBuffer;
+
+	VkCommandBufferBeginInfo cmdBeginInfo = {
+		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+		.pNext = nullptr,
+		.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+		.pInheritanceInfo = nullptr,
+	};
+
+	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
+
+	VkClearValue clearValue;
+	clearValue.color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
+
+	VkClearValue depthClear;
+	depthClear.depthStencil.depth = 1.0f;
+
+	VkClearValue clearValues[] = { clearValue, depthClear };
+
+	VkRenderPassBeginInfo renderpassInfo = {
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+		.pNext = nullptr,
+
+		.renderPass = _pickingRenderPass,
+		.framebuffer = _pickingFramebuffer,
+		.renderArea = {
+			.offset = VkOffset2D{ 0, 0 },
+			.extent = _windowExtent,
+		},
+
+		.clearValueCount = 2,
+		.pClearValues = &clearValues[0],
+	};
+
+	// Begin renderpass
+	vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+	// Bind picking material
+	Material& pickingMaterial = *getMaterial("pickingMaterial");
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipeline);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 3, 1, &currentFrame.pickingReturnValueDescriptor, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(), 0, nullptr);
+
+	// Set dynamic scissor
+	VkRect2D scissor = {};
+	scissor.offset.x = (int32_t)ImGui::GetIO().MousePos.x;
+	scissor.offset.y = (int32_t)ImGui::GetIO().MousePos.y;
+	scissor.extent = { 1, 1 };
+	vkCmdSetScissor(cmd, 0, 1, &scissor);    // @NOTE: the scissor is set to be dynamic state for this pipeline
+
+	std::cout << "[PICKING]" << std::endl
+		<< "set picking scissor to: x=" << scissor.offset.x << "  y=" << scissor.offset.y << "  w=" << scissor.extent.width << "  h=" << scissor.extent.height << std::endl;
+
+	renderRenderObjects(cmd, currentFrame);
+
+	// End renderpass
+	vkCmdEndRenderPass(cmd);
+	VK_CHECK(vkEndCommandBuffer(cmd));
+
+	//
+	// Submit picking command buffer to gpu for execution
+	//
+	VkSubmitInfo submit = {};
+	submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submit.pNext = nullptr;
+
+	submit.commandBufferCount = 1;
+	submit.pCommandBuffers = &cmd;
+
+	// Submit work to gpu
+	VkResult result = vkQueueSubmit(_graphicsQueue, 1, &submit, currentFrame.pickingRenderFence);
+	if (result == VK_ERROR_DEVICE_LOST)
+		return;
+
+	//
+	// Read from GPU to the CPU (the actual picking part eh!)
+	//
+	// Wait until GPU finishes rendering the previous picking
+	VK_CHECK(vkWaitForFences(_device, 1, &currentFrame.pickingRenderFence, true, TIMEOUT_1_SEC));
+	VK_CHECK(vkResetFences(_device, 1, &currentFrame.pickingRenderFence));
+
+	// Read from the gpu
+	GPUPickingSelectedIdData resetData = {};
+	GPUPickingSelectedIdData p;
+
+	void* data;
+	vmaMapMemory(_allocator, currentFrame.pickingSelectedIdBuffer._allocation, &data);
+	memcpy(&p, data, sizeof(GPUPickingSelectedIdData));            // It's not Dmitri, it's Irtimd this time
+	memcpy(data, &resetData, sizeof(GPUPickingSelectedIdData));    // @NOTE: if you don't reset the buffer, then you won't get 0 if you click on an empty spot next time bc you end up just getting garbage data.  -Dmitri
+	vmaUnmapMemory(_allocator, currentFrame.pickingSelectedIdBuffer._allocation);
+
+	// @TODO: Make a pre-check to see if these combination of objects were selected in the previous click, and then choose the 2nd nearest object, 3rd nearest, etc. depending on how many clicks.
+
+	uint32_t nearestSelectedId = 0;
+	float_t nearestDepth = std::numeric_limits<float_t>::max();
+	for (size_t poolIndex : _roManager->_renderObjectsIndices)
+	{
+		if (p.selectedId[poolIndex] == 0)
+			continue;  // Means that the data never got filled
+
+		if (p.selectedDepth[poolIndex] > nearestDepth)
+			continue;
+
+		nearestSelectedId = p.selectedId[poolIndex];
+		nearestDepth = p.selectedDepth[poolIndex];
+	}
+
+	submitSelectedRenderObjectId(static_cast<int32_t>(nearestSelectedId) - 1);
+}
+
+void VulkanEngine::renderShadowRenderpass(const FrameData& currentFrame, VkCommandBuffer cmd)
+{
+	VkClearValue depthClear;
+	depthClear.depthStencil = { 1.0f, 0 };
+
+	VkRenderPassBeginInfo renderpassInfo = {
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+		.pNext = nullptr,
+
+		.renderPass = _shadowRenderPass,
+		.renderArea = {
+			.offset = VkOffset2D{ 0, 0 },
+			.extent = VkExtent2D{ SHADOWMAP_DIMENSION, SHADOWMAP_DIMENSION },
+		},
+
+		.clearValueCount = 1,
+		.pClearValues = &depthClear,
+	};
+
+	// Upload shadow cascades to GPU
+	void* data;
+	vmaMapMemory(_allocator, currentFrame.cascadeViewProjsBuffer._allocation, &data);
+	memcpy(data, &_camera->sceneCamera.gpuCascadeViewProjsData, sizeof(GPUCascadeViewProjsData));
+	vmaUnmapMemory(_allocator, currentFrame.cascadeViewProjsBuffer._allocation);
+
+	Material& shadowDepthPassMaterial = *getMaterial("shadowDepthPassMaterial");
+	for (uint32_t i = 0; i < SHADOWMAP_CASCADES; i++)
+	{
+		renderpassInfo.framebuffer = _shadowCascades[i].framebuffer;
+		vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipeline);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 0, 1, &currentFrame.cascadeViewProjsDescriptor, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 3, 1, &getMaterial("pbrMaterial")->textureSet, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(), 0, nullptr);
+
+		CascadeIndexPushConstBlock pc = { i };
+		vkCmdPushConstants(cmd, shadowDepthPassMaterial.pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(CascadeIndexPushConstBlock), &pc);
+
+		renderRenderObjects(cmd, currentFrame);
+		
+		vkCmdEndRenderPass(cmd);
+	}
+}
+
+void VulkanEngine::renderMainRenderpass(const FrameData& currentFrame, VkCommandBuffer cmd, const std::vector<ModelWithIndirectDrawId>& pickingIndirectDrawCommandIds)
+{
+	VkClearValue clearValue;
+	clearValue.color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
+
+	VkClearValue depthClear;
+	depthClear.depthStencil.depth = 1.0f;
+
+	VkClearValue clearValues[] = { clearValue, depthClear };
+
+	VkRenderPassBeginInfo renderpassInfo = {
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+		.pNext = nullptr,
+
+		.renderPass = _mainRenderPass,
+		.framebuffer = _mainFramebuffer,
+		.renderArea = {
+			.offset = VkOffset2D{ 0, 0 },
+			.extent = _windowExtent,
+		},
+
+		.clearValueCount = 2,
+		.pClearValues = &clearValues[0],
+	};
+
+	// Begin renderpass
+	vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+	Material& defaultMaterial = *getMaterial("pbrMaterial");    // @HACK: @TODO: currently, the way that the pipeline is getting used is by just hardcode using it in the draw commands for models... however, each model should get its pipeline set to this material instead (or whatever material its using... that's why we can't hardcode stuff!!!)   @TODO: create some kind of way to propagate the newly created pipeline to the primMat (calculated material in the gltf model) instead of using defaultMaterial directly.  -Timo
+	Material& defaultZPrepassMaterial = *getMaterial("pbrZPrepassMaterial");
+	Material& skyboxMaterial = *getMaterial("skyboxMaterial");
+
+	// Render z prepass //
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipeline);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 3, 1, &defaultMaterial.textureSet, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(), 0, nullptr);
+	renderRenderObjects(cmd, currentFrame);
+	//////////////////////
+
+	// Switch from zprepass subpass to main subpass
+	vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_INLINE);
+
+	// Render skybox //
+	// @TODO: put this into its own function!
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipeline);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipelineLayout, 1, 1, &skyboxMaterial.textureSet, 0, nullptr);
+
+	auto skybox = _roManager->getModel("Box", nullptr, [](){});
+	skybox->bind(cmd);
+	skybox->draw(cmd);
+	///////////////////
+
+	// Bind material
+	// @TODO: put this into its own function!
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipeline);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 3, 1, &defaultMaterial.textureSet, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(), 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 5, 1, &_voxelFieldLightingGridTextureSet.descriptor, 0, nullptr);
+	////////////////
+
+	renderRenderObjects(cmd, currentFrame);
+	if (!pickingIndirectDrawCommandIds.empty())
+		renderPickedObject(cmd, currentFrame, pickingIndirectDrawCommandIds);
+	physengine::renderDebugVisualization(cmd);
+
+	// End renderpass
+	vkCmdEndRenderPass(cmd);
+}
+
+void VulkanEngine::renderUIRenderpass(VkCommandBuffer cmd)
+{
+	VkClearValue clearValue;
+	clearValue.color = { { 0.0f, 0.0f, 0.0f, 0.0f } };
+
+	VkClearValue clearValues[] = { clearValue };
+
+	VkRenderPassBeginInfo renderpassInfo = {
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+		.pNext = nullptr,
+
+		.renderPass = _uiRenderPass,
+		.framebuffer = _uiFramebuffer,
+		.renderArea = {
+			.offset = VkOffset2D{ 0, 0 },
+			.extent = _windowExtent,
+		},
+
+		.clearValueCount = 1,
+		.pClearValues = &clearValues[0],
+	};
+
+	// Renderpass
+	vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+	textmesh::renderTextMeshesBulk(cmd);
+	textbox::renderTextbox(cmd);
+
+	vkCmdEndRenderPass(cmd);
+}
+
+inline void ppBlitBloom(VkCommandBuffer cmd, Texture& mainImage, VkExtent2D& windowExtent, Texture& bloomImage, VkExtent2D& bloomImageExtent)
+{
+	//
+	// Blit bloom
+	// @NOTE: @IMPROVE: the bloom render pass has obvious artifacts when a camera pans slowly.
+	//                  Might wanna implement this in the future: (https://learnopengl.com/Guest-Articles/2022/Phys.-Based-Bloom)
+	//                    -Timo 2022/11/09
+	//
+
+	// Change bloom image all mips to dst transfer layout
+	{
+		VkImageMemoryBarrier imageBarrier = {
+			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+			.srcAccessMask = 0,
+			.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+			.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+			.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			.image = bloomImage.image._image,
+			.subresourceRange = {
+				.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+				.baseMipLevel   = 0,
+				.levelCount     = static_cast<uint32_t>(bloomImage.image._mipLevels),
+				.baseArrayLayer = 0,
+				.layerCount     = 1,
+			},
+		};
+		vkCmdPipelineBarrier(cmd,
+			VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+			0, nullptr,
+			0, nullptr,
+			1, &imageBarrier
+		);
+	}
+
+	// Copy mainRenderPass image to bloom buffer
+	VkImageBlit blitRegion = {
+		.srcSubresource = {
+			.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+			.mipLevel       = 0,
+			.baseArrayLayer = 0,
+			.layerCount     = 1,
+		},
+		.srcOffsets = {
+			{ 0, 0, 0 },
+			{ (int32_t)windowExtent.width, (int32_t)windowExtent.height, 1 },
+		},
+		.dstSubresource = {
+			.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+			.mipLevel       = 0,
+			.baseArrayLayer = 0,
+			.layerCount     = 1,
+		},
+		.dstOffsets = {
+			{ 0, 0, 0 },
+			{
+				(int32_t)bloomImageExtent.width,
+				(int32_t)bloomImageExtent.height,
+				1
+			},
+		},
+	};
+	vkCmdBlitImage(cmd,
+		mainImage.image._image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,  // @NOTE: the renderpass for the mainImage makes it turn into VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL at the end, so a manual change to SHADER_READ_ONLY_OPTIMAL is necessary
+		bloomImage.image._image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		1, &blitRegion,
+		VK_FILTER_LINEAR
+	);
+
+	// Change mainRenderPass image to shader optimal image layout
+	// Change mip0 of bloom image to src transfer layout
+	{
+		VkImageMemoryBarrier imageBarrier = {
+			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+			.srcAccessMask = 0,
+			.dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+			.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+			.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			.image = mainImage.image._image,
+			.subresourceRange = {
+				.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+				.baseMipLevel   = 0,
+				.levelCount     = 1,
+				.baseArrayLayer = 0,
+				.layerCount     = 1,
+			},
+		};
+		vkCmdPipelineBarrier(cmd,
+			VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+			0, nullptr,
+			0, nullptr,
+			1, &imageBarrier
+		);
+	}
+
+	// Blit out all remaining mip levels of the chain
+	VkImageMemoryBarrier imageBarrier = {
+		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+		.image = bloomImage.image._image,
+		.subresourceRange = {
+			.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+			.baseMipLevel   = 0,
+			.levelCount     = 1,
+			.baseArrayLayer = 0,
+			.layerCount     = 1,
+		},
+	};
+
+	int32_t mipWidth = bloomImageExtent.width;
+	int32_t mipHeight = bloomImageExtent.height;
+
+	for (uint32_t mipLevel = 1; mipLevel < bloomImage.image._mipLevels; mipLevel++)
+	{
+		// Change previous mip to src optimal image
+		imageBarrier.subresourceRange.baseMipLevel = mipLevel - 1;
+		imageBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		imageBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+		imageBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		imageBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+		vkCmdPipelineBarrier(cmd,
+			VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+			0, nullptr,
+			0, nullptr,
+			1, &imageBarrier
+		);
+
+		// Blit image to next mip
+		VkImageBlit blitRegion = {
+			.srcSubresource = {
+				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+				.mipLevel = mipLevel - 1,
+				.baseArrayLayer = 0,
+				.layerCount = 1,
+			},
+			.srcOffsets = {
+				{ 0, 0, 0 },
+				{ mipWidth, mipHeight, 1 },
+			},
+			.dstSubresource = {
+				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+				.mipLevel = mipLevel,
+				.baseArrayLayer = 0,
+				.layerCount = 1,
+			},
+			.dstOffsets = {
+				{ 0, 0, 0 },
+				{ mipWidth > 1 ? mipWidth / 2 : 1, mipHeight > 1 ? mipHeight / 2 : 1, 1 },
+			},
+		};
+		vkCmdBlitImage(cmd,
+			bloomImage.image._image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+			bloomImage.image._image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			1, &blitRegion,
+			VK_FILTER_LINEAR
+		);
+
+		// Change previous (src) mip to shader readonly layout
+		imageBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+		imageBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		imageBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+		imageBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+		vkCmdPipelineBarrier(cmd,
+			VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+			0, nullptr,
+			0, nullptr,
+			1, &imageBarrier
+		);
+
+		// Update mip sizes
+		if (mipWidth > 1) mipWidth /= 2;
+		if (mipHeight > 1) mipHeight /= 2;
+	}
+
+	// Change final mip to shader readonly layout
+	imageBarrier.subresourceRange.baseMipLevel = bloomImage.image._mipLevels - 1;
+	imageBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	imageBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	vkCmdPipelineBarrier(cmd,
+		VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+		0, nullptr,
+		0, nullptr,
+		1, &imageBarrier
+	);
+}
+
+void ppDepthOfField()
+{
+
+}
+
+void VulkanEngine::renderPostprocessRenderpass(const FrameData& currentFrame, VkCommandBuffer cmd, uint32_t swapchainImageIndex)
+{
+	// Generate postprocessing.
+	ppBlitBloom(cmd, _mainImage, _windowExtent, _bloomPostprocessImage, _bloomPostprocessImageExtent);
+	ppDepthOfField();
+
+	// Combine all postprocessing
+	VkClearValue clearValue;
+	clearValue.color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
+
+	VkRenderPassBeginInfo renderpassInfo = {
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+		.pNext = nullptr,
+
+		.renderPass = _postprocessRenderPass,
+		.framebuffer = _swapchainFramebuffers[swapchainImageIndex],		// @NOTE: Framebuffer of the index the swapchain gave
+		.renderArea = {
+			.offset = VkOffset2D{ 0, 0 },
+			.extent = _windowExtent,
+		},
+
+		.clearValueCount = 1,
+		.pClearValues = &clearValue,
+	};
+
+	// Begin renderpass
+	vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+	Material& postprocessMaterial = *getMaterial("postprocessMaterial");
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, postprocessMaterial.pipeline);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, postprocessMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, postprocessMaterial.pipelineLayout, 1, 1, &postprocessMaterial.textureSet, 0, nullptr);
+	vkCmdDraw(cmd, 3, 1, 0, 0);
+
+	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
+
+	// End renderpass
+	vkCmdEndRenderPass(cmd);
+}
+
 void VulkanEngine::render()
 {
 	const auto& currentFrame = getCurrentFrame();
@@ -380,386 +882,11 @@ void VulkanEngine::render()
 	compactRenderObjectsIntoDraws(currentFrame, pickedPoolIndices, pickingIndirectDrawCommandIds);
 	perfs[14] = SDL_GetPerformanceCounter() - perfs[14];
 
-	//
-	// Shadow Render Pass
-	//
-	{
-		VkClearValue depthClear;
-		depthClear.depthStencil = { 1.0f, 0 };
-
-		VkRenderPassBeginInfo renderpassInfo = {
-			.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-			.pNext = nullptr,
-
-			.renderPass = _shadowRenderPass,
-			.renderArea = {
-				.offset = VkOffset2D{ 0, 0 },
-				.extent = VkExtent2D{ SHADOWMAP_DIMENSION, SHADOWMAP_DIMENSION },
-			},
-
-			.clearValueCount = 1,
-			.pClearValues = &depthClear,
-		};
-
-		// Upload shadow cascades to GPU
-		void* data;
-		vmaMapMemory(_allocator, currentFrame.cascadeViewProjsBuffer._allocation, &data);
-		memcpy(data, &_camera->sceneCamera.gpuCascadeViewProjsData, sizeof(GPUCascadeViewProjsData));
-		vmaUnmapMemory(_allocator, currentFrame.cascadeViewProjsBuffer._allocation);
-
-		Material& shadowDepthPassMaterial = *getMaterial("shadowDepthPassMaterial");
-		for (uint32_t i = 0; i < SHADOWMAP_CASCADES; i++)
-		{
-			renderpassInfo.framebuffer = _shadowCascades[i].framebuffer;
-			vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-			vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipeline);
-			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 0, 1, &currentFrame.cascadeViewProjsDescriptor, 0, nullptr);
-			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
-			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
-			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 3, 1, &getMaterial("pbrMaterial")->textureSet, 0, nullptr);
-			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(), 0, nullptr);
-
-			CascadeIndexPushConstBlock pc = { i };
-			vkCmdPushConstants(cmd, shadowDepthPassMaterial.pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(CascadeIndexPushConstBlock), &pc);
-
-			renderRenderObjects(cmd, currentFrame);
-			
-			vkCmdEndRenderPass(cmd);
-		}
-	}
-
-	//
-	// Main Render Pass
-	//
-	{
-		VkClearValue clearValue;
-		clearValue.color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
-
-		VkClearValue depthClear;
-		depthClear.depthStencil.depth = 1.0f;
-
-		VkClearValue clearValues[] = { clearValue, depthClear };
-
-		VkRenderPassBeginInfo renderpassInfo = {
-			.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-			.pNext = nullptr,
-
-			.renderPass = _mainRenderPass,
-			.framebuffer = _mainFramebuffer,
-			.renderArea = {
-				.offset = VkOffset2D{ 0, 0 },
-				.extent = _windowExtent,
-			},
-
-			.clearValueCount = 2,
-			.pClearValues = &clearValues[0],
-		};
-
-		// Begin renderpass
-		vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-		Material& defaultMaterial = *getMaterial("pbrMaterial");    // @HACK: @TODO: currently, the way that the pipeline is getting used is by just hardcode using it in the draw commands for models... however, each model should get its pipeline set to this material instead (or whatever material its using... that's why we can't hardcode stuff!!!)   @TODO: create some kind of way to propagate the newly created pipeline to the primMat (calculated material in the gltf model) instead of using defaultMaterial directly.  -Timo
-		Material& defaultZPrepassMaterial = *getMaterial("pbrZPrepassMaterial");
-		Material& skyboxMaterial = *getMaterial("skyboxMaterial");
-
-		// Render z prepass //
-		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipeline);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 3, 1, &defaultMaterial.textureSet, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(), 0, nullptr);
-		renderRenderObjects(cmd, currentFrame);
-		//////////////////////
-
-		// Switch from zprepass subpass to main subpass
-		vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_INLINE);
-
-		// Render skybox //
-		// @TODO: put this into its own function!
-		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipeline);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipelineLayout, 1, 1, &skyboxMaterial.textureSet, 0, nullptr);
-
-		auto skybox = _roManager->getModel("Box", nullptr, [](){});
-		skybox->bind(cmd);
-		skybox->draw(cmd);
-		///////////////////
-
-		// Bind material
-		// @TODO: put this into its own function!
-		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipeline);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 3, 1, &defaultMaterial.textureSet, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(), 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 5, 1, &_voxelFieldLightingGridTextureSet.descriptor, 0, nullptr);
-		////////////////
-
-		renderRenderObjects(cmd, currentFrame);
-		if (!pickingIndirectDrawCommandIds.empty())
-			renderPickedObject(cmd, currentFrame, pickingIndirectDrawCommandIds);
-		physengine::renderDebugVisualization(cmd);
-
-		// End renderpass
-		vkCmdEndRenderPass(cmd);
-	}
-
-	//
-	// UI Render Pass
-	//
-	{
-		VkClearValue clearValue;
-		clearValue.color = { { 0.0f, 0.0f, 0.0f, 0.0f } };
-
-		VkClearValue clearValues[] = { clearValue };
-
-		VkRenderPassBeginInfo renderpassInfo = {
-			.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-			.pNext = nullptr,
-
-			.renderPass = _uiRenderPass,
-			.framebuffer = _uiFramebuffer,
-			.renderArea = {
-				.offset = VkOffset2D{ 0, 0 },
-				.extent = _windowExtent,
-			},
-
-			.clearValueCount = 1,
-			.pClearValues = &clearValues[0],
-		};
-
-		// Renderpass
-		vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-		textmesh::renderTextMeshesBulk(cmd);
-		textbox::renderTextbox(cmd);
-
-		vkCmdEndRenderPass(cmd);
-	}
-
-	//
-	// Postprocess Render Pass
-	//
-	{
-		//
-		// Blit bloom
-		// @NOTE: @IMPROVE: the bloom render pass has obvious artifacts when a camera pans slowly.
-		//                  Might wanna implement this in the future: (https://learnopengl.com/Guest-Articles/2022/Phys.-Based-Bloom)
-		//                    -Timo 2022/11/09
-		//
-
-		// Change bloom image all mips to dst transfer layout
-		{
-			VkImageMemoryBarrier imageBarrier = {
-				.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-				.srcAccessMask = 0,
-				.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
-				.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-				.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-				.image = _bloomPostprocessImage.image._image,
-				.subresourceRange = {
-					.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
-					.baseMipLevel   = 0,
-					.levelCount     = static_cast<uint32_t>(_bloomPostprocessImage.image._mipLevels),
-					.baseArrayLayer = 0,
-					.layerCount     = 1,
-				},
-			};
-			vkCmdPipelineBarrier(cmd,
-				VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
-				0, nullptr,
-				0, nullptr,
-				1, &imageBarrier
-			);
-		}
-
-		// Copy mainRenderPass image to bloom buffer
-		VkImageBlit blitRegion = {
-			.srcSubresource = {
-				.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
-				.mipLevel       = 0,
-				.baseArrayLayer = 0,
-				.layerCount     = 1,
-			},
-			.srcOffsets = {
-				{ 0, 0, 0 },
-				{ (int32_t)_windowExtent.width, (int32_t)_windowExtent.height, 1 },
-			},
-			.dstSubresource = {
-				.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
-				.mipLevel       = 0,
-				.baseArrayLayer = 0,
-				.layerCount     = 1,
-			},
-			.dstOffsets = {
-				{ 0, 0, 0 },
-				{
-					(int32_t)_bloomPostprocessImageExtent.width,
-					(int32_t)_bloomPostprocessImageExtent.height,
-					1
-				},
-			},
-		};
-		vkCmdBlitImage(cmd,
-			_mainImage.image._image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,  // @NOTE: the renderpass for the _mainImage makes it turn into VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL at the end, so a manual change to SHADER_READ_ONLY_OPTIMAL is necessary
-			_bloomPostprocessImage.image._image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-			1, &blitRegion,
-			VK_FILTER_LINEAR
-		);
-
-		// Change mainRenderPass image to shader optimal image layout
-		// Change mip0 of bloom image to src transfer layout
-		{
-			VkImageMemoryBarrier imageBarrier = {
-				.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-				.srcAccessMask = 0,
-				.dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
-				.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-				.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-				.image = _mainImage.image._image,
-				.subresourceRange = {
-					.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
-					.baseMipLevel   = 0,
-					.levelCount     = 1,
-					.baseArrayLayer = 0,
-					.layerCount     = 1,
-				},
-			};
-			vkCmdPipelineBarrier(cmd,
-				VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
-				0, nullptr,
-				0, nullptr,
-				1, &imageBarrier
-			);
-		}
-
-		// Blit out all remaining mip levels of the chain
-		VkImageMemoryBarrier imageBarrier = {
-			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-			.image = _bloomPostprocessImage.image._image,
-			.subresourceRange = {
-				.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
-				.baseMipLevel   = 0,
-				.levelCount     = 1,
-				.baseArrayLayer = 0,
-				.layerCount     = 1,
-			},
-		};
-
-		int32_t mipWidth = _bloomPostprocessImageExtent.width;
-		int32_t mipHeight = _bloomPostprocessImageExtent.height;
-
-		for (uint32_t mipLevel = 1; mipLevel < _bloomPostprocessImage.image._mipLevels; mipLevel++)
-		{
-			// Change previous mip to src optimal image
-			imageBarrier.subresourceRange.baseMipLevel = mipLevel - 1;
-			imageBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-			imageBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-			imageBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-			imageBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-			vkCmdPipelineBarrier(cmd,
-				VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
-				0, nullptr,
-				0, nullptr,
-				1, &imageBarrier
-			);
-
-			// Blit image to next mip
-			VkImageBlit blitRegion = {
-				.srcSubresource = {
-					.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-					.mipLevel = mipLevel - 1,
-					.baseArrayLayer = 0,
-					.layerCount = 1,
-				},
-				.srcOffsets = {
-					{ 0, 0, 0 },
-					{ mipWidth, mipHeight, 1 },
-				},
-				.dstSubresource = {
-					.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-					.mipLevel = mipLevel,
-					.baseArrayLayer = 0,
-					.layerCount = 1,
-				},
-				.dstOffsets = {
-					{ 0, 0, 0 },
-					{ mipWidth > 1 ? mipWidth / 2 : 1, mipHeight > 1 ? mipHeight / 2 : 1, 1 },
-				},
-			};
-			vkCmdBlitImage(cmd,
-				_bloomPostprocessImage.image._image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-				_bloomPostprocessImage.image._image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-				1, &blitRegion,
-				VK_FILTER_LINEAR
-			);
-
-			// Change previous (src) mip to shader readonly layout
-			imageBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-			imageBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-			imageBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-			imageBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-			vkCmdPipelineBarrier(cmd,
-				VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
-				0, nullptr,
-				0, nullptr,
-				1, &imageBarrier
-			);
-
-			// Update mip sizes
-			if (mipWidth > 1) mipWidth /= 2;
-			if (mipHeight > 1) mipHeight /= 2;
-		}
-
-		// Change final mip to shader readonly layout
-		imageBarrier.subresourceRange.baseMipLevel = _bloomPostprocessImage.image._mipLevels - 1;
-		imageBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-		imageBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		vkCmdPipelineBarrier(cmd,
-			VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
-			0, nullptr,
-			0, nullptr,
-			1, &imageBarrier
-		);
-
-		//
-		// Apply all postprocessing
-		//
-		VkClearValue clearValue;
-		clearValue.color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
-
-		VkRenderPassBeginInfo renderpassInfo = {
-			.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-			.pNext = nullptr,
-
-			.renderPass = _postprocessRenderPass,
-			.framebuffer = _swapchainFramebuffers[swapchainImageIndex],		// @NOTE: Framebuffer of the index the swapchain gave
-			.renderArea = {
-				.offset = VkOffset2D{ 0, 0 },
-				.extent = _windowExtent,
-			},
-
-			.clearValueCount = 1,
-			.pClearValues = &clearValue,
-		};
-
-		// Begin renderpass
-		vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-		Material& postprocessMaterial = *getMaterial("postprocessMaterial");
-		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, postprocessMaterial.pipeline);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, postprocessMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, postprocessMaterial.pipelineLayout, 1, 1, &postprocessMaterial.textureSet, 0, nullptr);
-		vkCmdDraw(cmd, 3, 1, 0, 0);
-
-		ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
-
-		// End renderpass
-		vkCmdEndRenderPass(cmd);
-	}
+	// Render render passes.
+	renderShadowRenderpass(currentFrame, cmd);
+	renderMainRenderpass(currentFrame, cmd, pickingIndirectDrawCommandIds);
+	renderUIRenderpass(cmd);
+	renderPostprocessRenderpass(currentFrame, cmd, swapchainImageIndex);
 
 	//
 	// Submit command buffer to gpu for execution
@@ -782,8 +909,8 @@ void VulkanEngine::render()
 	submit.commandBufferCount = 1;
 	submit.pCommandBuffers = &cmd;
 
-	result = vkQueueSubmit(_graphicsQueue, 1, &submit, currentFrame.renderFence);		// Submit work to gpu
-
+	// Submit work to gpu
+	result = vkQueueSubmit(_graphicsQueue, 1, &submit, currentFrame.renderFence);
 	if (result == VK_ERROR_DEVICE_LOST)
 		return;
 
@@ -799,120 +926,7 @@ void VulkanEngine::render()
 			true) &&
 		ImGui::IsMousePosValid())
 	{
-		VK_CHECK(vkResetFences(_device, 1, &currentFrame.pickingRenderFence));
-
-		// Reset the command buffer and start the render pass
-		VK_CHECK(vkResetCommandBuffer(currentFrame.pickingCommandBuffer, 0));
-		VkCommandBuffer cmd = currentFrame.pickingCommandBuffer;
-
-		VkCommandBufferBeginInfo cmdBeginInfo = {
-			.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-			.pNext = nullptr,
-			.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-			.pInheritanceInfo = nullptr,
-		};
-
-		VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
-
-		VkClearValue clearValue;
-		clearValue.color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
-
-		VkClearValue depthClear;
-		depthClear.depthStencil.depth = 1.0f;
-
-		VkClearValue clearValues[] = { clearValue, depthClear };
-
-		VkRenderPassBeginInfo renderpassInfo = {
-			.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-			.pNext = nullptr,
-
-			.renderPass = _pickingRenderPass,
-			.framebuffer = _pickingFramebuffer,
-			.renderArea = {
-				.offset = VkOffset2D{ 0, 0 },
-				.extent = _windowExtent,
-			},
-
-			.clearValueCount = 2,
-			.pClearValues = &clearValues[0],
-		};
-
-		// Begin renderpass
-		vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-		// Bind picking material
-		Material& pickingMaterial = *getMaterial("pickingMaterial");
-		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipeline);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 3, 1, &currentFrame.pickingReturnValueDescriptor, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(), 0, nullptr);
-
-		// Set dynamic scissor
-		VkRect2D scissor = {};
-		scissor.offset.x = (int32_t)ImGui::GetIO().MousePos.x;
-		scissor.offset.y = (int32_t)ImGui::GetIO().MousePos.y;
-		scissor.extent = { 1, 1 };
-		vkCmdSetScissor(cmd, 0, 1, &scissor);    // @NOTE: the scissor is set to be dynamic state for this pipeline
-
-		std::cout << "[PICKING]" << std::endl
-			<< "set picking scissor to: x=" << scissor.offset.x << "  y=" << scissor.offset.y << "  w=" << scissor.extent.width << "  h=" << scissor.extent.height << std::endl;
-
-		renderRenderObjects(cmd, currentFrame);
-
-		// End renderpass
-		vkCmdEndRenderPass(cmd);
-		VK_CHECK(vkEndCommandBuffer(cmd));
-
-		//
-		// Submit picking command buffer to gpu for execution
-		//
-		VkSubmitInfo submit = {};
-		submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-		submit.pNext = nullptr;
-
-		submit.commandBufferCount = 1;
-		submit.pCommandBuffers = &cmd;
-
-		result = vkQueueSubmit(_graphicsQueue, 1, &submit, currentFrame.pickingRenderFence);		// Submit work to gpu
-		if (result == VK_ERROR_DEVICE_LOST)
-			return;
-
-		//
-		// Read from GPU to the CPU (the actual picking part eh!)
-		//
-		// Wait until GPU finishes rendering the previous picking
-		VK_CHECK(vkWaitForFences(_device, 1, &currentFrame.pickingRenderFence, true, TIMEOUT_1_SEC));
-		VK_CHECK(vkResetFences(_device, 1, &currentFrame.pickingRenderFence));
-
-		// Read from the gpu
-		GPUPickingSelectedIdData resetData = {};
-		GPUPickingSelectedIdData p;
-
-		void* data;
-		vmaMapMemory(_allocator, currentFrame.pickingSelectedIdBuffer._allocation, &data);
-		memcpy(&p, data, sizeof(GPUPickingSelectedIdData));            // It's not Dmitri, it's Irtimd this time
-		memcpy(data, &resetData, sizeof(GPUPickingSelectedIdData));    // @NOTE: if you don't reset the buffer, then you won't get 0 if you click on an empty spot next time bc you end up just getting garbage data.  -Dmitri
-		vmaUnmapMemory(_allocator, currentFrame.pickingSelectedIdBuffer._allocation);
-
-		// @TODO: Make a pre-check to see if these combination of objects were selected in the previous click, and then choose the 2nd nearest object, 3rd nearest, etc. depending on how many clicks.
-
-		uint32_t nearestSelectedId = 0;
-		float_t nearestDepth = std::numeric_limits<float_t>::max();
-		for (size_t poolIndex : _roManager->_renderObjectsIndices)
-		{
-			if (p.selectedId[poolIndex] == 0)
-				continue;  // Means that the data never got filled
-
-			if (p.selectedDepth[poolIndex] > nearestDepth)
-				continue;
-
-			nearestSelectedId = p.selectedId[poolIndex];
-			nearestDepth = p.selectedDepth[poolIndex];
-		}
-
-		submitSelectedRenderObjectId(static_cast<int32_t>(nearestSelectedId) - 1);
+		renderPickingRenderpass(currentFrame);
 	}
 
 	//
@@ -1867,9 +1881,14 @@ void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is 
 	};
 
 	//
-	// Define the subpass to render to the default renderpass
+	// Define the subpasses.
 	//
-	VkSubpassDescription subpass = {
+	// VkSubpassDescription subpass = {  // @NOTE: START HERE!!!!!!
+	// 	.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+	// 	.colorAttachmentCount = 1,
+	// 	.pColorAttachments = &colorAttachmentRef
+	// };
+	VkSubpassDescription combineSubpass = {
 		.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
 		.colorAttachmentCount = 1,
 		.pColorAttachments = &colorAttachmentRef
@@ -1890,12 +1909,13 @@ void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is 
 	//
 	// Create the renderpass for the subpass
 	//
+	VkSubpassDescription subpasses[] = { combineSubpass };
 	VkRenderPassCreateInfo renderPassInfo = {
 		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
 		.attachmentCount = 1,
 		.pAttachments = &colorAttachment,
 		.subpassCount = 1,
-		.pSubpasses = &subpass,
+		.pSubpasses = subpasses,
 		.dependencyCount = 1,
 		.pDependencies = &colorDependency
 	};

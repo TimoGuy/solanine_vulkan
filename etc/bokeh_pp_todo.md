@@ -1,7 +1,22 @@
 > Reference: https://www.youtube.com/watch?v=v9x_50czf-4
+> Reference: https://www.adriancourreges.com/blog/2018/12/02/ue4-optimized-post-effects/
 
 - [ ] Implement "focus depth" and "focus length" parameters
-    - [ ] Just color everything outside of the focal length black to highlight what is in view.
-    - [ ] Calculate the circle of confusion for stuff outside based off of these two parameters.
-        - [ ] Debug view: fade towards red for the close CoC and green for the far CoC.
+    - [x] Simple mockup
+        - [x] Just color everything outside of the focal length black to highlight what is in view.
+        - [x] Calculate the circle of confusion for stuff outside based off of these two parameters.
 
+    - [ ] Create pass where CoC is computed after the z buffer.
+        > NOTE: start at VulkanEngine.cpp:1872
+        - Here is the order of things:
+            1. Downscale the scene by 1/2 the size.
+            2. Use the depth texture to render the CoC.
+            3. Downscale the near field (keeping the max value of the CoC) to 1/8th the size. Then, blur the near CoC.
+            4. Multiply the CoC twice to get near field and far field buffers.
+            5. Use the downscaled near CoC to sample for the correct radius to do the pixels.
+            6. Do the same for far CoC except use the full res CoC map.
+            7. Gaussian blur both near and far images (8x8).
+            8. Flood-fill for the maximum light intensity (3x3).
+
+
+        - [ ] Debug view: fade towards red for the close CoC and green for the far CoC.

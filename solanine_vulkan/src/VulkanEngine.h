@@ -171,6 +171,7 @@ public:
 	Texture        _depthImage;
 	VkFormat       _depthFormat;
 
+
 	//
 	// UI Renderpass
 	//
@@ -184,6 +185,14 @@ public:
 	VkRenderPass _postprocessRenderPass;  // @NOTE: no framebuffers defined here, bc this will write to the swapchain framebuffers
 	Texture      _bloomPostprocessImage;
 	VkExtent2D   _bloomPostprocessImageExtent;
+
+	// Depth of Field
+	Texture        _halfResDepthImage;
+	VkExtent2D     _halfResDepthImageExtent;
+	Texture        _CoCImage;
+	Texture        _nearFieldQtrResCoCImage;  // Quarter res from the half res depth image (effectively 1/8th res)
+	Texture        _nearFieldImage;
+	Texture        _farFieldImage;
 
 	//
 	// Picking Renderpass
@@ -317,6 +326,12 @@ private:
 
 	bool searchForPickedObjectPoolIndex(size_t& outPoolIndex);
 	void renderPickedObject(VkCommandBuffer cmd, const FrameData& currentFrame, const std::vector<ModelWithIndirectDrawId>& indirectDrawCommandIds);
+
+	void renderPickingRenderpass(const FrameData& currentFrame);
+	void renderShadowRenderpass(const FrameData& currentFrame, VkCommandBuffer cmd);
+	void renderMainRenderpass(const FrameData& currentFrame, VkCommandBuffer cmd, const std::vector<ModelWithIndirectDrawId>& pickingIndirectDrawCommandIds);
+	void renderUIRenderpass(VkCommandBuffer cmd);
+	void renderPostprocessRenderpass(const FrameData& currentFrame, VkCommandBuffer cmd, uint32_t swapchainImageIndex);
 
 public:
 	//
