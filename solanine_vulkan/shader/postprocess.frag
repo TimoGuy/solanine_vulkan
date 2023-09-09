@@ -92,8 +92,12 @@ void main()
 	if (depthRelativeToFocusDepth > focusExtent)
 	{
 		// color = vec3(0.0);  // @DEBUG: for seeing the in focus field.
-		float blurAmount = clamp((depthRelativeToFocusDepth - focusExtent) / blurExtent, 0.0, 1.0);
-		color = mix(color, combinedBloom.rgb, blurAmount);
+
+		// float blurAmount = clamp((depthRelativeToFocusDepth - focusExtent) / blurExtent, 0.0, 1.0);
+		// color = mix(color, combinedBloom.rgb, blurAmount);
+
+		float blurAmount = (depthRelativeToFocusDepth - focusExtent) / blurExtent;
+		color = mix(color, textureLod(bloomImage, inUV, clamp(blurAmount - 1.0, 0.0, 4.0)).rgb, clamp(blurAmount, 0.0, 1.0));
 	}
 
 	outColor = vec4(
