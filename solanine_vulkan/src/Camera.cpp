@@ -414,7 +414,7 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 						mainCamMode.orbitAngles[1],
 						ott.targetYOrbitAngle,
 						ott.yOrbitAngleDampVelocity,
-						ott.orbitAngleSmoothTime,
+						ott.yOrbitAngleSmoothTime,
 						std::numeric_limits<float_t>::max(),
 						deltaTime
 					);
@@ -430,7 +430,7 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 					mainCamMode.orbitAngles[0],
 					ott.targetXOrbitAngle,
 					ott.xOrbitAngleDampVelocity,
-					ott.orbitAngleSmoothTime,
+					ott.xOrbitAngleSmoothTime,
 					std::numeric_limits<float_t>::max(),
 					deltaTime
 				);

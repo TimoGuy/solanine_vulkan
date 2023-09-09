@@ -4407,7 +4407,8 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 			ImGui::DragFloat("focusSmoothTimeY", &_camera->mainCamMode.focusSmoothTimeY, 0.01f);
 			ImGui::DragFloat3("focusPositionOffset", _camera->mainCamMode.focusPositionOffset);
 			ImGui::DragFloat("opponentTargetTransition.targetYOrbitAngleSideOffset", &_camera->mainCamMode.opponentTargetTransition.targetYOrbitAngleSideOffset, 0.01f);
-			ImGui::DragFloat("opponentTargetTransition.orbitAngleSmoothTime", &_camera->mainCamMode.opponentTargetTransition.orbitAngleSmoothTime, 0.01f);
+			ImGui::DragFloat("opponentTargetTransition.xOrbitAngleSmoothTime", &_camera->mainCamMode.opponentTargetTransition.xOrbitAngleSmoothTime, 0.01f);
+			ImGui::DragFloat("opponentTargetTransition.yOrbitAngleSmoothTime", &_camera->mainCamMode.opponentTargetTransition.yOrbitAngleSmoothTime, 0.01f);
 			ImGui::DragFloat("opponentTargetTransition.lookDistanceBaseAmount", &_camera->mainCamMode.opponentTargetTransition.lookDistanceBaseAmount, 0.1f);
 			ImGui::DragFloat("opponentTargetTransition.lookDistanceObliqueAmount", &_camera->mainCamMode.opponentTargetTransition.lookDistanceObliqueAmount, 0.1f);
 		}

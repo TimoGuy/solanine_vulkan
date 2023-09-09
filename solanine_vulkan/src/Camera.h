@@ -75,7 +75,8 @@ struct MainCamMode
 		float_t targetXOrbitAngle;
 		float_t xOrbitAngleDampVelocity;
 
-		float_t orbitAngleSmoothTime = 0.3f;
+		float_t xOrbitAngleSmoothTime = 0.3f;
+		float_t yOrbitAngleSmoothTime = 0.6f;
 
 		float_t prevOpponentDeltaAngle;  // For turning camera as character orbits opponent.
 		float_t calculatedLookDistance;
