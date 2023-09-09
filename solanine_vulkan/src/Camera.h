@@ -72,7 +72,7 @@ struct MainCamMode
 		float_t targetYOrbitAngle;
 		float_t yOrbitAngleDampVelocity;
 
-		float_t targetXOrbitAngle;
+		float_t targetXOrbitAngle = glm_rad(0.0f);
 		float_t xOrbitAngleDampVelocity;
 
 		float_t xOrbitAngleSmoothTime = 0.3f;
@@ -82,11 +82,14 @@ struct MainCamMode
 		float_t calculatedLookDistance;
 		float_t lookDistanceBaseAmount = 3.75f;
 		float_t lookDistanceObliqueAmount = 0.375f;
+		float_t lookDistanceHeightAmount = 1.0f;
+
+		float_t focusPositionExtraYOffsetWhenTargeting = -1.166667f;
 	} opponentTargetTransition;
 
 	// Tweak variables
 	float_t   lookDistance           = 5.0f;
-	float_t   lookDistanceSmoothTime = 0.15f;
+	float_t   lookDistanceSmoothTime = 0.075f;
 	float_t   focusSmoothTimeXZ      = 0.075f;
 	float_t   focusSmoothTimeY       = 0.3f;
 	vec3      focusPositionOffset    = { 0, 2.333333f, 0 };

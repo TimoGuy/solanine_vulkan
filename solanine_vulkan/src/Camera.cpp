@@ -383,7 +383,10 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 			glm_vec2_normalize(normFlatLookDirection);
 			
 			float_t fDeltaPosDotfLookDir = glm_vec2_dot(normFlatDeltaPosition, normFlatLookDirection);
+
+			float_t midY = glm_lerp(mainCamMode.opponentTargetObject->interpolBasePosition[1], targetPosition[1], 0.5f);
 			glm_vec3_lerp(targetPosition, mainCamMode.opponentTargetObject->interpolBasePosition, 1.0f - (fDeltaPosDotfLookDir * 0.5f + 0.5f), targetPosition);
+			targetPosition[1] = midY + ott.focusPositionExtraYOffsetWhenTargeting;
 
 			// Initialize state for first time around.
 			if (ott.first)
@@ -423,8 +426,8 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 
 			// Update look direction (x axis) from delta position.
 			float_t flatDistance = glm_vec2_norm(flatDeltaPosition);
-			ott.targetXOrbitAngle = -atan2f(deltaYPosition, flatDistance) * fDeltaPosDotfLookDir;
-			clampXOrbitAngle(ott.targetXOrbitAngle);
+			// ott.targetXOrbitAngle = -atan2f(deltaYPosition, flatDistance) * fDeltaPosDotfLookDir;
+			// clampXOrbitAngle(ott.targetXOrbitAngle);
 			mainCamMode.orbitAngles[0] =
 				smoothDamp(
 					mainCamMode.orbitAngles[0],
@@ -437,7 +440,10 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 
 			// Calculate the opponent look distance.
 			float_t obliqueMultiplier = 1.0f - std::abs(fDeltaPosDotfLookDir);
-			ott.calculatedLookDistance = ott.lookDistanceBaseAmount + ott.lookDistanceObliqueAmount * totalDistance * obliqueMultiplier;
+			ott.calculatedLookDistance =
+				ott.lookDistanceBaseAmount +
+				ott.lookDistanceObliqueAmount * flatDistance * obliqueMultiplier +
+				ott.lookDistanceHeightAmount * std::abs(deltaYPosition);
 			targetLookDistance = ott.calculatedLookDistance;
 
 			if (ott.first)
