@@ -2326,7 +2326,6 @@ void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is 
 			_swapchainDependentDeletionQueue,
 			false
 		);
-
 		{
 			// Create special MAX sampler for this texture.
 			VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo((float_t)numMips, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
