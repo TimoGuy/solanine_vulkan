@@ -14,6 +14,7 @@
             5. Use the downscaled near CoC to sample for the correct radius to do the pixels.
             6. Do the same for far CoC except use the full res CoC map.
             7. ~~Gaussian blur both near and far images (8x8).~~
+                > NOTE: After rereading the reference (adrian courreges), I see that this step was actually the gatherDOF, so there is no gaussian blur after doing the gatherDOF, just the flood fill as an optional step (which should really fill out the parts where the bokeh is trying to cut around characters or items in view).
             8. ~~Flood-fill for the maximum light intensity (3x3).~~
 
     - [ ] Fix these 3 vkimageviews that aren't getting deleted.

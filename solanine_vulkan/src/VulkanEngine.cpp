@@ -2700,7 +2700,7 @@ void VulkanEngine::initPostprocessImages()
 			halfImgExtent,
 			numMips,
 			VK_IMAGE_ASPECT_COLOR_BIT,
-			VK_FILTER_NEAREST,
+			VK_FILTER_LINEAR,
 			VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
 			_swapchainDependentDeletionQueue
 		);
@@ -2714,7 +2714,7 @@ void VulkanEngine::initPostprocessImages()
 			halfImgExtent,
 			numMips,
 			VK_IMAGE_ASPECT_COLOR_BIT,
-			VK_FILTER_NEAREST,
+			VK_FILTER_LINEAR,
 			VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
 			_swapchainDependentDeletionQueue
 		);

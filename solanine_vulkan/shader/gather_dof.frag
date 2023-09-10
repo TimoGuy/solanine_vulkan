@@ -19,6 +19,7 @@ layout (set = 0, binding = 2) uniform sampler2D nearFieldDownsizedCoCImage;
 
 
 #define NUM_SAMPLE_POINTS 36
+#define BOKEH_SAMPLE_MULTIPLIER (1.0 / (NUM_SAMPLE_POINTS + 1.0))
 const vec2 bokehFilter[NUM_SAMPLE_POINTS] = vec2[](  // 6x6 5-edge shape with 12deg rotation sample points. (Generated from `etc/calc_sample_points_bokeh.py`)
 	vec2(-0.44611501104609963, -0.686955969333418),
 	vec2(-0.6365611600251629, -0.5154775057634131),
@@ -64,8 +65,7 @@ const uint MODE_FARFIELD = 1;
 
 vec4 gatherDOF(vec4 colorAndCoC, float sampleRadius, uint mode)
 {
-	vec4 accumulatedColor = colorAndCoC;
-	uint numColors = (accumulatedColor.a > 0.0) ? 1 : 0;
+	vec4 accumulatedColor = colorAndCoC * BOKEH_SAMPLE_MULTIPLIER;
 	for (int i = 0; i < NUM_SAMPLE_POINTS; i++)
 	{
 		vec2 sampleUV =
@@ -76,15 +76,10 @@ vec4 gatherDOF(vec4 colorAndCoC, float sampleRadius, uint mode)
 			sampled = texture(nearFieldImage, sampleUV);
 		else
 			sampled = texture(farFieldImage, sampleUV);
-
-		if (sampled.a > 0.0)
-		{
-			accumulatedColor += sampled;
-			numColors++;
-		}
+		accumulatedColor += sampled * BOKEH_SAMPLE_MULTIPLIER;
 	}
 
-	return accumulatedColor / numColors;
+	return accumulatedColor;
 }
 
 void main()
