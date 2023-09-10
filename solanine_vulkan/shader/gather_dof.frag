@@ -18,6 +18,7 @@ layout (set = 0, binding = 1) uniform sampler2D nearFieldDownsizedCoCImage;
 
 
 #define NUM_SAMPLE_POINTS 36
+#define BOKEH_SAMPLE_MULTIPLIER (1.0 / (NUM_SAMPLE_POINTS + 1.0))
 const vec2 bokehFilter[NUM_SAMPLE_POINTS] = vec2[](  // 6x6 5-edge shape with 12deg rotation sample points. (Generated from `etc/calc_sample_points_bokeh.py`)
 	vec2(-0.44611501104609963, -0.686955969333418),
 	vec2(-0.6365611600251629, -0.5154775057634131),
@@ -63,31 +64,17 @@ const uint MODE_FARFIELD = 1;
 
 vec4 gatherDOF(vec4 colorAndCoC, float sampleRadius, uint mode)
 {
-	const vec3 luma = vec3(0.2126, 0.7152, 0.0722);
-	float maxIntensity = dot(luma, colorAndCoC.rgb);
-	vec4 maxIntensityColorAndCoC = colorAndCoC;
+	vec4 accumulatedColor = colorAndCoC * BOKEH_SAMPLE_MULTIPLIER;
 	for (int i = 0; i < NUM_SAMPLE_POINTS; i++)
 	{
 		vec2 sampleUV = inUV + bokehFilter[i] * sampleRadius;
-
-		vec4 sampled;
 		if (mode == MODE_NEARFIELD)
-			sampled = texture(nearFieldImage, sampleUV);
+			accumulatedColor += texture(nearFieldImage, sampleUV) * BOKEH_SAMPLE_MULTIPLIER;
 		else
-			sampled = texture(farFieldImage, sampleUV);
-
-		float intensity = dot(luma, sampled.rgb);
-
-		if (intensity > maxIntensity)
-		{
-			maxIntensityColorAndCoC.rgb = sampled.rgb;
-		}
-		if (sampled.a > maxIntensityColorAndCoC.a)
-		{
-			maxIntensityColorAndCoC.a = sampled.a;
-		}
+			accumulatedColor += texture(farFieldImage, sampleUV) * BOKEH_SAMPLE_MULTIPLIER;
 	}
-	return maxIntensityColorAndCoC;
+
+	return accumulatedColor;
 }
 
 void main()

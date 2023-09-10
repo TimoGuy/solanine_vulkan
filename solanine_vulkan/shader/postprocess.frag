@@ -26,6 +26,8 @@ layout (set = 1, binding = 0) uniform sampler2D mainImage;
 layout (set = 1, binding = 1) uniform sampler2D uiImage;
 layout (set = 1, binding = 2) uniform sampler2D bloomImage;
 layout (set = 1, binding = 3) uniform sampler2D depthImage;
+layout (set = 1, binding = 4) uniform sampler2D dofNearImage;
+layout (set = 1, binding = 5) uniform sampler2D dofFarImage;
 
 
 #define MANUAL_SRGB 1
@@ -66,7 +68,11 @@ vec4 SRGBtoLINEAR(vec4 srgbIn)
 
 void main()
 {
-	
+	vec4 rawColor = texture(mainImage, inUV);
+	vec4 dofFarColorAndCoC = texture(dofFarImage, inUV);
+	rawColor.rgb = mix(rawColor.rgb, dofFarColorAndCoC.rgb, dofFarColorAndCoC.a);  // @TODO: this is incorrect, since you're supposed to use the full res depth buffer to mix in this DOF... but for now keep this!
+	vec4 dofNearColorAndCoC = texture(dofNearImage, inUV);
+	rawColor.rgb = mix(rawColor.rgb, dofNearColorAndCoC.rgb, dofNearColorAndCoC.a);
 
 	vec4 combinedBloom =
 		textureLod(bloomImage, inUV, 0.0) +
@@ -74,31 +80,10 @@ void main()
 		textureLod(bloomImage, inUV, 2.0) +
 		textureLod(bloomImage, inUV, 3.0) +
 		textureLod(bloomImage, inUV, 4.0);
-	vec4 rawColor = mix(texture(mainImage, inUV), combinedBloom, 0.04);
+	rawColor = mix(rawColor, combinedBloom, /*0.04*/0.0);  // @NOTE: for now turn off bloom since I think it should be after DOF (which in the render pipeline in `VulkanEngine` it's before DOF), but it's here!
+
 	vec3 color = SRGBtoLINEAR(tonemap(rawColor)).rgb;
 	vec4 uiColor = texture(uiImage, inUV);
-
-	const float zNear = 1.0;
-	const float zFar = 1000.0;
-	float depth = texture(depthImage, inUV).r;
-	depth = zNear * zFar / (zFar + depth * (zNear - zFar));
-
-	// const float focusDepth = zFar * 0.5;
-	// const float focusExtent = zFar * 0.5;
-	const float focusDepth = 10.5;
-	const float focusExtent = 7.5;
-	const float blurExtent = focusExtent * 2.0;
-	float depthRelativeToFocusDepth = abs(depth - focusDepth);
-	if (depthRelativeToFocusDepth > focusExtent)
-	{
-		// color = vec3(0.0);  // @DEBUG: for seeing the in focus field.
-
-		// float blurAmount = clamp((depthRelativeToFocusDepth - focusExtent) / blurExtent, 0.0, 1.0);
-		// color = mix(color, combinedBloom.rgb, blurAmount);
-
-		float blurAmount = (depthRelativeToFocusDepth - focusExtent) / blurExtent;
-		color = mix(color, textureLod(bloomImage, inUV, clamp(blurAmount - 1.0, 0.0, 4.0)).rgb, clamp(blurAmount, 0.0, 1.0));
-	}
 
 	outColor = vec4(
 		mix(color, uiColor.rgb, uiColor.a),

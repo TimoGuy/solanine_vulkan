@@ -2922,22 +2922,24 @@ void VulkanEngine::initPostprocessImages()
 		.imageView = _depthImage.imageView,
 		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 	};
-	// VkDescriptorImageInfo depthBufferImageInfo = {  // @NOTE: @TODO: this is for the near and far field bokeh images.
-	// 	.sampler = _depthImage.sampler,
-	// 	.imageView = _depthImage.imageView,
-	// 	.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-	// };
-	// VkDescriptorImageInfo depthBufferImageInfo = {
-	// 	.sampler = _depthImage.sampler,
-	// 	.imageView = _depthImage.imageView,
-	// 	.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-	// };
+	VkDescriptorImageInfo dofNearImageInfo = {
+		.sampler = _nearFieldImagePongImage.sampler,
+		.imageView = _nearFieldImagePongImage.imageView,
+		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	};
+	VkDescriptorImageInfo dofFarImageInfo = {
+		.sampler = _farFieldImagePongImage.sampler,
+		.imageView = _farFieldImagePongImage.imageView,
+		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	};
 	VkDescriptorSet postprocessingTextureSet;
 	vkutil::DescriptorBuilder::begin()
 		.bindImage(0, &mainHDRImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
 		.bindImage(1, &uiImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
 		.bindImage(2, &bloomImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
 		.bindImage(3, &depthBufferImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+		.bindImage(4, &dofNearImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+		.bindImage(5, &dofFarImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
 		.build(postprocessingTextureSet, _postprocessSetLayout);
 	attachTextureSetToMaterial(postprocessingTextureSet, "postprocessMaterial");
 }
