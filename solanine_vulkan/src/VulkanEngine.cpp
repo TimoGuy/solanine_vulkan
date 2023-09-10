@@ -1052,31 +1052,31 @@ void VulkanEngine::renderPostprocessRenderpass(const FrameData& currentFrame, Vk
 		_bloomPostprocessImageExtent
 	);
 
-	ppDepthOfField(
-		cmd,
-		_mainImage,
-		_depthImage,
-		_windowExtent,
-		_halfResImage,
-		_halfResDepthImage,
-		_halfResImageExtent,
-		_CoCRenderPass,
-		_CoCFramebuffer,
-		*getMaterial("CoCMaterial"),
-		_downsizeNearsideCoCRenderPass,
-		_downsizeNearsideCoCFramebuffer,
-		*getMaterial("downsizeNearsideCoCMaterial"),
-		_blurXNearsideCoCRenderPass,
-		_blurXNearsideCoCFramebuffer,
-		*getMaterial("blurXMaterial"),
-		_blurYNearsideCoCRenderPass,
-		_blurYNearsideCoCFramebuffer,
-		*getMaterial("blurYMaterial"),
-		_eighthResImageExtent,
-		_gatherDOFRenderPass,
-		_gatherDOFFramebuffer,
-		*getMaterial("gatherDOFMaterial")
-	);
+	// ppDepthOfField(
+	// 	cmd,
+	// 	_mainImage,
+	// 	_depthImage,
+	// 	_windowExtent,
+	// 	_halfResImage,
+	// 	_halfResDepthImage,
+	// 	_halfResImageExtent,
+	// 	_CoCRenderPass,
+	// 	_CoCFramebuffer,
+	// 	*getMaterial("CoCMaterial"),
+	// 	_downsizeNearsideCoCRenderPass,
+	// 	_downsizeNearsideCoCFramebuffer,
+	// 	*getMaterial("downsizeNearsideCoCMaterial"),
+	// 	_blurXNearsideCoCRenderPass,
+	// 	_blurXNearsideCoCFramebuffer,
+	// 	*getMaterial("blurXMaterial"),
+	// 	_blurYNearsideCoCRenderPass,
+	// 	_blurYNearsideCoCFramebuffer,
+	// 	*getMaterial("blurYMaterial"),
+	// 	_eighthResImageExtent,
+	// 	_gatherDOFRenderPass,
+	// 	_gatherDOFFramebuffer,
+	// 	*getMaterial("gatherDOFMaterial")
+	// );
 
 	// Combine all postprocessing
 	VkClearValue clearValue;
@@ -2250,24 +2250,20 @@ void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is 
 			.height = startingBloomBufferHeight,
 		};
 		VkExtent3D bloomImgExtent = { _bloomPostprocessImageExtent.width, _bloomPostprocessImageExtent.height, 1 };
-		VkImageCreateInfo bloomImgInfo = vkinit::imageCreateInfo(VK_FORMAT_R16G16B16A16_SFLOAT, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, bloomImgExtent, numBloomMips);
-		VmaAllocationCreateInfo bloomImgAllocInfo = {
-			.usage = VMA_MEMORY_USAGE_GPU_ONLY,
-		};
-		vmaCreateImage(_allocator, &bloomImgInfo, &bloomImgAllocInfo, &_bloomPostprocessImage.image._image, &_bloomPostprocessImage.image._allocation, nullptr);
-		_bloomPostprocessImage.image._mipLevels = numBloomMips;
 
-		VkImageViewCreateInfo bloomImgViewInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R16G16B16A16_SFLOAT, _bloomPostprocessImage.image._image, VK_IMAGE_ASPECT_COLOR_BIT, numBloomMips);
-		VK_CHECK(vkCreateImageView(_device, &bloomImgViewInfo, nullptr, &_bloomPostprocessImage.imageView));
-
-		VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo((float_t)numBloomMips, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
-		VK_CHECK(vkCreateSampler(_device, &samplerInfo, nullptr, &_bloomPostprocessImage.sampler));
-
-		_swapchainDependentDeletionQueue.pushFunction([=]() {
-			vkDestroySampler(_device, _bloomPostprocessImage.sampler, nullptr);
-			vkDestroyImageView(_device, _bloomPostprocessImage.imageView, nullptr);
-			vmaDestroyImage(_allocator, _bloomPostprocessImage.image._image, _bloomPostprocessImage.image._allocation);
-			});
+		createRenderTexture(
+			_allocator,
+			_device,
+			_bloomPostprocessImage,
+			VK_FORMAT_R16G16B16A16_SFLOAT,
+			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+			bloomImgExtent,
+			numBloomMips,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_FILTER_LINEAR,
+			VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			_swapchainDependentDeletionQueue
+		);
 	}
 
 	//
@@ -2275,7 +2271,6 @@ void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is 
 	//
 	{
 		constexpr uint32_t numMips = 1;
-		constexpr VkFormat imgFormat = VK_FORMAT_R16G16B16_SFLOAT;
 
 		_halfResImageExtent = {
 			.width = (uint32_t)(_windowExtent.width / 2),
@@ -2293,10 +2288,10 @@ void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is 
 			_allocator,
 			_device,
 			_halfResImage,
-			VK_FORMAT_R16G16B16_SFLOAT,
+			VK_FORMAT_R16G16B16A16_SFLOAT,
 			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
 			halfImgExtent,
-			1,
+			numMips,
 			VK_IMAGE_ASPECT_COLOR_BIT,
 			VK_FILTER_NEAREST,
 			VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
@@ -2310,7 +2305,7 @@ void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is 
 			VK_FORMAT_R32_SFLOAT,
 			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
 			halfImgExtent,
-			1,
+			numMips,
 			VK_IMAGE_ASPECT_COLOR_BIT,
 			VK_FILTER_NEAREST,
 			VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
@@ -2324,10 +2319,10 @@ void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is 
 			VK_FORMAT_R16G16_SFLOAT,
 			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
 			halfImgExtent,
-			1,
+			numMips,
 			VK_IMAGE_ASPECT_COLOR_BIT,
-			NULL,
-			NULL,
+			VkFilter(NULL),
+			VkSamplerAddressMode(NULL),
 			_swapchainDependentDeletionQueue,
 			false
 		);
@@ -2357,10 +2352,10 @@ void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is 
 			_allocator,
 			_device,
 			_nearFieldImage,
-			VK_FORMAT_R16G16B16_SFLOAT,
+			VK_FORMAT_R16G16B16A16_SFLOAT,
 			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
 			halfImgExtent,
-			1,
+			numMips,
 			VK_IMAGE_ASPECT_COLOR_BIT,
 			VK_FILTER_LINEAR,
 			VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
@@ -2371,10 +2366,10 @@ void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is 
 			_allocator,
 			_device,
 			_farFieldImage,
-			VK_FORMAT_R16G16B16_SFLOAT,
+			VK_FORMAT_R16G16B16A16_SFLOAT,
 			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
 			halfImgExtent,
-			1,
+			numMips,
 			VK_IMAGE_ASPECT_COLOR_BIT,
 			VK_FILTER_LINEAR,
 			VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
@@ -2388,7 +2383,7 @@ void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is 
 			VK_FORMAT_R16_SFLOAT,
 			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
 			eighthImgExtent,
-			1,
+			numMips,
 			VK_IMAGE_ASPECT_COLOR_BIT,
 			VK_FILTER_NEAREST,
 			VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
@@ -2402,7 +2397,7 @@ void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is 
 			VK_FORMAT_R16_SFLOAT,
 			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
 			eighthImgExtent,
-			1,
+			numMips,
 			VK_IMAGE_ASPECT_COLOR_BIT,
 			VK_FILTER_NEAREST,
 			VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
@@ -2436,6 +2431,16 @@ void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is 
 		.imageView = _depthImage.imageView,
 		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 	};
+	// VkDescriptorImageInfo depthBufferImageInfo = {  // @NOTE: @TODO: this is for the near and far field bokeh images.
+	// 	.sampler = _depthImage.sampler,
+	// 	.imageView = _depthImage.imageView,
+	// 	.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	// };
+	// VkDescriptorImageInfo depthBufferImageInfo = {
+	// 	.sampler = _depthImage.sampler,
+	// 	.imageView = _depthImage.imageView,
+	// 	.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	// };
 	VkDescriptorSet postprocessingTextureSet;
 	vkutil::DescriptorBuilder::begin()
 		.bindImage(0, &mainHDRImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
