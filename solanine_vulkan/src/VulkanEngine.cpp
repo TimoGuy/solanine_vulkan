@@ -824,7 +824,7 @@ void ppDepthOfField_GenerateHalfResImages(VkCommandBuffer cmd, Texture& mainImag
 		mainImage.image._image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 		halfResMainImage.image._image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 		1, &blitRegion,
-		VK_FILTER_LINEAR
+		VK_FILTER_LINEAR  // @NOCHECKIN: check and consider whether doing NEAREST for this would be good too...
 	);
 	blitRegion.srcSubresource.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
 	blitRegion.dstSubresource.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
@@ -1049,12 +1049,18 @@ void VulkanEngine::renderPostprocessRenderpass(const FrameData& currentFrame, Vk
 		.focusExtent = 7.5f,
 		.blurExtent = 7.5f * 2.0f,
 	};
+
 	GPUBlurParams blurParams = {};
 	blurParams.oneOverImageExtent[0] = 1.0f / _eighthResImageExtent.width;
 	blurParams.oneOverImageExtent[1] = 1.0f / _eighthResImageExtent.height;
+
 	GPUGatherDOFParams dofParams = {
 		.sampleRadiusMultiplier = 1.0f,
 	};
+	constexpr float_t arbitraryHeight = 1000.0f;
+	dofParams.oneOverArbitraryResExtent[0] = 1.0f / (arbitraryHeight * _camera->sceneCamera.aspect);
+	dofParams.oneOverArbitraryResExtent[1] = 1.0f / arbitraryHeight;
+
 	ppDepthOfField(
 		cmd,
 		_mainImage,

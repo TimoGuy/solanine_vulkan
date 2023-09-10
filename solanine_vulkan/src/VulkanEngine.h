@@ -70,6 +70,7 @@ struct GPUBlurParams
 struct GPUGatherDOFParams
 {
 	float sampleRadiusMultiplier = 1.0f;
+	vec2 oneOverArbitraryResExtent;
 };
 
 struct FrameData
