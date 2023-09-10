@@ -57,9 +57,9 @@ struct GPUCoCParams
 {
 	float_t cameraZNear;
 	float_t cameraZFar;
-	float_t focusDepth;
-	float_t focusExtent;
-	float_t blurExtent;
+	float_t focusDepth  = 10.5f;
+	float_t focusExtent = 7.5f;
+	float_t blurExtent  = 7.5f * 2.0f;
 };
 
 struct GPUBlurParams
@@ -69,8 +69,9 @@ struct GPUBlurParams
 
 struct GPUGatherDOFParams
 {
-	float sampleRadiusMultiplier = 1.0f;
-	vec2 oneOverArbitraryResExtent;
+	float_t sampleRadiusMultiplier = 1.0f;
+	float_t oneOverArbitraryResExtentX;
+	float_t oneOverArbitraryResExtentY;
 };
 
 struct FrameData
@@ -207,6 +208,9 @@ public:
 	VkExtent2D   _bloomPostprocessImageExtent;
 
 	// Depth of Field
+	GPUCoCParams   _CoCParams = {};
+	float_t        _DOFSampleRadiusMultiplier = 1.0f;
+
 	Texture        _halfResImage;
 	Texture        _halfResDepthImage;
 	VkExtent2D     _halfResImageExtent;

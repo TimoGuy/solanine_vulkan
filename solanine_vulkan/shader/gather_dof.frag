@@ -9,7 +9,8 @@ layout (location = 1) out vec4 outFarFieldColorWithCoCAlpha;
 layout (push_constant) uniform GatherDOFParams
 {
 	float sampleRadiusMultiplier;
-	vec2 oneOverArbitraryResExtent;
+	float oneOverArbitraryResExtentX;
+	float oneOverArbitraryResExtentY;
 } gatherDOFParams;
 
 layout (set = 0, binding = 0) uniform sampler2D nearFieldImage;
@@ -67,7 +68,9 @@ vec4 gatherDOF(vec4 colorAndCoC, float sampleRadius, uint mode)
 	vec4 accumulatedColor = colorAndCoC * BOKEH_SAMPLE_MULTIPLIER;
 	for (int i = 0; i < NUM_SAMPLE_POINTS; i++)
 	{
-		vec2 sampleUV = inUV + bokehFilter[i] * sampleRadius;
+		vec2 sampleUV =
+			inUV +
+			bokehFilter[i] * vec2(gatherDOFParams.oneOverArbitraryResExtentX, gatherDOFParams.oneOverArbitraryResExtentY) * sampleRadius;
 		if (mode == MODE_NEARFIELD)
 			accumulatedColor += texture(nearFieldImage, sampleUV) * BOKEH_SAMPLE_MULTIPLIER;
 		else

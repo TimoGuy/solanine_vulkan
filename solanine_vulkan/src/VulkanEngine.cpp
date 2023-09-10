@@ -1042,24 +1042,19 @@ void VulkanEngine::renderPostprocessRenderpass(const FrameData& currentFrame, Vk
 		_bloomPostprocessImageExtent
 	);
 
-	GPUCoCParams CocParams = {
-		.cameraZNear = _camera->sceneCamera.zNear,
-		.cameraZFar = _camera->sceneCamera.zFar,
-		.focusDepth = 10.5f,  // @HARDCODE
-		.focusExtent = 7.5f,
-		.blurExtent = 7.5f * 2.0f,
-	};
+	_CoCParams.cameraZNear = _camera->sceneCamera.zNear;
+	_CoCParams.cameraZFar = _camera->sceneCamera.zFar;
 
 	GPUBlurParams blurParams = {};
 	blurParams.oneOverImageExtent[0] = 1.0f / _eighthResImageExtent.width;
 	blurParams.oneOverImageExtent[1] = 1.0f / _eighthResImageExtent.height;
 
 	GPUGatherDOFParams dofParams = {
-		.sampleRadiusMultiplier = 1.0f,
+		.sampleRadiusMultiplier = _DOFSampleRadiusMultiplier,
 	};
-	constexpr float_t arbitraryHeight = 1000.0f;
-	dofParams.oneOverArbitraryResExtent[0] = 1.0f / (arbitraryHeight * _camera->sceneCamera.aspect);
-	dofParams.oneOverArbitraryResExtent[1] = 1.0f / arbitraryHeight;
+	constexpr float_t arbitraryHeight = 100.0f;
+	dofParams.oneOverArbitraryResExtentX = 1.0f / (arbitraryHeight * _camera->sceneCamera.aspect);
+	dofParams.oneOverArbitraryResExtentY = 1.0f / arbitraryHeight;
 
 	ppDepthOfField(
 		cmd,
@@ -1072,7 +1067,7 @@ void VulkanEngine::renderPostprocessRenderpass(const FrameData& currentFrame, Vk
 		_CoCRenderPass,
 		_CoCFramebuffer,
 		*getMaterial("CoCMaterial"),
-		CocParams,
+		_CoCParams,
 		_downsizeNearsideCoCRenderPass,
 		_downsizeNearsideCoCFramebuffer,
 		*getMaterial("downsizeNearsideCoCMaterial"),
@@ -5587,6 +5582,14 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 			ImGui::DragFloat("opponentTargetTransition.lookDistanceObliqueAmount", &_camera->mainCamMode.opponentTargetTransition.lookDistanceObliqueAmount, 0.1f);
 			ImGui::DragFloat("opponentTargetTransition.lookDistanceHeightAmount", &_camera->mainCamMode.opponentTargetTransition.lookDistanceHeightAmount, 0.1f);
 			ImGui::DragFloat("opponentTargetTransition.focusPositionExtraYOffsetWhenTargeting", &_camera->mainCamMode.opponentTargetTransition.focusPositionExtraYOffsetWhenTargeting, 0.1f);
+		}
+
+		if (ImGui::CollapsingHeader("Depth of Field Properties", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			ImGui::DragFloat("CoC Focus Depth", &_CoCParams.focusDepth, 0.1f);
+			ImGui::DragFloat("CoC Focus Extent", &_CoCParams.focusExtent, 0.1f);
+			ImGui::DragFloat("CoC Blur Extent", &_CoCParams.blurExtent, 0.1f);
+			ImGui::DragFloat("DOF Gather Sample Radius", &_DOFSampleRadiusMultiplier, 0.1f);
 		}
 
 		if (ImGui::CollapsingHeader("Textbox Properties", ImGuiTreeNodeFlags_DefaultOpen))
