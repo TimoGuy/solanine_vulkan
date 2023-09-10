@@ -80,6 +80,7 @@ void VulkanEngine::init()
 	initMainRenderpass();
 	initUIRenderpass();
 	initPostprocessRenderpass();
+	initPostprocessImages();
 	initPickingRenderpass();
 	initFramebuffers();
 	initSyncStructures();
@@ -1805,6 +1806,27 @@ void createRenderTexture(VmaAllocator allocator, VkDevice device, Texture& textu
 		});
 }
 
+void createFramebuffer(VkDevice device, VkFramebuffer& framebuffer, VkRenderPass renderPass, const std::vector<VkImageView>& attachments, VkExtent2D extent, uint32_t layers, DeletionQueue& deletionQueue)
+{
+	VkFramebufferCreateInfo fbInfo = {
+		.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+		.pNext = nullptr,
+
+		.renderPass = renderPass,
+		.attachmentCount = (uint32_t)attachments.size(),
+		.pAttachments = attachments.data(),
+		.width = extent.width,
+		.height = extent.height,
+		.layers = layers,
+	};
+
+	VK_CHECK(vkCreateFramebuffer(device, &fbInfo, nullptr, &framebuffer));
+
+	deletionQueue.pushFunction([=]() {
+		vkDestroyFramebuffer(device, framebuffer, nullptr);
+		});
+}
+
 void VulkanEngine::initShadowRenderpass()  // @COPYPASTA
 {
 	//
@@ -1929,23 +1951,19 @@ void VulkanEngine::initShadowImages()
 		individualViewInfo.subresourceRange.layerCount = 1;
 		VK_CHECK(vkCreateImageView(_device, &individualViewInfo, nullptr, &_shadowCascades[i].imageView));
 
-		VkFramebufferCreateInfo framebufferInfo = {
-			.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-			.pNext = nullptr,
-
-			.renderPass = _shadowRenderPass,
-			.attachmentCount = 1,
-			.pAttachments = &_shadowCascades[i].imageView,
-			.width = SHADOWMAP_DIMENSION,
-			.height = SHADOWMAP_DIMENSION,
-			.layers = 1,
-		};
-		VK_CHECK(vkCreateFramebuffer(_device, &framebufferInfo, nullptr, &_shadowCascades[i].framebuffer));
-
 		_mainDeletionQueue.pushFunction([=]() {
-			vkDestroyFramebuffer(_device, _shadowCascades[i].framebuffer, nullptr);
 			vkDestroyImageView(_device, _shadowCascades[i].imageView, nullptr);
 			});
+
+		createFramebuffer(
+			_device,
+			_shadowCascades[i].framebuffer,
+			_shadowRenderPass,
+			{ _shadowCascades[i].imageView, },
+			{ SHADOWMAP_DIMENSION, SHADOWMAP_DIMENSION },
+			1,
+			_mainDeletionQueue
+		);
 	}
 }
 
@@ -2172,13 +2190,13 @@ void VulkanEngine::initUIRenderpass()    // @NOTE: @COPYPASTA: This is really co
 		});
 }
 
-void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is really copypasta of the above function (initMainRenderpass)
+void initPostprocessCombineRenderPass(VkDevice device, VkFormat swapchainImageFormat, VkRenderPass renderPass)
 {
 	//
 	// Color Attachment  (@NOTE: based off the swapchain images)
 	//
 	VkAttachmentDescription colorAttachment = {
-		.format = _swapchainImageFormat,
+		.format = swapchainImageFormat,
 		.samples = VK_SAMPLE_COUNT_1_BIT,
 		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
 		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
@@ -2195,11 +2213,6 @@ void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is 
 	//
 	// Define the subpasses.
 	//
-	// VkSubpassDescription subpass = {  // @NOTE: START HERE!!!!!!
-	// 	.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
-	// 	.colorAttachmentCount = 1,
-	// 	.pColorAttachments = &colorAttachmentRef
-	// };
 	VkSubpassDescription combineSubpass = {
 		.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
 		.colorAttachmentCount = 1,
@@ -2232,13 +2245,331 @@ void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is 
 		.pDependencies = &colorDependency
 	};
 
-	VK_CHECK(vkCreateRenderPass(_device, &renderPassInfo, nullptr, &_postprocessRenderPass));
+	VK_CHECK(vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass));
+}
+
+void initDOF_CoCRenderPass(VkDevice device, VkRenderPass renderPass)
+{
+	// Define the attachments and refs.
+	VkAttachmentDescription nearField = {
+		.format = VK_FORMAT_R16G16B16A16_SFLOAT,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+		.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+		.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	};
+	VkAttachmentReference nearFieldRef = {
+		.attachment = 0,
+		.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+	};
+
+	VkAttachmentDescription farField = {
+		.format = VK_FORMAT_R16G16B16A16_SFLOAT,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+		.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+		.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	};
+	VkAttachmentReference farFieldRef = {
+		.attachment = 1,
+		.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+	};
+
+	VkAttachmentDescription nearFieldCoC = {
+		.format = VK_FORMAT_R16_SFLOAT,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+		.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+		.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	};
+	VkAttachmentReference nearFieldCoCRef = {
+		.attachment = 2,
+		.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+	};
+
+	std::vector<VkAttachmentDescription> colorAttachments = { nearField, farField, nearFieldCoC, };
+	std::vector<VkAttachmentReference> colorAttachmentRefs = { nearFieldRef, farFieldRef, nearFieldCoCRef, };
+
+	// Define the subpasses.
+	VkSubpassDescription subpass = {
+		.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+		.colorAttachmentCount = (uint32_t)colorAttachmentRefs.size(),
+		.pColorAttachments = colorAttachmentRefs.data(),
+	};
+
+	// GPU work ordering dependencies.
+	VkSubpassDependency colorDependency = {
+		.srcSubpass = VK_SUBPASS_EXTERNAL,
+		.dstSubpass = 0,
+		.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.srcAccessMask = 0,
+		.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+	};
+
+	// Create the renderpass for the subpass.
+	VkRenderPassCreateInfo renderPassInfo = {
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+		.attachmentCount = (uint32_t)colorAttachments.size(),
+		.pAttachments = colorAttachments.data(),
+		.subpassCount = 1,
+		.pSubpasses = &subpass,
+		.dependencyCount = 1,
+		.pDependencies = &colorDependency
+	};
+
+	VK_CHECK(vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass));
+}
+
+void initDOF_DownsizeNearsideCoCRenderPass(VkDevice device, VkRenderPass renderPass)
+{
+	// Define the attachments and refs.
+	VkAttachmentDescription nearFieldEighthResCoC = {
+		.format = VK_FORMAT_R16_SFLOAT,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+		.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+		.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	};
+	VkAttachmentReference nearFieldEighthResCoCRef = {
+		.attachment = 0,
+		.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+	};
+
+	std::vector<VkAttachmentDescription> colorAttachments = { nearFieldEighthResCoC, };
+	std::vector<VkAttachmentReference> colorAttachmentRefs = { nearFieldEighthResCoCRef, };
+
+	// Define the subpasses.
+	VkSubpassDescription subpass = {
+		.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+		.colorAttachmentCount = (uint32_t)colorAttachmentRefs.size(),
+		.pColorAttachments = colorAttachmentRefs.data(),
+	};
+
+	// GPU work ordering dependencies.
+	VkSubpassDependency colorDependency = {
+		.srcSubpass = VK_SUBPASS_EXTERNAL,
+		.dstSubpass = 0,
+		.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.srcAccessMask = 0,
+		.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+	};
+
+	// Create the renderpass for the subpass.
+	VkRenderPassCreateInfo renderPassInfo = {
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+		.attachmentCount = (uint32_t)colorAttachments.size(),
+		.pAttachments = colorAttachments.data(),
+		.subpassCount = 1,
+		.pSubpasses = &subpass,
+		.dependencyCount = 1,
+		.pDependencies = &colorDependency
+	};
+
+	VK_CHECK(vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass));
+}
+
+void initDOF_BlurXNearsideCoCRenderPass(VkDevice device, VkRenderPass renderPass)
+{
+	// Define the attachments and refs.
+	VkAttachmentDescription nearFieldEighthResCoCPong = {
+		.format = VK_FORMAT_R16_SFLOAT,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+		.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+		.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	};
+	VkAttachmentReference nearFieldEighthResCoCPongRef = {
+		.attachment = 0,
+		.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+	};
+
+	std::vector<VkAttachmentDescription> colorAttachments = { nearFieldEighthResCoCPong, };
+	std::vector<VkAttachmentReference> colorAttachmentRefs = { nearFieldEighthResCoCPongRef, };
+
+	// Define the subpasses.
+	VkSubpassDescription subpass = {
+		.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+		.colorAttachmentCount = (uint32_t)colorAttachmentRefs.size(),
+		.pColorAttachments = colorAttachmentRefs.data(),
+	};
+
+	// GPU work ordering dependencies.
+	VkSubpassDependency colorDependency = {
+		.srcSubpass = VK_SUBPASS_EXTERNAL,
+		.dstSubpass = 0,
+		.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.srcAccessMask = 0,
+		.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+	};
+
+	// Create the renderpass for the subpass.
+	VkRenderPassCreateInfo renderPassInfo = {
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+		.attachmentCount = (uint32_t)colorAttachments.size(),
+		.pAttachments = colorAttachments.data(),
+		.subpassCount = 1,
+		.pSubpasses = &subpass,
+		.dependencyCount = 1,
+		.pDependencies = &colorDependency
+	};
+
+	VK_CHECK(vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass));
+}
+
+void initDOF_BlurYNearsideCoCRenderPass(VkDevice device, VkRenderPass renderPass)
+{
+	// Define the attachments and refs.
+	VkAttachmentDescription nearFieldEighthResCoCPing = {
+		.format = VK_FORMAT_R16_SFLOAT,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+		.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+		.initialLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	};
+	VkAttachmentReference nearFieldEighthResCoCPingRef = {
+		.attachment = 0,
+		.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+	};
+
+	std::vector<VkAttachmentDescription> colorAttachments = { nearFieldEighthResCoCPing, };
+	std::vector<VkAttachmentReference> colorAttachmentRefs = { nearFieldEighthResCoCPingRef, };
+
+	// Define the subpasses.
+	VkSubpassDescription subpass = {
+		.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+		.colorAttachmentCount = (uint32_t)colorAttachmentRefs.size(),
+		.pColorAttachments = colorAttachmentRefs.data(),
+	};
+
+	// GPU work ordering dependencies.
+	VkSubpassDependency colorDependency = {
+		.srcSubpass = VK_SUBPASS_EXTERNAL,
+		.dstSubpass = 0,
+		.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.srcAccessMask = 0,
+		.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+	};
+
+	// Create the renderpass for the subpass.
+	VkRenderPassCreateInfo renderPassInfo = {
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+		.attachmentCount = (uint32_t)colorAttachments.size(),
+		.pAttachments = colorAttachments.data(),
+		.subpassCount = 1,
+		.pSubpasses = &subpass,
+		.dependencyCount = 1,
+		.pDependencies = &colorDependency
+	};
+
+	VK_CHECK(vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass));
+}
+
+void initDOF_GatherDOFRenderPass(VkDevice device, VkRenderPass renderPass)
+{
+	// Define the attachments and refs.
+	VkAttachmentDescription nearFieldPong = {
+		.format = VK_FORMAT_R16G16B16A16_SFLOAT,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+		.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+		.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	};
+	VkAttachmentReference nearFieldPongRef = {
+		.attachment = 0,
+		.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+	};
+
+	VkAttachmentDescription farFieldPong = {
+		.format = VK_FORMAT_R16G16B16A16_SFLOAT,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+		.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+		.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	};
+	VkAttachmentReference farFieldPongRef = {
+		.attachment = 1,
+		.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+	};
+
+	std::vector<VkAttachmentDescription> colorAttachments = { nearFieldPong, farFieldPong, };
+	std::vector<VkAttachmentReference> colorAttachmentRefs = { nearFieldPongRef, farFieldPongRef, };
+
+	// Define the subpasses.
+	VkSubpassDescription subpass = {
+		.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+		.colorAttachmentCount = (uint32_t)colorAttachmentRefs.size(),
+		.pColorAttachments = colorAttachmentRefs.data(),
+	};
+
+	// GPU work ordering dependencies.
+	VkSubpassDependency colorDependency = {
+		.srcSubpass = VK_SUBPASS_EXTERNAL,
+		.dstSubpass = 0,
+		.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.srcAccessMask = 0,
+		.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+	};
+
+	// Create the renderpass for the subpass.
+	VkRenderPassCreateInfo renderPassInfo = {
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+		.attachmentCount = (uint32_t)colorAttachments.size(),
+		.pAttachments = colorAttachments.data(),
+		.subpassCount = 1,
+		.pSubpasses = &subpass,
+		.dependencyCount = 1,
+		.pDependencies = &colorDependency
+	};
+
+	VK_CHECK(vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass));
+}
+
+void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is really copypasta of the above function (initMainRenderpass)
+{
+	initPostprocessCombineRenderPass(_device, _swapchainImageFormat, _postprocessRenderPass);
+	initDOF_CoCRenderPass(_device, _CoCRenderPass);
+	initDOF_DownsizeNearsideCoCRenderPass(_device, _downsizeNearsideCoCRenderPass);
+	initDOF_BlurXNearsideCoCRenderPass(_device, _blurXNearsideCoCRenderPass);
+	initDOF_BlurYNearsideCoCRenderPass(_device, _blurYNearsideCoCRenderPass);
+	initDOF_GatherDOFRenderPass(_device, _gatherDOFRenderPass);
 
 	// Add destroy command for cleanup
 	_swapchainDependentDeletionQueue.pushFunction([=]() {
 		vkDestroyRenderPass(_device, _postprocessRenderPass, nullptr);
 		});
+}
 
+void VulkanEngine::initPostprocessImages()
+{
 	//
 	// Create bloom image
 	//
@@ -2315,41 +2646,6 @@ void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is 
 		createRenderTexture(
 			_allocator,
 			_device,
-			_CoCImage,
-			VK_FORMAT_R16G16_SFLOAT,
-			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-			halfImgExtent,
-			numMips,
-			VK_IMAGE_ASPECT_COLOR_BIT,
-			VkFilter(NULL),
-			VkSamplerAddressMode(NULL),
-			_swapchainDependentDeletionQueue,
-			false
-		);
-		{
-			// Create special MAX sampler for this texture.
-			VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo((float_t)numMips, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
-			samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
-			samplerInfo.maxLod = 3.0f;  // Should be enough to make an 1/8th of the CoC size.
-
-			VkSamplerReductionModeCreateInfo reductionSamplerInfo = {
-				.sType = VK_STRUCTURE_TYPE_SAMPLER_REDUCTION_MODE_CREATE_INFO,
-				.pNext = nullptr,
-				.reductionMode = VK_SAMPLER_REDUCTION_MODE_MAX,
-			};
-
-			samplerInfo.pNext = &reductionSamplerInfo;
-
-			VK_CHECK(vkCreateSampler(_device, &samplerInfo, nullptr, &_CoCImage.sampler));
-
-			_swapchainDependentDeletionQueue.pushFunction([=]() {
-				vkDestroySampler(_device, _CoCImage.sampler, nullptr);
-				});
-		}
-
-		createRenderTexture(
-			_allocator,
-			_device,
 			_nearFieldImage,
 			VK_FORMAT_R16G16B16A16_SFLOAT,
 			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
@@ -2374,6 +2670,69 @@ void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is 
 			VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
 			_swapchainDependentDeletionQueue
 		);
+
+		createRenderTexture(
+			_allocator,
+			_device,
+			_nearFieldImagePongImage,
+			VK_FORMAT_R16G16B16A16_SFLOAT,
+			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+			halfImgExtent,
+			numMips,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_FILTER_LINEAR,
+			VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			_swapchainDependentDeletionQueue
+		);
+
+		createRenderTexture(
+			_allocator,
+			_device,
+			_farFieldImagePongImage,
+			VK_FORMAT_R16G16B16A16_SFLOAT,
+			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+			halfImgExtent,
+			numMips,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_FILTER_LINEAR,
+			VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			_swapchainDependentDeletionQueue
+		);
+
+		createRenderTexture(
+			_allocator,
+			_device,
+			_nearFieldCoCImage,
+			VK_FORMAT_R16_SFLOAT,
+			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+			halfImgExtent,
+			numMips,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			VkFilter(NULL),
+			VkSamplerAddressMode(NULL),
+			_swapchainDependentDeletionQueue,
+			false
+		);
+		{
+			// Create special MAX sampler for this texture.
+			VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo((float_t)numMips, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
+			samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+			samplerInfo.maxLod = 3.0f;  // Should be enough to make an 1/8th of the CoC size.
+
+			VkSamplerReductionModeCreateInfo reductionSamplerInfo = {
+				.sType = VK_STRUCTURE_TYPE_SAMPLER_REDUCTION_MODE_CREATE_INFO,
+				.pNext = nullptr,
+				.reductionMode = VK_SAMPLER_REDUCTION_MODE_MAX,
+			};
+
+			samplerInfo.pNext = &reductionSamplerInfo;
+
+			VK_CHECK(vkCreateSampler(_device, &samplerInfo, nullptr, &_nearFieldCoCImage.sampler));
+
+			_swapchainDependentDeletionQueue.pushFunction([=]() {
+				vkDestroySampler(_device, _nearFieldCoCImage.sampler, nullptr);
+				});
+		}
 
 		createRenderTexture(
 			_allocator,
@@ -2405,7 +2764,7 @@ void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is 
 	}
 
 	//
-	// Postprocessing
+	// Postprocessing combine descriptor set.
 	// @TODO: @RESEARCH: doing this, where the descriptors are getting initialized every time
 	//                   the renderpass is getting created (which is necessary), does it cause
 	//                   a memory leak?  -Timo 2023/05/29
@@ -2580,94 +2939,97 @@ void VulkanEngine::initPickingRenderpass()    // @NOTE: @COPYPASTA: This is real
 
 void VulkanEngine::initFramebuffers()
 {
-	//
-	// Create framebuffers for postprocess renderpass
-	// @NOTE: this one writes straight to the khr framebuffers
-	//
-	VkFramebufferCreateInfo fbInfo = {};
-	fbInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-	fbInfo.pNext = nullptr;
+	_swapchainFramebuffers = std::vector<VkFramebuffer>(_swapchainImages.size());
+	for (size_t i = 0; i < _swapchainImages.size(); i++)
+		createFramebuffer(
+			_device,
+			_swapchainFramebuffers[i],
+			_postprocessRenderPass,
+			{ _swapchainImageViews[i], },
+			_windowExtent,
+			1,
+			_swapchainDependentDeletionQueue
+		);
 
-	fbInfo.renderPass = _postprocessRenderPass;
-	fbInfo.attachmentCount = 1;
-	fbInfo.width = _windowExtent.width;
-	fbInfo.height = _windowExtent.height;
-	fbInfo.layers = 1;
+	createFramebuffer(
+		_device,
+		_mainFramebuffer,
+		_mainRenderPass,
+		{ _mainImage.imageView, _depthImage.imageView, },
+		_windowExtent,
+		1,
+		_swapchainDependentDeletionQueue
+	);
 
-	const uint32_t swapchainImagecount = static_cast<uint32_t>(_swapchainImages.size());
-	_swapchainFramebuffers = std::vector<VkFramebuffer>(swapchainImagecount);
+	createFramebuffer(
+		_device,
+		_uiFramebuffer,
+		_uiRenderPass,
+		{ _uiImage.imageView, },
+		_windowExtent,
+		1,
+		_swapchainDependentDeletionQueue
+	);
 
-	for (size_t i = 0; i < (size_t)swapchainImagecount; i++)
-	{
-		VkImageView attachments[] = {
-			_swapchainImageViews[i],
-		};
-		fbInfo.pAttachments = &attachments[0];
+	createFramebuffer(
+		_device,
+		_pickingFramebuffer,
+		_pickingRenderPass,
+		{ _pickingImageView, _pickingDepthImageView, },
+		_windowExtent,
+		1,
+		_swapchainDependentDeletionQueue
+	);
 
-		VK_CHECK(vkCreateFramebuffer(_device, &fbInfo, nullptr, &_swapchainFramebuffers[i]));
+	createFramebuffer(
+		_device,
+		_CoCFramebuffer,
+		_CoCRenderPass,
+		{ _nearFieldImage.imageView, _farFieldImage.imageView, _nearFieldCoCImage.imageView, },
+		_halfResImageExtent,
+		1,
+		_swapchainDependentDeletionQueue
+	);
 
-		// Add destroy command for cleanup
-		_swapchainDependentDeletionQueue.pushFunction([=]() {
-			vkDestroyFramebuffer(_device, _swapchainFramebuffers[i], nullptr);
-			vkDestroyImageView(_device, _swapchainImageViews[i], nullptr);
-			});
-	}
+	createFramebuffer(
+		_device,
+		_downsizeNearsideCoCFramebuffer,
+		_downsizeNearsideCoCRenderPass,
+		{ _nearFieldEighthResCoCImage.imageView, },
+		_eighthResImageExtent,
+		1,
+		_swapchainDependentDeletionQueue
+	);
 
-	//
-	// Create framebuffer for main renderpass
-	//
-	{
-		VkImageView attachments[] = {
-			_mainImage.imageView,
-			_depthImage.imageView,
-		};
-		fbInfo.renderPass = _mainRenderPass;
-		fbInfo.attachmentCount = 2;
-		fbInfo.pAttachments = &attachments[0];
+	createFramebuffer(
+		_device,
+		_blurXNearsideCoCFramebuffer,
+		_blurXNearsideCoCRenderPass,
+		{ _nearFieldEighthResCoCImagePongImage.imageView, },
+		_eighthResImageExtent,
+		1,
+		_swapchainDependentDeletionQueue
+	);
 
-		VK_CHECK(vkCreateFramebuffer(_device, &fbInfo, nullptr, &_mainFramebuffer));
+	createFramebuffer(
+		_device,
+		_blurYNearsideCoCFramebuffer,
+		_blurYNearsideCoCRenderPass,
+		{ _nearFieldEighthResCoCImage.imageView, },
+		_eighthResImageExtent,
+		1,
+		_swapchainDependentDeletionQueue
+	);
 
-		_swapchainDependentDeletionQueue.pushFunction([=]() {
-			vkDestroyFramebuffer(_device, _mainFramebuffer, nullptr);
-			});
-	}
-
-	//
-	// Create framebuffer for ui renderpass
-	//
-	{
-		VkImageView attachments[] = {
-			_uiImage.imageView,
-		};
-		fbInfo.renderPass = _uiRenderPass;
-		fbInfo.attachmentCount = 1;
-		fbInfo.pAttachments = &attachments[0];
-
-		VK_CHECK(vkCreateFramebuffer(_device, &fbInfo, nullptr, &_uiFramebuffer));
-
-		_swapchainDependentDeletionQueue.pushFunction([=]() {
-			vkDestroyFramebuffer(_device, _uiFramebuffer, nullptr);
-			});
-	}
-
-	//
-	// Create framebuffer for the picking renderpass
-	//
-	{
-		VkImageView attachments[] = {
-			_pickingImageView,
-			_pickingDepthImageView,
-		};
-		fbInfo.renderPass = _pickingRenderPass;
-		fbInfo.attachmentCount = 2;
-		fbInfo.pAttachments = &attachments[0];
-
-		VK_CHECK(vkCreateFramebuffer(_device, &fbInfo, nullptr, &_pickingFramebuffer));
-
-		_swapchainDependentDeletionQueue.pushFunction([=]() {
-			vkDestroyFramebuffer(_device, _pickingFramebuffer, nullptr);
-			});
-	}
+	createFramebuffer(
+		_device,
+		_gatherDOFFramebuffer,
+		_gatherDOFRenderPass,
+		{ _nearFieldImagePongImage.imageView, _farFieldImagePongImage.imageView, },
+		_halfResImageExtent,
+		1,
+		_swapchainDependentDeletionQueue
+	);
 }
 
 void VulkanEngine::initSyncStructures()
@@ -4274,6 +4636,7 @@ void VulkanEngine::recreateSwapchain()
 	initMainRenderpass();
 	initUIRenderpass();
 	initPostprocessRenderpass();
+	initPostprocessImages();
 	initPickingRenderpass();
 	initFramebuffers();
 	initPipelines();

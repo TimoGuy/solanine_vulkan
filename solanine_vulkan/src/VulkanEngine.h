@@ -193,9 +193,11 @@ public:
 
 	VkRenderPass   _CoCRenderPass;
 	VkFramebuffer  _CoCFramebuffer;
-	Texture        _CoCImage;
 	Texture        _nearFieldImage;
 	Texture        _farFieldImage;
+	Texture        _nearFieldImagePongImage;
+	Texture        _farFieldImagePongImage;
+	Texture        _nearFieldCoCImage;
 
 	VkRenderPass   _downsizeNearsideCoCRenderPass;
 	VkFramebuffer  _downsizeNearsideCoCFramebuffer;
@@ -306,6 +308,7 @@ private:
 	void initMainRenderpass();
 	void initUIRenderpass();
 	void initPostprocessRenderpass();
+	void initPostprocessImages();
 	void initPickingRenderpass();
 	void initFramebuffers();
 	void initSyncStructures();
