@@ -57,9 +57,9 @@ struct GPUCoCParams
 {
 	float_t cameraZNear;
 	float_t cameraZFar;
-	float_t focusDepth  = 10.5f;
-	float_t focusExtent = 7.5f;
-	float_t blurExtent  = 7.5f * 2.0f;
+	float_t focusDepth  = 7.5f;
+	float_t focusExtent = 4.0f;
+	float_t blurExtent  = 2.0f;
 };
 
 struct GPUBlurParams

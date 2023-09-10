@@ -74,6 +74,12 @@ void main()
 	vec4 dofNearColorAndCoC = texture(dofNearImage, inUV);
 	rawColor.rgb = mix(rawColor.rgb, dofNearColorAndCoC.rgb, dofNearColorAndCoC.a);
 
+	// @DEBUG: See DOF ranges.
+	// if (dofNearColorAndCoC.a > 0.0)
+	// 	rawColor.r = 1.0;
+	// if (dofFarColorAndCoC.a > 0.0)
+	// 	rawColor.g = 1.0;
+
 	vec4 combinedBloom =
 		textureLod(bloomImage, inUV, 0.0) +
 		textureLod(bloomImage, inUV, 1.0) +

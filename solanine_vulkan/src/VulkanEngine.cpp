@@ -824,7 +824,7 @@ void ppDepthOfField_GenerateHalfResImages(VkCommandBuffer cmd, Texture& mainImag
 		mainImage.image._image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 		halfResMainImage.image._image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 		1, &blitRegion,
-		VK_FILTER_LINEAR  // @NOCHECKIN: check and consider whether doing NEAREST for this would be good too...
+		VK_FILTER_NEAREST  // @NOTE: bc the depth image has to be NEAREST, we'll blit this as NEAREST too... though it seems to not make much difference in the end result.  -Timo 2023/09/10
 	);
 	blitRegion.srcSubresource.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
 	blitRegion.dstSubresource.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
