@@ -187,12 +187,28 @@ public:
 	VkExtent2D   _bloomPostprocessImageExtent;
 
 	// Depth of Field
+	Texture        _halfResImage;
 	Texture        _halfResDepthImage;
-	VkExtent2D     _halfResDepthImageExtent;
+	VkExtent2D     _halfResImageExtent;
+
+	VkRenderPass   _CoCRenderPass;
+	VkFramebuffer  _CoCFramebuffer;
 	Texture        _CoCImage;
-	Texture        _nearFieldQtrResCoCImage;  // Quarter res from the half res depth image (effectively 1/8th res)
 	Texture        _nearFieldImage;
 	Texture        _farFieldImage;
+
+	VkRenderPass   _downsizeNearsideCoCRenderPass;
+	VkFramebuffer  _downsizeNearsideCoCFramebuffer;
+	Texture        _nearFieldEighthResCoCImage;
+	VkExtent2D     _eighthResImageExtent;
+
+	VkRenderPass   _blurXNearsideCoCRenderPass;
+	VkFramebuffer  _blurXNearsideCoCFramebuffer;
+	VkRenderPass   _blurYNearsideCoCRenderPass;
+	VkFramebuffer  _blurYNearsideCoCFramebuffer;
+
+	VkRenderPass   _gatherDOFRenderPass;
+	VkFramebuffer  _gatherDOFFramebuffer;
 
 	//
 	// Picking Renderpass

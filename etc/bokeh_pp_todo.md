@@ -10,9 +10,8 @@
         > NOTE: start at VulkanEngine.cpp:1872
         - Here is the order of things:
             1. Downscale the scene by 1/2 the size.
-            2. Use the depth texture to render the CoC.
+            2. Use the depth texture to render the CoC. At the same time, multiply the color with the CoC to near and far field scene render targets.
             3. Downscale the near field (keeping the max value of the CoC) to 1/8th the size. Then, blur the near CoC.
-            4. Multiply the CoC twice to get near field and far field buffers.
             5. Use the downscaled near CoC to sample for the correct radius to do the pixels.
             6. Do the same for far CoC except use the full res CoC map.
             7. Gaussian blur both near and far images (8x8).
