@@ -18,5 +18,5 @@ void main()
 	// original texture size is half res already.
 	// NOTE: this is using the mipmap MAX reduction mode sampler, which is why this works.
 	//     -Timo 2023/09/10
-	outDownsizedNearFieldCoC = textureLod(nearFieldCoC, inUV, 2.0);
+	outDownsizedNearFieldCoC = textureLod(nearFieldCoC, inUV, 2.0).r;
 }

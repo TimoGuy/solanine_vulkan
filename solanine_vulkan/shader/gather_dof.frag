@@ -19,6 +19,7 @@ layout (set = 0, binding = 1) uniform sampler2D nearFieldDownsizedCoCImage;
 vec4 gatherDOF(vec4 colorAndCoC, float sampleRadius)
 {
 	// @TODO: do Gather DOF here.
+	return colorAndCoC;
 }
 
 void main()

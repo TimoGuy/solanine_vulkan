@@ -36,7 +36,7 @@ float calculateCoC()
 
 void main()
 {
-	float CoC = calculateCoc();  // 0.0 is completely in focus. 1.0 is completely out of focus.
+	float CoC = calculateCoC();  // 0.0 is completely in focus. 1.0 is completely out of focus.
 	float nearCoC = max(0.0, -CoC);
 	float farCoC = max(0.0, CoC);
 

@@ -232,6 +232,10 @@ public:
 	VkRenderPass   _gatherDOFRenderPass;
 	VkFramebuffer  _gatherDOFFramebuffer;
 
+	VkDescriptorSetLayout _dofSingleTextureLayout;
+	VkDescriptorSetLayout _dofDoubleTextureLayout;
+	VkDescriptorSetLayout _dofTripleTextureLayout;
+
 	//
 	// Picking Renderpass
 	//
