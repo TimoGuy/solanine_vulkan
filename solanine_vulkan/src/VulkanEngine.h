@@ -53,6 +53,25 @@ struct ColorPushConstBlock
 	vec4 color;
 };
 
+struct GPUCoCParams
+{
+	float_t cameraZNear;
+	float_t cameraZFar;
+	float_t focusDepth;
+	float_t focusExtent;
+	float_t blurExtent;
+};
+
+struct GPUBlurParams
+{
+	vec2 oneOverImageExtent;
+};
+
+struct GPUGatherDOFParams
+{
+	float sampleRadiusMultiplier = 1.0f;
+};
+
 struct FrameData
 {
 	VkSemaphore presentSemaphore, renderSemaphore;

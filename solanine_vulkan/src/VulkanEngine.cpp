@@ -1053,31 +1053,31 @@ void VulkanEngine::renderPostprocessRenderpass(const FrameData& currentFrame, Vk
 		_bloomPostprocessImageExtent
 	);
 
-	// ppDepthOfField(
-	// 	cmd,
-	// 	_mainImage,
-	// 	_depthImage,
-	// 	_windowExtent,
-	// 	_halfResImage,
-	// 	_halfResDepthImage,
-	// 	_halfResImageExtent,
-	// 	_CoCRenderPass,
-	// 	_CoCFramebuffer,
-	// 	*getMaterial("CoCMaterial"),
-	// 	_downsizeNearsideCoCRenderPass,
-	// 	_downsizeNearsideCoCFramebuffer,
-	// 	*getMaterial("downsizeNearsideCoCMaterial"),
-	// 	_blurXNearsideCoCRenderPass,
-	// 	_blurXNearsideCoCFramebuffer,
-	// 	*getMaterial("blurXMaterial"),
-	// 	_blurYNearsideCoCRenderPass,
-	// 	_blurYNearsideCoCFramebuffer,
-	// 	*getMaterial("blurYMaterial"),
-	// 	_eighthResImageExtent,
-	// 	_gatherDOFRenderPass,
-	// 	_gatherDOFFramebuffer,
-	// 	*getMaterial("gatherDOFMaterial")
-	// );
+	ppDepthOfField(
+		cmd,
+		_mainImage,
+		_depthImage,
+		_windowExtent,
+		_halfResImage,
+		_halfResDepthImage,
+		_halfResImageExtent,
+		_CoCRenderPass,
+		_CoCFramebuffer,
+		*getMaterial("CoCMaterial"),
+		_downsizeNearsideCoCRenderPass,
+		_downsizeNearsideCoCFramebuffer,
+		*getMaterial("downsizeNearsideCoCMaterial"),
+		_blurXNearsideCoCRenderPass,
+		_blurXNearsideCoCFramebuffer,
+		*getMaterial("blurXSingleChannelMaterial"),
+		_blurYNearsideCoCRenderPass,
+		_blurYNearsideCoCFramebuffer,
+		*getMaterial("blurYSingleChannelMaterial"),
+		_eighthResImageExtent,
+		_gatherDOFRenderPass,
+		_gatherDOFFramebuffer,
+		*getMaterial("gatherDOFMaterial")
+	);
 
 	// Combine all postprocessing
 	VkClearValue clearValue;
@@ -3362,6 +3362,26 @@ void VulkanEngine::initPipelines()
 		_windowExtent,
 	};
 
+	VkViewport halfScreenspaceViewport = {
+		0.0f, 0.0f,
+		(float_t)_halfResImageExtent.width, (float_t)_halfResImageExtent.height,
+		0.0f, 1.0f,
+	};
+	VkRect2D halfScreenspaceScissor = {
+		{ 0, 0 },
+		_halfResImageExtent,
+	};
+
+	VkViewport eighthScreenspaceViewport = {
+		0.0f, 0.0f,
+		(float_t)_eighthResImageExtent.width, (float_t)_eighthResImageExtent.height,
+		0.0f, 1.0f,
+	};
+	VkRect2D eighthScreenspaceScissor = {
+		{ 0, 0 },
+		_eighthResImageExtent,
+	};
+
 	// Mesh ZPrepass Pipeline
 	VkPipeline meshZPrepassPipeline;
 	VkPipelineLayout meshZPrepassPipelineLayout;
@@ -3604,6 +3624,168 @@ void VulkanEngine::initPipelines()
 	);
 	attachPipelineToMaterial(postprocessPipeline, postprocessPipelineLayout, "postprocessMaterial");
 
+	// Generate CoC pipeline
+	VkPipelineColorBlendAttachmentState singleChannelAttachmentState = vkinit::colorBlendAttachmentState();
+	singleChannelAttachmentState.colorWriteMask = VK_COLOR_COMPONENT_R_BIT;
+
+	VkPipeline CoCPipeline;
+	VkPipelineLayout CoCPipelineLayout;
+	vkutil::pipelinebuilder::build(
+		{
+			VkPushConstantRange{
+				.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+				.offset = 0,
+				.size = sizeof(GPUCoCParams)
+			}
+		},
+		{},
+		{
+			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/genbrdflut.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/generate_coc.frag.spv" },
+		},
+		{},  // No triangles are actually streamed in
+		{},
+		vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+		halfScreenspaceViewport,
+		halfScreenspaceScissor,
+		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE),
+		{ vkinit::colorBlendAttachmentState(), vkinit::colorBlendAttachmentState(), singleChannelAttachmentState },
+		vkinit::multisamplingStateCreateInfo(),
+		vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_ALWAYS),
+		{},
+		_CoCRenderPass,
+		0,
+		CoCPipeline,
+		CoCPipelineLayout
+	);
+	attachPipelineToMaterial(CoCPipeline, CoCPipelineLayout, "CoCMaterial");
+
+	// Downsize Nearfield CoC pipeline
+	VkPipeline downsizeNearfieldPipeline;
+	VkPipelineLayout downsizeNearfieldPipelineLayout;
+	vkutil::pipelinebuilder::build(
+		{},
+		{},
+		{
+			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/genbrdflut.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/downsize_nearfield_coc.frag.spv" },
+		},
+		{},  // No triangles are actually streamed in
+		{},
+		vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+		eighthScreenspaceViewport,
+		eighthScreenspaceScissor,
+		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE),
+		{ singleChannelAttachmentState },
+		vkinit::multisamplingStateCreateInfo(),
+		vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_ALWAYS),
+		{},
+		_downsizeNearsideCoCRenderPass,
+		0,
+		downsizeNearfieldPipeline,
+		downsizeNearfieldPipelineLayout
+	);
+	attachPipelineToMaterial(downsizeNearfieldPipeline, downsizeNearfieldPipelineLayout, "downsizeNearsideCoCMaterial");
+
+	// Blur X Single Channel pipeline
+	VkPipeline blurXSingleChannelPipeline;
+	VkPipelineLayout blurXSingleChannelPipelineLayout;
+	vkutil::pipelinebuilder::build(
+		{
+			VkPushConstantRange{
+				.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+				.offset = 0,
+				.size = sizeof(GPUBlurParams)
+			}
+		},
+		{},
+		{
+			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/genbrdflut.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/blur_x_singlechannel.frag.spv" },
+		},
+		{},  // No triangles are actually streamed in
+		{},
+		vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+		eighthScreenspaceViewport,
+		eighthScreenspaceScissor,
+		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE),
+		{ singleChannelAttachmentState },
+		vkinit::multisamplingStateCreateInfo(),
+		vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_ALWAYS),
+		{},
+		_blurXNearsideCoCRenderPass,
+		0,
+		blurXSingleChannelPipeline,
+		blurXSingleChannelPipelineLayout
+	);
+	attachPipelineToMaterial(blurXSingleChannelPipeline, blurXSingleChannelPipelineLayout, "blurXSingleChannelMaterial");
+
+	// Blur Y Single Channel pipeline
+	VkPipeline blurYSingleChannelPipeline;
+	VkPipelineLayout blurYSingleChannelPipelineLayout;
+	vkutil::pipelinebuilder::build(
+		{
+			VkPushConstantRange{
+				.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+				.offset = 0,
+				.size = sizeof(GPUBlurParams)
+			}
+		},
+		{},
+		{
+			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/genbrdflut.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/blur_y_singlechannel.frag.spv" },
+		},
+		{},  // No triangles are actually streamed in
+		{},
+		vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+		eighthScreenspaceViewport,
+		eighthScreenspaceScissor,
+		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE),
+		{ singleChannelAttachmentState },
+		vkinit::multisamplingStateCreateInfo(),
+		vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_ALWAYS),
+		{},
+		_blurYNearsideCoCRenderPass,
+		0,
+		blurYSingleChannelPipeline,
+		blurYSingleChannelPipelineLayout
+	);
+	attachPipelineToMaterial(blurYSingleChannelPipeline, blurYSingleChannelPipelineLayout, "blurYSingleChannelMaterial");
+
+	// Gather Depth of Field pipeline
+	VkPipeline gatherDOFPipeline;
+	VkPipelineLayout gatherDOFPipelineLayout;
+	vkutil::pipelinebuilder::build(
+		{
+			VkPushConstantRange{
+				.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+				.offset = 0,
+				.size = sizeof(GPUGatherDOFParams)
+			}
+		},
+		{},
+		{
+			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/genbrdflut.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/gather_dof.frag.spv" },
+		},
+		{},  // No triangles are actually streamed in
+		{},
+		vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+		halfScreenspaceViewport,
+		halfScreenspaceScissor,
+		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE),
+		{ vkinit::colorBlendAttachmentState(), vkinit::colorBlendAttachmentState() },
+		vkinit::multisamplingStateCreateInfo(),
+		vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_ALWAYS),
+		{},
+		_gatherDOFRenderPass,
+		0,
+		gatherDOFPipeline,
+		gatherDOFPipelineLayout
+	);
+	attachPipelineToMaterial(gatherDOFPipeline, gatherDOFPipelineLayout, "gatherDOFMaterial");
+
 	// Destroy pipelines when recreating swapchain
 	_swapchainDependentDeletionQueue.pushFunction([=]() {
 		vkDestroyPipeline(_device, meshZPrepassPipeline, nullptr);
@@ -3614,6 +3796,11 @@ void VulkanEngine::initPipelines()
 		vkDestroyPipeline(_device, wireframeBehindPipeline, nullptr);
 		vkDestroyPipeline(_device, shadowDepthPassPipeline, nullptr);
 		vkDestroyPipeline(_device, postprocessPipeline, nullptr);
+		vkDestroyPipeline(_device, CoCPipeline, nullptr);
+		vkDestroyPipeline(_device, downsizeNearfieldPipeline, nullptr);
+		vkDestroyPipeline(_device, blurXSingleChannelPipeline, nullptr);
+		vkDestroyPipeline(_device, blurYSingleChannelPipeline, nullptr);
+		vkDestroyPipeline(_device, gatherDOFPipeline, nullptr);
 	});
 
 	//
