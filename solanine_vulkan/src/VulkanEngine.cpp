@@ -889,7 +889,7 @@ void ppDepthOfField_GenerateHalfResImages(VkCommandBuffer cmd, Texture& mainImag
 	);
 }
 
-void ppDepthOfField_CalculateCircleOfConfusion(VkCommandBuffer cmd, VkRenderPass CoCRenderPass, VkFramebuffer CoCFramebuffer, Material& CoCMaterial, VkExtent2D& halfResImageExtent)
+void ppDepthOfField_CalculateCircleOfConfusion(VkCommandBuffer cmd, VkRenderPass CoCRenderPass, VkFramebuffer CoCFramebuffer, Material& CoCMaterial, GPUCoCParams& CocParams, VkExtent2D& halfResImageExtent)
 {
 	VkClearValue clearValue;
 	clearValue.color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
@@ -914,12 +914,13 @@ void ppDepthOfField_CalculateCircleOfConfusion(VkCommandBuffer cmd, VkRenderPass
 
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, CoCMaterial.pipeline);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, CoCMaterial.pipelineLayout, 0, 1, &CoCMaterial.textureSet, 0, nullptr);
+	vkCmdPushConstants(cmd, CoCMaterial.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(GPUCoCParams), &CocParams);
 	vkCmdDraw(cmd, 3, 1, 0, 0);
 
 	vkCmdEndRenderPass(cmd);
 }
 
-void ppDepthOfField_DownsizeAndBlurNearsideCoC(VkCommandBuffer cmd, VkRenderPass downsizeNearsideCoCRenderPass, VkFramebuffer downsizeNearsideCoCFramebuffer, Material& downsizeNearsideCoCMaterial, VkRenderPass blurXNearsideCoCRenderPass, VkFramebuffer blurXNearsideCoCFramebuffer, Material& blurXMaterial, VkRenderPass blurYNearsideCoCRenderPass, VkFramebuffer blurYNearsideCoCFramebuffer, Material& blurYMaterial, VkExtent2D& eighthResImageExtent)
+void ppDepthOfField_DownsizeAndBlurNearsideCoC(VkCommandBuffer cmd, VkRenderPass downsizeNearsideCoCRenderPass, VkFramebuffer downsizeNearsideCoCFramebuffer, Material& downsizeNearsideCoCMaterial, VkRenderPass blurXNearsideCoCRenderPass, VkFramebuffer blurXNearsideCoCFramebuffer, Material& blurXMaterial, VkRenderPass blurYNearsideCoCRenderPass, VkFramebuffer blurYNearsideCoCFramebuffer, Material& blurYMaterial, GPUBlurParams& blurParams, VkExtent2D& eighthResImageExtent)
 {
 	// Downsize nearside CoC.
 	VkClearValue clearValue;
@@ -963,13 +964,14 @@ void ppDepthOfField_DownsizeAndBlurNearsideCoC(VkCommandBuffer cmd, VkRenderPass
 		Material& blurMaterial = *blurMaterials[i];
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, blurMaterial.pipeline);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, blurMaterial.pipelineLayout, 0, 1, &blurMaterial.textureSet, 0, nullptr);
+		vkCmdPushConstants(cmd, blurMaterial.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(GPUBlurParams), &blurParams);
 		vkCmdDraw(cmd, 3, 1, 0, 0);
 
 		vkCmdEndRenderPass(cmd);
 	}
 }
 
-void ppDepthOfField_GatherDepthOfField(VkCommandBuffer cmd, VkRenderPass gatherDOFRenderPass, VkFramebuffer gatherDOFFramebuffer, Material& gatherDOFMaterial, VkExtent2D& halfResImageExtent)
+void ppDepthOfField_GatherDepthOfField(VkCommandBuffer cmd, VkRenderPass gatherDOFRenderPass, VkFramebuffer gatherDOFFramebuffer, Material& gatherDOFMaterial, VkExtent2D& halfResImageExtent, GPUGatherDOFParams& dofParams)
 {
 	// Downsize nearside CoC.
 	VkClearValue clearValue;
@@ -994,12 +996,13 @@ void ppDepthOfField_GatherDepthOfField(VkCommandBuffer cmd, VkRenderPass gatherD
 
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, gatherDOFMaterial.pipeline);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, gatherDOFMaterial.pipelineLayout, 0, 1, &gatherDOFMaterial.textureSet, 0, nullptr);
+	vkCmdPushConstants(cmd, gatherDOFMaterial.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(GPUGatherDOFParams), &dofParams);
 	vkCmdDraw(cmd, 3, 1, 0, 0);
 
 	vkCmdEndRenderPass(cmd);
 }
 
-void ppDepthOfField(VkCommandBuffer cmd, Texture& mainImage, Texture& depthImage, VkExtent2D& windowExtent, Texture& halfResMainImage, Texture& halfResDepthImage, VkExtent2D& halfResImageExtent, VkRenderPass CoCRenderPass, VkFramebuffer CoCFramebuffer, Material& CoCMaterial, VkRenderPass downsizeNearsideCoCRenderPass, VkFramebuffer downsizeNearsideCoCFramebuffer, Material& downsizeNearsideCoCMaterial, VkRenderPass blurXNearsideCoCRenderPass, VkFramebuffer blurXNearsideCoCFramebuffer, Material& blurXMaterial, VkRenderPass blurYNearsideCoCRenderPass, VkFramebuffer blurYNearsideCoCFramebuffer, Material& blurYMaterial, VkExtent2D& eighthResImageExtent, VkRenderPass gatherDOFRenderPass, VkFramebuffer gatherDOFFramebuffer, Material& gatherDOFMaterial)
+void ppDepthOfField(VkCommandBuffer cmd, Texture& mainImage, Texture& depthImage, VkExtent2D& windowExtent, Texture& halfResMainImage, Texture& halfResDepthImage, VkExtent2D& halfResImageExtent, VkRenderPass CoCRenderPass, VkFramebuffer CoCFramebuffer, Material& CoCMaterial, GPUCoCParams& CocParams, VkRenderPass downsizeNearsideCoCRenderPass, VkFramebuffer downsizeNearsideCoCFramebuffer, Material& downsizeNearsideCoCMaterial, VkRenderPass blurXNearsideCoCRenderPass, VkFramebuffer blurXNearsideCoCFramebuffer, Material& blurXMaterial, VkRenderPass blurYNearsideCoCRenderPass, VkFramebuffer blurYNearsideCoCFramebuffer, Material& blurYMaterial, GPUBlurParams& blurParams, VkExtent2D& eighthResImageExtent, VkRenderPass gatherDOFRenderPass, VkFramebuffer gatherDOFFramebuffer, Material& gatherDOFMaterial, GPUGatherDOFParams& dofParams)
 {
 	ppDepthOfField_GenerateHalfResImages(
 		cmd,
@@ -1016,6 +1019,7 @@ void ppDepthOfField(VkCommandBuffer cmd, Texture& mainImage, Texture& depthImage
 		CoCRenderPass,
 		CoCFramebuffer,
 		CoCMaterial,
+		CocParams,
 		halfResImageExtent
 	);
 
@@ -1030,6 +1034,7 @@ void ppDepthOfField(VkCommandBuffer cmd, Texture& mainImage, Texture& depthImage
 		blurYNearsideCoCRenderPass,
 		blurYNearsideCoCFramebuffer,
 		blurYMaterial,
+		blurParams,
 		eighthResImageExtent
 	);
 
@@ -1038,7 +1043,8 @@ void ppDepthOfField(VkCommandBuffer cmd, Texture& mainImage, Texture& depthImage
 		gatherDOFRenderPass,
 		gatherDOFFramebuffer,
 		gatherDOFMaterial,
-		halfResImageExtent
+		halfResImageExtent,
+		dofParams
 	);
 }
 
@@ -1053,6 +1059,19 @@ void VulkanEngine::renderPostprocessRenderpass(const FrameData& currentFrame, Vk
 		_bloomPostprocessImageExtent
 	);
 
+	GPUCoCParams CocParams = {
+		.cameraZNear = _camera->sceneCamera.zNear,
+		.cameraZFar = _camera->sceneCamera.zFar,
+		.focusDepth = 10.5f,  // @HARDCODE
+		.focusExtent = 7.5f,
+		.blurExtent = 7.5f * 2.0f,
+	};
+	GPUBlurParams blurParams = {};
+	blurParams.oneOverImageExtent[0] = 1.0f / _eighthResImageExtent.width;
+	blurParams.oneOverImageExtent[1] = 1.0f / _eighthResImageExtent.height;
+	GPUGatherDOFParams dofParams = {
+		.sampleRadiusMultiplier = 1.0f,
+	};
 	ppDepthOfField(
 		cmd,
 		_mainImage,
@@ -1064,6 +1083,7 @@ void VulkanEngine::renderPostprocessRenderpass(const FrameData& currentFrame, Vk
 		_CoCRenderPass,
 		_CoCFramebuffer,
 		*getMaterial("CoCMaterial"),
+		CocParams,
 		_downsizeNearsideCoCRenderPass,
 		_downsizeNearsideCoCFramebuffer,
 		*getMaterial("downsizeNearsideCoCMaterial"),
@@ -1073,10 +1093,12 @@ void VulkanEngine::renderPostprocessRenderpass(const FrameData& currentFrame, Vk
 		_blurYNearsideCoCRenderPass,
 		_blurYNearsideCoCFramebuffer,
 		*getMaterial("blurYSingleChannelMaterial"),
+		blurParams,
 		_eighthResImageExtent,
 		_gatherDOFRenderPass,
 		_gatherDOFFramebuffer,
-		*getMaterial("gatherDOFMaterial")
+		*getMaterial("gatherDOFMaterial"),
+		dofParams
 	);
 
 	// Combine all postprocessing
