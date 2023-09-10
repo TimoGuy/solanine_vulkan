@@ -15,11 +15,10 @@ layout (push_constant) uniform GatherDOFParams
 
 layout (set = 0, binding = 0) uniform sampler2D nearFieldImage;
 layout (set = 0, binding = 1) uniform sampler2D farFieldImage;
-layout (set = 0, binding = 1) uniform sampler2D nearFieldDownsizedCoCImage;
+layout (set = 0, binding = 2) uniform sampler2D nearFieldDownsizedCoCImage;
 
 
 #define NUM_SAMPLE_POINTS 36
-#define BOKEH_SAMPLE_MULTIPLIER (1.0 / (NUM_SAMPLE_POINTS + 1.0))
 const vec2 bokehFilter[NUM_SAMPLE_POINTS] = vec2[](  // 6x6 5-edge shape with 12deg rotation sample points. (Generated from `etc/calc_sample_points_bokeh.py`)
 	vec2(-0.44611501104609963, -0.686955969333418),
 	vec2(-0.6365611600251629, -0.5154775057634131),
@@ -65,29 +64,37 @@ const uint MODE_FARFIELD = 1;
 
 vec4 gatherDOF(vec4 colorAndCoC, float sampleRadius, uint mode)
 {
-	vec4 accumulatedColor = colorAndCoC * BOKEH_SAMPLE_MULTIPLIER;
+	vec4 accumulatedColor = colorAndCoC;
+	uint numColors = (accumulatedColor.a > 0.0) ? 1 : 0;
 	for (int i = 0; i < NUM_SAMPLE_POINTS; i++)
 	{
 		vec2 sampleUV =
 			inUV +
 			bokehFilter[i] * vec2(gatherDOFParams.oneOverArbitraryResExtentX, gatherDOFParams.oneOverArbitraryResExtentY) * sampleRadius;
+		vec4 sampled;
 		if (mode == MODE_NEARFIELD)
-			accumulatedColor += texture(nearFieldImage, sampleUV) * BOKEH_SAMPLE_MULTIPLIER;
+			sampled = texture(nearFieldImage, sampleUV);
 		else
-			accumulatedColor += texture(farFieldImage, sampleUV) * BOKEH_SAMPLE_MULTIPLIER;
+			sampled = texture(farFieldImage, sampleUV);
+
+		if (sampled.a > 0.0)
+		{
+			accumulatedColor += sampled;
+			numColors++;
+		}
 	}
 
-	return accumulatedColor;
+	return accumulatedColor / numColors;
 }
 
 void main()
 {
 	vec4 nearField = texture(nearFieldImage, inUV);
 	vec4 farField = texture(farFieldImage, inUV);
+	float nearFieldCoC = texture(nearFieldDownsizedCoCImage, inUV).r;
 
-	if (nearField.a > 0.0)
+	if (nearFieldCoC > 0.0)
 	{
-		float nearFieldCoC = texture(nearFieldDownsizedCoCImage, inUV).r;
 		nearField = gatherDOF(nearField, nearFieldCoC * gatherDOFParams.sampleRadiusMultiplier, MODE_NEARFIELD);
 	}
 
