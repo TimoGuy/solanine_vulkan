@@ -1044,7 +1044,14 @@ void ppDepthOfField(VkCommandBuffer cmd, Texture& mainImage, Texture& depthImage
 void VulkanEngine::renderPostprocessRenderpass(const FrameData& currentFrame, VkCommandBuffer cmd, uint32_t swapchainImageIndex)
 {
 	// Generate postprocessing.
-	ppBlitBloom(cmd, _mainImage, _windowExtent, _bloomPostprocessImage, _bloomPostprocessImageExtent);
+	ppBlitBloom(
+		cmd,
+		_mainImage,
+		_windowExtent,
+		_bloomPostprocessImage,
+		_bloomPostprocessImageExtent
+	);
+
 	ppDepthOfField(
 		cmd,
 		_mainImage,
@@ -1055,20 +1062,20 @@ void VulkanEngine::renderPostprocessRenderpass(const FrameData& currentFrame, Vk
 		_halfResImageExtent,
 		_CoCRenderPass,
 		_CoCFramebuffer,
-		CoCMaterial,
+		*getMaterial("CoCMaterial"),
 		_downsizeNearsideCoCRenderPass,
 		_downsizeNearsideCoCFramebuffer,
-		downsizeNearsideCoCMaterial,
+		*getMaterial("downsizeNearsideCoCMaterial"),
 		_blurXNearsideCoCRenderPass,
 		_blurXNearsideCoCFramebuffer,
-		blurXMaterial,
+		*getMaterial("blurXMaterial"),
 		_blurYNearsideCoCRenderPass,
 		_blurYNearsideCoCFramebuffer,
-		blurYMaterial,
+		*getMaterial("blurYMaterial"),
 		_eighthResImageExtent,
 		_gatherDOFRenderPass,
 		_gatherDOFFramebuffer,
-		gatherDOFMaterial
+		*getMaterial("gatherDOFMaterial")
 	);
 
 	// Combine all postprocessing
@@ -1772,6 +1779,32 @@ void VulkanEngine::initCommands()
 	VK_CHECK(vkAllocateCommandBuffers(_device, &cmdAllocInfo, &_uploadContext.commandBuffer));
 }
 
+void createRenderTexture(VmaAllocator allocator, VkDevice device, Texture& texture, VkFormat imageFormat, VkImageUsageFlags usageFlags, VkExtent3D imageExtent, uint32_t numMips, VkImageAspectFlags aspectFlags, VkFilter samplerFilter, VkSamplerAddressMode samplerAddressMode, DeletionQueue& deletionQueue, bool createSampler = true)
+{
+	VkImageCreateInfo imgInfo = vkinit::imageCreateInfo(imageFormat, usageFlags, imageExtent, numMips);
+	VmaAllocationCreateInfo imgAllocInfo = {
+		.usage = VMA_MEMORY_USAGE_GPU_ONLY,
+	};
+	vmaCreateImage(allocator, &imgInfo, &imgAllocInfo, &texture.image._image, &texture.image._allocation, nullptr);
+	texture.image._mipLevels = numMips;
+
+	VkImageViewCreateInfo bloomImgViewInfo = vkinit::imageviewCreateInfo(imageFormat, texture.image._image, aspectFlags, numMips);
+	VK_CHECK(vkCreateImageView(device, &bloomImgViewInfo, nullptr, &texture.imageView));
+
+	if (createSampler)
+	{
+		VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo((float_t)numMips, samplerFilter, samplerAddressMode, false);
+		VK_CHECK(vkCreateSampler(device, &samplerInfo, nullptr, &texture.sampler));
+	}
+
+	deletionQueue.pushFunction([=]() {
+		if (createSampler)
+			vkDestroySampler(device, texture.sampler, nullptr);
+		vkDestroyImageView(device, texture.imageView, nullptr);
+		vmaDestroyImage(allocator, texture.image._image, texture.image._allocation);
+		});
+}
+
 void VulkanEngine::initShadowRenderpass()  // @COPYPASTA
 {
 	//
@@ -2209,25 +2242,173 @@ void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is 
 	//
 	// Create bloom image
 	//
-	uint32_t numBloomMips = 5;
-	uint32_t startingBloomBufferHeight = _windowExtent.height / 2;
-	_bloomPostprocessImageExtent = {
-		.width = (uint32_t)((float_t)startingBloomBufferHeight * (float_t)_windowExtent.width / (float_t)_windowExtent.height),
-		.height = startingBloomBufferHeight,
-	};
-	VkExtent3D bloomImgExtent = { _bloomPostprocessImageExtent.width, _bloomPostprocessImageExtent.height, 1 };
-	VkImageCreateInfo bloomImgInfo = vkinit::imageCreateInfo(VK_FORMAT_R16G16B16A16_SFLOAT, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, bloomImgExtent, numBloomMips);
-	VmaAllocationCreateInfo bloomImgAllocInfo = {
-		.usage = VMA_MEMORY_USAGE_GPU_ONLY,
-	};
-	vmaCreateImage(_allocator, &bloomImgInfo, &bloomImgAllocInfo, &_bloomPostprocessImage.image._image, &_bloomPostprocessImage.image._allocation, nullptr);
-	_bloomPostprocessImage.image._mipLevels = numBloomMips;
+	{
+		uint32_t numBloomMips = 5;
+		uint32_t startingBloomBufferHeight = _windowExtent.height / 2;
+		_bloomPostprocessImageExtent = {
+			.width = (uint32_t)((float_t)startingBloomBufferHeight * (float_t)_windowExtent.width / (float_t)_windowExtent.height),
+			.height = startingBloomBufferHeight,
+		};
+		VkExtent3D bloomImgExtent = { _bloomPostprocessImageExtent.width, _bloomPostprocessImageExtent.height, 1 };
+		VkImageCreateInfo bloomImgInfo = vkinit::imageCreateInfo(VK_FORMAT_R16G16B16A16_SFLOAT, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, bloomImgExtent, numBloomMips);
+		VmaAllocationCreateInfo bloomImgAllocInfo = {
+			.usage = VMA_MEMORY_USAGE_GPU_ONLY,
+		};
+		vmaCreateImage(_allocator, &bloomImgInfo, &bloomImgAllocInfo, &_bloomPostprocessImage.image._image, &_bloomPostprocessImage.image._allocation, nullptr);
+		_bloomPostprocessImage.image._mipLevels = numBloomMips;
 
-	VkImageViewCreateInfo bloomImgViewInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R16G16B16A16_SFLOAT, _bloomPostprocessImage.image._image, VK_IMAGE_ASPECT_COLOR_BIT, numBloomMips);
-	VK_CHECK(vkCreateImageView(_device, &bloomImgViewInfo, nullptr, &_bloomPostprocessImage.imageView));
+		VkImageViewCreateInfo bloomImgViewInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R16G16B16A16_SFLOAT, _bloomPostprocessImage.image._image, VK_IMAGE_ASPECT_COLOR_BIT, numBloomMips);
+		VK_CHECK(vkCreateImageView(_device, &bloomImgViewInfo, nullptr, &_bloomPostprocessImage.imageView));
 
-	VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo((float_t)numBloomMips, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
-	VK_CHECK(vkCreateSampler(_device, &samplerInfo, nullptr, &_bloomPostprocessImage.sampler));
+		VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo((float_t)numBloomMips, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
+		VK_CHECK(vkCreateSampler(_device, &samplerInfo, nullptr, &_bloomPostprocessImage.sampler));
+
+		_swapchainDependentDeletionQueue.pushFunction([=]() {
+			vkDestroySampler(_device, _bloomPostprocessImage.sampler, nullptr);
+			vkDestroyImageView(_device, _bloomPostprocessImage.imageView, nullptr);
+			vmaDestroyImage(_allocator, _bloomPostprocessImage.image._image, _bloomPostprocessImage.image._allocation);
+			});
+	}
+
+	//
+	// Depth of Field
+	//
+	{
+		constexpr uint32_t numMips = 1;
+		constexpr VkFormat imgFormat = VK_FORMAT_R16G16B16_SFLOAT;
+
+		_halfResImageExtent = {
+			.width = (uint32_t)(_windowExtent.width / 2),
+			.height = (uint32_t)(_windowExtent.height / 2),
+		};
+		_eighthResImageExtent = {
+			.width = (uint32_t)(_windowExtent.width / 8),
+			.height = (uint32_t)(_windowExtent.height / 8),
+		};
+
+		VkExtent3D halfImgExtent = { _halfResImageExtent.width, _halfResImageExtent.height, 1 };
+		VkExtent3D eighthImgExtent = { _eighthResImageExtent.width, _eighthResImageExtent.height, 1 };
+
+		createRenderTexture(
+			_allocator,
+			_device,
+			_halfResImage,
+			VK_FORMAT_R16G16B16_SFLOAT,
+			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+			halfImgExtent,
+			1,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_FILTER_NEAREST,
+			VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			_swapchainDependentDeletionQueue
+		);
+
+		createRenderTexture(
+			_allocator,
+			_device,
+			_halfResDepthImage,
+			VK_FORMAT_R32_SFLOAT,
+			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+			halfImgExtent,
+			1,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_FILTER_NEAREST,
+			VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			_swapchainDependentDeletionQueue
+		);
+
+		createRenderTexture(
+			_allocator,
+			_device,
+			_CoCImage,
+			VK_FORMAT_R16G16_SFLOAT,
+			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+			halfImgExtent,
+			1,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			NULL,
+			NULL,
+			_swapchainDependentDeletionQueue,
+			false
+		);
+
+		{
+			// Create special MAX sampler for this texture.
+			VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo((float_t)numMips, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
+			samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+			samplerInfo.maxLod = 3.0f;  // Should be enough to make an 1/8th of the CoC size.
+
+			VkSamplerReductionModeCreateInfo reductionSamplerInfo = {
+				.sType = VK_STRUCTURE_TYPE_SAMPLER_REDUCTION_MODE_CREATE_INFO,
+				.pNext = nullptr,
+				.reductionMode = VK_SAMPLER_REDUCTION_MODE_MAX,
+			};
+
+			samplerInfo.pNext = &reductionSamplerInfo;
+
+			VK_CHECK(vkCreateSampler(_device, &samplerInfo, nullptr, &_CoCImage.sampler));
+
+			_swapchainDependentDeletionQueue.pushFunction([=]() {
+				vkDestroySampler(_device, _CoCImage.sampler, nullptr);
+				});
+		}
+
+		createRenderTexture(
+			_allocator,
+			_device,
+			_nearFieldImage,
+			VK_FORMAT_R16G16B16_SFLOAT,
+			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+			halfImgExtent,
+			1,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_FILTER_LINEAR,
+			VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			_swapchainDependentDeletionQueue
+		);
+
+		createRenderTexture(
+			_allocator,
+			_device,
+			_farFieldImage,
+			VK_FORMAT_R16G16B16_SFLOAT,
+			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+			halfImgExtent,
+			1,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_FILTER_LINEAR,
+			VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			_swapchainDependentDeletionQueue
+		);
+
+		createRenderTexture(
+			_allocator,
+			_device,
+			_nearFieldEighthResCoCImage,
+			VK_FORMAT_R16_SFLOAT,
+			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+			eighthImgExtent,
+			1,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_FILTER_NEAREST,
+			VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			_swapchainDependentDeletionQueue
+		);
+
+		createRenderTexture(
+			_allocator,
+			_device,
+			_nearFieldEighthResCoCImagePongImage,
+			VK_FORMAT_R16_SFLOAT,
+			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+			eighthImgExtent,
+			1,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_FILTER_NEAREST,
+			VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			_swapchainDependentDeletionQueue
+		);
+	}
 
 	//
 	// Postprocessing
@@ -2263,13 +2444,6 @@ void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is 
 		.bindImage(3, &depthBufferImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
 		.build(postprocessingTextureSet, _postprocessSetLayout);
 	attachTextureSetToMaterial(postprocessingTextureSet, "postprocessMaterial");
-
-	_swapchainDependentDeletionQueue.pushFunction([=]() {
-
-		vkDestroySampler(_device, _bloomPostprocessImage.sampler, nullptr);
-		vkDestroyImageView(_device, _bloomPostprocessImage.imageView, nullptr);
-		vmaDestroyImage(_allocator, _bloomPostprocessImage.image._image, _bloomPostprocessImage.image._allocation);
-		});
 }
 
 void VulkanEngine::initPickingRenderpass()    // @NOTE: @COPYPASTA: This is really copypasta of the above function (initMainRenderpass)
