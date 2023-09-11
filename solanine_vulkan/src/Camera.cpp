@@ -8,6 +8,7 @@
 #include "RenderObject.h"
 #include "PhysicsEngine.h"
 #include "VulkanEngine.h"  // VulkanEngine
+#include "GlobalState.h"
 #include "Debug.h"
 
 
@@ -342,6 +343,8 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 
 			glm_vec3_sub(sceneCamera.gpuCameraData.cameraPosition, mainCamMode.focusPositionOffset, mainCamMode.focusPosition);
 			mainCamMode.actualLookDistance = 0.0f;
+
+			glm_vec3_zero(mainCamMode.opponentTargetTransition.DOFPropsVelocities);
 		}
 
 		allowInput = false;
@@ -352,7 +355,13 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 	//
 	// Focus onto target object
 	//
+	auto& ott = mainCamMode.opponentTargetTransition;
+
 	float_t targetLookDistance = mainCamMode.lookDistance;
+
+	vec3 targetDOFProps;
+	glm_vec3_copy(ott.DOFPropsRelaxedState, targetDOFProps);
+
 	if (mainCamMode.targetObject != nullptr)
 	{
 		// Update the focus position
@@ -367,8 +376,6 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 
 		if (mainCamMode.opponentTargetObject != nullptr)  // Opponent target position mixing in.
 		{
-			auto& ott = mainCamMode.opponentTargetTransition;
-
 			// Pre-mutation calcs.
 			float_t deltaYPosition = mainCamMode.opponentTargetObject->interpolBasePosition[1] - targetPosition[1];
 
@@ -452,6 +459,19 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 				ott.lookDistanceObliqueAmount * flatDistance * obliqueMultiplier +
 				ott.lookDistanceHeightAmount * std::abs(deltaYPosition);
 			targetLookDistance = ott.calculatedLookDistance;
+
+			// Set the target depth of field properties.
+			vec2 flatMidpoint;
+			glm_vec2_add(flatTargetPosition, flatOpponentPosition, flatMidpoint);
+			glm_vec2_scale(flatMidpoint, 0.5f, flatMidpoint);
+
+			vec2 deltaCameraToMidpoint;
+			glm_vec2_sub(flatMidpoint, vec2{ mainCamMode.calculatedCameraPosition[0], mainCamMode.calculatedCameraPosition[2] }, deltaCameraToMidpoint);
+			float_t distanceForwardToMidpoint = glm_vec2_dot(normFlatLookDirection, deltaCameraToMidpoint);
+
+			targetDOFProps[0] = distanceForwardToMidpoint;
+			targetDOFProps[1] = flatDistance * std::abs(fDeltaPosDotfLookDir) * 0.5f + 1.0f;
+			targetDOFProps[2] = 2.0f;  // Going for a bit of a tilt-shift effect.
 
 			if (ott.first)
 				ott.first = false;
@@ -556,6 +576,37 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 		glm_vec3_copy(mainCamMode.calculatedCameraPosition, sceneCamera.gpuCameraData.cameraPosition);
 		sceneCamera.recalculateSceneCamera(_engine->_pbrRendering.gpuSceneShadingProps);
 	}
+
+	//
+	// Update Depth of Field
+	//
+	globalState::DOFFocusDepth =
+		smoothDamp(
+			globalState::DOFFocusDepth,
+			targetDOFProps[0],
+			ott.DOFPropsVelocities[0],
+			ott.depthOfFieldSmoothTime,
+			std::numeric_limits<float_t>::max(),
+			deltaTime
+		);
+	globalState::DOFFocusExtent =
+		smoothDamp(
+			globalState::DOFFocusExtent,
+			targetDOFProps[1],
+			ott.DOFPropsVelocities[1],
+			ott.depthOfFieldSmoothTime,
+			std::numeric_limits<float_t>::max(),
+			deltaTime
+		);
+	globalState::DOFBlurExtent =
+		smoothDamp(
+			globalState::DOFBlurExtent,
+			targetDOFProps[2],
+			ott.DOFPropsVelocities[2],
+			ott.depthOfFieldSmoothTime,
+			std::numeric_limits<float_t>::max(),
+			deltaTime
+		);
 }
 
 void Camera::updateFreeCam(const float_t& deltaTime, CameraModeChangeEvent changeEvent)

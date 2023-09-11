@@ -5794,6 +5794,8 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 			ImGui::DragFloat("opponentTargetTransition.lookDistanceObliqueAmount", &_camera->mainCamMode.opponentTargetTransition.lookDistanceObliqueAmount, 0.1f);
 			ImGui::DragFloat("opponentTargetTransition.lookDistanceHeightAmount", &_camera->mainCamMode.opponentTargetTransition.lookDistanceHeightAmount, 0.1f);
 			ImGui::DragFloat("opponentTargetTransition.focusPositionExtraYOffsetWhenTargeting", &_camera->mainCamMode.opponentTargetTransition.focusPositionExtraYOffsetWhenTargeting, 0.1f);
+			ImGui::DragFloat("opponentTargetTransition.depthOfFieldSmoothTime", &_camera->mainCamMode.opponentTargetTransition.depthOfFieldSmoothTime, 0.1f);
+			ImGui::DragFloat3("opponentTargetTransition.DOFPropsRelaxedState", _camera->mainCamMode.opponentTargetTransition.DOFPropsRelaxedState, 0.1f);
 		}
 
 		if (ImGui::CollapsingHeader("Depth of Field Properties", ImGuiTreeNodeFlags_DefaultOpen))

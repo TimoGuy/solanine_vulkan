@@ -22,9 +22,9 @@ namespace globalState
 
     float_t timescale = 1.0f;
 
-    float_t DOFFocusDepth = 7.5f;
-    float_t DOFFocusExtent = 4.0f;
-    float_t DOFBlurExtent = 2.0f;
+    float_t DOFFocusDepth  = 1000.0f;  // 7.5f;  // @NOTE: I think these values are a cool tilt-shift... but probably doesn't have a place for this game.
+    float_t DOFFocusExtent = 1000.0f;  // 4.0f;
+    float_t DOFBlurExtent  = 0.0f;  // 2.0f;
 
     SceneCamera* sceneCameraRef = nullptr;
 

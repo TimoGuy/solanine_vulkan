@@ -26,4 +26,5 @@
         - [x] Debug view: fade towards red for the close CoC and green for the far CoC.
             > It's just a simple debug view you can enable by uncommenting the code in the postprocess.frag shader.
 
-- [ ] Insert it into the Aura focusing.
+- [x] Insert it into the Aura focusing.
+    > Now the camera properly places the focus depth and focus length parameters using just the positions of the two characters and the orientation of the camera.
