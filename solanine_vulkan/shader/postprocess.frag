@@ -94,9 +94,8 @@ void main()
 	vec4 rawColor = texture(mainImage, inUV);
 	vec4 dofFarColorAndCoC = texture(dofFarImage, inUV);
 	float farCoC = clamp(calculateCoC(), 0.0, 1.0);  // @NOTE: this is a rough draft.
-	rawColor.rgb = mix(rawColor.rgb, dofFarColorAndCoC.rgb, farCoC);  // @TODO: this is incorrect, since you're supposed to use the full res depth buffer to mix in this DOF... but for now keep this!
+	rawColor.rgb = mix(rawColor.rgb, dofFarColorAndCoC.rgb, farCoC);
 	vec4 dofNearColorAndCoC = texture(dofNearImage, inUV);
-	// rawColor.rgb = mix(vec3(1.0)/*rawColor.rgb*/, dofNearColorAndCoC.rgb, (dofNearColorAndCoC.a > 0.0) ? 1.0 : 0.0);
 	rawColor.rgb = mix(rawColor.rgb, dofNearColorAndCoC.rgb, dofNearColorAndCoC.a);
 
 	// @DEBUG: See DOF ranges.
