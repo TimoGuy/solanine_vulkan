@@ -35,8 +35,9 @@ layout (set = 1, binding = 0) uniform sampler2D mainImage;
 layout (set = 1, binding = 1) uniform sampler2D uiImage;
 layout (set = 1, binding = 2) uniform sampler2D bloomImage;
 layout (set = 1, binding = 3) uniform sampler2D depthImage;
-layout (set = 1, binding = 4) uniform sampler2D dofNearImage;
-layout (set = 1, binding = 5) uniform sampler2D dofFarImage;
+layout (set = 1, binding = 4) uniform sampler2D dofCoCImage;
+layout (set = 1, binding = 5) uniform sampler2D dofNearImage;
+layout (set = 1, binding = 6) uniform sampler2D dofFarImage;
 
 
 #define MANUAL_SRGB 1
@@ -75,25 +76,11 @@ vec4 SRGBtoLINEAR(vec4 srgbIn)
 	#endif //MANUAL_SRGB
 }
 
-float calculateCoC()  // @COPYPASTA: this is a rough draft. Will maybe generate CoC in different shader or something like that in the future perhaps.
-{
-	float depth = texture(depthImage, inUV).r;
-	depth =
-		cocParams.cameraZNear * cocParams.cameraZFar /
-		(cocParams.cameraZFar +
-			depth * (cocParams.cameraZNear - cocParams.cameraZFar));
-
-	float depthRelativeToFocusDepth = depth - cocParams.focusDepth;
-	if (abs(depthRelativeToFocusDepth) < cocParams.focusExtent)
-		return 0.0;
-	return (depthRelativeToFocusDepth - cocParams.focusExtent * sign(depthRelativeToFocusDepth)) / cocParams.blurExtent;
-}
-
 void main()
 {
 	vec4 rawColor = texture(mainImage, inUV);
 	vec4 dofFarColorAndCoC = texture(dofFarImage, inUV);
-	float farCoC = clamp(calculateCoC(), 0.0, 1.0);  // @NOTE: this is a rough draft.
+	float farCoC = texture(dofCoCImage, inUV).g;  // @NOTE: using the NEAREST filter.
 	rawColor.rgb = mix(rawColor.rgb, dofFarColorAndCoC.rgb, farCoC);
 	vec4 dofNearColorAndCoC = texture(dofNearImage, inUV);
 	rawColor.rgb = mix(rawColor.rgb, dofNearColorAndCoC.rgb, dofNearColorAndCoC.a);

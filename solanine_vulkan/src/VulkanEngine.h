@@ -210,20 +210,19 @@ public:
 	// Depth of Field
 	float_t        _DOFSampleRadiusMultiplier = 0.75f;
 
-	Texture        _halfResImage;
-	Texture        _halfResDepthImage;
-	VkExtent2D     _halfResImageExtent;
-
 	VkRenderPass   _CoCRenderPass;
 	VkFramebuffer  _CoCFramebuffer;
+	Texture        _CoCImage;
+	VkSampler      _CoCImageMaxSampler;
+
+	VkRenderPass   _halveCoCRenderPass;
+	VkFramebuffer  _halveCoCFramebuffer;
 	Texture        _nearFieldImage;
 	Texture        _farFieldImage;
-	Texture        _nearFieldImagePongImage;
-	Texture        _farFieldImagePongImage;
-	Texture        _nearFieldCoCImage;
+	VkExtent2D     _halfResImageExtent;
 
-	VkRenderPass   _downsizeNearsideCoCRenderPass;
-	VkFramebuffer  _downsizeNearsideCoCFramebuffer;
+	VkRenderPass   _eighthCoCRenderPass;
+	VkFramebuffer  _eighthCoCFramebuffer;
 	Texture        _nearFieldEighthResCoCImage;
 	VkExtent2D     _eighthResImageExtent;
 
@@ -235,6 +234,8 @@ public:
 
 	VkRenderPass   _gatherDOFRenderPass;
 	VkFramebuffer  _gatherDOFFramebuffer;
+	Texture        _nearFieldImagePongImage;
+	Texture        _farFieldImagePongImage;
 
 	VkRenderPass   _dofFloodFillRenderPass;
 	VkFramebuffer  _dofFloodFillFramebuffer;
