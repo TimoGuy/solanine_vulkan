@@ -5,6 +5,15 @@ layout (location = 0) in vec2 inUV;
 layout (location = 0) out vec4 outColor;
 
 
+layout (push_constant) uniform CoCParams
+{
+	float cameraZNear;
+	float cameraZFar;
+	float focusDepth;
+	float focusExtent;
+	float blurExtent;
+} cocParams;
+
 layout (set = 0, binding = 1) uniform UBOParams
 {
 	vec4  lightDir;  // PAD
@@ -66,12 +75,28 @@ vec4 SRGBtoLINEAR(vec4 srgbIn)
 	#endif //MANUAL_SRGB
 }
 
+float calculateCoC()  // @COPYPASTA: this is a rough draft. Will maybe generate CoC in different shader or something like that in the future perhaps.
+{
+	float depth = texture(depthImage, inUV).r;
+	depth =
+		cocParams.cameraZNear * cocParams.cameraZFar /
+		(cocParams.cameraZFar +
+			depth * (cocParams.cameraZNear - cocParams.cameraZFar));
+
+	float depthRelativeToFocusDepth = depth - cocParams.focusDepth;
+	if (abs(depthRelativeToFocusDepth) < cocParams.focusExtent)
+		return 0.0;
+	return (depthRelativeToFocusDepth - cocParams.focusExtent * sign(depthRelativeToFocusDepth)) / cocParams.blurExtent;
+}
+
 void main()
 {
 	vec4 rawColor = texture(mainImage, inUV);
 	vec4 dofFarColorAndCoC = texture(dofFarImage, inUV);
-	rawColor.rgb = mix(rawColor.rgb, dofFarColorAndCoC.rgb, dofFarColorAndCoC.a);  // @TODO: this is incorrect, since you're supposed to use the full res depth buffer to mix in this DOF... but for now keep this!
+	float farCoC = clamp(calculateCoC(), 0.0, 1.0);  // @NOTE: this is a rough draft.
+	rawColor.rgb = mix(rawColor.rgb, dofFarColorAndCoC.rgb, farCoC);  // @TODO: this is incorrect, since you're supposed to use the full res depth buffer to mix in this DOF... but for now keep this!
 	vec4 dofNearColorAndCoC = texture(dofNearImage, inUV);
+	// rawColor.rgb = mix(vec3(1.0)/*rawColor.rgb*/, dofNearColorAndCoC.rgb, (dofNearColorAndCoC.a > 0.0) ? 1.0 : 0.0);
 	rawColor.rgb = mix(rawColor.rgb, dofNearColorAndCoC.rgb, dofNearColorAndCoC.a);
 
 	// @DEBUG: See DOF ranges.

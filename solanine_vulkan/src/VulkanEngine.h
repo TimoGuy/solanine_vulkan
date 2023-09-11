@@ -240,6 +240,9 @@ public:
 	VkRenderPass   _dofFloodFillRenderPass;
 	VkFramebuffer  _dofFloodFillFramebuffer;
 
+	VkSampler      _nearFieldImageLinearSampler;
+	VkSampler      _farFieldImageLinearSampler;
+
 	VkDescriptorSetLayout _dofSingleTextureLayout;
 	VkDescriptorSetLayout _dofDoubleTextureLayout;
 	VkDescriptorSetLayout _dofTripleTextureLayout;

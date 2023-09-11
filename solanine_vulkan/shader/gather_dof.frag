@@ -20,6 +20,8 @@ layout (set = 0, binding = 2) uniform sampler2D nearFieldDownsizedCoCImage;
 
 #define NUM_SAMPLE_POINTS 36
 #define BOKEH_SAMPLE_MULTIPLIER (1.0 / (NUM_SAMPLE_POINTS + 1.0))
+
+#if 0
 const vec2 bokehFilter[NUM_SAMPLE_POINTS] = vec2[](  // 6x6 5-edge shape with 12deg rotation sample points. (Generated from `etc/calc_sample_points_bokeh.py`)
 	vec2(-0.44611501104609963, -0.686955969333418),
 	vec2(-0.6365611600251629, -0.5154775057634131),
@@ -58,6 +60,46 @@ const vec2 bokehFilter[NUM_SAMPLE_POINTS] = vec2[](  // 6x6 5-edge shape with 12
 	vec2(0.7056338827027746, 0.5714103863319747),
 	vec2(0.4945209623236479, 0.7614970407760532)
 );
+#else
+const vec2 bokehFilter[NUM_SAMPLE_POINTS] = vec2[](  // 6x6 6-edge shape sample points. (Generated from `etc/calc_sample_points_bokeh.py`)
+	vec2(-0.6339750881227882, -0.6339743243277791),
+	vec2(-0.866025379437842, -0.4412624284684379),
+	vec2(-0.8660253935510618, -0.1371650989014556),
+	vec2(-0.8660254062827791, 0.13716501851662002),
+	vec2(-0.8660254203959992, 0.4412623480836023),
+	vec2(-0.6339738039033809, 0.6339750409010357),
+	vec2(-0.393707130312402, -0.7726930746234514),
+	vec2(-0.3803853054105913, -0.38038444879443045),
+	vec2(-0.5196152334884269, -0.13923072070520276),
+	vec2(-0.5196152464118776, 0.13923067247430165),
+	vec2(-0.3803840298067675, 0.380385170341933),
+	vec2(-0.39370641802846706, 0.7726934907252797),
+	vec2(-0.14511476168948914, -0.9162179250557586),
+	vec2(-0.1392306563281321, -0.519615130461564),
+	vec2(-0.12679552270043246, -0.1267945732599052),
+	vec2(-0.12679425571219183, 0.12679529978165358),
+	vec2(-0.13923023543464344, 0.5196153883872209),
+	vec2(-0.1451144903435477, 0.9162181173478277),
+	vec2(0.1451148032037205, -0.9162179545331142),
+	vec2(0.139230680443625, -0.5196151389224831),
+	vec2(0.1267955768096386, -0.12679453953278869),
+	vec2(0.12679426590451207, 0.12679529638418935),
+	vec2(0.13923025955005347, 0.5196153670028207),
+	vec2(0.14511453387305864, 0.9162180744008326),
+	vec2(0.3937071626889476, -0.7726930632275603),
+	vec2(0.3803854677548758, -0.3803843476035365),
+	vec2(0.519615239950153, -0.13923021058379492),
+	vec2(0.519615239950153, 0.1392302105837951),
+	vec2(0.3803840603838292, 0.38038516014956003),
+	vec2(0.3937064573736, 0.7726934655770736),
+	vec2(0.6339750960066398, -0.6339742824692115),
+	vec2(0.8660253999169214, -0.44126136016537687),
+	vec2(0.8660253999169214, -0.1371647798141503),
+	vec2(0.8660253999169214, 0.13716477981415043),
+	vec2(0.8660253999169214, 0.44126136016537704),
+	vec2(0.6339738548651843, 0.6339750239137543)
+);
+#endif
 
 
 const uint MODE_NEARFIELD = 0;
@@ -65,7 +107,8 @@ const uint MODE_FARFIELD = 1;
 
 vec4 gatherDOF(vec4 colorAndCoC, float sampleRadius, uint mode)
 {
-	vec4 accumulatedColor = colorAndCoC * BOKEH_SAMPLE_MULTIPLIER;
+	vec4 accumulatedColor = vec4(0.0);
+	int numColors = 0;
 	for (int i = 0; i < NUM_SAMPLE_POINTS; i++)
 	{
 		vec2 sampleUV =
@@ -76,7 +119,17 @@ vec4 gatherDOF(vec4 colorAndCoC, float sampleRadius, uint mode)
 			sampled = texture(nearFieldImage, sampleUV);
 		else
 			sampled = texture(farFieldImage, sampleUV);
-		accumulatedColor += sampled * BOKEH_SAMPLE_MULTIPLIER;
+
+		accumulatedColor.rgb += sampled.rgb;
+		accumulatedColor.a += sampled.a * BOKEH_SAMPLE_MULTIPLIER;
+		if (sampled.a > 0.0)
+			numColors++;
+	}
+
+	if (numColors > 0)
+	{
+		accumulatedColor.rgb = accumulatedColor.rgb / numColors;
+		accumulatedColor.a = clamp(accumulatedColor.a, 0.0, 1.0);
 	}
 
 	return accumulatedColor;
@@ -91,6 +144,7 @@ void main()
 	if (nearFieldCoC > 0.0)
 	{
 		nearField = gatherDOF(nearField, nearFieldCoC * gatherDOFParams.sampleRadiusMultiplier, MODE_NEARFIELD);
+		nearField.a = clamp(nearField.a * 2.0, 0.0, 1.0);  // @NOTE: since a blur is essentially going on, I want to keep the outside of the blur (NOTE that the midline of the blur, 0.5, is where the near original pixels will be, so it will make it look like the original pixels are peeking out of the blurred near field).  -Timo 2023/09/10
 	}
 
 	if (farField.a > 0.0)

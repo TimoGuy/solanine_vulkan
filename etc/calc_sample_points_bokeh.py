@@ -1,8 +1,8 @@
 import math
 
 POINT_MATRIX_SIZE = 6
-EDGE_COUNT        = 5
-POINTS_ROTATION   = 0.2094395102  # 12deg
+EDGE_COUNT        = 6
+POINTS_ROTATION   = 0.0  # 12deg
 
 PI        = 3.1415927
 PI_OVER_2 = 1.5707963

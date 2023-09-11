@@ -869,7 +869,7 @@ void ppDepthOfField_GenerateHalfResImages(VkCommandBuffer cmd, Texture& mainImag
 	);
 }
 
-void ppDepthOfField_CalculateCircleOfConfusion(VkCommandBuffer cmd, VkRenderPass CoCRenderPass, VkFramebuffer CoCFramebuffer, Material& CoCMaterial, GPUCoCParams& CocParams, VkExtent2D& halfResImageExtent)
+void ppDepthOfField_CalculateCircleOfConfusion(VkCommandBuffer cmd, VkRenderPass CoCRenderPass, VkFramebuffer CoCFramebuffer, Material& CoCMaterial, GPUCoCParams& CoCParams, VkExtent2D& halfResImageExtent)
 {
 	VkClearValue clearValues[3];
 	clearValues[0].color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
@@ -896,7 +896,7 @@ void ppDepthOfField_CalculateCircleOfConfusion(VkCommandBuffer cmd, VkRenderPass
 
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, CoCMaterial.pipeline);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, CoCMaterial.pipelineLayout, 0, 1, &CoCMaterial.textureSet, 0, nullptr);
-	vkCmdPushConstants(cmd, CoCMaterial.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(GPUCoCParams), &CocParams);
+	vkCmdPushConstants(cmd, CoCMaterial.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(GPUCoCParams), &CoCParams);
 	vkCmdDraw(cmd, 3, 1, 0, 0);
 
 	vkCmdEndRenderPass(cmd);
@@ -1017,7 +1017,7 @@ void ppDepthOfField_DepthOfFieldFloodFill(VkCommandBuffer cmd, VkRenderPass dofF
 	vkCmdEndRenderPass(cmd);
 }
 
-void ppDepthOfField(VkCommandBuffer cmd, Texture& mainImage, Texture& depthImage, VkExtent2D& windowExtent, Texture& halfResMainImage, Texture& halfResDepthImage, VkExtent2D& halfResImageExtent, VkRenderPass CoCRenderPass, VkFramebuffer CoCFramebuffer, Material& CoCMaterial, GPUCoCParams& CocParams, VkRenderPass downsizeNearsideCoCRenderPass, VkFramebuffer downsizeNearsideCoCFramebuffer, Material& downsizeNearsideCoCMaterial, VkRenderPass blurXNearsideCoCRenderPass, VkFramebuffer blurXNearsideCoCFramebuffer, Material& blurXMaterial, VkRenderPass blurYNearsideCoCRenderPass, VkFramebuffer blurYNearsideCoCFramebuffer, Material& blurYMaterial, GPUBlurParams& blurParams, VkExtent2D& eighthResImageExtent, VkRenderPass gatherDOFRenderPass, VkFramebuffer gatherDOFFramebuffer, Material& gatherDOFMaterial, GPUGatherDOFParams& dofParams, VkRenderPass dofFloodFillRenderPass, VkFramebuffer dofFloodFillFramebuffer, Material& dofFloodFillMaterial, GPUBlurParams& floodfillParams)
+void ppDepthOfField(VkCommandBuffer cmd, Texture& mainImage, Texture& depthImage, VkExtent2D& windowExtent, Texture& halfResMainImage, Texture& halfResDepthImage, VkExtent2D& halfResImageExtent, VkRenderPass CoCRenderPass, VkFramebuffer CoCFramebuffer, Material& CoCMaterial, GPUCoCParams& CoCParams, VkRenderPass downsizeNearsideCoCRenderPass, VkFramebuffer downsizeNearsideCoCFramebuffer, Material& downsizeNearsideCoCMaterial, VkRenderPass blurXNearsideCoCRenderPass, VkFramebuffer blurXNearsideCoCFramebuffer, Material& blurXMaterial, VkRenderPass blurYNearsideCoCRenderPass, VkFramebuffer blurYNearsideCoCFramebuffer, Material& blurYMaterial, GPUBlurParams& blurParams, VkExtent2D& eighthResImageExtent, VkRenderPass gatherDOFRenderPass, VkFramebuffer gatherDOFFramebuffer, Material& gatherDOFMaterial, GPUGatherDOFParams& dofParams, VkRenderPass dofFloodFillRenderPass, VkFramebuffer dofFloodFillFramebuffer, Material& dofFloodFillMaterial, GPUBlurParams& floodfillParams)
 {
 	ppDepthOfField_GenerateHalfResImages(
 		cmd,
@@ -1034,7 +1034,7 @@ void ppDepthOfField(VkCommandBuffer cmd, Texture& mainImage, Texture& depthImage
 		CoCRenderPass,
 		CoCFramebuffer,
 		CoCMaterial,
-		CocParams,
+		CoCParams,
 		halfResImageExtent
 	);
 
@@ -1185,6 +1185,7 @@ void VulkanEngine::renderPostprocessRenderpass(const FrameData& currentFrame, Vk
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, postprocessMaterial.pipeline);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, postprocessMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, postprocessMaterial.pipelineLayout, 1, 1, &postprocessMaterial.textureSet, 0, nullptr);
+	vkCmdPushConstants(cmd, postprocessMaterial.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(GPUCoCParams), &_CoCParams);
 	vkCmdDraw(cmd, 3, 1, 0, 0);
 
 	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
@@ -1871,6 +1872,16 @@ void VulkanEngine::initCommands()
 	VK_CHECK(vkAllocateCommandBuffers(_device, &cmdAllocInfo, &_uploadContext.commandBuffer));
 }
 
+void createImageSampler(VkDevice device, uint32_t numMips, VkFilter samplerFilter, VkSamplerAddressMode samplerAddressMode, VkSampler& sampler, DeletionQueue& deletionQueue)
+{
+	VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo((float_t)numMips, samplerFilter, samplerAddressMode, false);
+	VK_CHECK(vkCreateSampler(device, &samplerInfo, nullptr, &sampler));
+	
+	deletionQueue.pushFunction([=]() {
+		vkDestroySampler(device, sampler, nullptr);
+		});
+}
+
 void createRenderTexture(VmaAllocator allocator, VkDevice device, Texture& texture, VkFormat imageFormat, VkImageUsageFlags usageFlags, VkExtent3D imageExtent, uint32_t numMips, VkImageAspectFlags aspectFlags, VkFilter samplerFilter, VkSamplerAddressMode samplerAddressMode, DeletionQueue& deletionQueue, bool createSampler = true)
 {
 	VkImageCreateInfo imgInfo = vkinit::imageCreateInfo(imageFormat, usageFlags, imageExtent, numMips);
@@ -1884,14 +1895,9 @@ void createRenderTexture(VmaAllocator allocator, VkDevice device, Texture& textu
 	VK_CHECK(vkCreateImageView(device, &imgViewInfo, nullptr, &texture.imageView));
 
 	if (createSampler)
-	{
-		VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo((float_t)numMips, samplerFilter, samplerAddressMode, false);
-		VK_CHECK(vkCreateSampler(device, &samplerInfo, nullptr, &texture.sampler));
-	}
+		createImageSampler(device, numMips, samplerFilter, samplerAddressMode, texture.sampler, deletionQueue);
 
 	deletionQueue.pushFunction([=]() {
-		if (createSampler)
-			vkDestroySampler(device, texture.sampler, nullptr);
 		vkDestroyImageView(device, texture.imageView, nullptr);
 		vmaDestroyImage(allocator, texture.image._image, texture.image._allocation);
 		});
@@ -2818,8 +2824,16 @@ void VulkanEngine::initPostprocessImages()
 			halfImgExtent,
 			numMips,
 			VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_FILTER_NEAREST,
+			VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			_swapchainDependentDeletionQueue
+		);
+		createImageSampler(
+			_device,
+			numMips,
 			VK_FILTER_LINEAR,
 			VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			_nearFieldImageLinearSampler,
 			_swapchainDependentDeletionQueue
 		);
 
@@ -2832,8 +2846,16 @@ void VulkanEngine::initPostprocessImages()
 			halfImgExtent,
 			numMips,
 			VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_FILTER_NEAREST,
+			VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			_swapchainDependentDeletionQueue
+		);
+		createImageSampler(
+			_device,
+			numMips,
 			VK_FILTER_LINEAR,
 			VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			_farFieldImageLinearSampler,
 			_swapchainDependentDeletionQueue
 		);
 
@@ -2846,7 +2868,7 @@ void VulkanEngine::initPostprocessImages()
 			halfImgExtent,
 			numMips,
 			VK_IMAGE_ASPECT_COLOR_BIT,
-			VK_FILTER_LINEAR,
+			VK_FILTER_NEAREST,
 			VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
 			_swapchainDependentDeletionQueue
 		);
@@ -2860,7 +2882,7 @@ void VulkanEngine::initPostprocessImages()
 			halfImgExtent,
 			numMips,
 			VK_IMAGE_ASPECT_COLOR_BIT,
-			VK_FILTER_LINEAR,
+			VK_FILTER_NEAREST,
 			VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
 			_swapchainDependentDeletionQueue
 		);
@@ -3054,12 +3076,12 @@ void VulkanEngine::initPostprocessImages()
 		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 	};
 	VkDescriptorImageInfo dofNearImageInfo = {
-		.sampler = _nearFieldImage.sampler,
+		.sampler = _nearFieldImageLinearSampler,
 		.imageView = _nearFieldImage.imageView,
 		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 	};
 	VkDescriptorImageInfo dofFarImageInfo = {
-		.sampler = _farFieldImage.sampler,
+		.sampler = _farFieldImageLinearSampler,
 		.imageView = _farFieldImage.imageView,
 		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 	};
@@ -3877,7 +3899,13 @@ void VulkanEngine::initPipelines()
 	VkPipeline postprocessPipeline;
 	VkPipelineLayout postprocessPipelineLayout;
 	vkutil::pipelinebuilder::build(
-		{},
+		{
+			VkPushConstantRange{
+				.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+				.offset = 0,
+				.size = sizeof(GPUCoCParams)
+			}
+		},
 		{ _globalSetLayout, _postprocessSetLayout },
 		{
 			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/genbrdflut.vert.spv" },
