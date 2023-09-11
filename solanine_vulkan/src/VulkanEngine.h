@@ -69,7 +69,7 @@ struct GPUBlurParams
 
 struct GPUGatherDOFParams
 {
-	float_t sampleRadiusMultiplier = 1.0f;
+	float_t sampleRadiusMultiplier;
 	float_t oneOverArbitraryResExtentX;
 	float_t oneOverArbitraryResExtentY;
 };
@@ -208,7 +208,7 @@ public:
 	VkExtent2D   _bloomPostprocessImageExtent;
 
 	// Depth of Field
-	float_t        _DOFSampleRadiusMultiplier = 1.0f;
+	float_t        _DOFSampleRadiusMultiplier = 0.75f;
 
 	Texture        _halfResImage;
 	Texture        _halfResDepthImage;
