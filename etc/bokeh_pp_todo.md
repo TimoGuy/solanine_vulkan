@@ -34,7 +34,8 @@
         > VkImageView 0xe88693000000000c
         > They were the swapchain image views. They're deleted after the framebuffer is deleted... for some reason. Didn't know I had to take care of that whoops.
 
-
+    - [x] Fix pipeline that didn't get deleted.
+        - [x] Force deletion queue when creating pipeline so that deletion issues don't happen.
 
     - [x] Debug view: fade towards red for the close CoC and green for the far CoC.
         > It's just a simple debug view you can enable by uncommenting the code in the postprocess.frag shader.

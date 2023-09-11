@@ -3699,8 +3699,9 @@ void VulkanEngine::initPipelines()
 		_mainRenderPass,
 		0,
 		meshZPrepassPipeline,
-		meshZPrepassPipelineLayout
-		);
+		meshZPrepassPipelineLayout,
+		_swapchainDependentDeletionQueue
+	);
 	attachPipelineToMaterial(meshZPrepassPipeline, meshZPrepassPipelineLayout, "pbrZPrepassMaterial");
 
 	// Mesh Pipeline
@@ -3726,8 +3727,9 @@ void VulkanEngine::initPipelines()
 		_mainRenderPass,
 		1,
 		meshPipeline,
-		meshPipelineLayout
-		);
+		meshPipelineLayout,
+		_swapchainDependentDeletionQueue
+	);
 	attachPipelineToMaterial(meshPipeline, meshPipelineLayout, "pbrMaterial");
 
 	// Skybox pipeline
@@ -3753,8 +3755,9 @@ void VulkanEngine::initPipelines()
 		_mainRenderPass,
 		1,
 		skyboxPipeline,
-		skyboxPipelineLayout
-		);
+		skyboxPipelineLayout,
+		_swapchainDependentDeletionQueue
+	);
 	attachPipelineToMaterial(skyboxPipeline, skyboxPipelineLayout, "skyboxMaterial");
 
 	// Picking pipeline
@@ -3780,8 +3783,9 @@ void VulkanEngine::initPipelines()
 		_pickingRenderPass,
 		0,
 		pickingPipeline,
-		pickingPipelineLayout
-		);
+		pickingPipelineLayout,
+		_swapchainDependentDeletionQueue
+	);
 	attachPipelineToMaterial(pickingPipeline, pickingPipelineLayout, "pickingMaterial");
 
 	// Wireframe color pipeline
@@ -3813,8 +3817,9 @@ void VulkanEngine::initPipelines()
 		_mainRenderPass,
 		1,
 		wireframePipeline,
-		wireframePipelineLayout
-		);
+		wireframePipelineLayout,
+		_swapchainDependentDeletionQueue
+	);
 	attachPipelineToMaterial(wireframePipeline, wireframePipelineLayout, "wireframeColorMaterial");
 
 	VkPipeline wireframeBehindPipeline;
@@ -3844,8 +3849,9 @@ void VulkanEngine::initPipelines()
 		_mainRenderPass,
 		1,
 		wireframeBehindPipeline,
-		wireframePipelineLayout
-		);
+		wireframePipelineLayout,
+		_swapchainDependentDeletionQueue
+	);
 	attachPipelineToMaterial(wireframeBehindPipeline, wireframePipelineLayout, "wireframeColorBehindMaterial");
 
 	// Shadow Depth Pass pipeline
@@ -3887,8 +3893,9 @@ void VulkanEngine::initPipelines()
 		_shadowRenderPass,
 		0,
 		shadowDepthPassPipeline,
-		shadowDepthPassPipelineLayout
-		);
+		shadowDepthPassPipelineLayout,
+		_swapchainDependentDeletionQueue
+	);
 	attachPipelineToMaterial(shadowDepthPassPipeline, shadowDepthPassPipelineLayout, "shadowDepthPassMaterial");
 
 	// Postprocess pipeline
@@ -3920,7 +3927,8 @@ void VulkanEngine::initPipelines()
 		_postprocessRenderPass,
 		0,
 		postprocessPipeline,
-		postprocessPipelineLayout
+		postprocessPipelineLayout,
+		_swapchainDependentDeletionQueue
 	);
 	attachPipelineToMaterial(postprocessPipeline, postprocessPipelineLayout, "postprocessMaterial");
 
@@ -3959,7 +3967,8 @@ void VulkanEngine::initPipelines()
 		_CoCRenderPass,
 		0,
 		CoCPipeline,
-		CoCPipelineLayout
+		CoCPipelineLayout,
+		_swapchainDependentDeletionQueue
 	);
 	attachPipelineToMaterial(CoCPipeline, CoCPipelineLayout, "CoCMaterial");
 
@@ -3992,7 +4001,8 @@ void VulkanEngine::initPipelines()
 		_halveCoCRenderPass,
 		0,
 		halveCoCPipeline,
-		halveCoCPipelineLayout
+		halveCoCPipelineLayout,
+		_swapchainDependentDeletionQueue
 	);
 	attachPipelineToMaterial(halveCoCPipeline, halveCoCPipelineLayout, "halveCoCMaterial");
 
@@ -4019,7 +4029,8 @@ void VulkanEngine::initPipelines()
 		_eighthCoCRenderPass,
 		0,
 		eighthCoCPipeline,
-		eighthCoCPipelineLayout
+		eighthCoCPipelineLayout,
+		_swapchainDependentDeletionQueue
 	);
 	attachPipelineToMaterial(eighthCoCPipeline, eighthCoCPipelineLayout, "eighthCoCMaterial");
 
@@ -4052,7 +4063,8 @@ void VulkanEngine::initPipelines()
 		_blurXNearsideCoCRenderPass,
 		0,
 		blurXSingleChannelPipeline,
-		blurXSingleChannelPipelineLayout
+		blurXSingleChannelPipelineLayout,
+		_swapchainDependentDeletionQueue
 	);
 	attachPipelineToMaterial(blurXSingleChannelPipeline, blurXSingleChannelPipelineLayout, "blurXSingleChannelMaterial");
 
@@ -4085,7 +4097,8 @@ void VulkanEngine::initPipelines()
 		_blurYNearsideCoCRenderPass,
 		0,
 		blurYSingleChannelPipeline,
-		blurYSingleChannelPipelineLayout
+		blurYSingleChannelPipelineLayout,
+		_swapchainDependentDeletionQueue
 	);
 	attachPipelineToMaterial(blurYSingleChannelPipeline, blurYSingleChannelPipelineLayout, "blurYSingleChannelMaterial");
 
@@ -4118,7 +4131,8 @@ void VulkanEngine::initPipelines()
 		_gatherDOFRenderPass,
 		0,
 		gatherDOFPipeline,
-		gatherDOFPipelineLayout
+		gatherDOFPipelineLayout,
+		_swapchainDependentDeletionQueue
 	);
 	attachPipelineToMaterial(gatherDOFPipeline, gatherDOFPipelineLayout, "gatherDOFMaterial");
 
@@ -4151,35 +4165,17 @@ void VulkanEngine::initPipelines()
 		_dofFloodFillRenderPass,
 		0,
 		dofFloodFillPipeline,
-		dofFloodFillPipelineLayout
+		dofFloodFillPipelineLayout,
+		_swapchainDependentDeletionQueue
 	);
 	attachPipelineToMaterial(dofFloodFillPipeline, dofFloodFillPipelineLayout, "DOFFloodFillMaterial");
-
-	// Destroy pipelines when recreating swapchain
-	_swapchainDependentDeletionQueue.pushFunction([=]() {
-		vkDestroyPipeline(_device, meshZPrepassPipeline, nullptr);
-		vkDestroyPipeline(_device, meshPipeline, nullptr);
-		vkDestroyPipeline(_device, skyboxPipeline, nullptr);
-		vkDestroyPipeline(_device, pickingPipeline, nullptr);
-		vkDestroyPipeline(_device, wireframePipeline, nullptr);
-		vkDestroyPipeline(_device, wireframeBehindPipeline, nullptr);
-		vkDestroyPipeline(_device, shadowDepthPassPipeline, nullptr);
-		vkDestroyPipeline(_device, postprocessPipeline, nullptr);
-		vkDestroyPipeline(_device, CoCPipeline, nullptr);
-		vkDestroyPipeline(_device, halveCoCPipeline, nullptr);
-		vkDestroyPipeline(_device, eighthCoCPipeline, nullptr);
-		vkDestroyPipeline(_device, blurXSingleChannelPipeline, nullptr);
-		vkDestroyPipeline(_device, blurYSingleChannelPipeline, nullptr);
-		vkDestroyPipeline(_device, gatherDOFPipeline, nullptr);
-		vkDestroyPipeline(_device, dofFloodFillPipeline, nullptr);
-	});
 
 	//
 	// Other pipelines
 	//
-	textmesh::initPipeline(screenspaceViewport, screenspaceScissor);
-	textbox::initPipeline(screenspaceViewport, screenspaceScissor);
-	physengine::initDebugVisPipelines(_mainRenderPass, screenspaceViewport, screenspaceScissor);
+	textmesh::initPipeline(screenspaceViewport, screenspaceScissor, _swapchainDependentDeletionQueue);
+	textbox::initPipeline(screenspaceViewport, screenspaceScissor, _swapchainDependentDeletionQueue);
+	physengine::initDebugVisPipelines(_mainRenderPass, screenspaceViewport, screenspaceScissor, _swapchainDependentDeletionQueue);
 }
 
 void VulkanEngine::generatePBRCubemaps()

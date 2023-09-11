@@ -2,6 +2,8 @@
 
 #include <vulkan/vulkan.h>
 #include <vma/vk_mem_alloc.h>
+#include <functional>
+#include <deque>
 
 namespace vkglTF { struct Model; }
 
@@ -60,4 +62,25 @@ struct IndirectBatch
 	vkglTF::Model* model;
 	uint32_t first;
 	uint32_t count;
+};
+
+struct DeletionQueue
+{
+	std::deque<std::function<void()>> deletors;
+
+	void pushFunction(std::function<void()>&& function)
+	{
+		deletors.push_back(function);
+	}
+
+	void flush()
+	{
+		// Call deletor lambdas in reverse order
+		for (auto it = deletors.rbegin(); it != deletors.rend(); it++)
+		{
+			(*it)();
+		}
+
+		deletors.clear();
+	}
 };

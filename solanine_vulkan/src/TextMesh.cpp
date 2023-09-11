@@ -92,17 +92,11 @@ namespace textmesh
 			vmaDestroyBuffer(engine->_allocator, tf.fontSettingsBuffer._buffer, tf.fontSettingsBuffer._allocation);
 		}
 
-		// Destroy pipeline
-		vkDestroyPipeline(engine->_device, textMeshPipeline, nullptr);  // @NOTE: pipelinelayouts are already destroyed and handled by VkPipelineBuilderUtil.h/.cpp
-
 		// @NOTE: the descriptorpool gets destroyed automatically, so individual descriptorsets don't have to get destroyed
 	}
 
-	void initPipeline(VkViewport& screenspaceViewport, VkRect2D& screenspaceScissor)
+	void initPipeline(VkViewport& screenspaceViewport, VkRect2D& screenspaceScissor, DeletionQueue& deletionQueue)
 	{
-		if (textMeshPipeline != VK_NULL_HANDLE)
-			vkDestroyPipeline(engine->_device, textMeshPipeline, nullptr);
-
 		// Setup vertex descriptions
 		VkVertexInputAttributeDescription posAttribute = {
 			.location = 0,
@@ -162,8 +156,9 @@ namespace textmesh
 			engine->_uiRenderPass,
 			0,
 			textMeshPipeline,
-			textMeshPipelineLayout
-			);
+			textMeshPipelineLayout,
+			deletionQueue
+		);
 
 		// Recreate ui ortho projview
 		float_t ratio = screenspaceViewport.width / screenspaceViewport.height;

@@ -232,11 +232,8 @@ namespace physengine
     VkPipeline debugVisPipeline = VK_NULL_HANDLE;
     VkPipelineLayout debugVisPipelineLayout;
 
-    void initDebugVisPipelines(VkRenderPass mainRenderPass, VkViewport& screenspaceViewport, VkRect2D& screenspaceScissor)
+    void initDebugVisPipelines(VkRenderPass mainRenderPass, VkViewport& screenspaceViewport, VkRect2D& screenspaceScissor, DeletionQueue& deletionQueue)
     {
-        if (debugVisPipeline != VK_NULL_HANDLE)
-            vkDestroyPipeline(engine->_device, debugVisPipeline, nullptr);
-
         // Setup vertex descriptions
         VkVertexInputAttributeDescription posAttribute = {
             .location = 0,
@@ -286,8 +283,9 @@ namespace physengine
             mainRenderPass,
             1,
             debugVisPipeline,
-            debugVisPipelineLayout
-            );
+            debugVisPipelineLayout,
+            deletionQueue
+        );
     }
 #endif
 
@@ -308,7 +306,6 @@ namespace physengine
         vmaDestroyBuffer(engine->_allocator, visCameraBuffer._buffer, visCameraBuffer._allocation);
         vmaDestroyBuffer(engine->_allocator, capsuleVisVertexBuffer._buffer, capsuleVisVertexBuffer._allocation);
         vmaDestroyBuffer(engine->_allocator, lineVisVertexBuffer._buffer, lineVisVertexBuffer._allocation);
-        vkDestroyPipeline(engine->_device, debugVisPipeline, nullptr);
 #endif
     }
 
