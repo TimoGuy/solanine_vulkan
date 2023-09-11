@@ -237,6 +237,9 @@ public:
 	VkRenderPass   _gatherDOFRenderPass;
 	VkFramebuffer  _gatherDOFFramebuffer;
 
+	VkRenderPass   _dofFloodFillRenderPass;
+	VkFramebuffer  _dofFloodFillFramebuffer;
+
 	VkDescriptorSetLayout _dofSingleTextureLayout;
 	VkDescriptorSetLayout _dofDoubleTextureLayout;
 	VkDescriptorSetLayout _dofTripleTextureLayout;

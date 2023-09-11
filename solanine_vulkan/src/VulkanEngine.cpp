@@ -985,7 +985,39 @@ void ppDepthOfField_GatherDepthOfField(VkCommandBuffer cmd, VkRenderPass gatherD
 	vkCmdEndRenderPass(cmd);
 }
 
-void ppDepthOfField(VkCommandBuffer cmd, Texture& mainImage, Texture& depthImage, VkExtent2D& windowExtent, Texture& halfResMainImage, Texture& halfResDepthImage, VkExtent2D& halfResImageExtent, VkRenderPass CoCRenderPass, VkFramebuffer CoCFramebuffer, Material& CoCMaterial, GPUCoCParams& CocParams, VkRenderPass downsizeNearsideCoCRenderPass, VkFramebuffer downsizeNearsideCoCFramebuffer, Material& downsizeNearsideCoCMaterial, VkRenderPass blurXNearsideCoCRenderPass, VkFramebuffer blurXNearsideCoCFramebuffer, Material& blurXMaterial, VkRenderPass blurYNearsideCoCRenderPass, VkFramebuffer blurYNearsideCoCFramebuffer, Material& blurYMaterial, GPUBlurParams& blurParams, VkExtent2D& eighthResImageExtent, VkRenderPass gatherDOFRenderPass, VkFramebuffer gatherDOFFramebuffer, Material& gatherDOFMaterial, GPUGatherDOFParams& dofParams)
+void ppDepthOfField_DepthOfFieldFloodFill(VkCommandBuffer cmd, VkRenderPass dofFloodFillRenderPass, VkFramebuffer dofFloodFillFramebuffer, Material& dofFloodFillMaterial, VkExtent2D& halfResImageExtent, GPUBlurParams& floodfillParams)
+{
+	// Downsize nearside CoC.
+	VkClearValue clearValues[2];
+	clearValues[0].color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
+	clearValues[1].color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
+
+	VkRenderPassBeginInfo renderpassInfo = {
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+		.pNext = nullptr,
+
+		.renderPass = dofFloodFillRenderPass,
+		.framebuffer = dofFloodFillFramebuffer,
+		.renderArea = {
+			.offset = VkOffset2D{ 0, 0 },
+			.extent = halfResImageExtent,
+		},
+
+		.clearValueCount = 2,
+		.pClearValues = clearValues,
+	};
+
+	vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, dofFloodFillMaterial.pipeline);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, dofFloodFillMaterial.pipelineLayout, 0, 1, &dofFloodFillMaterial.textureSet, 0, nullptr);
+	vkCmdPushConstants(cmd, dofFloodFillMaterial.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(GPUBlurParams), &floodfillParams);
+	vkCmdDraw(cmd, 3, 1, 0, 0);
+
+	vkCmdEndRenderPass(cmd);
+}
+
+void ppDepthOfField(VkCommandBuffer cmd, Texture& mainImage, Texture& depthImage, VkExtent2D& windowExtent, Texture& halfResMainImage, Texture& halfResDepthImage, VkExtent2D& halfResImageExtent, VkRenderPass CoCRenderPass, VkFramebuffer CoCFramebuffer, Material& CoCMaterial, GPUCoCParams& CocParams, VkRenderPass downsizeNearsideCoCRenderPass, VkFramebuffer downsizeNearsideCoCFramebuffer, Material& downsizeNearsideCoCMaterial, VkRenderPass blurXNearsideCoCRenderPass, VkFramebuffer blurXNearsideCoCFramebuffer, Material& blurXMaterial, VkRenderPass blurYNearsideCoCRenderPass, VkFramebuffer blurYNearsideCoCFramebuffer, Material& blurYMaterial, GPUBlurParams& blurParams, VkExtent2D& eighthResImageExtent, VkRenderPass gatherDOFRenderPass, VkFramebuffer gatherDOFFramebuffer, Material& gatherDOFMaterial, GPUGatherDOFParams& dofParams, VkRenderPass dofFloodFillRenderPass, VkFramebuffer dofFloodFillFramebuffer, Material& dofFloodFillMaterial, GPUBlurParams& floodfillParams)
 {
 	ppDepthOfField_GenerateHalfResImages(
 		cmd,
@@ -1029,6 +1061,15 @@ void ppDepthOfField(VkCommandBuffer cmd, Texture& mainImage, Texture& depthImage
 		halfResImageExtent,
 		dofParams
 	);
+
+	ppDepthOfField_DepthOfFieldFloodFill(
+		cmd,
+		dofFloodFillRenderPass,
+		dofFloodFillFramebuffer,
+		dofFloodFillMaterial,
+		halfResImageExtent,
+		floodfillParams
+	);
 }
 
 void VulkanEngine::renderPostprocessRenderpass(const FrameData& currentFrame, VkCommandBuffer cmd, uint32_t swapchainImageIndex)
@@ -1056,6 +1097,10 @@ void VulkanEngine::renderPostprocessRenderpass(const FrameData& currentFrame, Vk
 	dofParams.oneOverArbitraryResExtentX = 1.0f / (arbitraryHeight * _camera->sceneCamera.aspect);
 	dofParams.oneOverArbitraryResExtentY = 1.0f / arbitraryHeight;
 
+	GPUBlurParams floodfillParams = {};
+	floodfillParams.oneOverImageExtent[0] = 1.0f / _halfResImageExtent.width;
+	floodfillParams.oneOverImageExtent[1] = 1.0f / _halfResImageExtent.height;
+
 	ppDepthOfField(
 		cmd,
 		_mainImage,
@@ -1082,7 +1127,11 @@ void VulkanEngine::renderPostprocessRenderpass(const FrameData& currentFrame, Vk
 		_gatherDOFRenderPass,
 		_gatherDOFFramebuffer,
 		*getMaterial("gatherDOFMaterial"),
-		dofParams
+		dofParams,
+		_dofFloodFillRenderPass,
+		_dofFloodFillFramebuffer,
+		*getMaterial("DOFFloodFillMaterial"),
+		floodfillParams
 	);
 
 	// Change mainRenderPass image to shader optimal image layout
@@ -2595,6 +2644,73 @@ void initDOF_GatherDOFRenderPass(VkDevice device, VkRenderPass& renderPass)
 	VK_CHECK(vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass));
 }
 
+void initDOF_DOFFloodFillRenderPass(VkDevice device, VkRenderPass& renderPass)
+{
+	// Define the attachments and refs.
+	VkAttachmentDescription nearField = {
+		.format = VK_FORMAT_R16G16B16A16_SFLOAT,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+		.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+		.initialLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	};
+	VkAttachmentReference nearFieldRef = {
+		.attachment = 0,
+		.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+	};
+
+	VkAttachmentDescription farField = {
+		.format = VK_FORMAT_R16G16B16A16_SFLOAT,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+		.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+		.initialLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	};
+	VkAttachmentReference farFieldRef = {
+		.attachment = 1,
+		.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+	};
+
+	std::vector<VkAttachmentDescription> colorAttachments = { nearField, farField, };
+	std::vector<VkAttachmentReference> colorAttachmentRefs = { nearFieldRef, farFieldRef, };
+
+	// Define the subpasses.
+	VkSubpassDescription subpass = {
+		.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+		.colorAttachmentCount = (uint32_t)colorAttachmentRefs.size(),
+		.pColorAttachments = colorAttachmentRefs.data(),
+	};
+
+	// GPU work ordering dependencies.
+	VkSubpassDependency colorDependency = {
+		.srcSubpass = VK_SUBPASS_EXTERNAL,
+		.dstSubpass = 0,
+		.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.srcAccessMask = 0,
+		.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+	};
+
+	// Create the renderpass for the subpass.
+	VkRenderPassCreateInfo renderPassInfo = {
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+		.attachmentCount = (uint32_t)colorAttachments.size(),
+		.pAttachments = colorAttachments.data(),
+		.subpassCount = 1,
+		.pSubpasses = &subpass,
+		.dependencyCount = 1,
+		.pDependencies = &colorDependency
+	};
+
+	VK_CHECK(vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass));
+}
+
 void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is really copypasta of the above function (initMainRenderpass)
 {
 	initPostprocessCombineRenderPass(_device, _swapchainImageFormat, _postprocessRenderPass);
@@ -2603,6 +2719,7 @@ void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is 
 	initDOF_BlurXNearsideCoCRenderPass(_device, _blurXNearsideCoCRenderPass);
 	initDOF_BlurYNearsideCoCRenderPass(_device, _blurYNearsideCoCRenderPass);
 	initDOF_GatherDOFRenderPass(_device, _gatherDOFRenderPass);
+	initDOF_DOFFloodFillRenderPass(_device, _dofFloodFillRenderPass);
 
 	// Add destroy command for cleanup
 	_swapchainDependentDeletionQueue.pushFunction([=]() {
@@ -2612,6 +2729,7 @@ void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is 
 		vkDestroyRenderPass(_device, _blurXNearsideCoCRenderPass, nullptr);
 		vkDestroyRenderPass(_device, _blurYNearsideCoCRenderPass, nullptr);
 		vkDestroyRenderPass(_device, _gatherDOFRenderPass, nullptr);
+		vkDestroyRenderPass(_device, _dofFloodFillRenderPass, nullptr);
 		});
 }
 
@@ -2889,6 +3007,24 @@ void VulkanEngine::initPostprocessImages()
 				.build(textureSet, _dofTripleTextureLayout);
 			attachTextureSetToMaterial(textureSet, "gatherDOFMaterial");
 		}
+		{
+			VkDescriptorImageInfo imageInfo = {
+				.sampler = _nearFieldImagePongImage.sampler,
+				.imageView = _nearFieldImagePongImage.imageView,
+				.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			};
+			VkDescriptorImageInfo imageInfo1 = {
+				.sampler = _farFieldImagePongImage.sampler,
+				.imageView = _farFieldImagePongImage.imageView,
+				.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			};
+			VkDescriptorSet textureSet;
+			vkutil::DescriptorBuilder::begin()
+				.bindImage(0, &imageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+				.bindImage(1, &imageInfo1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+				.build(textureSet, _dofDoubleTextureLayout);
+			attachTextureSetToMaterial(textureSet, "DOFFloodFillMaterial");
+		}
 	}
 
 	//
@@ -2918,13 +3054,13 @@ void VulkanEngine::initPostprocessImages()
 		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 	};
 	VkDescriptorImageInfo dofNearImageInfo = {
-		.sampler = _nearFieldImagePongImage.sampler,
-		.imageView = _nearFieldImagePongImage.imageView,
+		.sampler = _nearFieldImage.sampler,
+		.imageView = _nearFieldImage.imageView,
 		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 	};
 	VkDescriptorImageInfo dofFarImageInfo = {
-		.sampler = _farFieldImagePongImage.sampler,
-		.imageView = _farFieldImagePongImage.imageView,
+		.sampler = _farFieldImage.sampler,
+		.imageView = _farFieldImage.imageView,
 		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 	};
 	VkDescriptorSet postprocessingTextureSet;
@@ -3156,6 +3292,16 @@ void VulkanEngine::initFramebuffers()
 		_gatherDOFFramebuffer,
 		_gatherDOFRenderPass,
 		{ _nearFieldImagePongImage.imageView, _farFieldImagePongImage.imageView, },
+		_halfResImageExtent,
+		1,
+		_swapchainDependentDeletionQueue
+	);
+
+	createFramebuffer(
+		_device,
+		_dofFloodFillFramebuffer,
+		_dofFloodFillRenderPass,
+		{ _nearFieldImage.imageView, _farFieldImage.imageView, },
 		_halfResImageExtent,
 		1,
 		_swapchainDependentDeletionQueue
@@ -3915,6 +4061,39 @@ void VulkanEngine::initPipelines()
 		gatherDOFPipelineLayout
 	);
 	attachPipelineToMaterial(gatherDOFPipeline, gatherDOFPipelineLayout, "gatherDOFMaterial");
+
+	// Depth of Field Flood-fill pipeline
+	VkPipeline dofFloodFillPipeline;
+	VkPipelineLayout dofFloodFillPipelineLayout;
+	vkutil::pipelinebuilder::build(
+		{
+			VkPushConstantRange{
+				.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+				.offset = 0,
+				.size = sizeof(GPUBlurParams)
+			}
+		},
+		{ _dofDoubleTextureLayout },
+		{
+			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/genbrdflut.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/dof_floodfill.frag.spv" },
+		},
+		{},  // No triangles are actually streamed in
+		{},
+		vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+		halfScreenspaceViewport,
+		halfScreenspaceScissor,
+		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE),
+		{ vkinit::colorBlendAttachmentState(), vkinit::colorBlendAttachmentState() },
+		vkinit::multisamplingStateCreateInfo(),
+		vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_ALWAYS),
+		{},
+		_dofFloodFillRenderPass,
+		0,
+		dofFloodFillPipeline,
+		dofFloodFillPipelineLayout
+	);
+	attachPipelineToMaterial(dofFloodFillPipeline, dofFloodFillPipelineLayout, "DOFFloodFillMaterial");
 
 	// Destroy pipelines when recreating swapchain
 	_swapchainDependentDeletionQueue.pushFunction([=]() {
