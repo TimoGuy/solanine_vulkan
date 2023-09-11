@@ -4171,6 +4171,7 @@ void VulkanEngine::initPipelines()
 		vkDestroyPipeline(_device, blurXSingleChannelPipeline, nullptr);
 		vkDestroyPipeline(_device, blurYSingleChannelPipeline, nullptr);
 		vkDestroyPipeline(_device, gatherDOFPipeline, nullptr);
+		vkDestroyPipeline(_device, dofFloodFillPipeline, nullptr);
 	});
 
 	//
