@@ -22,6 +22,10 @@ namespace globalState
 
     float_t timescale = 1.0f;
 
+    float_t DOFFocusDepth = 7.5f;
+    float_t DOFFocusExtent = 4.0f;
+    float_t DOFBlurExtent = 2.0f;
+
     SceneCamera* sceneCameraRef = nullptr;
 
     // Harvestable items (e.g. materials, raw ores, etc.)

@@ -57,9 +57,9 @@ struct GPUCoCParams
 {
 	float_t cameraZNear;
 	float_t cameraZFar;
-	float_t focusDepth  = 7.5f;
-	float_t focusExtent = 4.0f;
-	float_t blurExtent  = 2.0f;
+	float_t focusDepth;
+	float_t focusExtent;
+	float_t blurExtent;
 };
 
 struct GPUBlurParams
@@ -208,7 +208,6 @@ public:
 	VkExtent2D   _bloomPostprocessImageExtent;
 
 	// Depth of Field
-	GPUCoCParams   _CoCParams = {};
 	float_t        _DOFSampleRadiusMultiplier = 1.0f;
 
 	Texture        _halfResImage;

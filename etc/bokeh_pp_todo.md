@@ -25,3 +25,5 @@
 
         - [x] Debug view: fade towards red for the close CoC and green for the far CoC.
             > It's just a simple debug view you can enable by uncommenting the code in the postprocess.frag shader.
+
+- [ ] Insert it into the Aura focusing.

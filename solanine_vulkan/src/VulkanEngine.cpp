@@ -1083,8 +1083,13 @@ void VulkanEngine::renderPostprocessRenderpass(const FrameData& currentFrame, Vk
 		_bloomPostprocessImageExtent
 	);
 
-	_CoCParams.cameraZNear = _camera->sceneCamera.zNear;
-	_CoCParams.cameraZFar = _camera->sceneCamera.zFar;
+	GPUCoCParams CoCParams = {
+		.cameraZNear = _camera->sceneCamera.zNear,
+		.cameraZFar = _camera->sceneCamera.zFar,
+		.focusDepth = globalState::DOFFocusDepth,
+		.focusExtent = globalState::DOFFocusExtent,
+		.blurExtent = globalState::DOFBlurExtent,
+	};
 
 	GPUBlurParams blurParams = {};
 	blurParams.oneOverImageExtent[0] = 1.0f / _eighthResImageExtent.width;
@@ -1112,7 +1117,7 @@ void VulkanEngine::renderPostprocessRenderpass(const FrameData& currentFrame, Vk
 		_CoCRenderPass,
 		_CoCFramebuffer,
 		*getMaterial("CoCMaterial"),
-		_CoCParams,
+		CoCParams,
 		_downsizeNearsideCoCRenderPass,
 		_downsizeNearsideCoCFramebuffer,
 		*getMaterial("downsizeNearsideCoCMaterial"),
@@ -1185,7 +1190,7 @@ void VulkanEngine::renderPostprocessRenderpass(const FrameData& currentFrame, Vk
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, postprocessMaterial.pipeline);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, postprocessMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, postprocessMaterial.pipelineLayout, 1, 1, &postprocessMaterial.textureSet, 0, nullptr);
-	vkCmdPushConstants(cmd, postprocessMaterial.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(GPUCoCParams), &_CoCParams);
+	vkCmdPushConstants(cmd, postprocessMaterial.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(GPUCoCParams), &CoCParams);
 	vkCmdDraw(cmd, 3, 1, 0, 0);
 
 	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
@@ -5793,9 +5798,9 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 
 		if (ImGui::CollapsingHeader("Depth of Field Properties", ImGuiTreeNodeFlags_DefaultOpen))
 		{
-			ImGui::DragFloat("CoC Focus Depth", &_CoCParams.focusDepth, 0.1f);
-			ImGui::DragFloat("CoC Focus Extent", &_CoCParams.focusExtent, 0.1f);
-			ImGui::DragFloat("CoC Blur Extent", &_CoCParams.blurExtent, 0.1f);
+			ImGui::DragFloat("CoC Focus Depth", &globalState::DOFFocusDepth, 0.1f);
+			ImGui::DragFloat("CoC Focus Extent", &globalState::DOFFocusExtent, 0.1f);
+			ImGui::DragFloat("CoC Blur Extent", &globalState::DOFBlurExtent, 0.1f);
 			ImGui::DragFloat("DOF Gather Sample Radius", &_DOFSampleRadiusMultiplier, 0.1f);
 		}
 

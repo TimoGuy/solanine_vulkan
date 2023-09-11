@@ -22,6 +22,10 @@ namespace globalState
 
     extern float_t timescale;
 
+    extern float_t DOFFocusDepth;
+    extern float_t DOFFocusExtent;
+    extern float_t DOFBlurExtent;
+
     enum AncientWeaponItemType
     {
         WEAPON,
