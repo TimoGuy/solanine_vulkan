@@ -29,12 +29,20 @@ const vec2 gaussFilter[11] = vec2[](
 void main()
 {
 	float color = 0.0;
+	float accum = 0.0;
 
 	for (int i = 0; i < 11; i++)
 	{
 		vec2 coord = vec2(inUV.x, inUV.y + gaussFilter[i].r * params.oneOverImageExtent.y);
-		color += texture(image, coord).r * gaussFilter[i].g;
+		float colorSample = texture(image, coord).r * gaussFilter[i].g;
+		color += colorSample;
+
+		if (colorSample > 0.0)
+			accum += gaussFilter[i].g;
 	}
+
+	if (accum > 0.000001)
+		color /= accum;
 
 	outColor = color;
 }

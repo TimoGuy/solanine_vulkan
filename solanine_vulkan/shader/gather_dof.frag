@@ -19,7 +19,7 @@ layout (set = 0, binding = 2) uniform sampler2D nearFieldDownsizedCoCImage;
 
 
 #define NUM_SAMPLE_POINTS 36
-#define BOKEH_SAMPLE_MULTIPLIER (1.0 / (NUM_SAMPLE_POINTS + 1.0))
+#define BOKEH_SAMPLE_MULTIPLIER (1.0 / NUM_SAMPLE_POINTS)
 
 #if 0
 const vec2 bokehFilter[NUM_SAMPLE_POINTS] = vec2[](  // 6x6 5-edge shape with 12deg rotation sample points. (Generated from `etc/calc_sample_points_bokeh.py`)
@@ -143,6 +143,7 @@ void main()
 
 	if (nearFieldCoC > 0.0)
 	{
+		// nearFieldCoC = clamp(nearFieldCoC * 2.0, 0.0, 1.0);  // For compensating with the blur.
 		nearField = gatherDOF(nearField, nearFieldCoC * gatherDOFParams.sampleRadiusMultiplier, MODE_NEARFIELD);
 		nearField.a = clamp(nearField.a * 2.0, 0.0, 1.0);  // @NOTE: since a blur is essentially going on, I want to keep the outside of the blur (NOTE that the midline of the blur, 0.5, is where the near original pixels will be, so it will make it look like the original pixels are peeking out of the blurred near field).  -Timo 2023/09/10
 	}
