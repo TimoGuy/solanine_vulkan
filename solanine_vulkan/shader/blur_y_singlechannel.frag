@@ -41,8 +41,8 @@ void main()
 			accum += gaussFilter[i].g;
 	}
 
-	if (accum > 0.000001)
-		color /= accum;
+	// if (accum > 0.000001)
+	// 	color /= accum;
 
 	outColor = color;
 }

@@ -199,16 +199,16 @@ public:
 	Texture        _farFieldImage;
 	VkExtent2D     _halfResImageExtent;
 
-	VkRenderPass   _eighthCoCRenderPass;
-	VkFramebuffer  _eighthCoCFramebuffer;
-	Texture        _nearFieldEighthResCoCImage;
-	VkExtent2D     _eighthResImageExtent;
+	VkRenderPass   _sixteenthCoCRenderPass;
+	VkFramebuffer  _sixteenthCoCFramebuffer;
+	Texture        _nearFieldSixteenthResCoCImage;
+	VkExtent2D     _sixteenthResImageExtent;
 
 	VkRenderPass   _blurXNearsideCoCRenderPass;
 	VkFramebuffer  _blurXNearsideCoCFramebuffer;
 	VkRenderPass   _blurYNearsideCoCRenderPass;
 	VkFramebuffer  _blurYNearsideCoCFramebuffer;
-	Texture        _nearFieldEighthResCoCImagePongImage;  // This is what I'm calling the separate image for ping-pong buffers (i.e. gaussian blurring).
+	Texture        _nearFieldSixteenthResCoCImagePongImage;  // This is what I'm calling the separate image for ping-pong buffers (i.e. gaussian blurring).
 
 	VkRenderPass   _gatherDOFRenderPass;
 	VkFramebuffer  _gatherDOFFramebuffer;

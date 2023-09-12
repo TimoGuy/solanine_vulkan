@@ -42,3 +42,6 @@
 
 - [x] Insert it into the Aura focusing.
     > Now the camera properly places the focus depth and focus length parameters using just the positions of the two characters and the orientation of the camera.
+
+- [x] Add in some tuning.
+    - [x] Change the size of the "eighth" stuff to "sixteenth" (after re-reading the article, it was downscaled to a sixteenth).
