@@ -110,12 +110,10 @@ namespace textbox
         vmaDestroyBuffer(engine->_allocator, indexStaging._buffer, indexStaging._allocation);
     }
 
-    void initPipeline(VkViewport& screenspaceViewport, VkRect2D& screenspaceScissor)
+    void initPipeline(VkViewport& screenspaceViewport, VkRect2D& screenspaceScissor, DeletionQueue& deletionQueue)
     {
         if (textboxBgPipeline == VK_NULL_HANDLE)
             initBgMesh();  // First time. Construct the bg mesh that the pipeline is gonna interact with.
-        else
-            vkDestroyPipeline(engine->_device, textboxBgPipeline, nullptr);
 
         // Setup vertex descriptions
         // @COPYPASTA TextMesh.cpp
@@ -182,8 +180,9 @@ namespace textbox
             engine->_uiRenderPass,
             0,
             textboxBgPipeline,
-            textboxBgPipelineLayout
-            );
+            textboxBgPipelineLayout,
+            deletionQueue
+        );
     }
 
     void cleanup()
@@ -191,9 +190,6 @@ namespace textbox
         // Destroy square mesh for rendering
         vmaDestroyBuffer(engine->_allocator, sqrVertexBuffer._buffer, sqrVertexBuffer._allocation);
         vmaDestroyBuffer(engine->_allocator, sqrIndexBuffer._buffer, sqrIndexBuffer._allocation);
-
-        // Destroy pipeline
-        vkDestroyPipeline(engine->_device, textboxBgPipeline, nullptr);
     }
 
     void update(const float_t& unscaledDeltaTime)

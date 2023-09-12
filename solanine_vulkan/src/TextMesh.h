@@ -80,7 +80,7 @@ namespace textmesh
 	void init(VulkanEngine* engine);
 	void cleanup();
 
-	void initPipeline(VkViewport& screenspaceViewport, VkRect2D& screenspaceScissor);
+	void initPipeline(VkViewport& screenspaceViewport, VkRect2D& screenspaceScissor, DeletionQueue& deletionQueue);
 
 	void loadFontSDF(std::string sdfTextureFilePath, std::string fontFilePath, std::string fontName);
 	TextMesh* createAndRegisterTextMesh(std::string fontName, HorizontalAlignment halign, VerticalAlignment valign, std::string text);

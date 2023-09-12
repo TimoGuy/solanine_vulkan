@@ -80,6 +80,7 @@ void VulkanEngine::init()
 	initMainRenderpass();
 	initUIRenderpass();
 	initPostprocessRenderpass();
+	initPostprocessImages();
 	initPickingRenderpass();
 	initFramebuffers();
 	initSyncStructures();
@@ -324,6 +325,827 @@ void VulkanEngine::cleanup()
 	std::cout << "Cleanup procedure finished." << std::endl;
 }
 
+void VulkanEngine::renderPickingRenderpass(const FrameData& currentFrame)
+{
+	VK_CHECK(vkResetFences(_device, 1, &currentFrame.pickingRenderFence));
+
+	// Reset the command buffer and start the render pass
+	VK_CHECK(vkResetCommandBuffer(currentFrame.pickingCommandBuffer, 0));
+	VkCommandBuffer cmd = currentFrame.pickingCommandBuffer;
+
+	VkCommandBufferBeginInfo cmdBeginInfo = {
+		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+		.pNext = nullptr,
+		.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+		.pInheritanceInfo = nullptr,
+	};
+
+	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
+
+	VkClearValue clearValue;
+	clearValue.color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
+
+	VkClearValue depthClear;
+	depthClear.depthStencil.depth = 1.0f;
+
+	VkClearValue clearValues[] = { clearValue, depthClear };
+
+	VkRenderPassBeginInfo renderpassInfo = {
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+		.pNext = nullptr,
+
+		.renderPass = _pickingRenderPass,
+		.framebuffer = _pickingFramebuffer,
+		.renderArea = {
+			.offset = VkOffset2D{ 0, 0 },
+			.extent = _windowExtent,
+		},
+
+		.clearValueCount = 2,
+		.pClearValues = &clearValues[0],
+	};
+
+	// Begin renderpass
+	vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+	// Bind picking material
+	Material& pickingMaterial = *getMaterial("pickingMaterial");
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipeline);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 3, 1, &currentFrame.pickingReturnValueDescriptor, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(), 0, nullptr);
+
+	// Set dynamic scissor
+	VkRect2D scissor = {};
+	scissor.offset.x = (int32_t)ImGui::GetIO().MousePos.x;
+	scissor.offset.y = (int32_t)ImGui::GetIO().MousePos.y;
+	scissor.extent = { 1, 1 };
+	vkCmdSetScissor(cmd, 0, 1, &scissor);    // @NOTE: the scissor is set to be dynamic state for this pipeline
+
+	std::cout << "[PICKING]" << std::endl
+		<< "set picking scissor to: x=" << scissor.offset.x << "  y=" << scissor.offset.y << "  w=" << scissor.extent.width << "  h=" << scissor.extent.height << std::endl;
+
+	renderRenderObjects(cmd, currentFrame);
+
+	// End renderpass
+	vkCmdEndRenderPass(cmd);
+	VK_CHECK(vkEndCommandBuffer(cmd));
+
+	//
+	// Submit picking command buffer to gpu for execution
+	//
+	VkSubmitInfo submit = {};
+	submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submit.pNext = nullptr;
+
+	submit.commandBufferCount = 1;
+	submit.pCommandBuffers = &cmd;
+
+	// Submit work to gpu
+	VkResult result = vkQueueSubmit(_graphicsQueue, 1, &submit, currentFrame.pickingRenderFence);
+	if (result == VK_ERROR_DEVICE_LOST)
+		return;
+
+	//
+	// Read from GPU to the CPU (the actual picking part eh!)
+	//
+	// Wait until GPU finishes rendering the previous picking
+	VK_CHECK(vkWaitForFences(_device, 1, &currentFrame.pickingRenderFence, true, TIMEOUT_1_SEC));
+	VK_CHECK(vkResetFences(_device, 1, &currentFrame.pickingRenderFence));
+
+	// Read from the gpu
+	GPUPickingSelectedIdData resetData = {};
+	GPUPickingSelectedIdData p;
+
+	void* data;
+	vmaMapMemory(_allocator, currentFrame.pickingSelectedIdBuffer._allocation, &data);
+	memcpy(&p, data, sizeof(GPUPickingSelectedIdData));            // It's not Dmitri, it's Irtimd this time
+	memcpy(data, &resetData, sizeof(GPUPickingSelectedIdData));    // @NOTE: if you don't reset the buffer, then you won't get 0 if you click on an empty spot next time bc you end up just getting garbage data.  -Dmitri
+	vmaUnmapMemory(_allocator, currentFrame.pickingSelectedIdBuffer._allocation);
+
+	// @TODO: Make a pre-check to see if these combination of objects were selected in the previous click, and then choose the 2nd nearest object, 3rd nearest, etc. depending on how many clicks.
+
+	uint32_t nearestSelectedId = 0;
+	float_t nearestDepth = std::numeric_limits<float_t>::max();
+	for (size_t poolIndex : _roManager->_renderObjectsIndices)
+	{
+		if (p.selectedId[poolIndex] == 0)
+			continue;  // Means that the data never got filled
+
+		if (p.selectedDepth[poolIndex] > nearestDepth)
+			continue;
+
+		nearestSelectedId = p.selectedId[poolIndex];
+		nearestDepth = p.selectedDepth[poolIndex];
+	}
+
+	submitSelectedRenderObjectId(static_cast<int32_t>(nearestSelectedId) - 1);
+}
+
+void VulkanEngine::renderShadowRenderpass(const FrameData& currentFrame, VkCommandBuffer cmd)
+{
+	VkClearValue depthClear;
+	depthClear.depthStencil = { 1.0f, 0 };
+
+	VkRenderPassBeginInfo renderpassInfo = {
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+		.pNext = nullptr,
+
+		.renderPass = _shadowRenderPass,
+		.renderArea = {
+			.offset = VkOffset2D{ 0, 0 },
+			.extent = VkExtent2D{ SHADOWMAP_DIMENSION, SHADOWMAP_DIMENSION },
+		},
+
+		.clearValueCount = 1,
+		.pClearValues = &depthClear,
+	};
+
+	// Upload shadow cascades to GPU
+	void* data;
+	vmaMapMemory(_allocator, currentFrame.cascadeViewProjsBuffer._allocation, &data);
+	memcpy(data, &_camera->sceneCamera.gpuCascadeViewProjsData, sizeof(GPUCascadeViewProjsData));
+	vmaUnmapMemory(_allocator, currentFrame.cascadeViewProjsBuffer._allocation);
+
+	Material& shadowDepthPassMaterial = *getMaterial("shadowDepthPassMaterial");
+	for (uint32_t i = 0; i < SHADOWMAP_CASCADES; i++)
+	{
+		renderpassInfo.framebuffer = _shadowCascades[i].framebuffer;
+		vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipeline);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 0, 1, &currentFrame.cascadeViewProjsDescriptor, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 3, 1, &getMaterial("pbrMaterial")->textureSet, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(), 0, nullptr);
+
+		CascadeIndexPushConstBlock pc = { i };
+		vkCmdPushConstants(cmd, shadowDepthPassMaterial.pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(CascadeIndexPushConstBlock), &pc);
+
+		renderRenderObjects(cmd, currentFrame);
+		
+		vkCmdEndRenderPass(cmd);
+	}
+}
+
+void VulkanEngine::renderMainRenderpass(const FrameData& currentFrame, VkCommandBuffer cmd, const std::vector<ModelWithIndirectDrawId>& pickingIndirectDrawCommandIds)
+{
+	VkClearValue clearValue;
+	clearValue.color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
+
+	VkClearValue depthClear;
+	depthClear.depthStencil.depth = 1.0f;
+
+	VkClearValue clearValues[] = { clearValue, depthClear };
+
+	VkRenderPassBeginInfo renderpassInfo = {
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+		.pNext = nullptr,
+
+		.renderPass = _mainRenderPass,
+		.framebuffer = _mainFramebuffer,
+		.renderArea = {
+			.offset = VkOffset2D{ 0, 0 },
+			.extent = _windowExtent,
+		},
+
+		.clearValueCount = 2,
+		.pClearValues = &clearValues[0],
+	};
+
+	// Begin renderpass
+	vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+	Material& defaultMaterial = *getMaterial("pbrMaterial");    // @HACK: @TODO: currently, the way that the pipeline is getting used is by just hardcode using it in the draw commands for models... however, each model should get its pipeline set to this material instead (or whatever material its using... that's why we can't hardcode stuff!!!)   @TODO: create some kind of way to propagate the newly created pipeline to the primMat (calculated material in the gltf model) instead of using defaultMaterial directly.  -Timo
+	Material& defaultZPrepassMaterial = *getMaterial("pbrZPrepassMaterial");
+	Material& skyboxMaterial = *getMaterial("skyboxMaterial");
+
+	// Render z prepass //
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipeline);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 3, 1, &defaultMaterial.textureSet, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(), 0, nullptr);
+	renderRenderObjects(cmd, currentFrame);
+	//////////////////////
+
+	// Switch from zprepass subpass to main subpass
+	vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_INLINE);
+
+	// Render skybox //
+	// @TODO: put this into its own function!
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipeline);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipelineLayout, 1, 1, &skyboxMaterial.textureSet, 0, nullptr);
+
+	auto skybox = _roManager->getModel("Box", nullptr, [](){});
+	skybox->bind(cmd);
+	skybox->draw(cmd);
+	///////////////////
+
+	// Bind material
+	// @TODO: put this into its own function!
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipeline);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 3, 1, &defaultMaterial.textureSet, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(), 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 5, 1, &_voxelFieldLightingGridTextureSet.descriptor, 0, nullptr);
+	////////////////
+
+	renderRenderObjects(cmd, currentFrame);
+	if (!pickingIndirectDrawCommandIds.empty())
+		renderPickedObject(cmd, currentFrame, pickingIndirectDrawCommandIds);
+	physengine::renderDebugVisualization(cmd);
+
+	// End renderpass
+	vkCmdEndRenderPass(cmd);
+}
+
+void VulkanEngine::renderUIRenderpass(VkCommandBuffer cmd)
+{
+	VkClearValue clearValue;
+	clearValue.color = { { 0.0f, 0.0f, 0.0f, 0.0f } };
+
+	VkClearValue clearValues[] = { clearValue };
+
+	VkRenderPassBeginInfo renderpassInfo = {
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+		.pNext = nullptr,
+
+		.renderPass = _uiRenderPass,
+		.framebuffer = _uiFramebuffer,
+		.renderArea = {
+			.offset = VkOffset2D{ 0, 0 },
+			.extent = _windowExtent,
+		},
+
+		.clearValueCount = 1,
+		.pClearValues = &clearValues[0],
+	};
+
+	// Renderpass
+	vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+	textmesh::renderTextMeshesBulk(cmd);
+	textbox::renderTextbox(cmd);
+
+	vkCmdEndRenderPass(cmd);
+}
+
+void ppBlitBloom(VkCommandBuffer cmd, Texture& mainImage, VkExtent2D& windowExtent, Texture& bloomImage, VkExtent2D& bloomImageExtent)
+{
+	//
+	// Blit bloom
+	// @NOTE: @IMPROVE: the bloom render pass has obvious artifacts when a camera pans slowly.
+	//                  Might wanna implement this in the future: (https://learnopengl.com/Guest-Articles/2022/Phys.-Based-Bloom)
+	//                    -Timo 2022/11/09
+	//
+
+	// Change bloom image all mips to dst transfer layout
+	{
+		VkImageMemoryBarrier imageBarrier = {
+			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+			.srcAccessMask = 0,
+			.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+			.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+			.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			.image = bloomImage.image._image,
+			.subresourceRange = {
+				.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+				.baseMipLevel   = 0,
+				.levelCount     = static_cast<uint32_t>(bloomImage.image._mipLevels),
+				.baseArrayLayer = 0,
+				.layerCount     = 1,
+			},
+		};
+		vkCmdPipelineBarrier(cmd,
+			VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+			0, nullptr,
+			0, nullptr,
+			1, &imageBarrier
+		);
+	}
+
+	// Copy mainRenderPass image to bloom buffer
+	VkImageBlit blitRegion = {
+		.srcSubresource = {
+			.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+			.mipLevel       = 0,
+			.baseArrayLayer = 0,
+			.layerCount     = 1,
+		},
+		.srcOffsets = {
+			{ 0, 0, 0 },
+			{ (int32_t)windowExtent.width, (int32_t)windowExtent.height, 1 },
+		},
+		.dstSubresource = {
+			.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+			.mipLevel       = 0,
+			.baseArrayLayer = 0,
+			.layerCount     = 1,
+		},
+		.dstOffsets = {
+			{ 0, 0, 0 },
+			{
+				(int32_t)bloomImageExtent.width,
+				(int32_t)bloomImageExtent.height,
+				1
+			},
+		},
+	};
+	vkCmdBlitImage(cmd,
+		mainImage.image._image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,  // @NOTE: the renderpass for the mainImage makes it turn into VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL at the end, so a manual change to SHADER_READ_ONLY_OPTIMAL is necessary
+		bloomImage.image._image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		1, &blitRegion,
+		VK_FILTER_LINEAR
+	);
+
+	// Blit out all remaining mip levels of the chain
+	// BUT FIRST: Change mip0 of bloom image to src transfer layout
+	VkImageMemoryBarrier imageBarrier = {
+		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+		.image = bloomImage.image._image,
+		.subresourceRange = {
+			.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+			.baseMipLevel   = 0,
+			.levelCount     = 1,
+			.baseArrayLayer = 0,
+			.layerCount     = 1,
+		},
+	};
+
+	int32_t mipWidth = bloomImageExtent.width;
+	int32_t mipHeight = bloomImageExtent.height;
+
+	for (uint32_t mipLevel = 1; mipLevel < bloomImage.image._mipLevels; mipLevel++)
+	{
+		// Change previous mip to src optimal image
+		imageBarrier.subresourceRange.baseMipLevel = mipLevel - 1;
+		imageBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		imageBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+		imageBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		imageBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+		vkCmdPipelineBarrier(cmd,
+			VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+			0, nullptr,
+			0, nullptr,
+			1, &imageBarrier
+		);
+
+		// Blit image to next mip
+		VkImageBlit blitRegion = {
+			.srcSubresource = {
+				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+				.mipLevel = mipLevel - 1,
+				.baseArrayLayer = 0,
+				.layerCount = 1,
+			},
+			.srcOffsets = {
+				{ 0, 0, 0 },
+				{ mipWidth, mipHeight, 1 },
+			},
+			.dstSubresource = {
+				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+				.mipLevel = mipLevel,
+				.baseArrayLayer = 0,
+				.layerCount = 1,
+			},
+			.dstOffsets = {
+				{ 0, 0, 0 },
+				{ mipWidth > 1 ? mipWidth / 2 : 1, mipHeight > 1 ? mipHeight / 2 : 1, 1 },
+			},
+		};
+		vkCmdBlitImage(cmd,
+			bloomImage.image._image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+			bloomImage.image._image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			1, &blitRegion,
+			VK_FILTER_LINEAR
+		);
+
+		// Change previous (src) mip to shader readonly layout
+		imageBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+		imageBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		imageBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+		imageBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+		vkCmdPipelineBarrier(cmd,
+			VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+			0, nullptr,
+			0, nullptr,
+			1, &imageBarrier
+		);
+
+		// Update mip sizes
+		if (mipWidth > 1) mipWidth /= 2;
+		if (mipHeight > 1) mipHeight /= 2;
+	}
+
+	// Change final mip to shader readonly layout
+	imageBarrier.subresourceRange.baseMipLevel = bloomImage.image._mipLevels - 1;
+	imageBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	imageBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	vkCmdPipelineBarrier(cmd,
+		VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+		0, nullptr,
+		0, nullptr,
+		1, &imageBarrier
+	);
+
+	// Change mainRenderPass image to shader optimal image layout
+	{
+		VkImageMemoryBarrier imageBarrier = {
+			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+			.srcAccessMask = 0,
+			.dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+			.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+			.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			.image = mainImage.image._image,
+			.subresourceRange = {
+				.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+				.baseMipLevel   = 0,
+				.levelCount     = 1,
+				.baseArrayLayer = 0,
+				.layerCount     = 1,
+			},
+		};
+		vkCmdPipelineBarrier(cmd,
+			VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+			0, nullptr,
+			0, nullptr,
+			1, &imageBarrier
+		);
+	}
+}
+
+void ppDepthOfField_GenerateCircleOfConfusion(VkCommandBuffer cmd, VkRenderPass CoCRenderPass, VkFramebuffer CoCFramebuffer, Material& CoCMaterial, GPUCoCParams& CoCParams, VkExtent2D& windowExtent)
+{
+	VkClearValue clearValues[1];
+	clearValues[0].color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
+
+	VkRenderPassBeginInfo renderpassInfo = {
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+		.pNext = nullptr,
+
+		.renderPass = CoCRenderPass,
+		.framebuffer = CoCFramebuffer,
+		.renderArea = {
+			.offset = VkOffset2D{ 0, 0 },
+			.extent = windowExtent,
+		},
+
+		.clearValueCount = 1,
+		.pClearValues = clearValues,
+	};
+
+	// Execute renderpass.
+	vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, CoCMaterial.pipeline);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, CoCMaterial.pipelineLayout, 0, 1, &CoCMaterial.textureSet, 0, nullptr);
+	vkCmdPushConstants(cmd, CoCMaterial.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(GPUCoCParams), &CoCParams);
+	vkCmdDraw(cmd, 3, 1, 0, 0);
+
+	vkCmdEndRenderPass(cmd);
+}
+
+void ppDepthOfField_HalveCircleOfConfusionWhileGeneratingNearFar(VkCommandBuffer cmd, VkRenderPass halveCoCRenderPass, VkFramebuffer halveCoCFramebuffer, Material& halveCoCMaterial, VkExtent2D& halfResImageExtent)
+{
+	VkClearValue clearValues[2];
+	clearValues[0].color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
+	clearValues[1].color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
+
+	VkRenderPassBeginInfo renderpassInfo = {
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+		.pNext = nullptr,
+
+		.renderPass = halveCoCRenderPass,
+		.framebuffer = halveCoCFramebuffer,
+		.renderArea = {
+			.offset = VkOffset2D{ 0, 0 },
+			.extent = halfResImageExtent,
+		},
+
+		.clearValueCount = 2,
+		.pClearValues = clearValues,
+	};
+
+	// Execute renderpass.
+	vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, halveCoCMaterial.pipeline);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, halveCoCMaterial.pipelineLayout, 0, 1, &halveCoCMaterial.textureSet, 0, nullptr);
+	vkCmdDraw(cmd, 3, 1, 0, 0);
+
+	vkCmdEndRenderPass(cmd);
+}
+
+void ppDepthOfField_EighthCircleOfConfusion(VkCommandBuffer cmd, VkRenderPass eighthCoCRenderPass, VkFramebuffer eighthCoCFramebuffer, Material& eighthCoCMaterial, VkExtent2D& eighthResImageExtent)
+{
+	VkClearValue clearValues[1];
+	clearValues[0].color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
+
+	VkRenderPassBeginInfo renderpassInfo = {
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+		.pNext = nullptr,
+
+		.renderPass = eighthCoCRenderPass,
+		.framebuffer = eighthCoCFramebuffer,
+		.renderArea = {
+			.offset = VkOffset2D{ 0, 0 },
+			.extent = eighthResImageExtent,
+		},
+
+		.clearValueCount = 1,
+		.pClearValues = clearValues,
+	};
+
+	// Execute renderpass.
+	vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, eighthCoCMaterial.pipeline);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, eighthCoCMaterial.pipelineLayout, 0, 1, &eighthCoCMaterial.textureSet, 0, nullptr);
+	vkCmdDraw(cmd, 3, 1, 0, 0);
+
+	vkCmdEndRenderPass(cmd);
+}
+
+void ppDepthOfField_BlurNearsideCoC(VkCommandBuffer cmd, VkRenderPass blurXNearsideCoCRenderPass, VkFramebuffer blurXNearsideCoCFramebuffer, Material& blurXMaterial, VkRenderPass blurYNearsideCoCRenderPass, VkFramebuffer blurYNearsideCoCFramebuffer, Material& blurYMaterial, GPUBlurParams& blurParams, VkExtent2D& eighthResImageExtent)
+{
+	// Blur the downsized nearside CoC using ping-pong technique.
+	VkRenderPass blurPasses[] = { blurXNearsideCoCRenderPass, blurYNearsideCoCRenderPass };
+	VkFramebuffer blurFramebuffers[] = { blurXNearsideCoCFramebuffer, blurYNearsideCoCFramebuffer };
+	Material* blurMaterials[] = { &blurXMaterial, &blurYMaterial };
+
+	VkClearValue clearValue;
+	clearValue.color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
+
+	VkRenderPassBeginInfo renderpassInfo = {
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+		.pNext = nullptr,
+
+		.renderArea = {
+			.offset = VkOffset2D{ 0, 0 },
+			.extent = eighthResImageExtent,
+		},
+
+		.clearValueCount = 1,
+		.pClearValues = &clearValue,
+	};
+
+	for (size_t i = 0; i < 2; i++)
+	{
+		// Blur one axis of new nearside CoC.
+		renderpassInfo.renderPass = blurPasses[i];
+		renderpassInfo.framebuffer = blurFramebuffers[i];
+
+		vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+		Material& blurMaterial = *blurMaterials[i];
+		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, blurMaterial.pipeline);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, blurMaterial.pipelineLayout, 0, 1, &blurMaterial.textureSet, 0, nullptr);
+		vkCmdPushConstants(cmd, blurMaterial.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(GPUBlurParams), &blurParams);
+		vkCmdDraw(cmd, 3, 1, 0, 0);
+
+		vkCmdEndRenderPass(cmd);
+	}
+}
+
+void ppDepthOfField_GatherDepthOfField(VkCommandBuffer cmd, VkRenderPass gatherDOFRenderPass, VkFramebuffer gatherDOFFramebuffer, Material& gatherDOFMaterial, GPUGatherDOFParams& dofParams, VkExtent2D& halfResImageExtent)
+{
+	// Downsize nearside CoC.
+	VkClearValue clearValues[2];
+	clearValues[0].color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
+	clearValues[1].color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
+
+	VkRenderPassBeginInfo renderpassInfo = {
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+		.pNext = nullptr,
+
+		.renderPass = gatherDOFRenderPass,
+		.framebuffer = gatherDOFFramebuffer,
+		.renderArea = {
+			.offset = VkOffset2D{ 0, 0 },
+			.extent = halfResImageExtent,
+		},
+
+		.clearValueCount = 2,
+		.pClearValues = clearValues,
+	};
+
+	vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, gatherDOFMaterial.pipeline);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, gatherDOFMaterial.pipelineLayout, 0, 1, &gatherDOFMaterial.textureSet, 0, nullptr);
+	vkCmdPushConstants(cmd, gatherDOFMaterial.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(GPUGatherDOFParams), &dofParams);
+	vkCmdDraw(cmd, 3, 1, 0, 0);
+
+	vkCmdEndRenderPass(cmd);
+}
+
+void ppDepthOfField_DepthOfFieldFloodFill(VkCommandBuffer cmd, VkRenderPass dofFloodFillRenderPass, VkFramebuffer dofFloodFillFramebuffer, Material& dofFloodFillMaterial, GPUBlurParams& floodfillParams, VkExtent2D& halfResImageExtent)
+{
+	// Downsize nearside CoC.
+	VkClearValue clearValues[2];
+	clearValues[0].color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
+	clearValues[1].color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
+
+	VkRenderPassBeginInfo renderpassInfo = {
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+		.pNext = nullptr,
+
+		.renderPass = dofFloodFillRenderPass,
+		.framebuffer = dofFloodFillFramebuffer,
+		.renderArea = {
+			.offset = VkOffset2D{ 0, 0 },
+			.extent = halfResImageExtent,
+		},
+
+		.clearValueCount = 2,
+		.pClearValues = clearValues,
+	};
+
+	vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, dofFloodFillMaterial.pipeline);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, dofFloodFillMaterial.pipelineLayout, 0, 1, &dofFloodFillMaterial.textureSet, 0, nullptr);
+	vkCmdPushConstants(cmd, dofFloodFillMaterial.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(GPUBlurParams), &floodfillParams);
+	vkCmdDraw(cmd, 3, 1, 0, 0);
+
+	vkCmdEndRenderPass(cmd);
+}
+
+void ppDepthOfField(
+	VkCommandBuffer cmd,
+	VkRenderPass CoCRenderPass, VkFramebuffer CoCFramebuffer, Material& CoCMaterial, GPUCoCParams& CoCParams, VkExtent2D& windowExtent,
+	VkRenderPass halveCoCRenderPass, VkFramebuffer halveCoCFramebuffer, Material& halveCoCMaterial, VkExtent2D& halfResImageExtent,
+	VkRenderPass eighthCoCRenderPass, VkFramebuffer eighthCoCFramebuffer, Material& eighthCoCMaterial, VkExtent2D& eighthResImageExtent,
+	VkRenderPass blurXNearsideCoCRenderPass, VkFramebuffer blurXNearsideCoCFramebuffer, Material& blurXMaterial,
+	VkRenderPass blurYNearsideCoCRenderPass, VkFramebuffer blurYNearsideCoCFramebuffer, Material& blurYMaterial, GPUBlurParams& blurParams,
+	VkRenderPass gatherDOFRenderPass, VkFramebuffer gatherDOFFramebuffer, Material& gatherDOFMaterial, GPUGatherDOFParams& dofParams,
+	VkRenderPass dofFloodFillRenderPass, VkFramebuffer dofFloodFillFramebuffer, Material& dofFloodFillMaterial, GPUBlurParams& floodfillParams)
+{
+	ppDepthOfField_GenerateCircleOfConfusion(
+		cmd,
+		CoCRenderPass,
+		CoCFramebuffer,
+		CoCMaterial,
+		CoCParams,
+		windowExtent
+	);
+
+	ppDepthOfField_HalveCircleOfConfusionWhileGeneratingNearFar(
+		cmd,
+		halveCoCRenderPass,
+		halveCoCFramebuffer,
+		halveCoCMaterial,
+		halfResImageExtent
+	);
+
+	ppDepthOfField_EighthCircleOfConfusion(
+		cmd,
+		eighthCoCRenderPass,
+		eighthCoCFramebuffer,
+		eighthCoCMaterial,
+		eighthResImageExtent
+	);
+
+	ppDepthOfField_BlurNearsideCoC(
+		cmd,
+		blurXNearsideCoCRenderPass,
+		blurXNearsideCoCFramebuffer,
+		blurXMaterial,
+		blurYNearsideCoCRenderPass,
+		blurYNearsideCoCFramebuffer,
+		blurYMaterial,
+		blurParams,
+		eighthResImageExtent
+	);
+
+	ppDepthOfField_GatherDepthOfField(
+		cmd,
+		gatherDOFRenderPass,
+		gatherDOFFramebuffer,
+		gatherDOFMaterial,
+		dofParams,
+		halfResImageExtent
+	);
+
+	ppDepthOfField_DepthOfFieldFloodFill(
+		cmd,
+		dofFloodFillRenderPass,
+		dofFloodFillFramebuffer,
+		dofFloodFillMaterial,
+		floodfillParams,
+		halfResImageExtent
+	);
+}
+
+void VulkanEngine::renderPostprocessRenderpass(const FrameData& currentFrame, VkCommandBuffer cmd, uint32_t swapchainImageIndex)
+{
+	// Generate postprocessing.
+	ppBlitBloom(
+		cmd,
+		_mainImage,
+		_windowExtent,
+		_bloomPostprocessImage,
+		_bloomPostprocessImageExtent
+	);
+
+	GPUCoCParams CoCParams = {
+		.cameraZNear = _camera->sceneCamera.zNear,
+		.cameraZFar = _camera->sceneCamera.zFar,
+		.focusDepth = globalState::DOFFocusDepth,
+		.focusExtent = globalState::DOFFocusExtent,
+		.blurExtent = globalState::DOFBlurExtent,
+	};
+
+	GPUBlurParams blurParams = {};
+	blurParams.oneOverImageExtent[0] = 1.0f / _eighthResImageExtent.width;
+	blurParams.oneOverImageExtent[1] = 1.0f / _eighthResImageExtent.height;
+
+	GPUGatherDOFParams dofParams = {
+		.sampleRadiusMultiplier = _DOFSampleRadiusMultiplier,
+	};
+	constexpr float_t arbitraryHeight = 100.0f;
+	dofParams.oneOverArbitraryResExtentX = 1.0f / (arbitraryHeight * _camera->sceneCamera.aspect);
+	dofParams.oneOverArbitraryResExtentY = 1.0f / arbitraryHeight;
+
+	GPUBlurParams floodfillParams = {};
+	floodfillParams.oneOverImageExtent[0] = 1.0f / _halfResImageExtent.width;
+	floodfillParams.oneOverImageExtent[1] = 1.0f / _halfResImageExtent.height;
+
+	ppDepthOfField(
+		cmd,
+		_CoCRenderPass,
+		_CoCFramebuffer,
+		*getMaterial("CoCMaterial"),
+		CoCParams,
+		_windowExtent,
+		_halveCoCRenderPass,
+		_halveCoCFramebuffer,
+		*getMaterial("halveCoCMaterial"),
+		_halfResImageExtent,
+		_eighthCoCRenderPass,
+		_eighthCoCFramebuffer,
+		*getMaterial("eighthCoCMaterial"),
+		_eighthResImageExtent,
+		_blurXNearsideCoCRenderPass,
+		_blurXNearsideCoCFramebuffer,
+		*getMaterial("blurXSingleChannelMaterial"),
+		_blurYNearsideCoCRenderPass,
+		_blurYNearsideCoCFramebuffer,
+		*getMaterial("blurYSingleChannelMaterial"),
+		blurParams,
+		_gatherDOFRenderPass,
+		_gatherDOFFramebuffer,
+		*getMaterial("gatherDOFMaterial"),
+		dofParams,
+		_dofFloodFillRenderPass,
+		_dofFloodFillFramebuffer,
+		*getMaterial("DOFFloodFillMaterial"),
+		floodfillParams
+	);
+
+	// Combine all postprocessing
+	VkClearValue clearValue;
+	clearValue.color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
+
+	VkRenderPassBeginInfo renderpassInfo = {
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+		.pNext = nullptr,
+
+		.renderPass = _postprocessRenderPass,
+		.framebuffer = _swapchainFramebuffers[swapchainImageIndex],		// @NOTE: Framebuffer of the index the swapchain gave
+		.renderArea = {
+			.offset = VkOffset2D{ 0, 0 },
+			.extent = _windowExtent,
+		},
+
+		.clearValueCount = 1,
+		.pClearValues = &clearValue,
+	};
+
+	// Begin renderpass
+	vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+	Material& postprocessMaterial = *getMaterial("postprocessMaterial");
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, postprocessMaterial.pipeline);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, postprocessMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, postprocessMaterial.pipelineLayout, 1, 1, &postprocessMaterial.textureSet, 0, nullptr);
+	vkCmdPushConstants(cmd, postprocessMaterial.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(GPUCoCParams), &CoCParams);
+	vkCmdDraw(cmd, 3, 1, 0, 0);
+
+	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
+
+	// End renderpass
+	vkCmdEndRenderPass(cmd);
+}
+
 void VulkanEngine::render()
 {
 	const auto& currentFrame = getCurrentFrame();
@@ -380,386 +1202,11 @@ void VulkanEngine::render()
 	compactRenderObjectsIntoDraws(currentFrame, pickedPoolIndices, pickingIndirectDrawCommandIds);
 	perfs[14] = SDL_GetPerformanceCounter() - perfs[14];
 
-	//
-	// Shadow Render Pass
-	//
-	{
-		VkClearValue depthClear;
-		depthClear.depthStencil = { 1.0f, 0 };
-
-		VkRenderPassBeginInfo renderpassInfo = {
-			.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-			.pNext = nullptr,
-
-			.renderPass = _shadowRenderPass,
-			.renderArea = {
-				.offset = VkOffset2D{ 0, 0 },
-				.extent = VkExtent2D{ SHADOWMAP_DIMENSION, SHADOWMAP_DIMENSION },
-			},
-
-			.clearValueCount = 1,
-			.pClearValues = &depthClear,
-		};
-
-		// Upload shadow cascades to GPU
-		void* data;
-		vmaMapMemory(_allocator, currentFrame.cascadeViewProjsBuffer._allocation, &data);
-		memcpy(data, &_camera->sceneCamera.gpuCascadeViewProjsData, sizeof(GPUCascadeViewProjsData));
-		vmaUnmapMemory(_allocator, currentFrame.cascadeViewProjsBuffer._allocation);
-
-		Material& shadowDepthPassMaterial = *getMaterial("shadowDepthPassMaterial");
-		for (uint32_t i = 0; i < SHADOWMAP_CASCADES; i++)
-		{
-			renderpassInfo.framebuffer = _shadowCascades[i].framebuffer;
-			vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-			vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipeline);
-			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 0, 1, &currentFrame.cascadeViewProjsDescriptor, 0, nullptr);
-			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
-			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
-			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 3, 1, &getMaterial("pbrMaterial")->textureSet, 0, nullptr);
-			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(), 0, nullptr);
-
-			CascadeIndexPushConstBlock pc = { i };
-			vkCmdPushConstants(cmd, shadowDepthPassMaterial.pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(CascadeIndexPushConstBlock), &pc);
-
-			renderRenderObjects(cmd, currentFrame);
-			
-			vkCmdEndRenderPass(cmd);
-		}
-	}
-
-	//
-	// Main Render Pass
-	//
-	{
-		VkClearValue clearValue;
-		clearValue.color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
-
-		VkClearValue depthClear;
-		depthClear.depthStencil.depth = 1.0f;
-
-		VkClearValue clearValues[] = { clearValue, depthClear };
-
-		VkRenderPassBeginInfo renderpassInfo = {
-			.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-			.pNext = nullptr,
-
-			.renderPass = _mainRenderPass,
-			.framebuffer = _mainFramebuffer,
-			.renderArea = {
-				.offset = VkOffset2D{ 0, 0 },
-				.extent = _windowExtent,
-			},
-
-			.clearValueCount = 2,
-			.pClearValues = &clearValues[0],
-		};
-
-		// Begin renderpass
-		vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-		Material& defaultMaterial = *getMaterial("pbrMaterial");    // @HACK: @TODO: currently, the way that the pipeline is getting used is by just hardcode using it in the draw commands for models... however, each model should get its pipeline set to this material instead (or whatever material its using... that's why we can't hardcode stuff!!!)   @TODO: create some kind of way to propagate the newly created pipeline to the primMat (calculated material in the gltf model) instead of using defaultMaterial directly.  -Timo
-		Material& defaultZPrepassMaterial = *getMaterial("pbrZPrepassMaterial");
-		Material& skyboxMaterial = *getMaterial("skyboxMaterial");
-
-		// Render z prepass //
-		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipeline);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 3, 1, &defaultMaterial.textureSet, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(), 0, nullptr);
-		renderRenderObjects(cmd, currentFrame);
-		//////////////////////
-
-		// Switch from zprepass subpass to main subpass
-		vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_INLINE);
-
-		// Render skybox //
-		// @TODO: put this into its own function!
-		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipeline);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipelineLayout, 1, 1, &skyboxMaterial.textureSet, 0, nullptr);
-
-		auto skybox = _roManager->getModel("Box", nullptr, [](){});
-		skybox->bind(cmd);
-		skybox->draw(cmd);
-		///////////////////
-
-		// Bind material
-		// @TODO: put this into its own function!
-		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipeline);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 3, 1, &defaultMaterial.textureSet, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(), 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 5, 1, &_voxelFieldLightingGridTextureSet.descriptor, 0, nullptr);
-		////////////////
-
-		renderRenderObjects(cmd, currentFrame);
-		if (!pickingIndirectDrawCommandIds.empty())
-			renderPickedObject(cmd, currentFrame, pickingIndirectDrawCommandIds);
-		physengine::renderDebugVisualization(cmd);
-
-		// End renderpass
-		vkCmdEndRenderPass(cmd);
-	}
-
-	//
-	// UI Render Pass
-	//
-	{
-		VkClearValue clearValue;
-		clearValue.color = { { 0.0f, 0.0f, 0.0f, 0.0f } };
-
-		VkClearValue clearValues[] = { clearValue };
-
-		VkRenderPassBeginInfo renderpassInfo = {
-			.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-			.pNext = nullptr,
-
-			.renderPass = _uiRenderPass,
-			.framebuffer = _uiFramebuffer,
-			.renderArea = {
-				.offset = VkOffset2D{ 0, 0 },
-				.extent = _windowExtent,
-			},
-
-			.clearValueCount = 1,
-			.pClearValues = &clearValues[0],
-		};
-
-		// Renderpass
-		vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-		textmesh::renderTextMeshesBulk(cmd);
-		textbox::renderTextbox(cmd);
-
-		vkCmdEndRenderPass(cmd);
-	}
-
-	//
-	// Postprocess Render Pass
-	//
-	{
-		//
-		// Blit bloom
-		// @NOTE: @IMPROVE: the bloom render pass has obvious artifacts when a camera pans slowly.
-		//                  Might wanna implement this in the future: (https://learnopengl.com/Guest-Articles/2022/Phys.-Based-Bloom)
-		//                    -Timo 2022/11/09
-		//
-
-		// Change bloom image all mips to dst transfer layout
-		{
-			VkImageMemoryBarrier imageBarrier = {
-				.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-				.srcAccessMask = 0,
-				.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
-				.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-				.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-				.image = _bloomPostprocessImage.image._image,
-				.subresourceRange = {
-					.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
-					.baseMipLevel   = 0,
-					.levelCount     = static_cast<uint32_t>(_bloomPostprocessImage.image._mipLevels),
-					.baseArrayLayer = 0,
-					.layerCount     = 1,
-				},
-			};
-			vkCmdPipelineBarrier(cmd,
-				VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
-				0, nullptr,
-				0, nullptr,
-				1, &imageBarrier
-			);
-		}
-
-		// Copy mainRenderPass image to bloom buffer
-		VkImageBlit blitRegion = {
-			.srcSubresource = {
-				.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
-				.mipLevel       = 0,
-				.baseArrayLayer = 0,
-				.layerCount     = 1,
-			},
-			.srcOffsets = {
-				{ 0, 0, 0 },
-				{ (int32_t)_windowExtent.width, (int32_t)_windowExtent.height, 1 },
-			},
-			.dstSubresource = {
-				.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
-				.mipLevel       = 0,
-				.baseArrayLayer = 0,
-				.layerCount     = 1,
-			},
-			.dstOffsets = {
-				{ 0, 0, 0 },
-				{
-					(int32_t)_bloomPostprocessImageExtent.width,
-					(int32_t)_bloomPostprocessImageExtent.height,
-					1
-				},
-			},
-		};
-		vkCmdBlitImage(cmd,
-			_mainImage.image._image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,  // @NOTE: the renderpass for the _mainImage makes it turn into VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL at the end, so a manual change to SHADER_READ_ONLY_OPTIMAL is necessary
-			_bloomPostprocessImage.image._image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-			1, &blitRegion,
-			VK_FILTER_LINEAR
-		);
-
-		// Change mainRenderPass image to shader optimal image layout
-		// Change mip0 of bloom image to src transfer layout
-		{
-			VkImageMemoryBarrier imageBarrier = {
-				.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-				.srcAccessMask = 0,
-				.dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
-				.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-				.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-				.image = _mainImage.image._image,
-				.subresourceRange = {
-					.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
-					.baseMipLevel   = 0,
-					.levelCount     = 1,
-					.baseArrayLayer = 0,
-					.layerCount     = 1,
-				},
-			};
-			vkCmdPipelineBarrier(cmd,
-				VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
-				0, nullptr,
-				0, nullptr,
-				1, &imageBarrier
-			);
-		}
-
-		// Blit out all remaining mip levels of the chain
-		VkImageMemoryBarrier imageBarrier = {
-			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-			.image = _bloomPostprocessImage.image._image,
-			.subresourceRange = {
-				.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
-				.baseMipLevel   = 0,
-				.levelCount     = 1,
-				.baseArrayLayer = 0,
-				.layerCount     = 1,
-			},
-		};
-
-		int32_t mipWidth = _bloomPostprocessImageExtent.width;
-		int32_t mipHeight = _bloomPostprocessImageExtent.height;
-
-		for (uint32_t mipLevel = 1; mipLevel < _bloomPostprocessImage.image._mipLevels; mipLevel++)
-		{
-			// Change previous mip to src optimal image
-			imageBarrier.subresourceRange.baseMipLevel = mipLevel - 1;
-			imageBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-			imageBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-			imageBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-			imageBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-			vkCmdPipelineBarrier(cmd,
-				VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
-				0, nullptr,
-				0, nullptr,
-				1, &imageBarrier
-			);
-
-			// Blit image to next mip
-			VkImageBlit blitRegion = {
-				.srcSubresource = {
-					.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-					.mipLevel = mipLevel - 1,
-					.baseArrayLayer = 0,
-					.layerCount = 1,
-				},
-				.srcOffsets = {
-					{ 0, 0, 0 },
-					{ mipWidth, mipHeight, 1 },
-				},
-				.dstSubresource = {
-					.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-					.mipLevel = mipLevel,
-					.baseArrayLayer = 0,
-					.layerCount = 1,
-				},
-				.dstOffsets = {
-					{ 0, 0, 0 },
-					{ mipWidth > 1 ? mipWidth / 2 : 1, mipHeight > 1 ? mipHeight / 2 : 1, 1 },
-				},
-			};
-			vkCmdBlitImage(cmd,
-				_bloomPostprocessImage.image._image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-				_bloomPostprocessImage.image._image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-				1, &blitRegion,
-				VK_FILTER_LINEAR
-			);
-
-			// Change previous (src) mip to shader readonly layout
-			imageBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-			imageBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-			imageBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-			imageBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-			vkCmdPipelineBarrier(cmd,
-				VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
-				0, nullptr,
-				0, nullptr,
-				1, &imageBarrier
-			);
-
-			// Update mip sizes
-			if (mipWidth > 1) mipWidth /= 2;
-			if (mipHeight > 1) mipHeight /= 2;
-		}
-
-		// Change final mip to shader readonly layout
-		imageBarrier.subresourceRange.baseMipLevel = _bloomPostprocessImage.image._mipLevels - 1;
-		imageBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-		imageBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		vkCmdPipelineBarrier(cmd,
-			VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
-			0, nullptr,
-			0, nullptr,
-			1, &imageBarrier
-		);
-
-		//
-		// Apply all postprocessing
-		//
-		VkClearValue clearValue;
-		clearValue.color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
-
-		VkRenderPassBeginInfo renderpassInfo = {
-			.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-			.pNext = nullptr,
-
-			.renderPass = _postprocessRenderPass,
-			.framebuffer = _swapchainFramebuffers[swapchainImageIndex],		// @NOTE: Framebuffer of the index the swapchain gave
-			.renderArea = {
-				.offset = VkOffset2D{ 0, 0 },
-				.extent = _windowExtent,
-			},
-
-			.clearValueCount = 1,
-			.pClearValues = &clearValue,
-		};
-
-		// Begin renderpass
-		vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-		Material& postprocessMaterial = *getMaterial("postprocessMaterial");
-		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, postprocessMaterial.pipeline);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, postprocessMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, postprocessMaterial.pipelineLayout, 1, 1, &postprocessMaterial.textureSet, 0, nullptr);
-		vkCmdDraw(cmd, 3, 1, 0, 0);
-
-		ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
-
-		// End renderpass
-		vkCmdEndRenderPass(cmd);
-	}
+	// Render render passes.
+	renderShadowRenderpass(currentFrame, cmd);
+	renderMainRenderpass(currentFrame, cmd, pickingIndirectDrawCommandIds);
+	renderUIRenderpass(cmd);
+	renderPostprocessRenderpass(currentFrame, cmd, swapchainImageIndex);
 
 	//
 	// Submit command buffer to gpu for execution
@@ -782,8 +1229,8 @@ void VulkanEngine::render()
 	submit.commandBufferCount = 1;
 	submit.pCommandBuffers = &cmd;
 
-	result = vkQueueSubmit(_graphicsQueue, 1, &submit, currentFrame.renderFence);		// Submit work to gpu
-
+	// Submit work to gpu
+	result = vkQueueSubmit(_graphicsQueue, 1, &submit, currentFrame.renderFence);
 	if (result == VK_ERROR_DEVICE_LOST)
 		return;
 
@@ -799,120 +1246,7 @@ void VulkanEngine::render()
 			true) &&
 		ImGui::IsMousePosValid())
 	{
-		VK_CHECK(vkResetFences(_device, 1, &currentFrame.pickingRenderFence));
-
-		// Reset the command buffer and start the render pass
-		VK_CHECK(vkResetCommandBuffer(currentFrame.pickingCommandBuffer, 0));
-		VkCommandBuffer cmd = currentFrame.pickingCommandBuffer;
-
-		VkCommandBufferBeginInfo cmdBeginInfo = {
-			.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-			.pNext = nullptr,
-			.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-			.pInheritanceInfo = nullptr,
-		};
-
-		VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
-
-		VkClearValue clearValue;
-		clearValue.color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
-
-		VkClearValue depthClear;
-		depthClear.depthStencil.depth = 1.0f;
-
-		VkClearValue clearValues[] = { clearValue, depthClear };
-
-		VkRenderPassBeginInfo renderpassInfo = {
-			.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-			.pNext = nullptr,
-
-			.renderPass = _pickingRenderPass,
-			.framebuffer = _pickingFramebuffer,
-			.renderArea = {
-				.offset = VkOffset2D{ 0, 0 },
-				.extent = _windowExtent,
-			},
-
-			.clearValueCount = 2,
-			.pClearValues = &clearValues[0],
-		};
-
-		// Begin renderpass
-		vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-		// Bind picking material
-		Material& pickingMaterial = *getMaterial("pickingMaterial");
-		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipeline);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 3, 1, &currentFrame.pickingReturnValueDescriptor, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(), 0, nullptr);
-
-		// Set dynamic scissor
-		VkRect2D scissor = {};
-		scissor.offset.x = (int32_t)ImGui::GetIO().MousePos.x;
-		scissor.offset.y = (int32_t)ImGui::GetIO().MousePos.y;
-		scissor.extent = { 1, 1 };
-		vkCmdSetScissor(cmd, 0, 1, &scissor);    // @NOTE: the scissor is set to be dynamic state for this pipeline
-
-		std::cout << "[PICKING]" << std::endl
-			<< "set picking scissor to: x=" << scissor.offset.x << "  y=" << scissor.offset.y << "  w=" << scissor.extent.width << "  h=" << scissor.extent.height << std::endl;
-
-		renderRenderObjects(cmd, currentFrame);
-
-		// End renderpass
-		vkCmdEndRenderPass(cmd);
-		VK_CHECK(vkEndCommandBuffer(cmd));
-
-		//
-		// Submit picking command buffer to gpu for execution
-		//
-		VkSubmitInfo submit = {};
-		submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-		submit.pNext = nullptr;
-
-		submit.commandBufferCount = 1;
-		submit.pCommandBuffers = &cmd;
-
-		result = vkQueueSubmit(_graphicsQueue, 1, &submit, currentFrame.pickingRenderFence);		// Submit work to gpu
-		if (result == VK_ERROR_DEVICE_LOST)
-			return;
-
-		//
-		// Read from GPU to the CPU (the actual picking part eh!)
-		//
-		// Wait until GPU finishes rendering the previous picking
-		VK_CHECK(vkWaitForFences(_device, 1, &currentFrame.pickingRenderFence, true, TIMEOUT_1_SEC));
-		VK_CHECK(vkResetFences(_device, 1, &currentFrame.pickingRenderFence));
-
-		// Read from the gpu
-		GPUPickingSelectedIdData resetData = {};
-		GPUPickingSelectedIdData p;
-
-		void* data;
-		vmaMapMemory(_allocator, currentFrame.pickingSelectedIdBuffer._allocation, &data);
-		memcpy(&p, data, sizeof(GPUPickingSelectedIdData));            // It's not Dmitri, it's Irtimd this time
-		memcpy(data, &resetData, sizeof(GPUPickingSelectedIdData));    // @NOTE: if you don't reset the buffer, then you won't get 0 if you click on an empty spot next time bc you end up just getting garbage data.  -Dmitri
-		vmaUnmapMemory(_allocator, currentFrame.pickingSelectedIdBuffer._allocation);
-
-		// @TODO: Make a pre-check to see if these combination of objects were selected in the previous click, and then choose the 2nd nearest object, 3rd nearest, etc. depending on how many clicks.
-
-		uint32_t nearestSelectedId = 0;
-		float_t nearestDepth = std::numeric_limits<float_t>::max();
-		for (size_t poolIndex : _roManager->_renderObjectsIndices)
-		{
-			if (p.selectedId[poolIndex] == 0)
-				continue;  // Means that the data never got filled
-
-			if (p.selectedDepth[poolIndex] > nearestDepth)
-				continue;
-
-			nearestSelectedId = p.selectedId[poolIndex];
-			nearestDepth = p.selectedDepth[poolIndex];
-		}
-
-		submitSelectedRenderObjectId(static_cast<int32_t>(nearestSelectedId) - 1);
+		renderPickingRenderpass(currentFrame);
 	}
 
 	//
@@ -1296,7 +1630,7 @@ void VulkanEngine::initVulkan()
 
 	auto instance = builder.set_app_name("Hawsoo_Solanine_x64")
 		.request_validation_layers(true)
-		.require_api_version(1, 2, 0)
+		.require_api_version(1, 3, 0)
 		.use_default_debug_messenger()
 		.build();
 
@@ -1311,7 +1645,7 @@ void VulkanEngine::initVulkan()
 
 	vkb::PhysicalDeviceSelector selector{ vkbInstance };
 	vkb::PhysicalDevice physicalDevice = selector
-		.set_minimum_version(1, 2)
+		.set_minimum_version(1, 3)
 		.set_surface(_surface)
 		.set_required_features({
 			// @NOTE: @FEATURES: Enable required features right here
@@ -1326,6 +1660,7 @@ void VulkanEngine::initVulkan()
 
 	//
 	// Create vulkan device
+	// @NOTE: @FEATURES: Enable device features right here.
 	//
 	vkb::DeviceBuilder deviceBuilder{ physicalDevice };
 	VkPhysicalDeviceShaderDrawParametersFeatures shaderDrawParametersFeatures = {
@@ -1333,7 +1668,17 @@ void VulkanEngine::initVulkan()
 		.pNext = nullptr,
 		.shaderDrawParameters = VK_TRUE,
 	};
-	vkb::Device vkbDevice = deviceBuilder.add_pNext(&shaderDrawParametersFeatures).build().value();
+	VkPhysicalDeviceVulkan12Features vulkan12Features = {
+		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
+		.pNext = nullptr,
+		.samplerFilterMinmax = VK_TRUE,
+	};
+	vkb::Device vkbDevice =
+		deviceBuilder
+			.add_pNext(&shaderDrawParametersFeatures)
+			.add_pNext(&vulkan12Features)
+			.build()
+			.value();
 
 	_device = vkbDevice.device;
 	_chosenGPU = physicalDevice.physical_device;
@@ -1417,20 +1762,24 @@ void VulkanEngine::initSwapchain()
 	};
 
 	_depthFormat = VK_FORMAT_D32_SFLOAT;
-	VkImageCreateInfo depthImgInfo = vkinit::imageCreateInfo(_depthFormat, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, depthImgExtent, 1);
+	VkImageCreateInfo depthImgInfo = vkinit::imageCreateInfo(_depthFormat, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, depthImgExtent, 1);
 	VmaAllocationCreateInfo depthImgAllocInfo = {
 		.usage = VMA_MEMORY_USAGE_GPU_ONLY,
 		.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
 	};
-	vmaCreateImage(_allocator, &depthImgInfo, &depthImgAllocInfo, &_depthImage._image, &_depthImage._allocation, nullptr);
+	vmaCreateImage(_allocator, &depthImgInfo, &depthImgAllocInfo, &_depthImage.image._image, &_depthImage.image._allocation, nullptr);
 
-	VkImageViewCreateInfo depthViewInfo = vkinit::imageviewCreateInfo(_depthFormat, _depthImage._image, VK_IMAGE_ASPECT_DEPTH_BIT, 1);
-	VK_CHECK(vkCreateImageView(_device, &depthViewInfo, nullptr, &_depthImageView));
+	VkImageViewCreateInfo depthViewInfo = vkinit::imageviewCreateInfo(_depthFormat, _depthImage.image._image, VK_IMAGE_ASPECT_DEPTH_BIT, 1);
+	VK_CHECK(vkCreateImageView(_device, &depthViewInfo, nullptr, &_depthImage.imageView));
+
+	VkSamplerCreateInfo depthSamplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(_depthImage.image._mipLevels), VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
+	vkCreateSampler(_device, &depthSamplerInfo, nullptr, &_depthImage.sampler);
 
 	// Add destroy command
 	_swapchainDependentDeletionQueue.pushFunction([=]() {
-		vkDestroyImageView(_device, _depthImageView, nullptr);
-		vmaDestroyImage(_allocator, _depthImage._image, _depthImage._allocation);
+		vkDestroySampler(_device, _depthImage.sampler, nullptr);
+		vkDestroyImageView(_device, _depthImage.imageView, nullptr);
+		vmaDestroyImage(_allocator, _depthImage.image._image, _depthImage.image._allocation);
 		});
 }
 
@@ -1473,6 +1822,58 @@ void VulkanEngine::initCommands()
 
 	VkCommandBufferAllocateInfo cmdAllocInfo = vkinit::commandBufferAllocateInfo(_uploadContext.commandPool, 1);
 	VK_CHECK(vkAllocateCommandBuffers(_device, &cmdAllocInfo, &_uploadContext.commandBuffer));
+}
+
+void createImageSampler(VkDevice device, uint32_t numMips, VkFilter samplerFilter, VkSamplerAddressMode samplerAddressMode, VkSampler& sampler, DeletionQueue& deletionQueue)
+{
+	VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo((float_t)numMips, samplerFilter, samplerAddressMode, false);
+	VK_CHECK(vkCreateSampler(device, &samplerInfo, nullptr, &sampler));
+	
+	deletionQueue.pushFunction([=]() {
+		vkDestroySampler(device, sampler, nullptr);
+		});
+}
+
+void createRenderTexture(VmaAllocator allocator, VkDevice device, Texture& texture, VkFormat imageFormat, VkImageUsageFlags usageFlags, VkExtent3D imageExtent, uint32_t numMips, VkImageAspectFlags aspectFlags, VkFilter samplerFilter, VkSamplerAddressMode samplerAddressMode, DeletionQueue& deletionQueue, bool createSampler = true)
+{
+	VkImageCreateInfo imgInfo = vkinit::imageCreateInfo(imageFormat, usageFlags, imageExtent, numMips);
+	VmaAllocationCreateInfo imgAllocInfo = {
+		.usage = VMA_MEMORY_USAGE_GPU_ONLY,
+	};
+	vmaCreateImage(allocator, &imgInfo, &imgAllocInfo, &texture.image._image, &texture.image._allocation, nullptr);
+	texture.image._mipLevels = numMips;
+
+	VkImageViewCreateInfo imgViewInfo = vkinit::imageviewCreateInfo(imageFormat, texture.image._image, aspectFlags, numMips);
+	VK_CHECK(vkCreateImageView(device, &imgViewInfo, nullptr, &texture.imageView));
+
+	if (createSampler)
+		createImageSampler(device, numMips, samplerFilter, samplerAddressMode, texture.sampler, deletionQueue);
+
+	deletionQueue.pushFunction([=]() {
+		vkDestroyImageView(device, texture.imageView, nullptr);
+		vmaDestroyImage(allocator, texture.image._image, texture.image._allocation);
+		});
+}
+
+void createFramebuffer(VkDevice device, VkFramebuffer& framebuffer, VkRenderPass renderPass, const std::vector<VkImageView>& attachments, VkExtent2D extent, uint32_t layers, DeletionQueue& deletionQueue)
+{
+	VkFramebufferCreateInfo fbInfo = {
+		.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+		.pNext = nullptr,
+
+		.renderPass = renderPass,
+		.attachmentCount = (uint32_t)attachments.size(),
+		.pAttachments = attachments.data(),
+		.width = extent.width,
+		.height = extent.height,
+		.layers = layers,
+	};
+
+	VK_CHECK(vkCreateFramebuffer(device, &fbInfo, nullptr, &framebuffer));
+
+	deletionQueue.pushFunction([=]() {
+		vkDestroyFramebuffer(device, framebuffer, nullptr);
+		});
 }
 
 void VulkanEngine::initShadowRenderpass()  // @COPYPASTA
@@ -1599,23 +2000,19 @@ void VulkanEngine::initShadowImages()
 		individualViewInfo.subresourceRange.layerCount = 1;
 		VK_CHECK(vkCreateImageView(_device, &individualViewInfo, nullptr, &_shadowCascades[i].imageView));
 
-		VkFramebufferCreateInfo framebufferInfo = {
-			.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-			.pNext = nullptr,
-
-			.renderPass = _shadowRenderPass,
-			.attachmentCount = 1,
-			.pAttachments = &_shadowCascades[i].imageView,
-			.width = SHADOWMAP_DIMENSION,
-			.height = SHADOWMAP_DIMENSION,
-			.layers = 1,
-		};
-		VK_CHECK(vkCreateFramebuffer(_device, &framebufferInfo, nullptr, &_shadowCascades[i].framebuffer));
-
 		_mainDeletionQueue.pushFunction([=]() {
-			vkDestroyFramebuffer(_device, _shadowCascades[i].framebuffer, nullptr);
 			vkDestroyImageView(_device, _shadowCascades[i].imageView, nullptr);
 			});
+
+		createFramebuffer(
+			_device,
+			_shadowCascades[i].framebuffer,
+			_shadowRenderPass,
+			{ _shadowCascades[i].imageView, },
+			{ SHADOWMAP_DIMENSION, SHADOWMAP_DIMENSION },
+			1,
+			_mainDeletionQueue
+		);
 	}
 }
 
@@ -1651,7 +2048,7 @@ void VulkanEngine::initMainRenderpass()
 		.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
 		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
 		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-		.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+		.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL  // For bokeh depth of field.
 	};
 	VkAttachmentReference depthAttachmentRef = {
 		.attachment = 1,
@@ -1743,7 +2140,7 @@ void VulkanEngine::initMainRenderpass()
 	VkImageViewCreateInfo mainColorViewInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R16G16B16A16_SFLOAT, _mainImage.image._image, VK_IMAGE_ASPECT_COLOR_BIT, 1);
 	VK_CHECK(vkCreateImageView(_device, &mainColorViewInfo, nullptr, &_mainImage.imageView));
 
-	VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(1.0f, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
+	VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(1.0f, VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
 	VK_CHECK(vkCreateSampler(_device, &samplerInfo, nullptr, &_mainImage.sampler));
 
 	_swapchainDependentDeletionQueue.pushFunction([=]() {
@@ -1842,13 +2239,13 @@ void VulkanEngine::initUIRenderpass()    // @NOTE: @COPYPASTA: This is really co
 		});
 }
 
-void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is really copypasta of the above function (initMainRenderpass)
+void initPostprocessCombineRenderPass(VkDevice device, VkFormat swapchainImageFormat, VkRenderPass& renderPass)
 {
 	//
 	// Color Attachment  (@NOTE: based off the swapchain images)
 	//
 	VkAttachmentDescription colorAttachment = {
-		.format = _swapchainImageFormat,
+		.format = swapchainImageFormat,
 		.samples = VK_SAMPLE_COUNT_1_BIT,
 		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
 		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
@@ -1863,9 +2260,9 @@ void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is 
 	};
 
 	//
-	// Define the subpass to render to the default renderpass
+	// Define the subpasses.
 	//
-	VkSubpassDescription subpass = {
+	VkSubpassDescription combineSubpass = {
 		.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
 		.colorAttachmentCount = 1,
 		.pColorAttachments = &colorAttachmentRef
@@ -1886,48 +2283,749 @@ void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is 
 	//
 	// Create the renderpass for the subpass
 	//
+	VkSubpassDescription subpasses[] = { combineSubpass };
 	VkRenderPassCreateInfo renderPassInfo = {
 		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
 		.attachmentCount = 1,
 		.pAttachments = &colorAttachment,
+		.subpassCount = 1,
+		.pSubpasses = subpasses,
+		.dependencyCount = 1,
+		.pDependencies = &colorDependency
+	};
+
+	VK_CHECK(vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass));
+}
+
+void initDOF_CoCRenderPass(VkDevice device, VkRenderPass& renderPass)
+{
+	// Define the attachments and refs.
+	VkAttachmentDescription CoC = {
+		.format = VK_FORMAT_R16G16_SFLOAT,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+		.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+		.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	};
+	VkAttachmentReference CoCRef = {
+		.attachment = 0,
+		.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+	};
+
+	std::vector<VkAttachmentDescription> colorAttachments = { CoC, };
+	std::vector<VkAttachmentReference> colorAttachmentRefs = { CoCRef, };
+
+	// Define the subpasses.
+	VkSubpassDescription subpass = {
+		.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+		.colorAttachmentCount = (uint32_t)colorAttachmentRefs.size(),
+		.pColorAttachments = colorAttachmentRefs.data(),
+	};
+
+	// GPU work ordering dependencies.
+	VkSubpassDependency colorDependency = {
+		.srcSubpass = VK_SUBPASS_EXTERNAL,
+		.dstSubpass = 0,
+		.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.srcAccessMask = 0,
+		.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+	};
+
+	// Create the renderpass for the subpass.
+	VkRenderPassCreateInfo renderPassInfo = {
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+		.attachmentCount = (uint32_t)colorAttachments.size(),
+		.pAttachments = colorAttachments.data(),
 		.subpassCount = 1,
 		.pSubpasses = &subpass,
 		.dependencyCount = 1,
 		.pDependencies = &colorDependency
 	};
 
-	VK_CHECK(vkCreateRenderPass(_device, &renderPassInfo, nullptr, &_postprocessRenderPass));
+	VK_CHECK(vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass));
+}
+
+void initDOF_HalveCoCRenderPass(VkDevice device, VkRenderPass& renderPass)
+{
+	// Define the attachments and refs.
+	VkAttachmentDescription nearField = {
+		.format = VK_FORMAT_R16G16B16A16_SFLOAT,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+		.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+		.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	};
+	VkAttachmentReference nearFieldRef = {
+		.attachment = 0,
+		.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+	};
+
+	VkAttachmentDescription farField = {
+		.format = VK_FORMAT_R16G16B16A16_SFLOAT,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+		.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+		.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	};
+	VkAttachmentReference farFieldRef = {
+		.attachment = 1,
+		.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+	};
+
+	std::vector<VkAttachmentDescription> colorAttachments = { nearField, farField, };
+	std::vector<VkAttachmentReference> colorAttachmentRefs = { nearFieldRef, farFieldRef, };
+
+	// Define the subpasses.
+	VkSubpassDescription subpass = {
+		.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+		.colorAttachmentCount = (uint32_t)colorAttachmentRefs.size(),
+		.pColorAttachments = colorAttachmentRefs.data(),
+	};
+
+	// GPU work ordering dependencies.
+	VkSubpassDependency colorDependency = {
+		.srcSubpass = VK_SUBPASS_EXTERNAL,
+		.dstSubpass = 0,
+		.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.srcAccessMask = 0,
+		.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+	};
+
+	// Create the renderpass for the subpass.
+	VkRenderPassCreateInfo renderPassInfo = {
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+		.attachmentCount = (uint32_t)colorAttachments.size(),
+		.pAttachments = colorAttachments.data(),
+		.subpassCount = 1,
+		.pSubpasses = &subpass,
+		.dependencyCount = 1,
+		.pDependencies = &colorDependency
+	};
+
+	VK_CHECK(vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass));
+}
+
+void initDOF_EighthCoCRenderPass(VkDevice device, VkRenderPass& renderPass)
+{
+	// Define the attachments and refs.
+	VkAttachmentDescription nearFieldEighthCoC = {
+		.format = VK_FORMAT_R16_SFLOAT,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+		.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+		.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	};
+	VkAttachmentReference nearFieldEighthCoCRef = {
+		.attachment = 0,
+		.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+	};
+
+	std::vector<VkAttachmentDescription> colorAttachments = { nearFieldEighthCoC, };
+	std::vector<VkAttachmentReference> colorAttachmentRefs = { nearFieldEighthCoCRef, };
+
+	// Define the subpasses.
+	VkSubpassDescription subpass = {
+		.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+		.colorAttachmentCount = (uint32_t)colorAttachmentRefs.size(),
+		.pColorAttachments = colorAttachmentRefs.data(),
+	};
+
+	// GPU work ordering dependencies.
+	VkSubpassDependency colorDependency = {
+		.srcSubpass = VK_SUBPASS_EXTERNAL,
+		.dstSubpass = 0,
+		.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.srcAccessMask = 0,
+		.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+	};
+
+	// Create the renderpass for the subpass.
+	VkRenderPassCreateInfo renderPassInfo = {
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+		.attachmentCount = (uint32_t)colorAttachments.size(),
+		.pAttachments = colorAttachments.data(),
+		.subpassCount = 1,
+		.pSubpasses = &subpass,
+		.dependencyCount = 1,
+		.pDependencies = &colorDependency
+	};
+
+	VK_CHECK(vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass));
+}
+
+void initDOF_BlurXNearsideCoCRenderPass(VkDevice device, VkRenderPass& renderPass)
+{
+	// Define the attachments and refs.
+	VkAttachmentDescription nearFieldEighthResCoCPong = {
+		.format = VK_FORMAT_R16_SFLOAT,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+		.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+		.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	};
+	VkAttachmentReference nearFieldEighthResCoCPongRef = {
+		.attachment = 0,
+		.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+	};
+
+	std::vector<VkAttachmentDescription> colorAttachments = { nearFieldEighthResCoCPong, };
+	std::vector<VkAttachmentReference> colorAttachmentRefs = { nearFieldEighthResCoCPongRef, };
+
+	// Define the subpasses.
+	VkSubpassDescription subpass = {
+		.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+		.colorAttachmentCount = (uint32_t)colorAttachmentRefs.size(),
+		.pColorAttachments = colorAttachmentRefs.data(),
+	};
+
+	// GPU work ordering dependencies.
+	VkSubpassDependency colorDependency = {
+		.srcSubpass = VK_SUBPASS_EXTERNAL,
+		.dstSubpass = 0,
+		.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.srcAccessMask = 0,
+		.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+	};
+
+	// Create the renderpass for the subpass.
+	VkRenderPassCreateInfo renderPassInfo = {
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+		.attachmentCount = (uint32_t)colorAttachments.size(),
+		.pAttachments = colorAttachments.data(),
+		.subpassCount = 1,
+		.pSubpasses = &subpass,
+		.dependencyCount = 1,
+		.pDependencies = &colorDependency
+	};
+
+	VK_CHECK(vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass));
+}
+
+void initDOF_BlurYNearsideCoCRenderPass(VkDevice device, VkRenderPass& renderPass)
+{
+	// Define the attachments and refs.
+	VkAttachmentDescription nearFieldEighthResCoCPing = {
+		.format = VK_FORMAT_R16_SFLOAT,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+		.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+		.initialLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	};
+	VkAttachmentReference nearFieldEighthResCoCPingRef = {
+		.attachment = 0,
+		.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+	};
+
+	std::vector<VkAttachmentDescription> colorAttachments = { nearFieldEighthResCoCPing, };
+	std::vector<VkAttachmentReference> colorAttachmentRefs = { nearFieldEighthResCoCPingRef, };
+
+	// Define the subpasses.
+	VkSubpassDescription subpass = {
+		.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+		.colorAttachmentCount = (uint32_t)colorAttachmentRefs.size(),
+		.pColorAttachments = colorAttachmentRefs.data(),
+	};
+
+	// GPU work ordering dependencies.
+	VkSubpassDependency colorDependency = {
+		.srcSubpass = VK_SUBPASS_EXTERNAL,
+		.dstSubpass = 0,
+		.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.srcAccessMask = 0,
+		.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+	};
+
+	// Create the renderpass for the subpass.
+	VkRenderPassCreateInfo renderPassInfo = {
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+		.attachmentCount = (uint32_t)colorAttachments.size(),
+		.pAttachments = colorAttachments.data(),
+		.subpassCount = 1,
+		.pSubpasses = &subpass,
+		.dependencyCount = 1,
+		.pDependencies = &colorDependency
+	};
+
+	VK_CHECK(vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass));
+}
+
+void initDOF_GatherDOFRenderPass(VkDevice device, VkRenderPass& renderPass)
+{
+	// Define the attachments and refs.
+	VkAttachmentDescription nearFieldPong = {
+		.format = VK_FORMAT_R16G16B16A16_SFLOAT,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+		.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+		.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	};
+	VkAttachmentReference nearFieldPongRef = {
+		.attachment = 0,
+		.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+	};
+
+	VkAttachmentDescription farFieldPong = {
+		.format = VK_FORMAT_R16G16B16A16_SFLOAT,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+		.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+		.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	};
+	VkAttachmentReference farFieldPongRef = {
+		.attachment = 1,
+		.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+	};
+
+	std::vector<VkAttachmentDescription> colorAttachments = { nearFieldPong, farFieldPong, };
+	std::vector<VkAttachmentReference> colorAttachmentRefs = { nearFieldPongRef, farFieldPongRef, };
+
+	// Define the subpasses.
+	VkSubpassDescription subpass = {
+		.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+		.colorAttachmentCount = (uint32_t)colorAttachmentRefs.size(),
+		.pColorAttachments = colorAttachmentRefs.data(),
+	};
+
+	// GPU work ordering dependencies.
+	VkSubpassDependency colorDependency = {
+		.srcSubpass = VK_SUBPASS_EXTERNAL,
+		.dstSubpass = 0,
+		.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.srcAccessMask = 0,
+		.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+	};
+
+	// Create the renderpass for the subpass.
+	VkRenderPassCreateInfo renderPassInfo = {
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+		.attachmentCount = (uint32_t)colorAttachments.size(),
+		.pAttachments = colorAttachments.data(),
+		.subpassCount = 1,
+		.pSubpasses = &subpass,
+		.dependencyCount = 1,
+		.pDependencies = &colorDependency
+	};
+
+	VK_CHECK(vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass));
+}
+
+void initDOF_DOFFloodFillRenderPass(VkDevice device, VkRenderPass& renderPass)
+{
+	// Define the attachments and refs.
+	VkAttachmentDescription nearField = {
+		.format = VK_FORMAT_R16G16B16A16_SFLOAT,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+		.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+		.initialLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	};
+	VkAttachmentReference nearFieldRef = {
+		.attachment = 0,
+		.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+	};
+
+	VkAttachmentDescription farField = {
+		.format = VK_FORMAT_R16G16B16A16_SFLOAT,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+		.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+		.initialLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	};
+	VkAttachmentReference farFieldRef = {
+		.attachment = 1,
+		.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+	};
+
+	std::vector<VkAttachmentDescription> colorAttachments = { nearField, farField, };
+	std::vector<VkAttachmentReference> colorAttachmentRefs = { nearFieldRef, farFieldRef, };
+
+	// Define the subpasses.
+	VkSubpassDescription subpass = {
+		.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+		.colorAttachmentCount = (uint32_t)colorAttachmentRefs.size(),
+		.pColorAttachments = colorAttachmentRefs.data(),
+	};
+
+	// GPU work ordering dependencies.
+	VkSubpassDependency colorDependency = {
+		.srcSubpass = VK_SUBPASS_EXTERNAL,
+		.dstSubpass = 0,
+		.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.srcAccessMask = 0,
+		.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+	};
+
+	// Create the renderpass for the subpass.
+	VkRenderPassCreateInfo renderPassInfo = {
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+		.attachmentCount = (uint32_t)colorAttachments.size(),
+		.pAttachments = colorAttachments.data(),
+		.subpassCount = 1,
+		.pSubpasses = &subpass,
+		.dependencyCount = 1,
+		.pDependencies = &colorDependency
+	};
+
+	VK_CHECK(vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass));
+}
+
+void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is really copypasta of the above function (initMainRenderpass)
+{
+	initPostprocessCombineRenderPass(_device, _swapchainImageFormat, _postprocessRenderPass);
+	initDOF_CoCRenderPass(_device, _CoCRenderPass);
+	initDOF_HalveCoCRenderPass(_device, _halveCoCRenderPass);
+	initDOF_EighthCoCRenderPass(_device, _eighthCoCRenderPass);
+	initDOF_BlurXNearsideCoCRenderPass(_device, _blurXNearsideCoCRenderPass);
+	initDOF_BlurYNearsideCoCRenderPass(_device, _blurYNearsideCoCRenderPass);
+	initDOF_GatherDOFRenderPass(_device, _gatherDOFRenderPass);
+	initDOF_DOFFloodFillRenderPass(_device, _dofFloodFillRenderPass);
 
 	// Add destroy command for cleanup
 	_swapchainDependentDeletionQueue.pushFunction([=]() {
 		vkDestroyRenderPass(_device, _postprocessRenderPass, nullptr);
+		vkDestroyRenderPass(_device, _CoCRenderPass, nullptr);
+		vkDestroyRenderPass(_device, _halveCoCRenderPass, nullptr);
+		vkDestroyRenderPass(_device, _eighthCoCRenderPass, nullptr);
+		vkDestroyRenderPass(_device, _blurXNearsideCoCRenderPass, nullptr);
+		vkDestroyRenderPass(_device, _blurYNearsideCoCRenderPass, nullptr);
+		vkDestroyRenderPass(_device, _gatherDOFRenderPass, nullptr);
+		vkDestroyRenderPass(_device, _dofFloodFillRenderPass, nullptr);
 		});
+}
 
+void VulkanEngine::initPostprocessImages()
+{
 	//
 	// Create bloom image
 	//
-	uint32_t numBloomMips = 5;
-	uint32_t startingBloomBufferHeight = _windowExtent.height / 2;
-	_bloomPostprocessImageExtent = {
-		.width = (uint32_t)((float_t)startingBloomBufferHeight * (float_t)_windowExtent.width / (float_t)_windowExtent.height),
-		.height = startingBloomBufferHeight,
-	};
-	VkExtent3D bloomImgExtent = { _bloomPostprocessImageExtent.width, _bloomPostprocessImageExtent.height, 1 };
-	VkImageCreateInfo bloomImgInfo = vkinit::imageCreateInfo(VK_FORMAT_R16G16B16A16_SFLOAT, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, bloomImgExtent, numBloomMips);
-	VmaAllocationCreateInfo bloomImgAllocInfo = {
-		.usage = VMA_MEMORY_USAGE_GPU_ONLY,
-	};
-	vmaCreateImage(_allocator, &bloomImgInfo, &bloomImgAllocInfo, &_bloomPostprocessImage.image._image, &_bloomPostprocessImage.image._allocation, nullptr);
-	_bloomPostprocessImage.image._mipLevels = numBloomMips;
+	{
+		uint32_t numBloomMips = 5;
+		uint32_t startingBloomBufferHeight = _windowExtent.height / 2;
+		_bloomPostprocessImageExtent = {
+			.width = (uint32_t)((float_t)startingBloomBufferHeight * (float_t)_windowExtent.width / (float_t)_windowExtent.height),
+			.height = startingBloomBufferHeight,
+		};
+		VkExtent3D bloomImgExtent = { _bloomPostprocessImageExtent.width, _bloomPostprocessImageExtent.height, 1 };
 
-	VkImageViewCreateInfo bloomImgViewInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R16G16B16A16_SFLOAT, _bloomPostprocessImage.image._image, VK_IMAGE_ASPECT_COLOR_BIT, numBloomMips);
-	VK_CHECK(vkCreateImageView(_device, &bloomImgViewInfo, nullptr, &_bloomPostprocessImage.imageView));
-
-	VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo((float_t)numBloomMips, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
-	VK_CHECK(vkCreateSampler(_device, &samplerInfo, nullptr, &_bloomPostprocessImage.sampler));
+		createRenderTexture(
+			_allocator,
+			_device,
+			_bloomPostprocessImage,
+			VK_FORMAT_R16G16B16A16_SFLOAT,
+			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+			bloomImgExtent,
+			numBloomMips,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_FILTER_LINEAR,
+			VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			_swapchainDependentDeletionQueue
+		);
+	}
 
 	//
-	// Postprocessing
+	// Depth of Field
+	//
+	{
+		// Create Render Textures.
+		constexpr uint32_t numMips = 1;
+
+		_halfResImageExtent = {
+			.width = (uint32_t)(_windowExtent.width / 2),
+			.height = (uint32_t)(_windowExtent.height / 2),
+		};
+		_eighthResImageExtent = {
+			.width = (uint32_t)(_windowExtent.width / 8),
+			.height = (uint32_t)(_windowExtent.height / 8),
+		};
+
+		VkExtent3D fullImgExtent = { _windowExtent.width, _windowExtent.height, 1 };
+		VkExtent3D halfImgExtent = { _halfResImageExtent.width, _halfResImageExtent.height, 1 };
+		VkExtent3D eighthImgExtent = { _eighthResImageExtent.width, _eighthResImageExtent.height, 1 };
+
+		createRenderTexture(
+			_allocator,
+			_device,
+			_CoCImage,
+			VK_FORMAT_R16G16_SFLOAT,
+			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+			fullImgExtent,
+			numMips,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_FILTER_NEAREST,
+			VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			_swapchainDependentDeletionQueue
+		);
+		{
+			// Create special MAX sampler for this texture.
+			VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo((float_t)numMips, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
+			samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+			samplerInfo.maxLod = 3.0f;  // Should be enough to make an 1/8th of the CoC size.
+
+			VkSamplerReductionModeCreateInfo reductionSamplerInfo = {
+				.sType = VK_STRUCTURE_TYPE_SAMPLER_REDUCTION_MODE_CREATE_INFO,
+				.pNext = nullptr,
+				.reductionMode = VK_SAMPLER_REDUCTION_MODE_MAX,
+			};
+
+			samplerInfo.pNext = &reductionSamplerInfo;
+
+			VK_CHECK(vkCreateSampler(_device, &samplerInfo, nullptr, &_CoCImageMaxSampler));
+
+			_swapchainDependentDeletionQueue.pushFunction([=]() {
+				vkDestroySampler(_device, _CoCImageMaxSampler, nullptr);
+				});
+		}
+
+		createRenderTexture(
+			_allocator,
+			_device,
+			_nearFieldImage,
+			VK_FORMAT_R16G16B16A16_SFLOAT,
+			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+			halfImgExtent,
+			numMips,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_FILTER_NEAREST,
+			VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			_swapchainDependentDeletionQueue
+		);
+		createImageSampler(
+			_device,
+			numMips,
+			VK_FILTER_LINEAR,
+			VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			_nearFieldImageLinearSampler,
+			_swapchainDependentDeletionQueue
+		);
+
+		createRenderTexture(
+			_allocator,
+			_device,
+			_farFieldImage,
+			VK_FORMAT_R16G16B16A16_SFLOAT,
+			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+			halfImgExtent,
+			numMips,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_FILTER_NEAREST,
+			VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			_swapchainDependentDeletionQueue
+		);
+		createImageSampler(
+			_device,
+			numMips,
+			VK_FILTER_LINEAR,
+			VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			_farFieldImageLinearSampler,
+			_swapchainDependentDeletionQueue
+		);
+
+		createRenderTexture(
+			_allocator,
+			_device,
+			_nearFieldImagePongImage,
+			VK_FORMAT_R16G16B16A16_SFLOAT,
+			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+			halfImgExtent,
+			numMips,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_FILTER_NEAREST,
+			VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			_swapchainDependentDeletionQueue
+		);
+
+		createRenderTexture(
+			_allocator,
+			_device,
+			_farFieldImagePongImage,
+			VK_FORMAT_R16G16B16A16_SFLOAT,
+			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+			halfImgExtent,
+			numMips,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_FILTER_NEAREST,
+			VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			_swapchainDependentDeletionQueue
+		);		
+
+		createRenderTexture(
+			_allocator,
+			_device,
+			_nearFieldEighthResCoCImage,
+			VK_FORMAT_R16_SFLOAT,
+			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+			eighthImgExtent,
+			numMips,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_FILTER_NEAREST,
+			VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			_swapchainDependentDeletionQueue
+		);
+
+		createRenderTexture(
+			_allocator,
+			_device,
+			_nearFieldEighthResCoCImagePongImage,
+			VK_FORMAT_R16_SFLOAT,
+			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+			eighthImgExtent,
+			numMips,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_FILTER_NEAREST,
+			VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			_swapchainDependentDeletionQueue
+		);
+
+		// Create Descriptor Sets.
+		{
+			VkDescriptorImageInfo imageInfo = {
+				.sampler = _depthImage.sampler,
+				.imageView = _depthImage.imageView,
+				.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			};
+			VkDescriptorSet textureSet;
+			vkutil::DescriptorBuilder::begin()
+				.bindImage(0, &imageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+				.build(textureSet, _dofSingleTextureLayout);
+			attachTextureSetToMaterial(textureSet, "CoCMaterial");
+		}
+		{
+			VkDescriptorImageInfo imageInfo = {
+				.sampler = _mainImage.sampler,
+				.imageView = _mainImage.imageView,
+				.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			};
+			VkDescriptorImageInfo imageInfo1 = {
+				.sampler = _CoCImage.sampler,
+				.imageView = _CoCImage.imageView,
+				.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			};
+			VkDescriptorSet textureSet;
+			vkutil::DescriptorBuilder::begin()
+				.bindImage(0, &imageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+				.bindImage(1, &imageInfo1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+				.build(textureSet, _dofDoubleTextureLayout);
+			attachTextureSetToMaterial(textureSet, "halveCoCMaterial");
+		}
+		{
+			VkDescriptorImageInfo imageInfo = {
+				.sampler = _CoCImageMaxSampler,
+				.imageView = _CoCImage.imageView,
+				.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			};
+			VkDescriptorSet textureSet;
+			vkutil::DescriptorBuilder::begin()
+				.bindImage(0, &imageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+				.build(textureSet, _dofSingleTextureLayout);
+			attachTextureSetToMaterial(textureSet, "eighthCoCMaterial");
+		}
+		{
+			VkDescriptorImageInfo imageInfo = {
+				.sampler = _nearFieldEighthResCoCImage.sampler,
+				.imageView = _nearFieldEighthResCoCImage.imageView,
+				.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			};
+			VkDescriptorSet textureSet;
+			vkutil::DescriptorBuilder::begin()
+				.bindImage(0, &imageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+				.build(textureSet, _dofSingleTextureLayout);
+			attachTextureSetToMaterial(textureSet, "blurXSingleChannelMaterial");
+		}
+		{
+			VkDescriptorImageInfo imageInfo = {
+				.sampler = _nearFieldEighthResCoCImagePongImage.sampler,
+				.imageView = _nearFieldEighthResCoCImagePongImage.imageView,
+				.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			};
+			VkDescriptorSet textureSet;
+			vkutil::DescriptorBuilder::begin()
+				.bindImage(0, &imageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+				.build(textureSet, _dofSingleTextureLayout);
+			attachTextureSetToMaterial(textureSet, "blurYSingleChannelMaterial");
+		}
+		{
+			VkDescriptorImageInfo imageInfo = {
+				.sampler = _nearFieldImage.sampler,
+				.imageView = _nearFieldImage.imageView,
+				.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			};
+			VkDescriptorImageInfo imageInfo1 = {
+				.sampler = _farFieldImage.sampler,
+				.imageView = _farFieldImage.imageView,
+				.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			};
+			VkDescriptorImageInfo imageInfo2 = {
+				.sampler = _nearFieldEighthResCoCImage.sampler,
+				.imageView = _nearFieldEighthResCoCImage.imageView,
+				.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			};
+			VkDescriptorSet textureSet;
+			vkutil::DescriptorBuilder::begin()
+				.bindImage(0, &imageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+				.bindImage(1, &imageInfo1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+				.bindImage(2, &imageInfo2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+				.build(textureSet, _dofTripleTextureLayout);
+			attachTextureSetToMaterial(textureSet, "gatherDOFMaterial");
+		}
+		{
+			VkDescriptorImageInfo imageInfo = {
+				.sampler = _nearFieldImagePongImage.sampler,
+				.imageView = _nearFieldImagePongImage.imageView,
+				.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			};
+			VkDescriptorImageInfo imageInfo1 = {
+				.sampler = _farFieldImagePongImage.sampler,
+				.imageView = _farFieldImagePongImage.imageView,
+				.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			};
+			VkDescriptorSet textureSet;
+			vkutil::DescriptorBuilder::begin()
+				.bindImage(0, &imageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+				.bindImage(1, &imageInfo1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+				.build(textureSet, _dofDoubleTextureLayout);
+			attachTextureSetToMaterial(textureSet, "DOFFloodFillMaterial");
+		}
+	}
+
+	//
+	// Postprocessing combine descriptor set.
 	// @TODO: @RESEARCH: doing this, where the descriptors are getting initialized every time
 	//                   the renderpass is getting created (which is necessary), does it cause
 	//                   a memory leak?  -Timo 2023/05/29
@@ -1947,20 +3045,37 @@ void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is 
 		.imageView = _bloomPostprocessImage.imageView,
 		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 	};
+	VkDescriptorImageInfo depthBufferImageInfo = {
+		.sampler = _depthImage.sampler,
+		.imageView = _depthImage.imageView,
+		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	};
+	VkDescriptorImageInfo dofCoCImageInfo = {
+		.sampler = _CoCImage.sampler,
+		.imageView = _CoCImage.imageView,
+		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	};
+	VkDescriptorImageInfo dofNearImageInfo = {
+		.sampler = _nearFieldImageLinearSampler,
+		.imageView = _nearFieldImage.imageView,
+		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	};
+	VkDescriptorImageInfo dofFarImageInfo = {
+		.sampler = _farFieldImageLinearSampler,
+		.imageView = _farFieldImage.imageView,
+		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	};
 	VkDescriptorSet postprocessingTextureSet;
 	vkutil::DescriptorBuilder::begin()
 		.bindImage(0, &mainHDRImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
 		.bindImage(1, &uiImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
 		.bindImage(2, &bloomImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+		.bindImage(3, &depthBufferImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+		.bindImage(4, &dofCoCImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+		.bindImage(5, &dofNearImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+		.bindImage(6, &dofFarImageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
 		.build(postprocessingTextureSet, _postprocessSetLayout);
 	attachTextureSetToMaterial(postprocessingTextureSet, "postprocessMaterial");
-
-	_swapchainDependentDeletionQueue.pushFunction([=]() {
-
-		vkDestroySampler(_device, _bloomPostprocessImage.sampler, nullptr);
-		vkDestroyImageView(_device, _bloomPostprocessImage.imageView, nullptr);
-		vmaDestroyImage(_allocator, _bloomPostprocessImage.image._image, _bloomPostprocessImage.image._allocation);
-		});
 }
 
 void VulkanEngine::initPickingRenderpass()    // @NOTE: @COPYPASTA: This is really copypasta of the above function (initMainRenderpass)
@@ -2093,94 +3208,122 @@ void VulkanEngine::initPickingRenderpass()    // @NOTE: @COPYPASTA: This is real
 
 void VulkanEngine::initFramebuffers()
 {
-	//
-	// Create framebuffers for postprocess renderpass
-	// @NOTE: this one writes straight to the khr framebuffers
-	//
-	VkFramebufferCreateInfo fbInfo = {};
-	fbInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-	fbInfo.pNext = nullptr;
-
-	fbInfo.renderPass = _postprocessRenderPass;
-	fbInfo.attachmentCount = 1;
-	fbInfo.width = _windowExtent.width;
-	fbInfo.height = _windowExtent.height;
-	fbInfo.layers = 1;
-
-	const uint32_t swapchainImagecount = static_cast<uint32_t>(_swapchainImages.size());
-	_swapchainFramebuffers = std::vector<VkFramebuffer>(swapchainImagecount);
-
-	for (size_t i = 0; i < (size_t)swapchainImagecount; i++)
+	_swapchainFramebuffers = std::vector<VkFramebuffer>(_swapchainImages.size());
+	for (size_t i = 0; i < _swapchainImages.size(); i++)
 	{
-		VkImageView attachments[] = {
-			_swapchainImageViews[i],
-		};
-		fbInfo.pAttachments = &attachments[0];
-
-		VK_CHECK(vkCreateFramebuffer(_device, &fbInfo, nullptr, &_swapchainFramebuffers[i]));
-
-		// Add destroy command for cleanup
+		createFramebuffer(
+			_device,
+			_swapchainFramebuffers[i],
+			_postprocessRenderPass,
+			{ _swapchainImageViews[i], },
+			_windowExtent,
+			1,
+			_swapchainDependentDeletionQueue
+		);
 		_swapchainDependentDeletionQueue.pushFunction([=]() {
-			vkDestroyFramebuffer(_device, _swapchainFramebuffers[i], nullptr);
 			vkDestroyImageView(_device, _swapchainImageViews[i], nullptr);
 			});
 	}
 
-	//
-	// Create framebuffer for main renderpass
-	//
-	{
-		VkImageView attachments[] = {
-			_mainImage.imageView,
-			_depthImageView,
-		};
-		fbInfo.renderPass = _mainRenderPass;
-		fbInfo.attachmentCount = 2;
-		fbInfo.pAttachments = &attachments[0];
+	createFramebuffer(
+		_device,
+		_mainFramebuffer,
+		_mainRenderPass,
+		{ _mainImage.imageView, _depthImage.imageView, },
+		_windowExtent,
+		1,
+		_swapchainDependentDeletionQueue
+	);
 
-		VK_CHECK(vkCreateFramebuffer(_device, &fbInfo, nullptr, &_mainFramebuffer));
+	createFramebuffer(
+		_device,
+		_uiFramebuffer,
+		_uiRenderPass,
+		{ _uiImage.imageView, },
+		_windowExtent,
+		1,
+		_swapchainDependentDeletionQueue
+	);
 
-		_swapchainDependentDeletionQueue.pushFunction([=]() {
-			vkDestroyFramebuffer(_device, _mainFramebuffer, nullptr);
-			});
-	}
+	createFramebuffer(
+		_device,
+		_pickingFramebuffer,
+		_pickingRenderPass,
+		{ _pickingImageView, _pickingDepthImageView, },
+		_windowExtent,
+		1,
+		_swapchainDependentDeletionQueue
+	);
 
-	//
-	// Create framebuffer for ui renderpass
-	//
-	{
-		VkImageView attachments[] = {
-			_uiImage.imageView,
-		};
-		fbInfo.renderPass = _uiRenderPass;
-		fbInfo.attachmentCount = 1;
-		fbInfo.pAttachments = &attachments[0];
+	createFramebuffer(
+		_device,
+		_CoCFramebuffer,
+		_CoCRenderPass,
+		{ _CoCImage.imageView, },
+		_windowExtent,
+		1,
+		_swapchainDependentDeletionQueue
+	);
 
-		VK_CHECK(vkCreateFramebuffer(_device, &fbInfo, nullptr, &_uiFramebuffer));
+	createFramebuffer(
+		_device,
+		_halveCoCFramebuffer,
+		_halveCoCRenderPass,
+		{ _nearFieldImage.imageView, _farFieldImage.imageView, },
+		_halfResImageExtent,
+		1,
+		_swapchainDependentDeletionQueue
+	);
 
-		_swapchainDependentDeletionQueue.pushFunction([=]() {
-			vkDestroyFramebuffer(_device, _uiFramebuffer, nullptr);
-			});
-	}
+	createFramebuffer(
+		_device,
+		_eighthCoCFramebuffer,
+		_eighthCoCRenderPass,
+		{ _nearFieldEighthResCoCImage.imageView, },
+		_eighthResImageExtent,
+		1,
+		_swapchainDependentDeletionQueue
+	);
 
-	//
-	// Create framebuffer for the picking renderpass
-	//
-	{
-		VkImageView attachments[] = {
-			_pickingImageView,
-			_pickingDepthImageView,
-		};
-		fbInfo.renderPass = _pickingRenderPass;
-		fbInfo.attachmentCount = 2;
-		fbInfo.pAttachments = &attachments[0];
+	createFramebuffer(
+		_device,
+		_blurXNearsideCoCFramebuffer,
+		_blurXNearsideCoCRenderPass,
+		{ _nearFieldEighthResCoCImagePongImage.imageView, },
+		_eighthResImageExtent,
+		1,
+		_swapchainDependentDeletionQueue
+	);
 
-		VK_CHECK(vkCreateFramebuffer(_device, &fbInfo, nullptr, &_pickingFramebuffer));
+	createFramebuffer(
+		_device,
+		_blurYNearsideCoCFramebuffer,
+		_blurYNearsideCoCRenderPass,
+		{ _nearFieldEighthResCoCImage.imageView, },
+		_eighthResImageExtent,
+		1,
+		_swapchainDependentDeletionQueue
+	);
 
-		_swapchainDependentDeletionQueue.pushFunction([=]() {
-			vkDestroyFramebuffer(_device, _pickingFramebuffer, nullptr);
-			});
-	}
+	createFramebuffer(
+		_device,
+		_gatherDOFFramebuffer,
+		_gatherDOFRenderPass,
+		{ _nearFieldImagePongImage.imageView, _farFieldImagePongImage.imageView, },
+		_halfResImageExtent,
+		1,
+		_swapchainDependentDeletionQueue
+	);
+
+	createFramebuffer(
+		_device,
+		_dofFloodFillFramebuffer,
+		_dofFloodFillRenderPass,
+		{ _nearFieldImage.imageView, _farFieldImage.imageView, },
+		_halfResImageExtent,
+		1,
+		_swapchainDependentDeletionQueue
+	);
 }
 
 void VulkanEngine::initSyncStructures()
@@ -2233,7 +3376,7 @@ void VulkanEngine::initSyncStructures()
 		});
 }
 
-void VulkanEngine::initDescriptors()    // @TODO: don't destroy and then recreate descriptors when recreating the swapchain. Only pipelines (not even pipelinelayouts), framebuffers, and the corresponding image/imageviews/samplers need to get recreated.  -Timo
+void VulkanEngine::initDescriptors()    // @NOTE: don't destroy and then recreate descriptors when recreating the swapchain. Only pipelines (not even pipelinelayouts), framebuffers, and the corresponding image/imageviews/samplers need to get recreated.  -Timo
 {
 	//
 	// Materials for ImGui
@@ -2513,6 +3656,26 @@ void VulkanEngine::initPipelines()
 		_windowExtent,
 	};
 
+	VkViewport halfScreenspaceViewport = {
+		0.0f, 0.0f,
+		(float_t)_halfResImageExtent.width, (float_t)_halfResImageExtent.height,
+		0.0f, 1.0f,
+	};
+	VkRect2D halfScreenspaceScissor = {
+		{ 0, 0 },
+		_halfResImageExtent,
+	};
+
+	VkViewport eighthScreenspaceViewport = {
+		0.0f, 0.0f,
+		(float_t)_eighthResImageExtent.width, (float_t)_eighthResImageExtent.height,
+		0.0f, 1.0f,
+	};
+	VkRect2D eighthScreenspaceScissor = {
+		{ 0, 0 },
+		_eighthResImageExtent,
+	};
+
 	// Mesh ZPrepass Pipeline
 	VkPipeline meshZPrepassPipeline;
 	VkPipelineLayout meshZPrepassPipelineLayout;
@@ -2536,8 +3699,9 @@ void VulkanEngine::initPipelines()
 		_mainRenderPass,
 		0,
 		meshZPrepassPipeline,
-		meshZPrepassPipelineLayout
-		);
+		meshZPrepassPipelineLayout,
+		_swapchainDependentDeletionQueue
+	);
 	attachPipelineToMaterial(meshZPrepassPipeline, meshZPrepassPipelineLayout, "pbrZPrepassMaterial");
 
 	// Mesh Pipeline
@@ -2563,8 +3727,9 @@ void VulkanEngine::initPipelines()
 		_mainRenderPass,
 		1,
 		meshPipeline,
-		meshPipelineLayout
-		);
+		meshPipelineLayout,
+		_swapchainDependentDeletionQueue
+	);
 	attachPipelineToMaterial(meshPipeline, meshPipelineLayout, "pbrMaterial");
 
 	// Skybox pipeline
@@ -2590,8 +3755,9 @@ void VulkanEngine::initPipelines()
 		_mainRenderPass,
 		1,
 		skyboxPipeline,
-		skyboxPipelineLayout
-		);
+		skyboxPipelineLayout,
+		_swapchainDependentDeletionQueue
+	);
 	attachPipelineToMaterial(skyboxPipeline, skyboxPipelineLayout, "skyboxMaterial");
 
 	// Picking pipeline
@@ -2617,8 +3783,9 @@ void VulkanEngine::initPipelines()
 		_pickingRenderPass,
 		0,
 		pickingPipeline,
-		pickingPipelineLayout
-		);
+		pickingPipelineLayout,
+		_swapchainDependentDeletionQueue
+	);
 	attachPipelineToMaterial(pickingPipeline, pickingPipelineLayout, "pickingMaterial");
 
 	// Wireframe color pipeline
@@ -2650,8 +3817,9 @@ void VulkanEngine::initPipelines()
 		_mainRenderPass,
 		1,
 		wireframePipeline,
-		wireframePipelineLayout
-		);
+		wireframePipelineLayout,
+		_swapchainDependentDeletionQueue
+	);
 	attachPipelineToMaterial(wireframePipeline, wireframePipelineLayout, "wireframeColorMaterial");
 
 	VkPipeline wireframeBehindPipeline;
@@ -2681,8 +3849,9 @@ void VulkanEngine::initPipelines()
 		_mainRenderPass,
 		1,
 		wireframeBehindPipeline,
-		wireframePipelineLayout
-		);
+		wireframePipelineLayout,
+		_swapchainDependentDeletionQueue
+	);
 	attachPipelineToMaterial(wireframeBehindPipeline, wireframePipelineLayout, "wireframeColorBehindMaterial");
 
 	// Shadow Depth Pass pipeline
@@ -2724,15 +3893,22 @@ void VulkanEngine::initPipelines()
 		_shadowRenderPass,
 		0,
 		shadowDepthPassPipeline,
-		shadowDepthPassPipelineLayout
-		);
+		shadowDepthPassPipelineLayout,
+		_swapchainDependentDeletionQueue
+	);
 	attachPipelineToMaterial(shadowDepthPassPipeline, shadowDepthPassPipelineLayout, "shadowDepthPassMaterial");
 
 	// Postprocess pipeline
 	VkPipeline postprocessPipeline;
 	VkPipelineLayout postprocessPipelineLayout;
 	vkutil::pipelinebuilder::build(
-		{},
+		{
+			VkPushConstantRange{
+				.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+				.offset = 0,
+				.size = sizeof(GPUCoCParams)
+			}
+		},
 		{ _globalSetLayout, _postprocessSetLayout },
 		{
 			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/genbrdflut.vert.spv" },
@@ -2751,28 +3927,255 @@ void VulkanEngine::initPipelines()
 		_postprocessRenderPass,
 		0,
 		postprocessPipeline,
-		postprocessPipelineLayout
+		postprocessPipelineLayout,
+		_swapchainDependentDeletionQueue
 	);
 	attachPipelineToMaterial(postprocessPipeline, postprocessPipelineLayout, "postprocessMaterial");
 
-	// Destroy pipelines when recreating swapchain
-	_swapchainDependentDeletionQueue.pushFunction([=]() {
-		vkDestroyPipeline(_device, meshZPrepassPipeline, nullptr);
-		vkDestroyPipeline(_device, meshPipeline, nullptr);
-		vkDestroyPipeline(_device, skyboxPipeline, nullptr);
-		vkDestroyPipeline(_device, pickingPipeline, nullptr);
-		vkDestroyPipeline(_device, wireframePipeline, nullptr);
-		vkDestroyPipeline(_device, wireframeBehindPipeline, nullptr);
-		vkDestroyPipeline(_device, shadowDepthPassPipeline, nullptr);
-		vkDestroyPipeline(_device, postprocessPipeline, nullptr);
-	});
+	// Generate CoC pipeline
+	VkPipelineColorBlendAttachmentState rChannelAttachmentState = vkinit::colorBlendAttachmentState();
+	rChannelAttachmentState.colorWriteMask = VK_COLOR_COMPONENT_R_BIT;
+
+	VkPipelineColorBlendAttachmentState rgChannelAttachmentState = vkinit::colorBlendAttachmentState();
+	rgChannelAttachmentState.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT;
+
+	VkPipeline CoCPipeline;
+	VkPipelineLayout CoCPipelineLayout;
+	vkutil::pipelinebuilder::build(
+		{
+			VkPushConstantRange{
+				.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+				.offset = 0,
+				.size = sizeof(GPUCoCParams)
+			}
+		},
+		{ _dofSingleTextureLayout },
+		{
+			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/genbrdflut.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/generate_coc.frag.spv" },
+		},
+		{},  // No triangles are actually streamed in
+		{},
+		vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+		screenspaceViewport,
+		screenspaceScissor,
+		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE),
+		{ rgChannelAttachmentState },
+		vkinit::multisamplingStateCreateInfo(),
+		vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_ALWAYS),
+		{},
+		_CoCRenderPass,
+		0,
+		CoCPipeline,
+		CoCPipelineLayout,
+		_swapchainDependentDeletionQueue
+	);
+	attachPipelineToMaterial(CoCPipeline, CoCPipelineLayout, "CoCMaterial");
+
+	// Halve CoC pipeline
+	VkPipeline halveCoCPipeline;
+	VkPipelineLayout halveCoCPipelineLayout;
+	vkutil::pipelinebuilder::build(
+		{
+			VkPushConstantRange{
+				.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+				.offset = 0,
+				.size = sizeof(GPUCoCParams)
+			}
+		},
+		{ _dofDoubleTextureLayout },
+		{
+			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/genbrdflut.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/halve_coc.frag.spv" },
+		},
+		{},  // No triangles are actually streamed in
+		{},
+		vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+		halfScreenspaceViewport,
+		halfScreenspaceScissor,
+		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE),
+		{ vkinit::colorBlendAttachmentState(), vkinit::colorBlendAttachmentState() },
+		vkinit::multisamplingStateCreateInfo(),
+		vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_ALWAYS),
+		{},
+		_halveCoCRenderPass,
+		0,
+		halveCoCPipeline,
+		halveCoCPipelineLayout,
+		_swapchainDependentDeletionQueue
+	);
+	attachPipelineToMaterial(halveCoCPipeline, halveCoCPipelineLayout, "halveCoCMaterial");
+
+	// Eighth CoC pipeline
+	VkPipeline eighthCoCPipeline;
+	VkPipelineLayout eighthCoCPipelineLayout;
+	vkutil::pipelinebuilder::build(
+		{},
+		{ _dofSingleTextureLayout },
+		{
+			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/genbrdflut.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/eighth_coc.frag.spv" },
+		},
+		{},  // No triangles are actually streamed in
+		{},
+		vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+		eighthScreenspaceViewport,
+		eighthScreenspaceScissor,
+		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE),
+		{ rChannelAttachmentState },
+		vkinit::multisamplingStateCreateInfo(),
+		vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_ALWAYS),
+		{},
+		_eighthCoCRenderPass,
+		0,
+		eighthCoCPipeline,
+		eighthCoCPipelineLayout,
+		_swapchainDependentDeletionQueue
+	);
+	attachPipelineToMaterial(eighthCoCPipeline, eighthCoCPipelineLayout, "eighthCoCMaterial");
+
+	// Blur X Single Channel pipeline
+	VkPipeline blurXSingleChannelPipeline;
+	VkPipelineLayout blurXSingleChannelPipelineLayout;
+	vkutil::pipelinebuilder::build(
+		{
+			VkPushConstantRange{
+				.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+				.offset = 0,
+				.size = sizeof(GPUBlurParams)
+			}
+		},
+		{ _dofSingleTextureLayout },
+		{
+			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/genbrdflut.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/blur_x_singlechannel.frag.spv" },
+		},
+		{},  // No triangles are actually streamed in
+		{},
+		vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+		eighthScreenspaceViewport,
+		eighthScreenspaceScissor,
+		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE),
+		{ rChannelAttachmentState },
+		vkinit::multisamplingStateCreateInfo(),
+		vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_ALWAYS),
+		{},
+		_blurXNearsideCoCRenderPass,
+		0,
+		blurXSingleChannelPipeline,
+		blurXSingleChannelPipelineLayout,
+		_swapchainDependentDeletionQueue
+	);
+	attachPipelineToMaterial(blurXSingleChannelPipeline, blurXSingleChannelPipelineLayout, "blurXSingleChannelMaterial");
+
+	// Blur Y Single Channel pipeline
+	VkPipeline blurYSingleChannelPipeline;
+	VkPipelineLayout blurYSingleChannelPipelineLayout;
+	vkutil::pipelinebuilder::build(
+		{
+			VkPushConstantRange{
+				.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+				.offset = 0,
+				.size = sizeof(GPUBlurParams)
+			}
+		},
+		{ _dofSingleTextureLayout },
+		{
+			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/genbrdflut.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/blur_y_singlechannel.frag.spv" },
+		},
+		{},  // No triangles are actually streamed in
+		{},
+		vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+		eighthScreenspaceViewport,
+		eighthScreenspaceScissor,
+		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE),
+		{ rChannelAttachmentState },
+		vkinit::multisamplingStateCreateInfo(),
+		vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_ALWAYS),
+		{},
+		_blurYNearsideCoCRenderPass,
+		0,
+		blurYSingleChannelPipeline,
+		blurYSingleChannelPipelineLayout,
+		_swapchainDependentDeletionQueue
+	);
+	attachPipelineToMaterial(blurYSingleChannelPipeline, blurYSingleChannelPipelineLayout, "blurYSingleChannelMaterial");
+
+	// Gather Depth of Field pipeline
+	VkPipeline gatherDOFPipeline;
+	VkPipelineLayout gatherDOFPipelineLayout;
+	vkutil::pipelinebuilder::build(
+		{
+			VkPushConstantRange{
+				.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+				.offset = 0,
+				.size = sizeof(GPUGatherDOFParams)
+			}
+		},
+		{ _dofTripleTextureLayout },
+		{
+			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/genbrdflut.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/gather_dof.frag.spv" },
+		},
+		{},  // No triangles are actually streamed in
+		{},
+		vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+		halfScreenspaceViewport,
+		halfScreenspaceScissor,
+		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE),
+		{ vkinit::colorBlendAttachmentState(), vkinit::colorBlendAttachmentState() },
+		vkinit::multisamplingStateCreateInfo(),
+		vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_ALWAYS),
+		{},
+		_gatherDOFRenderPass,
+		0,
+		gatherDOFPipeline,
+		gatherDOFPipelineLayout,
+		_swapchainDependentDeletionQueue
+	);
+	attachPipelineToMaterial(gatherDOFPipeline, gatherDOFPipelineLayout, "gatherDOFMaterial");
+
+	// Depth of Field Flood-fill pipeline
+	VkPipeline dofFloodFillPipeline;
+	VkPipelineLayout dofFloodFillPipelineLayout;
+	vkutil::pipelinebuilder::build(
+		{
+			VkPushConstantRange{
+				.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+				.offset = 0,
+				.size = sizeof(GPUBlurParams)
+			}
+		},
+		{ _dofDoubleTextureLayout },
+		{
+			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/genbrdflut.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/dof_floodfill.frag.spv" },
+		},
+		{},  // No triangles are actually streamed in
+		{},
+		vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+		halfScreenspaceViewport,
+		halfScreenspaceScissor,
+		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE),
+		{ vkinit::colorBlendAttachmentState(), vkinit::colorBlendAttachmentState() },
+		vkinit::multisamplingStateCreateInfo(),
+		vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_ALWAYS),
+		{},
+		_dofFloodFillRenderPass,
+		0,
+		dofFloodFillPipeline,
+		dofFloodFillPipelineLayout,
+		_swapchainDependentDeletionQueue
+	);
+	attachPipelineToMaterial(dofFloodFillPipeline, dofFloodFillPipelineLayout, "DOFFloodFillMaterial");
 
 	//
 	// Other pipelines
 	//
-	textmesh::initPipeline(screenspaceViewport, screenspaceScissor);
-	textbox::initPipeline(screenspaceViewport, screenspaceScissor);
-	physengine::initDebugVisPipelines(_mainRenderPass, screenspaceViewport, screenspaceScissor);
+	textmesh::initPipeline(screenspaceViewport, screenspaceScissor, _swapchainDependentDeletionQueue);
+	textbox::initPipeline(screenspaceViewport, screenspaceScissor, _swapchainDependentDeletionQueue);
+	physengine::initDebugVisPipelines(_mainRenderPass, screenspaceViewport, screenspaceScissor, _swapchainDependentDeletionQueue);
 }
 
 void VulkanEngine::generatePBRCubemaps()
@@ -3787,6 +5190,7 @@ void VulkanEngine::recreateSwapchain()
 	initMainRenderpass();
 	initUIRenderpass();
 	initPostprocessRenderpass();
+	initPostprocessImages();
 	initPickingRenderpass();
 	initFramebuffers();
 	initPipelines();
@@ -4415,6 +5819,16 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 			ImGui::DragFloat("opponentTargetTransition.lookDistanceObliqueAmount", &_camera->mainCamMode.opponentTargetTransition.lookDistanceObliqueAmount, 0.1f);
 			ImGui::DragFloat("opponentTargetTransition.lookDistanceHeightAmount", &_camera->mainCamMode.opponentTargetTransition.lookDistanceHeightAmount, 0.1f);
 			ImGui::DragFloat("opponentTargetTransition.focusPositionExtraYOffsetWhenTargeting", &_camera->mainCamMode.opponentTargetTransition.focusPositionExtraYOffsetWhenTargeting, 0.1f);
+			ImGui::DragFloat("opponentTargetTransition.depthOfFieldSmoothTime", &_camera->mainCamMode.opponentTargetTransition.depthOfFieldSmoothTime, 0.1f);
+			ImGui::DragFloat3("opponentTargetTransition.DOFPropsRelaxedState", _camera->mainCamMode.opponentTargetTransition.DOFPropsRelaxedState, 0.1f);
+		}
+
+		if (ImGui::CollapsingHeader("Depth of Field Properties", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			ImGui::DragFloat("CoC Focus Depth", &globalState::DOFFocusDepth, 0.1f);
+			ImGui::DragFloat("CoC Focus Extent", &globalState::DOFFocusExtent, 0.1f);
+			ImGui::DragFloat("CoC Blur Extent", &globalState::DOFBlurExtent, 0.1f);
+			ImGui::DragFloat("DOF Gather Sample Radius", &_DOFSampleRadiusMultiplier, 0.1f);
 		}
 
 		if (ImGui::CollapsingHeader("Textbox Properties", ImGuiTreeNodeFlags_DefaultOpen))

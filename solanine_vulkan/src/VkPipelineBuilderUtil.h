@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <vulkan/vulkan.h>
+struct DeletionQueue;
 
 
 namespace vkutil
@@ -41,6 +42,7 @@ namespace vkutil
             VkRenderPass                                     renderPass,
             uint32_t                                         subpass,
             VkPipeline&                                      outPipeline,
-            VkPipelineLayout&                                outPipelineLayout);
+            VkPipelineLayout&                                outPipelineLayout,
+            DeletionQueue&                                   deletionQueue);
     }
 }

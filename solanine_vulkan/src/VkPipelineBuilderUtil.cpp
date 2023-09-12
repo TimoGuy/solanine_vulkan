@@ -98,7 +98,8 @@ namespace vkutil
             VkRenderPass                                     renderPass,
             uint32_t                                         subpass,
             VkPipeline&                                      outPipeline,
-            VkPipelineLayout&                                outPipelineLayout)
+            VkPipelineLayout&                                outPipelineLayout,
+            DeletionQueue&                                   deletionQueue)
         {
             // Create pipeline layout
             VkPipelineLayoutCreateInfo layoutInfo = vkinit::pipelineLayoutCreateInfo();
@@ -183,6 +184,11 @@ namespace vkutil
                 vkDestroyShaderModule(pipelinelayoutcache::device, shaderStage.module, nullptr);
 
             std::cout << "Cleaned up used shader modules (count: " << compiledShaderStages.size() << ")" << std::endl;
+
+            // Add pipeline to deletion queue.
+            deletionQueue.pushFunction([=]() {
+                vkDestroyPipeline(pipelinelayoutcache::device, outPipeline, nullptr);
+            });
 
             return true;
         }

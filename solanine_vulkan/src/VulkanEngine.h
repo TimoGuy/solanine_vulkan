@@ -53,6 +53,27 @@ struct ColorPushConstBlock
 	vec4 color;
 };
 
+struct GPUCoCParams
+{
+	float_t cameraZNear;
+	float_t cameraZFar;
+	float_t focusDepth;
+	float_t focusExtent;
+	float_t blurExtent;
+};
+
+struct GPUBlurParams
+{
+	vec2 oneOverImageExtent;
+};
+
+struct GPUGatherDOFParams
+{
+	float_t sampleRadiusMultiplier;
+	float_t oneOverArbitraryResExtentX;
+	float_t oneOverArbitraryResExtentY;
+};
+
 struct FrameData
 {
 	VkSemaphore presentSemaphore, renderSemaphore;
@@ -86,28 +107,6 @@ struct UploadContext
 	VkCommandPool commandPool;
 	VkCommandBuffer commandBuffer;
 };
-
-struct DeletionQueue
-{
-	std::deque<std::function<void()>> deletors;
-
-	void pushFunction(std::function<void()>&& function)
-	{
-		deletors.push_back(function);
-	}
-
-	void flush()
-	{
-		// Call deletor lambdas in reverse order
-		for (auto it = deletors.rbegin(); it != deletors.rend(); it++)
-		{
-			(*it)();
-		}
-
-		deletors.clear();
-	}
-};
-
 
 class VulkanEngine
 {
@@ -168,9 +167,9 @@ public:
 	Texture       _mainImage;
 
 	// Main Depth Buffer
-	AllocatedImage _depthImage;
-	VkImageView    _depthImageView;
+	Texture        _depthImage;
 	VkFormat       _depthFormat;
+
 
 	//
 	// UI Renderpass
@@ -185,6 +184,46 @@ public:
 	VkRenderPass _postprocessRenderPass;  // @NOTE: no framebuffers defined here, bc this will write to the swapchain framebuffers
 	Texture      _bloomPostprocessImage;
 	VkExtent2D   _bloomPostprocessImageExtent;
+
+	// Depth of Field
+	float_t        _DOFSampleRadiusMultiplier = 0.75f;
+
+	VkRenderPass   _CoCRenderPass;
+	VkFramebuffer  _CoCFramebuffer;
+	Texture        _CoCImage;
+	VkSampler      _CoCImageMaxSampler;
+
+	VkRenderPass   _halveCoCRenderPass;
+	VkFramebuffer  _halveCoCFramebuffer;
+	Texture        _nearFieldImage;
+	Texture        _farFieldImage;
+	VkExtent2D     _halfResImageExtent;
+
+	VkRenderPass   _eighthCoCRenderPass;
+	VkFramebuffer  _eighthCoCFramebuffer;
+	Texture        _nearFieldEighthResCoCImage;
+	VkExtent2D     _eighthResImageExtent;
+
+	VkRenderPass   _blurXNearsideCoCRenderPass;
+	VkFramebuffer  _blurXNearsideCoCFramebuffer;
+	VkRenderPass   _blurYNearsideCoCRenderPass;
+	VkFramebuffer  _blurYNearsideCoCFramebuffer;
+	Texture        _nearFieldEighthResCoCImagePongImage;  // This is what I'm calling the separate image for ping-pong buffers (i.e. gaussian blurring).
+
+	VkRenderPass   _gatherDOFRenderPass;
+	VkFramebuffer  _gatherDOFFramebuffer;
+	Texture        _nearFieldImagePongImage;
+	Texture        _farFieldImagePongImage;
+
+	VkRenderPass   _dofFloodFillRenderPass;
+	VkFramebuffer  _dofFloodFillFramebuffer;
+
+	VkSampler      _nearFieldImageLinearSampler;
+	VkSampler      _farFieldImageLinearSampler;
+
+	VkDescriptorSetLayout _dofSingleTextureLayout;
+	VkDescriptorSetLayout _dofDoubleTextureLayout;
+	VkDescriptorSetLayout _dofTripleTextureLayout;
 
 	//
 	// Picking Renderpass
@@ -281,6 +320,7 @@ private:
 	void initMainRenderpass();
 	void initUIRenderpass();
 	void initPostprocessRenderpass();
+	void initPostprocessImages();
 	void initPickingRenderpass();
 	void initFramebuffers();
 	void initSyncStructures();
@@ -318,6 +358,12 @@ private:
 
 	bool searchForPickedObjectPoolIndex(size_t& outPoolIndex);
 	void renderPickedObject(VkCommandBuffer cmd, const FrameData& currentFrame, const std::vector<ModelWithIndirectDrawId>& indirectDrawCommandIds);
+
+	void renderPickingRenderpass(const FrameData& currentFrame);
+	void renderShadowRenderpass(const FrameData& currentFrame, VkCommandBuffer cmd);
+	void renderMainRenderpass(const FrameData& currentFrame, VkCommandBuffer cmd, const std::vector<ModelWithIndirectDrawId>& pickingIndirectDrawCommandIds);
+	void renderUIRenderpass(VkCommandBuffer cmd);
+	void renderPostprocessRenderpass(const FrameData& currentFrame, VkCommandBuffer cmd, uint32_t swapchainImageIndex);
 
 public:
 	//

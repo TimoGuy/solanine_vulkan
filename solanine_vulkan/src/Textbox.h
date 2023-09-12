@@ -7,6 +7,7 @@
 #include "ImportGLM.h"
 
 class VulkanEngine;
+struct DeletionQueue;
 
 
 namespace textbox
@@ -29,7 +30,7 @@ namespace textbox
     };
 
     void init(VulkanEngine* engine);
-    void initPipeline(VkViewport& screenspaceViewport, VkRect2D& screenspaceScissor);
+    void initPipeline(VkViewport& screenspaceViewport, VkRect2D& screenspaceScissor, DeletionQueue& deletionQueue);
     void cleanup();
 
     void update(const float_t& unscaledDeltaTime);
