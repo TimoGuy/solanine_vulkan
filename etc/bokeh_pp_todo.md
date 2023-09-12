@@ -45,3 +45,6 @@
 
 - [x] Add in some tuning.
     - [x] Change the size of the "eighth" stuff to "sixteenth" (after re-reading the article, it was downscaled to a sixteenth).
+
+- [ ] Do some optimization.
+    - [ ] Make the downscale `sixteenth_coc.frag` just downscale over 4 renderpasses. That way the texture taps/memory bandwidth is not as saturated (4 texture taps vs the current 64 to do the MAX reduction filter).
