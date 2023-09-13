@@ -112,7 +112,7 @@
             8. Flip from upside down to right side up
                 > Upside down. Press spacebar.
             9. Derriere cut
-                > Midair. 
+                > Midair. START HERE!!!!!!!!!!!!!!!!!!!!!! (NOTE: for some reason I feel like it's logical to just click LMB, but in this same midair state Eye of the Storm is double click LMB and hold, which feels like it'd be more powerful, even though this is supposed to be the most powerful swing out of all of them. Maybe holding LMB and releasing? It feels like for this it should be holding LMB and releasing but maybe Eye of the Storm needs to be changed so that it's lightly tapping LMB like just a double click, then pause, then click again to release the "vacuum", that way no holding LMB happens. Then in that case just have Derriere Cut be holding LMB for half a second or something longer than anything else in this waza set.)
 
         - THOUGHT: since diving off the weapon takes up resources, maybe making the player able to with the air waza use air itself as the kickboard to jump off downward in the dive move.
             - THOUGHT: also, I feel like a way to do the spinny helicopter move (since it's essentially a double jump) without having to do the downward dive jump would be useful.
