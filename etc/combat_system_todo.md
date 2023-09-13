@@ -93,6 +93,38 @@
 - [ ] Reiterate the "idea" of combat. PART II
     > The biggest goal is feeling like what you're inputting as actions is actually what you feel like you're doing.
     - [ ] Divide up the individual wazas such that you can do all of them one at a time. (THOUGHT: I think that being able to do them all individually is more important than the chain FOR NOW... bc doing them all individually all feels like a different action that you have control over doing)
+        - Here are the wazas (in the order of the "complete waza") and what I'm thinking to be the new button inputs (see `etc/waza/air_waza_plan.txt` for more info):
+            1. Gust Wall
+                > Grounded. Hold LMB, then release to do the swing down.
+            2. Updraft
+                > Grounded. Hold LMB and spacebar at the same time, and player will put weapon at side and hunch down, ready to launch off. Release spacebar, launching player forward. While launched forward, release LMB where enemy is to trigger player to do a strong bottom to top slice that launches the opponent up into the air. Player automatically lands in a squat from the strong bodily twist, ready for Giant Leap if spacebar is pressed and released.
+            3. Giant leap (jump up really high)
+                > Grounded. Hold spacebar to get into a squat, and release after half a second (or no time if landed in a squat from Updraft) to trigger player to do a giant leap upwards, Jump King style (but will have the ability to move while midair).
+            4. Eye of the Storm (Vacuum and vertical swing)
+                > Midair. Double click LMB, and hold the second click, where releasing triggers the strong vertical swing.
+            5. Flip over to upside down
+                > Midair. Press spacebar.
+            6. Downward dive
+                > Upside-down. Double tap spacebar, and the second tap, hold spacebar for a qtr second (game will hold you in the same spot midair as you're holding spacebar), then release, triggering the super strong dive.
+                - __NOTE__: there should be a "terminal velocity", where if player use this technique player actually surpasses the maximum negative y velocity for a bit, before it slowly goes back to "terminal velocity". Thus, if wanting to go down faster, would have to do another second Downward Dive (stamina doesn't refill until you're on the ground).
+            7. Spinny helicopter (Compression)
+                > Upside-down. Hold LMB, then release to do the Spinny Helicopter.
+            8. Flip from upside down to right side up
+                > Upside down. Press spacebar.
+            9. Derriere cut
+                > Midair. 
+
+        - THOUGHT: since diving off the weapon takes up resources, maybe making the player able to with the air waza use air itself as the kickboard to jump off downward in the dive move.
+            - THOUGHT: also, I feel like a way to do the spinny helicopter move (since it's essentially a double jump) without having to do the downward dive jump would be useful.
+                Maybe, first having the option where while midair the player could flip over upside down, and then in that state could either do helicopter OR downward dive OR go back to being right side up (essentially doing a front flip). You could do a couple different moves with this:
+                - Flip over, helicopter.
+                - Flip over, downward dive, helicopter.
+                - Flip over, flip back (frontflip!!)
+                - Flip over, downward dive, flip back (essentially superman landing where he is accelerating downward and then lands on his feet, crumbling the ground beneath him).
+                - Flip over, hit the ground (NOTE: will always get hurt if you land on the ground upside down!!!)
+                - Flip over, downward dive, hit the ground very hard (even more "fall damage"... more like stupid damage (OR!!!!!! Make this a way to defeat a certain enemy: flip them over so they land on their heads))
+            - THOUGHT: I think that the helicopter move shouldn't automatically move the player to right side up (I think that's already the case perhaps).
+
     - [ ] Require holding shift to do the aura-based wazas.
         - [ ] Change the long wazas to have -1 duration so that it stays active until letting go of shift (or with something like WazaAir2nd_LeapForwardRaimei, it will continue until letting go of shift or landing on the ground)
 
