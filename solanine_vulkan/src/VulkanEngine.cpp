@@ -844,38 +844,51 @@ void ppDepthOfField_HalveCircleOfConfusionWhileGeneratingNearFar(VkCommandBuffer
 	vkCmdEndRenderPass(cmd);
 }
 
-void ppDepthOfField_SixteenthCircleOfConfusion(VkCommandBuffer cmd, VkRenderPass sixteenthCoCRenderPass, VkFramebuffer sixteenthCoCFramebuffer, Material& sixteenthCoCMaterial, GPUBlurParams& sixteenthParams, VkExtent2D& sixteenthResImageExtent)
+struct IncrementalHalveCoCParams
 {
-	VkClearValue clearValues[1];
-	clearValues[0].color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
+	VkFramebuffer framebuffer;
+	Material* material;
+	VkExtent2D imageExtent;
+};
 
-	VkRenderPassBeginInfo renderpassInfo = {
-		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-		.pNext = nullptr,
+void ppDepthOfField_IncrementalReductionHalveCircleOfConfusion(VkCommandBuffer cmd, VkRenderPass incrementalReductionHalveCoCRenderPass, std::vector<IncrementalHalveCoCParams>& incrementalReductions)
+{
+	for (IncrementalHalveCoCParams& ihcp : incrementalReductions)
+	{
+		VkFramebuffer incrementalReductionHalveCoCFramebuffer = ihcp.framebuffer;
+		Material& incrementalReductionHalveCoCMaterial = *ihcp.material;
+		VkExtent2D& incrementalReductionHalveResImageExtent = ihcp.imageExtent;
 
-		.renderPass = sixteenthCoCRenderPass,
-		.framebuffer = sixteenthCoCFramebuffer,
-		.renderArea = {
-			.offset = VkOffset2D{ 0, 0 },
-			.extent = sixteenthResImageExtent,
-		},
+		VkClearValue clearValues[1];
+		clearValues[0].color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
 
-		.clearValueCount = 1,
-		.pClearValues = clearValues,
-	};
+		VkRenderPassBeginInfo renderpassInfo = {
+			.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+			.pNext = nullptr,
 
-	// Execute renderpass.
-	vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
+			.renderPass = incrementalReductionHalveCoCRenderPass,
+			.framebuffer = incrementalReductionHalveCoCFramebuffer,
+			.renderArea = {
+				.offset = VkOffset2D{ 0, 0 },
+				.extent = incrementalReductionHalveResImageExtent,
+			},
 
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, sixteenthCoCMaterial.pipeline);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, sixteenthCoCMaterial.pipelineLayout, 0, 1, &sixteenthCoCMaterial.textureSet, 0, nullptr);
-	vkCmdPushConstants(cmd, sixteenthCoCMaterial.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(GPUBlurParams), &sixteenthParams);
-	vkCmdDraw(cmd, 3, 1, 0, 0);
+			.clearValueCount = 1,
+			.pClearValues = clearValues,
+		};
 
-	vkCmdEndRenderPass(cmd);
+		// Execute renderpass.
+		vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, incrementalReductionHalveCoCMaterial.pipeline);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, incrementalReductionHalveCoCMaterial.pipelineLayout, 0, 1, &incrementalReductionHalveCoCMaterial.textureSet, 0, nullptr);
+		vkCmdDraw(cmd, 3, 1, 0, 0);
+
+		vkCmdEndRenderPass(cmd);
+	}
 }
 
-void ppDepthOfField_BlurNearsideCoC(VkCommandBuffer cmd, VkRenderPass blurXNearsideCoCRenderPass, VkFramebuffer blurXNearsideCoCFramebuffer, Material& blurXMaterial, VkRenderPass blurYNearsideCoCRenderPass, VkFramebuffer blurYNearsideCoCFramebuffer, Material& blurYMaterial, GPUBlurParams& blurParams, VkExtent2D& sixteenthResImageExtent)
+void ppDepthOfField_BlurNearsideCoC(VkCommandBuffer cmd, VkRenderPass blurXNearsideCoCRenderPass, VkFramebuffer blurXNearsideCoCFramebuffer, Material& blurXMaterial, VkRenderPass blurYNearsideCoCRenderPass, VkFramebuffer blurYNearsideCoCFramebuffer, Material& blurYMaterial, GPUBlurParams& blurParams, VkExtent2D& incrementalReductionHalveResImageExtent)
 {
 	// Blur the downsized nearside CoC using ping-pong technique.
 	VkRenderPass blurPasses[] = { blurXNearsideCoCRenderPass, blurYNearsideCoCRenderPass };
@@ -891,7 +904,7 @@ void ppDepthOfField_BlurNearsideCoC(VkCommandBuffer cmd, VkRenderPass blurXNears
 
 		.renderArea = {
 			.offset = VkOffset2D{ 0, 0 },
-			.extent = sixteenthResImageExtent,
+			.extent = incrementalReductionHalveResImageExtent,
 		},
 
 		.clearValueCount = 1,
@@ -984,7 +997,7 @@ void ppDepthOfField(
 	VkCommandBuffer cmd,
 	VkRenderPass CoCRenderPass, VkFramebuffer CoCFramebuffer, Material& CoCMaterial, GPUCoCParams& CoCParams, VkExtent2D& windowExtent,
 	VkRenderPass halveCoCRenderPass, VkFramebuffer halveCoCFramebuffer, Material& halveCoCMaterial, VkExtent2D& halfResImageExtent,
-	VkRenderPass sixteenthCoCRenderPass, VkFramebuffer sixteenthCoCFramebuffer, Material& sixteenthCoCMaterial, GPUBlurParams& sixteenthParams, VkExtent2D& sixteenthResImageExtent,
+	VkRenderPass incrementalReductionHalveCoCRenderPass, std::vector<IncrementalHalveCoCParams>& incrementalReductions,
 	VkRenderPass blurXNearsideCoCRenderPass, VkFramebuffer blurXNearsideCoCFramebuffer, Material& blurXMaterial,
 	VkRenderPass blurYNearsideCoCRenderPass, VkFramebuffer blurYNearsideCoCFramebuffer, Material& blurYMaterial, GPUBlurParams& blurParams,
 	VkRenderPass gatherDOFRenderPass, VkFramebuffer gatherDOFFramebuffer, Material& gatherDOFMaterial, GPUGatherDOFParams& dofParams,
@@ -1007,13 +1020,10 @@ void ppDepthOfField(
 		halfResImageExtent
 	);
 
-	ppDepthOfField_SixteenthCircleOfConfusion(
+	ppDepthOfField_IncrementalReductionHalveCircleOfConfusion(
 		cmd,
-		sixteenthCoCRenderPass,
-		sixteenthCoCFramebuffer,
-		sixteenthCoCMaterial,
-		sixteenthParams,
-		sixteenthResImageExtent
+		incrementalReductionHalveCoCRenderPass,
+		incrementalReductions
 	);
 
 	ppDepthOfField_BlurNearsideCoC(
@@ -1025,7 +1035,7 @@ void ppDepthOfField(
 		blurYNearsideCoCFramebuffer,
 		blurYMaterial,
 		blurParams,
-		sixteenthResImageExtent
+		incrementalReductions.back().imageExtent
 	);
 
 	ppDepthOfField_GatherDepthOfField(
@@ -1066,13 +1076,21 @@ void VulkanEngine::renderPostprocessRenderpass(const FrameData& currentFrame, Vk
 		.blurExtent = globalState::DOFBlurExtent,
 	};
 
-	GPUBlurParams sixteenthParams = {};
-	sixteenthParams.oneOverImageExtent[0] = 1.0f / _sixteenthResImageExtent.width;
-	sixteenthParams.oneOverImageExtent[1] = 1.0f / _sixteenthResImageExtent.height;
+	std::vector<IncrementalHalveCoCParams> incrementalReductions;
+	incrementalReductions.reserve(NUM_INCREMENTAL_COC_REDUCTIONS);
+	for (size_t i = 0; i < NUM_INCREMENTAL_COC_REDUCTIONS; i++)
+	{
+		std::string materialName = "incrementalReductionHalveCoCMaterial_" + std::to_string(i);
+		incrementalReductions.push_back({
+			.framebuffer = _incrementalReductionHalveCoCFramebuffers[i],
+			.material = getMaterial(materialName),
+			.imageExtent = _incrementalReductionHalveResImageExtents[i],
+		});
+	}
 
 	GPUBlurParams blurParams = {};
-	blurParams.oneOverImageExtent[0] = 1.0f / _sixteenthResImageExtent.width;
-	blurParams.oneOverImageExtent[1] = 1.0f / _sixteenthResImageExtent.height;
+	blurParams.oneOverImageExtent[0] = 1.0f / _incrementalReductionHalveResImageExtents[NUM_INCREMENTAL_COC_REDUCTIONS - 1].width;
+	blurParams.oneOverImageExtent[1] = 1.0f / _incrementalReductionHalveResImageExtents[NUM_INCREMENTAL_COC_REDUCTIONS - 1].height;
 
 	GPUGatherDOFParams dofParams = {
 		.sampleRadiusMultiplier = _DOFSampleRadiusMultiplier,
@@ -1085,6 +1103,7 @@ void VulkanEngine::renderPostprocessRenderpass(const FrameData& currentFrame, Vk
 	floodfillParams.oneOverImageExtent[0] = 1.0f / _halfResImageExtent.width;
 	floodfillParams.oneOverImageExtent[1] = 1.0f / _halfResImageExtent.height;
 
+
 	ppDepthOfField(
 		cmd,
 		_CoCRenderPass,
@@ -1096,11 +1115,8 @@ void VulkanEngine::renderPostprocessRenderpass(const FrameData& currentFrame, Vk
 		_halveCoCFramebuffer,
 		*getMaterial("halveCoCMaterial"),
 		_halfResImageExtent,
-		_sixteenthCoCRenderPass,
-		_sixteenthCoCFramebuffer,
-		*getMaterial("sixteenthCoCMaterial"),
-		sixteenthParams,
-		_sixteenthResImageExtent,
+		_incrementalReductionHalveCoCRenderPass,
+		incrementalReductions,
 		_blurXNearsideCoCRenderPass,
 		_blurXNearsideCoCFramebuffer,
 		*getMaterial("blurXSingleChannelMaterial"),
@@ -2423,10 +2439,10 @@ void initDOF_HalveCoCRenderPass(VkDevice device, VkRenderPass& renderPass)
 	VK_CHECK(vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass));
 }
 
-void initDOF_SixteenthCoCRenderPass(VkDevice device, VkRenderPass& renderPass)
+void initDOF_IncrementalReductionHalveCoCRenderPass(VkDevice device, VkRenderPass& renderPass)
 {
 	// Define the attachments and refs.
-	VkAttachmentDescription nearFieldSixteenthCoC = {
+	VkAttachmentDescription nearFieldIncrementalReductionHalveCoC = {
 		.format = VK_FORMAT_R16_SFLOAT,
 		.samples = VK_SAMPLE_COUNT_1_BIT,
 		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
@@ -2436,13 +2452,13 @@ void initDOF_SixteenthCoCRenderPass(VkDevice device, VkRenderPass& renderPass)
 		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
 		.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 	};
-	VkAttachmentReference nearFieldSixteenthCoCRef = {
+	VkAttachmentReference nearFieldIncrementalReductionHalveCoCRef = {
 		.attachment = 0,
 		.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
 	};
 
-	std::vector<VkAttachmentDescription> colorAttachments = { nearFieldSixteenthCoC, };
-	std::vector<VkAttachmentReference> colorAttachmentRefs = { nearFieldSixteenthCoCRef, };
+	std::vector<VkAttachmentDescription> colorAttachments = { nearFieldIncrementalReductionHalveCoC, };
+	std::vector<VkAttachmentReference> colorAttachmentRefs = { nearFieldIncrementalReductionHalveCoCRef, };
 
 	// Define the subpasses.
 	VkSubpassDescription subpass = {
@@ -2478,7 +2494,7 @@ void initDOF_SixteenthCoCRenderPass(VkDevice device, VkRenderPass& renderPass)
 void initDOF_BlurXNearsideCoCRenderPass(VkDevice device, VkRenderPass& renderPass)
 {
 	// Define the attachments and refs.
-	VkAttachmentDescription nearFieldSixteenthResCoCPong = {
+	VkAttachmentDescription nearFieldIncrementalReductionHalveResCoCPong = {
 		.format = VK_FORMAT_R16_SFLOAT,
 		.samples = VK_SAMPLE_COUNT_1_BIT,
 		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
@@ -2488,13 +2504,13 @@ void initDOF_BlurXNearsideCoCRenderPass(VkDevice device, VkRenderPass& renderPas
 		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
 		.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 	};
-	VkAttachmentReference nearFieldSixteenthResCoCPongRef = {
+	VkAttachmentReference nearFieldIncrementalReductionHalveResCoCPongRef = {
 		.attachment = 0,
 		.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
 	};
 
-	std::vector<VkAttachmentDescription> colorAttachments = { nearFieldSixteenthResCoCPong, };
-	std::vector<VkAttachmentReference> colorAttachmentRefs = { nearFieldSixteenthResCoCPongRef, };
+	std::vector<VkAttachmentDescription> colorAttachments = { nearFieldIncrementalReductionHalveResCoCPong, };
+	std::vector<VkAttachmentReference> colorAttachmentRefs = { nearFieldIncrementalReductionHalveResCoCPongRef, };
 
 	// Define the subpasses.
 	VkSubpassDescription subpass = {
@@ -2530,7 +2546,7 @@ void initDOF_BlurXNearsideCoCRenderPass(VkDevice device, VkRenderPass& renderPas
 void initDOF_BlurYNearsideCoCRenderPass(VkDevice device, VkRenderPass& renderPass)
 {
 	// Define the attachments and refs.
-	VkAttachmentDescription nearFieldSixteenthResCoCPing = {
+	VkAttachmentDescription nearFieldIncrementalReductionHalveResCoCPing = {
 		.format = VK_FORMAT_R16_SFLOAT,
 		.samples = VK_SAMPLE_COUNT_1_BIT,
 		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
@@ -2540,13 +2556,13 @@ void initDOF_BlurYNearsideCoCRenderPass(VkDevice device, VkRenderPass& renderPas
 		.initialLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 		.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 	};
-	VkAttachmentReference nearFieldSixteenthResCoCPingRef = {
+	VkAttachmentReference nearFieldIncrementalReductionHalveResCoCPingRef = {
 		.attachment = 0,
 		.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
 	};
 
-	std::vector<VkAttachmentDescription> colorAttachments = { nearFieldSixteenthResCoCPing, };
-	std::vector<VkAttachmentReference> colorAttachmentRefs = { nearFieldSixteenthResCoCPingRef, };
+	std::vector<VkAttachmentDescription> colorAttachments = { nearFieldIncrementalReductionHalveResCoCPing, };
+	std::vector<VkAttachmentReference> colorAttachmentRefs = { nearFieldIncrementalReductionHalveResCoCPingRef, };
 
 	// Define the subpasses.
 	VkSubpassDescription subpass = {
@@ -2718,7 +2734,7 @@ void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is 
 	initPostprocessCombineRenderPass(_device, _swapchainImageFormat, _postprocessRenderPass);
 	initDOF_CoCRenderPass(_device, _CoCRenderPass);
 	initDOF_HalveCoCRenderPass(_device, _halveCoCRenderPass);
-	initDOF_SixteenthCoCRenderPass(_device, _sixteenthCoCRenderPass);
+	initDOF_IncrementalReductionHalveCoCRenderPass(_device, _incrementalReductionHalveCoCRenderPass);
 	initDOF_BlurXNearsideCoCRenderPass(_device, _blurXNearsideCoCRenderPass);
 	initDOF_BlurYNearsideCoCRenderPass(_device, _blurYNearsideCoCRenderPass);
 	initDOF_GatherDOFRenderPass(_device, _gatherDOFRenderPass);
@@ -2729,7 +2745,7 @@ void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is 
 		vkDestroyRenderPass(_device, _postprocessRenderPass, nullptr);
 		vkDestroyRenderPass(_device, _CoCRenderPass, nullptr);
 		vkDestroyRenderPass(_device, _halveCoCRenderPass, nullptr);
-		vkDestroyRenderPass(_device, _sixteenthCoCRenderPass, nullptr);
+		vkDestroyRenderPass(_device, _incrementalReductionHalveCoCRenderPass, nullptr);
 		vkDestroyRenderPass(_device, _blurXNearsideCoCRenderPass, nullptr);
 		vkDestroyRenderPass(_device, _blurYNearsideCoCRenderPass, nullptr);
 		vkDestroyRenderPass(_device, _gatherDOFRenderPass, nullptr);
@@ -2777,14 +2793,24 @@ void VulkanEngine::initPostprocessImages()
 			.width = (uint32_t)(_windowExtent.width / 2),
 			.height = (uint32_t)(_windowExtent.height / 2),
 		};
-		_sixteenthResImageExtent = {
-			.width = (uint32_t)(_windowExtent.width / 16),
-			.height = (uint32_t)(_windowExtent.height / 16),
-		};
+		for (size_t i = 0; i < NUM_INCREMENTAL_COC_REDUCTIONS; i++)
+		{
+			float_t divisor = std::powf(2.0f, i + 1.0f);
+			_incrementalReductionHalveResImageExtents[i] = {
+				.width = (uint32_t)(_windowExtent.width / divisor),
+				.height = (uint32_t)(_windowExtent.height / divisor),
+			};
+		}
 
 		VkExtent3D fullImgExtent = { _windowExtent.width, _windowExtent.height, 1 };
 		VkExtent3D halfImgExtent = { _halfResImageExtent.width, _halfResImageExtent.height, 1 };
-		VkExtent3D sixteenthImgExtent = { _sixteenthResImageExtent.width, _sixteenthResImageExtent.height, 1 };
+		VkExtent3D incrementalReductionHalveImgExtents[NUM_INCREMENTAL_COC_REDUCTIONS];
+		for (size_t i = 0; i < NUM_INCREMENTAL_COC_REDUCTIONS; i++)
+			incrementalReductionHalveImgExtents[i] = {
+				_incrementalReductionHalveResImageExtents[i].width,
+				_incrementalReductionHalveResImageExtents[i].height,
+				1
+			};
 
 		createRenderTexture(
 			_allocator,
@@ -2892,27 +2918,28 @@ void VulkanEngine::initPostprocessImages()
 			_swapchainDependentDeletionQueue
 		);		
 
-		createRenderTexture(
-			_allocator,
-			_device,
-			_nearFieldSixteenthResCoCImage,
-			VK_FORMAT_R16_SFLOAT,
-			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-			sixteenthImgExtent,
-			numMips,
-			VK_IMAGE_ASPECT_COLOR_BIT,
-			VK_FILTER_NEAREST,
-			VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-			_swapchainDependentDeletionQueue
-		);
+		for (size_t i = 0; i < NUM_INCREMENTAL_COC_REDUCTIONS; i++)
+			createRenderTexture(
+				_allocator,
+				_device,
+				_nearFieldIncrementalReductionHalveResCoCImages[i],
+				VK_FORMAT_R16_SFLOAT,
+				VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+				incrementalReductionHalveImgExtents[i],
+				numMips,
+				VK_IMAGE_ASPECT_COLOR_BIT,
+				VK_FILTER_NEAREST,
+				VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+				_swapchainDependentDeletionQueue
+			);
 
 		createRenderTexture(
 			_allocator,
 			_device,
-			_nearFieldSixteenthResCoCImagePongImage,
+			_nearFieldIncrementalReductionHalveResCoCImagePongImage,
 			VK_FORMAT_R16_SFLOAT,
 			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-			sixteenthImgExtent,
+			incrementalReductionHalveImgExtents[NUM_INCREMENTAL_COC_REDUCTIONS - 1],
 			numMips,
 			VK_IMAGE_ASPECT_COLOR_BIT,
 			VK_FILTER_NEAREST,
@@ -2951,22 +2978,24 @@ void VulkanEngine::initPostprocessImages()
 				.build(textureSet, _dofDoubleTextureLayout);
 			attachTextureSetToMaterial(textureSet, "halveCoCMaterial");
 		}
+		for (size_t i = 0; i < NUM_INCREMENTAL_COC_REDUCTIONS; i++)
 		{
 			VkDescriptorImageInfo imageInfo = {
 				.sampler = _CoCImageMaxSampler,
-				.imageView = _CoCImage.imageView,
+				.imageView = (i == 0) ? _CoCImage.imageView : _nearFieldIncrementalReductionHalveResCoCImages[i - 1].imageView,
 				.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 			};
 			VkDescriptorSet textureSet;
 			vkutil::DescriptorBuilder::begin()
 				.bindImage(0, &imageInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
 				.build(textureSet, _dofSingleTextureLayout);
-			attachTextureSetToMaterial(textureSet, "sixteenthCoCMaterial");
+			std::string materialName = "incrementalReductionHalveCoCMaterial_" + std::to_string(i);
+			attachTextureSetToMaterial(textureSet, materialName);
 		}
 		{
 			VkDescriptorImageInfo imageInfo = {
-				.sampler = _nearFieldSixteenthResCoCImage.sampler,
-				.imageView = _nearFieldSixteenthResCoCImage.imageView,
+				.sampler = _nearFieldIncrementalReductionHalveResCoCImages[NUM_INCREMENTAL_COC_REDUCTIONS - 1].sampler,
+				.imageView = _nearFieldIncrementalReductionHalveResCoCImages[NUM_INCREMENTAL_COC_REDUCTIONS - 1].imageView,
 				.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 			};
 			VkDescriptorSet textureSet;
@@ -2977,8 +3006,8 @@ void VulkanEngine::initPostprocessImages()
 		}
 		{
 			VkDescriptorImageInfo imageInfo = {
-				.sampler = _nearFieldSixteenthResCoCImagePongImage.sampler,
-				.imageView = _nearFieldSixteenthResCoCImagePongImage.imageView,
+				.sampler = _nearFieldIncrementalReductionHalveResCoCImagePongImage.sampler,
+				.imageView = _nearFieldIncrementalReductionHalveResCoCImagePongImage.imageView,
 				.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 			};
 			VkDescriptorSet textureSet;
@@ -2999,8 +3028,8 @@ void VulkanEngine::initPostprocessImages()
 				.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 			};
 			VkDescriptorImageInfo imageInfo2 = {
-				.sampler = _nearFieldSixteenthResCoCImage.sampler,
-				.imageView = _nearFieldSixteenthResCoCImage.imageView,
+				.sampler = _nearFieldIncrementalReductionHalveResCoCImages[NUM_INCREMENTAL_COC_REDUCTIONS - 1].sampler,
+				.imageView = _nearFieldIncrementalReductionHalveResCoCImages[NUM_INCREMENTAL_COC_REDUCTIONS - 1].imageView,
 				.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 			};
 			VkDescriptorSet textureSet;
@@ -3282,22 +3311,23 @@ void VulkanEngine::initFramebuffers()
 		_swapchainDependentDeletionQueue
 	);
 
-	createFramebuffer(
-		_device,
-		_sixteenthCoCFramebuffer,
-		_sixteenthCoCRenderPass,
-		{ _nearFieldSixteenthResCoCImage.imageView, },
-		_sixteenthResImageExtent,
-		1,
-		_swapchainDependentDeletionQueue
-	);
+	for (size_t i = 0; i < NUM_INCREMENTAL_COC_REDUCTIONS; i++)
+		createFramebuffer(
+			_device,
+			_incrementalReductionHalveCoCFramebuffers[i],
+			_incrementalReductionHalveCoCRenderPass,
+			{ _nearFieldIncrementalReductionHalveResCoCImages[i].imageView, },
+			_incrementalReductionHalveResImageExtents[i],
+			1,
+			_swapchainDependentDeletionQueue
+		);
 
 	createFramebuffer(
 		_device,
 		_blurXNearsideCoCFramebuffer,
 		_blurXNearsideCoCRenderPass,
-		{ _nearFieldSixteenthResCoCImagePongImage.imageView, },
-		_sixteenthResImageExtent,
+		{ _nearFieldIncrementalReductionHalveResCoCImagePongImage.imageView, },
+		_incrementalReductionHalveResImageExtents[NUM_INCREMENTAL_COC_REDUCTIONS - 1],
 		1,
 		_swapchainDependentDeletionQueue
 	);
@@ -3306,8 +3336,8 @@ void VulkanEngine::initFramebuffers()
 		_device,
 		_blurYNearsideCoCFramebuffer,
 		_blurYNearsideCoCRenderPass,
-		{ _nearFieldSixteenthResCoCImage.imageView, },
-		_sixteenthResImageExtent,
+		{ _nearFieldIncrementalReductionHalveResCoCImages[NUM_INCREMENTAL_COC_REDUCTIONS - 1].imageView, },
+		_incrementalReductionHalveResImageExtents[NUM_INCREMENTAL_COC_REDUCTIONS - 1],
 		1,
 		_swapchainDependentDeletionQueue
 	);
@@ -3673,15 +3703,20 @@ void VulkanEngine::initPipelines()
 		_halfResImageExtent,
 	};
 
-	VkViewport sixteenthScreenspaceViewport = {
-		0.0f, 0.0f,
-		(float_t)_sixteenthResImageExtent.width, (float_t)_sixteenthResImageExtent.height,
-		0.0f, 1.0f,
-	};
-	VkRect2D sixteenthScreenspaceScissor = {
-		{ 0, 0 },
-		_sixteenthResImageExtent,
-	};
+	VkViewport incrementalReductionHalveScreenspaceViewports[NUM_INCREMENTAL_COC_REDUCTIONS];
+	VkRect2D incrementalReductionHalveScreenspaceScissors[NUM_INCREMENTAL_COC_REDUCTIONS];
+	for (size_t i = 0; i < NUM_INCREMENTAL_COC_REDUCTIONS; i++)
+	{
+		incrementalReductionHalveScreenspaceViewports[i] = {
+			0.0f, 0.0f,
+			(float_t)_incrementalReductionHalveResImageExtents[i].width, (float_t)_incrementalReductionHalveResImageExtents[i].height,
+			0.0f, 1.0f,
+		};
+		incrementalReductionHalveScreenspaceScissors[i] = {
+			{ 0, 0 },
+			_incrementalReductionHalveResImageExtents[i],
+		};
+	}
 
 	// Mesh ZPrepass Pipeline
 	VkPipeline meshZPrepassPipeline;
@@ -4013,39 +4048,37 @@ void VulkanEngine::initPipelines()
 	);
 	attachPipelineToMaterial(halveCoCPipeline, halveCoCPipelineLayout, "halveCoCMaterial");
 
-	// Sixteenth CoC pipeline
-	VkPipeline sixteenthCoCPipeline;
-	VkPipelineLayout sixteenthCoCPipelineLayout;
-	vkutil::pipelinebuilder::build(
-		{
-			VkPushConstantRange{
-				.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-				.offset = 0,
-				.size = sizeof(GPUBlurParams)
-			}
-		},
-		{ _dofSingleTextureLayout },
-		{
-			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/genbrdflut.vert.spv" },
-			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/sixteenth_coc.frag.spv" },
-		},
-		{},  // No triangles are actually streamed in
-		{},
-		vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
-		sixteenthScreenspaceViewport,
-		sixteenthScreenspaceScissor,
-		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE),
-		{ rChannelAttachmentState },
-		vkinit::multisamplingStateCreateInfo(),
-		vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_ALWAYS),
-		{},
-		_sixteenthCoCRenderPass,
-		0,
-		sixteenthCoCPipeline,
-		sixteenthCoCPipelineLayout,
-		_swapchainDependentDeletionQueue
-	);
-	attachPipelineToMaterial(sixteenthCoCPipeline, sixteenthCoCPipelineLayout, "sixteenthCoCMaterial");
+	// IncrementalReductionHalve CoC pipeline
+	for (size_t i = 0; i < NUM_INCREMENTAL_COC_REDUCTIONS; i++)
+	{
+		VkPipeline incrementalReductionHalveCoCPipeline;
+		VkPipelineLayout incrementalReductionHalveCoCPipelineLayout;
+		vkutil::pipelinebuilder::build(
+			{},
+			{ _dofSingleTextureLayout },
+			{
+				{ VK_SHADER_STAGE_VERTEX_BIT, "shader/genbrdflut.vert.spv" },
+				{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/incrementalReductionHalve_coc.frag.spv" },
+			},
+			{},  // No triangles are actually streamed in
+			{},
+			vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+			incrementalReductionHalveScreenspaceViewports[i],
+			incrementalReductionHalveScreenspaceScissors[i],
+			vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE),
+			{ rChannelAttachmentState },
+			vkinit::multisamplingStateCreateInfo(),
+			vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_ALWAYS),
+			{},
+			_incrementalReductionHalveCoCRenderPass,
+			0,
+			incrementalReductionHalveCoCPipeline,
+			incrementalReductionHalveCoCPipelineLayout,
+			_swapchainDependentDeletionQueue
+		);
+		std::string materialName = "incrementalReductionHalveCoCMaterial_" + std::to_string(i);
+		attachPipelineToMaterial(incrementalReductionHalveCoCPipeline, incrementalReductionHalveCoCPipelineLayout, materialName);
+	}
 
 	// Blur X Single Channel pipeline
 	VkPipeline blurXSingleChannelPipeline;
@@ -4066,8 +4099,8 @@ void VulkanEngine::initPipelines()
 		{},  // No triangles are actually streamed in
 		{},
 		vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
-		sixteenthScreenspaceViewport,
-		sixteenthScreenspaceScissor,
+		incrementalReductionHalveScreenspaceViewports[NUM_INCREMENTAL_COC_REDUCTIONS - 1],
+		incrementalReductionHalveScreenspaceScissors[NUM_INCREMENTAL_COC_REDUCTIONS - 1],
 		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE),
 		{ rChannelAttachmentState },
 		vkinit::multisamplingStateCreateInfo(),
@@ -4100,8 +4133,8 @@ void VulkanEngine::initPipelines()
 		{},  // No triangles are actually streamed in
 		{},
 		vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
-		sixteenthScreenspaceViewport,
-		sixteenthScreenspaceScissor,
+		incrementalReductionHalveScreenspaceViewports[NUM_INCREMENTAL_COC_REDUCTIONS - 1],
+		incrementalReductionHalveScreenspaceScissors[NUM_INCREMENTAL_COC_REDUCTIONS - 1],
 		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE),
 		{ rChannelAttachmentState },
 		vkinit::multisamplingStateCreateInfo(),
