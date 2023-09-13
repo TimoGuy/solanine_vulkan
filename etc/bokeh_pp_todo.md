@@ -46,8 +46,8 @@
 - [x] Add in some tuning.
     - [x] Change the size of the "eighth" stuff to "sixteenth" (after re-reading the article, it was downscaled to a sixteenth).
 
-- [ ] Do some optimization.
-    - [ ] Make the downscale `sixteenth_coc.frag` just downscale over 4 renderpasses. That way the texture taps/memory bandwidth is not as saturated (4 texture taps vs the current 64 to do the MAX reduction filter).
+- [x] Do some optimization.
+    - [x] Make the downscale `sixteenth_coc.frag` just downscale over 4 renderpasses. That way the texture taps/memory bandwidth is not as saturated (4 texture taps vs the current 64 to do the MAX reduction filter).
         > This makes a huge difference, actually. For a 1920x1080 display, here are the texture taps needed to downscale the CoC.
         >
         > Here is the 64 texture tap version:
@@ -57,3 +57,5 @@
         > `960*540+480*270+240*135+120*67 = 688440`
         >
         > So that's a 98% decrease in the number of texture taps! Very necessary I believe.  -Timo 2023/09/12
+        >
+        > REPLY: so I did this, and it seems like there are pros and cons to it. See `incrementalRecutionHalve_coc.frag`  -Timo 2023/09/13
