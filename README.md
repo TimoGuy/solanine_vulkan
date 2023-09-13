@@ -1,7 +1,5 @@
 # Solanine Vulkan
 
-https://github.com/TimoGuy/solanine_vulkan/assets/6829048/66249454-f5d2-4ddc-98d0-d50785b2e865
-
 ## Impetus
 
 *Due to inability to play the game [Solanine](https://github.com/TimoGuy/DemoEngine) on Steam Deck, as well as the frustration and shottiness of OpenGL, a rewrite and restructuring into Vulkan for the rendering became desirable. Thus, this repository exists.*
@@ -19,6 +17,12 @@ https://github.com/TimoGuy/solanine_vulkan/assets/6829048/66249454-f5d2-4ddc-98d
    - `Release`
      - ~~Removes the editor and just leaves the game as if for release~~ Similar to `Debug` but just whole program optimization is enabled
 5. Click the green play button
+
+## Videos
+
+https://github.com/TimoGuy/solanine_vulkan/assets/6829048/066cab14-4819-486a-b103-ba24ca15001b
+
+*Combat gameplay with a two-handed weapon. (Build #3102)*
 
 ## Screenshots
 
