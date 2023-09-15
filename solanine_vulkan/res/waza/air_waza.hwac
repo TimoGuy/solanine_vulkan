@@ -1,23 +1,97 @@
-# Enter into 1st Waza.
+## NEW FORMAT
+#:GustWall
+#  waza 1
+#    inputs           grounded    hold(x)
+#    animation_state  StateAirWaza1stFormEntrance
+#    hold_cancel      :GustWall.hold_cancel
+#    can_chain        17    -1    :GustWall.2
+#
+#  waza hold_cancel
+#    animation_state  StateAirWaza1stFormEntranceExit
+#    goto_null_on_finish
+#
+#  waza 2
+#    inputs           grounded    release(x)
+#    animation_state  StateAirWaza1stFormPart1
+#    can_chain        9    -1    :Updraft.1
+#
+#:Updraft
+#  waza 1
+#    inputs           grounded    hold(x,a)
+#    animation_state  StateAirWaza2ndFormEntrance
+#    hold_cancel      :Updraft.hold_cancel
+#    can_chain        10    -1    :Updraft.2
+#
+#  waza hold_cancel
+#    animation_state  StateAirWaza2ndFormEntranceExit
+#    goto_null_on_finish
+#
+#  waza 2
+#    inputs           grounded    release(a)
+#    animation_state  StateAirWaza2ndFormPart1
+#    land_ground      :Updraft.land_cancel
+#    can_chain        10    -1    :Updraft.3
+#
+#  waza land_cancel
+#    animation_state  StateAirWaza2ndFormPart1Exit
+#    goto_null_on_finish
+#
+#  waza 3
+#    inputs           midair    release(x)
+#    animation_state  StateAirWaza2ndFormPart2
+#    can_chain        9    -1    :GiantLeap.1_from_Updraft
+#
+#:GiantLeap
+#  waza 1
+#    inputs           grounded    doublehold(a,17)
+#    animation_state  StateAirWaza3rdFormEntrance
+#    hold_cancel      StateAirWaza2ndFormPart2Exit
+#    can_chain        :GiantLeap.2
+#
+#  waza 1_from_Updraft
+#    inputs           doublehold(a,0)
+#    animation_state  StateAirWaza3rdFormEntranceFromUpdraft
+#    hold_cancel      StateAirWaza2ndFormPart2Exit
+#    can_chain        :GiantLeap.2
+#
+#  waza 2
+#    inputs           release(a)
+#    animation_state  StateAirWaza3rdFormPart1
 
-:WazaAir1st_KneelAndPosture
-  entrance           idle    hold_x
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+:GustWall_Hold
+  entrance           grounded    hold_x
   animation_state    StateAirWaza1stFormEntrance
-  stamina_cost       5
-  duration           34
-  chain              WazaAir1st_SwingDownGust    17    34    press_x
-  on_duration_passed WazaAir1st_KneelAndPosture_ReturnToKamae
+  stamina_cost_hold  5
+  duration           -1
+  chain              GustWall_Waza1_Execute    17    -1    release_x
+  on_hold_cancel     GustWall_Hold_Cancel
 
-:WazaAir1st_KneelAndPosture_ReturnToKamae
+:GustWall_Hold_Cancel
   animation_state    StateAirWaza1stFormEntranceExit
   stamina_cost       0
   duration           22
   on_duration_passed NULL
 
-
-# Execute 1st Waza.
-
-:WazaAir1st_SwingDownGust
+:GustWall_Waza1_Execute
   animation_state    StateAirWaza1stFormPart1
   stamina_cost       25
   duration           25
@@ -29,52 +103,48 @@
   hitscan            -0.236201,0.454443,0.768883    -0.259243,0.158105,1.931490    8
   hs_launch_velocity 0.000000,0.000000,29.000000
   hs_rel_position    0.000000,0.000000,1.000000
-  chain              WazaAir1st_To2nd_LandAndStart    10     25    press_x
-  on_duration_passed WazaAir1st_SwingDownGust_ReturnToKamae
+  chain              Updraft_Hold_From_GustWall    10     25    hold_x_a
+  on_duration_passed GustWall_Waza1_Finish
 
-:WazaAir1st_SwingDownGust_ReturnToKamae
+:GustWall_Waza1_Finish
   animation_state    StateAirWaza1stFormPart1Exit
   stamina_cost       0
   duration           9
   on_duration_passed NULL
 
-
-# Enter into 2nd Waza.
-
-:WazaAir1st_To2nd_LandAndStart
-  animation_state    StateAirWaza1stFormTo2ndForm
-  stamina_cost       0
-  duration           17
-  chain              WazaAir2nd_LeapForwardRaimei    5    17    press_a
-  on_duration_passed WazaAir2nd_LandAndStart_ReturnToKamae
-
-:WazaAir2nd_LandAndStart
+:Updraft_Hold
+  entrance           grounded    hold_x_a
   animation_state    StateAirWaza2ndFormEntrance
-  stamina_cost       0
-  duration           20
-  chain              WazaAir2nd_LeapForwardRaimei    9    20    press_a
-  on_duration_passed WazaAir2nd_LandAndStart_ReturnToKamae
+  stamina_cost_hold  5
+  duration           -1
+  chain              Updraft_Waza1_Execute    9    -1    release_a
+  on_hold_cancel     Updraft_Hold_Cancel
 
-:WazaAir2nd_LandAndStart_ReturnToKamae
+:Updraft_Hold_From_GustWall
+  animation_state    StateAirWaza1stFormTo2ndForm  # @TODO: make this hold a lot shorter since you land in this position (if you're holding X,A before landing).
+  stamina_cost_hold  5
+  duration           -1
+  chain              Updraft_Waza1_Execute    5    -1    release_a
+  on_hold_cancel     Updraft_Hold_Cancel
+
+:Updraft_Hold_Cancel
   animation_state    StateAirWaza2ndFormEntranceExit
   stamina_cost       0
   duration           9
   on_duration_passed NULL
 
-
-# Execute 2nd Waza.
-
-:WazaAir2nd_LeapForwardRaimei                        # @NOTE: I don't know if having hitscans be allowed on this is the best choice. I took it out so that timing the `WazaAir2nd_TwistingUpdraft` is required.  -Timo 2023/08/11
+:Updraft_Waza1_Execute
   animation_state    StateAirWaza2ndFormPart1
-  stamina_cost       0
+  stamina_cost       25
+  stamina_cost_hold  5
   duration           30
   gravity_multiplier 0.25
   velocity_decay     0.5    0
   velocity           0.0,2.0,50.0    0
-  chain              WazaAir2nd_TwistingUpdraft    2    30    press_x
-  on_duration_passed WazaAir2nd_LeapForwardRaimei_ReturnToKamae
+  chain              Updraft_Waza2_Execute    2    30    release_x
+  on_land_cancel     Updraft_Waza1_Land_Cancel
 
-:WazaAir2nd_LeapForwardRaimei_ReturnToKamae
+:Updraft_Waza1_Land_Cancel
   animation_state    StateAirWaza2ndFormPart1Exit
   stamina_cost       0
   duration           25
@@ -82,9 +152,9 @@
   velocity           0.0,0.0,50.0    0
   on_duration_passed NULL
 
-:WazaAir2nd_TwistingUpdraft
+:Updraft_Waza2_Execute
   animation_state    StateAirWaza2ndFormPart2
-  stamina_cost       0
+  stamina_cost       25
   duration           33
   velocity_decay     0.5    0
   velocity_decay     2.5    9
@@ -104,28 +174,33 @@
   #hs_launch_velocity 0.000000,15.000000,22.500000   # This one works sometimes
   hs_launch_velocity 0.000000,18.000000,20.500000    # This one also works... sometimes
   hs_rel_position    0.000000,1.000000,1.000000
-  chain              WazaAir3rd_ShoulderLift    9    33    press_a
-  on_duration_passed WazaAir3rd_ReadyForLiftoff_ReturnToKamae
+  chain              GiantLeap_Hold_From_Updraft    9    33    doublehold_a
+  on_duration_passed GiantLeap_Hold_Cancel
 
-
-# Enter into 3rd Waza.
-
-:WazaAir3rd_ReadyForLiftoff
+:GiantLeap_Hold
+  entrance           grounded    doublehold_a
   animation_state    StateAirWaza3rdFormEntrance
-  stamina_cost       0
-  duration           31
-  chain              WazaAir3rd_ShoulderLift    14    31    press_a
-  on_duration_passed WazaAir3rd_ReadyForLiftoff_ReturnToKamae
+  stamina_cost_hold  5
+  duration           -1
+  chain              GiantLeap_Waza1_Execute    14    -1    release_a
+  on_hold_cancel     GiantLeap_Hold_Cancel
 
-:WazaAir3rd_ReadyForLiftoff_ReturnToKamae
+:GiantLeap_Hold_From_Updraft
+  animation_state    StateAirWaza3rdFormEntrance
+  stamina_cost_hold  5
+  duration           -1
+  chain              GiantLeap_Waza1_Execute    14    -1    release_a
+  on_hold_cancel     GiantLeap_Hold_Cancel
+
+:GiantLeap_Hold_Cancel
   animation_state    StateAirWaza2ndFormPart2Exit
   stamina_cost       0
   duration           14
   on_duration_passed NULL
 
-:WazaAir3rd_ShoulderLift
+:GiantLeap_Waza1_Execute
   animation_state    StateAirWaza3rdFormPart1
-  stamina_cost       0
+  stamina_cost       50
   duration           48
   velocity           0.0,30.0,4.0    3
   hitscan            0.179830,1.341760,-0.598141    0.492761,1.266228,0.557874
@@ -154,39 +229,20 @@
   hitscan            0.085692,1.822210,-0.563218    0.352167,1.653761,0.594633    25
   hitscan            0.085692,1.822210,-0.563218    0.352167,1.653761,0.594633    26
   hs_launch_velocity 0.000000,29.000000,10.500000
-  chain              WazaAir3rd_To4th_ReadySabakiSwing    4    48    press_x
+  chain              EyeOfTheStorm_Waza1_Execute    4    48    doubleclick_x
   on_duration_passed NULL
 
-
-# Enter into 4th Waza.
-
-:WazaAir3rd_To4th_ReadySabakiSwing
-  animation_state    StateAirWaza3rdFormTo4thForm
-  stamina_cost       0
-  duration           27
-  hold_midair
-  chain              WazaAir4th_VacuumCockBack    7    27     press_x
-  on_duration_passed NULL
-
-:WazaAir4th_ReadySabakiSwing
-  entrance           midair    press_x
-  animation_state    StateAirWaza4thFormEntrance
-  stamina_cost       0
-  duration           22
-  hold_midair
-  chain              WazaAir4th_VacuumCockBack    2    22     press_x
-  on_duration_passed NULL
-
-:WazaAir4th_VacuumCockBack
+:EyeOfTheStorm_Waza1_Execute
+  entrance           midair    doubleclick_x
   animation_state    StateAirWaza4thFormPart1
-  stamina_cost       0
-  duration           33
+  stamina_cost       25
+  stamina_cost_hold  10
+  duration           -1
   hold_midair
   vacuum_suck_in     0.000000,0.200000,0.750000    6.000000    4.000000
-  chain              WazaAir4th_SabakiSwing    6    33     press_x
-  on_duration_passed NULL
+  chain              EyeOfTheStorm_Waza2_Execute    6    -1     press_x
 
-:WazaAir4th_SabakiSwing
+:EyeOfTheStorm_Waza2_Execute
   animation_state    StateAirWaza4thFormPart2
   stamina_cost       0
   duration           32
@@ -202,39 +258,55 @@
   hitscan            0.006732,0.830382,0.698525    0.050627,-0.040518,1.522907    8
   hs_launch_velocity 0.000000,-26.000000,6.000000
   hs_rel_position    0.000000,-0.500000,1.000000
-  chain              WazaAir4th_To5th_ReadyAirDrill    9    32    press_a
   on_duration_passed NULL
 
-
-# Enter into 5th Waza.
-
-:WazaAir4th_To5th_ReadyAirDrill
+:FlipOver_UpsideDown  # @TODO: maybe this and :FlipOver_RightsideUp should be state changes rather than hwac waza states that're just part of the transformation.
+  entrance           midair    press_a
   animation_state    StateAirWaza4thFormTo5thForm
   stamina_cost       0
-  duration           37
-  hold_midair
-  velocity           0.0,2.0,-1.0    0
-  velocity_decay     0.2    0
-  chain              WazaAir5th_AirDrill    11    37    press_a
-  on_duration_passed NULL
 
-:WazaAir5th_AirDrill
+:FlipOver_RightsideUp
+  entrance           upsidedown    press_a
+  animation_state    StateAirWaza4thFormTo5thForm
+  stamina_cost       0
+
+:DownwardDive_Hold
+  entrance           upsidedown    doublehold_a
   animation_state    StateAirWaza5thFormPart1
+  stamina_cost_hold  5
+  duration           -1
+  hold_midair
+  chain              DownwardDive_Execute    10    -1    release_a
+  on_hold_cancel     DownwardDive_Hold_Cancel
+
+:DownwardDive_Hold_Cancel
+  animation_state    StateAirWaza4thFormTo5thForm
   stamina_cost       0
-  duration           180
+  duration           10
+  on_duration_passed NULL
+
+:DownwardDive_Execute
+  animation_state    StateAirWaza5thFormPart1
+  stamina_cost       5
+  duration           1  # @TODO: @NOTE: I'm thinking this could be the way to define this move. Jump down super fast, and you're upside down, but you should be able to do any other move almost right after, hence the duration.
   velocity           0.0,-10.0,4.0    0
-  chain              WazaAir5th_ReadyPressureFan    4    180    press_x
   on_duration_passed NULL
 
-:WazaAir5th_ReadyPressureFan
+:SpinnyHelicopter_Hold
+  entrance           upsidedown    hold_x
   animation_state    StateAirWaza5thFormPart2
-  stamina_cost       0
-  duration           42
+  stamina_cost_hold  5
+  duration           -1
   hold_midair        0    9
-  chain              WazaAir5th_PressureFan    5    42    press_x
+  chain              SpinnyHelicopter_Execute    5    -1    release_x
+  on_hold_cancel     SpinnyHelicopter_Hold_Cancel
+
+:SpinnyHelicopter_Hold_Cancel
+  animation_state    StateAirWaza5thFormPart2Exit
+  duration           10
   on_duration_passed NULL
 
-:WazaAir5th_PressureFan
+:SpinnyHelicopter_Execute
   animation_state    StateAirWaza5thFormPart3
   stamina_cost       0
   duration           50
@@ -249,20 +321,22 @@
   hitscan            0.104910,0.296456,-0.706299    0.136058,0.361864,-1.904110    7
   hitscan            0.282753,0.394472,-0.725200    0.514431,0.277522,-1.896801    8
   force_zone         0.000000,-5.500000,0.000000    2.250000,6.000000,2.250000    0.000000,-100.000000,0.000000    0    8
-  chain              WazaAir5th_To6th_ReadyWeightShiftCrush    13    50    press_x
   on_duration_passed NULL
 
-
-# Enter into 6th Waza.
-
-:WazaAir5th_To6th_ReadyWeightShiftCrush
+:DerriereCut_Hold
+  entrance           midair    hold_x
   animation_state    StateAirWaza5thFormTo6thForm
-  stamina_cost       0
-  duration           50
-  chain              WazaAir6th_FirstSlashPenetration    8    50    press_x
+  stamina_cost_hold  5
+  duration           -1
+  chain              DerriereCut_Waza1_Execute    8    -1    release_x
+  on_hold_cancel     DerriereCut_Hold_Cancel
+
+:DerriereCut_Hold_Cancel
+  animation_state    StateAirWaza5thFormTo6thFormExit
+  duration           10
   on_duration_passed NULL
 
-:WazaAir6th_FirstSlashPenetration
+:DerriereCut_Waza1_Execute
   animation_state    StateAirWaza6thFormPart1
   stamina_cost       0
   duration           50
@@ -274,21 +348,26 @@
   hitscan            0.017932,0.687713,0.279456    0.019525,-0.483034,0.016107    5
   hitscan            0.007860,0.626258,0.284364    -0.004754,-0.544271,0.020344    6
   hs_rel_position    0.000000,0.000000,0.000000    ignore_y
-  chain              WazaAir6th_WeightShiftReleverage    5    50    press_a
+  chain              DerriereCut_Waza2_Hold    5    50    hold_x
   on_duration_passed NULL
 
-:WazaAir6th_WeightShiftReleverage
+:DerriereCut_Waza2_Hold
   animation_state    StateAirWaza6thFormPart2
-  stamina_cost       0
-  duration           50
+  stamina_cost_hold  20
+  duration           -1
   hold_midair
   velocity           0.0,0.0,6.0    0
   velocity           0.0,0.0,0.5    6
   velocity           0.0,0.0,0.0    9
-  chain              WazaAir6th_BreakthruAndLanding    7    50    any
+  chain              DerriereCut_Waza2_Execute    7    -1    release_x
+  on_hold_cancel     DerriereCut_Waza2_Hold_Cancel
+
+:DerriereCut_Waza2_Hold_Cancel
+  animation_state    StateAirWaza5thFormTo6thFormExit
+  duration           10
   on_duration_passed NULL
 
-:WazaAir6th_BreakthruAndLanding
+:DerriereCut_Waza2_Execute  # @NOTE: this is the one where the animation is the same but the game logic has to decide whether to keep the blade on the enemy or on the handle depending on poise and stuff.
   animation_state    StateAirWaza6thFormPart3
   stamina_cost       0
   duration           83
@@ -301,10 +380,10 @@
   hitscan            0.017790,1.707948,-0.042715    0.019162,2.714119,0.611211    4
   hs_launch_velocity 0.0,2.0,-7.0
   hs_rel_position    0.000000,0.000000,-2.000000    ignore_y
-  chain              WazaAir6th_Chiburi    17    83    any
-  on_duration_passed WazaAir6th_Chiburi
+  chain              DerriereCut_Waza2_Finish    17    83    any  # @THOUGHT: I personally feel like something other than a chiburi could be good.
+  on_duration_passed DerriereCut_Waza2_Finish
 
-:WazaAir6th_Chiburi
+:DerriereCut_Waza2_Finish
   animation_state    StateAirWaza6thFormPart3Exit
   stamina_cost       0
   duration           8

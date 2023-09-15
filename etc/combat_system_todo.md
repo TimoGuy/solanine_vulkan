@@ -92,27 +92,36 @@
 
 - [ ] Reiterate the "idea" of combat. PART II
     > The biggest goal is feeling like what you're inputting as actions is actually what you feel like you're doing.
-    - [ ] Divide up the individual wazas such that you can do all of them one at a time. (THOUGHT: I think that being able to do them all individually is more important than the chain FOR NOW... bc doing them all individually all feels like a different action that you have control over doing)
+    - [x] Divide up the individual wazas such that you can do all of them one at a time. (THOUGHT: I think that being able to do them all individually is more important than the chain FOR NOW... bc doing them all individually all feels like a different action that you have control over doing)
         - Here are the wazas (in the order of the "complete waza") and what I'm thinking to be the new button inputs (see `etc/waza/air_waza_plan.txt` for more info):
             1. Gust Wall
                 > Grounded. Hold LMB, then release to do the swing down.
+                > Hold, take out stamina over time. Swing, take a small amount of stamina (I think this one should be the least amount of stamina than the over moves).
             2. Updraft
                 > Grounded. Hold LMB and spacebar at the same time, and player will put weapon at side and hunch down, ready to launch off. Release spacebar, launching player forward. While launched forward, release LMB where enemy is to trigger player to do a strong bottom to top slice that launches the opponent up into the air. Player automatically lands in a squat from the strong bodily twist, ready for Giant Leap if spacebar is pressed and released.
+                > Hold (either spacebar or LMB) take out stamina over time (more when both). Jump, also swing, take a good amount of stamina (not as much as later moves).
             3. Giant leap (jump up really high)
-                > Grounded. Hold spacebar to get into a squat, and release after half a second (or no time if landed in a squat from Updraft) to trigger player to do a giant leap upwards, Jump King style (but will have the ability to move while midair).
+                > Grounded. Double tap spacebar, and the second tap, hold spacebar to get into a squat, and release after half a second (or no time if landed in a squat from Updraft) to trigger player to do a giant leap upwards, Jump King style (but will have the ability to move while midair).
+                > Hold, take out stamina over time. Jump, take out good amount of stamina.
             4. Eye of the Storm (Vacuum and vertical swing)
-                > Midair. Double click LMB, and hold the second click, where releasing triggers the strong vertical swing.
+                > Midair. Double click LMB to get into the vacuum, then when the enemy is in front of the player (after like 1/3 second), click LMB to unleash the cocked back swing and "vacuum".
+                > Stamina gets taken down for each click, but after click #2 is the vacuum, and stamina will tick down over time too.
             5. Flip over to upside down
                 > Midair. Press spacebar.
+                > No stamina.
             6. Downward dive
                 > Upside-down. Double tap spacebar, and the second tap, hold spacebar for a qtr second (game will hold you in the same spot midair as you're holding spacebar), then release, triggering the super strong dive.
                 - __NOTE__: there should be a "terminal velocity", where if player use this technique player actually surpasses the maximum negative y velocity for a bit, before it slowly goes back to "terminal velocity". Thus, if wanting to go down faster, would have to do another second Downward Dive (stamina doesn't refill until you're on the ground).
+                > Hold, take stamina over time. On jump, take out a good amount of stamina.
             7. Spinny helicopter (Compression)
                 > Upside-down. Hold LMB, then release to do the Spinny Helicopter.
+                > During the holding period slowly tick down stamina over time. Upon release, take out a good amount of stamina.
             8. Flip from upside down to right side up
                 > Upside down. Press spacebar.
+                > No stamina.
             9. Derriere cut
-                > Midair. START HERE!!!!!!!!!!!!!!!!!!!!!! (NOTE: for some reason I feel like it's logical to just click LMB, but in this same midair state Eye of the Storm is double click LMB and hold, which feels like it'd be more powerful, even though this is supposed to be the most powerful swing out of all of them. Maybe holding LMB and releasing? It feels like for this it should be holding LMB and releasing but maybe Eye of the Storm needs to be changed so that it's lightly tapping LMB like just a double click, then pause, then click again to release the "vacuum", that way no holding LMB happens. Then in that case just have Derriere Cut be holding LMB for half a second or something longer than anything else in this waza set.)
+                > Midair. Hold LMB for 1/3 second and then release, releasing the first cut. If it makes it thru, then that's it. If not, hold LMB again for 1/3 second to do weight shift and ready the second cut, and release to do the second swing thru. The blade will either snap off or go thru the enemy. Either way the animation is the same. The only difference is whether the blade comes with or not.
+                > Hold, take out stamina over time. On first cut take out a good amount of stamina. Hold, take out stamina over time (more than previous). On second cut take out twice as much as the first cut's stamina.
 
         - THOUGHT: since diving off the weapon takes up resources, maybe making the player able to with the air waza use air itself as the kickboard to jump off downward in the dive move.
             - THOUGHT: also, I feel like a way to do the spinny helicopter move (since it's essentially a double jump) without having to do the downward dive jump would be useful.
@@ -123,6 +132,7 @@
                 - Flip over, downward dive, flip back (essentially superman landing where he is accelerating downward and then lands on his feet, crumbling the ground beneath him).
                 - Flip over, hit the ground (NOTE: will always get hurt if you land on the ground upside down!!!)
                 - Flip over, downward dive, hit the ground very hard (even more "fall damage"... more like stupid damage (OR!!!!!! Make this a way to defeat a certain enemy: flip them over so they land on their heads))
+                - Flip over, helicopter, helicopter, helicopter, etc.
             - THOUGHT: I think that the helicopter move shouldn't automatically move the player to right side up (I think that's already the case perhaps).
 
     - [ ] Require holding shift to do the aura-based wazas.
