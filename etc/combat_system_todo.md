@@ -134,6 +134,9 @@
                 - Flip over, downward dive, hit the ground very hard (even more "fall damage"... more like stupid damage (OR!!!!!! Make this a way to defeat a certain enemy: flip them over so they land on their heads))
                 - Flip over, helicopter, helicopter, helicopter, etc.
             - THOUGHT: I think that the helicopter move shouldn't automatically move the player to right side up (I think that's already the case perhaps).
+        
+    - [ ] Implement the new air waza design.
+        - [x] Rewrite the .hwac file
 
     - [ ] Require holding shift to do the aura-based wazas.
         - [ ] Change the long wazas to have -1 duration so that it stays active until letting go of shift (or with something like WazaAir2nd_LeapForwardRaimei, it will continue until letting go of shift or landing on the ground)

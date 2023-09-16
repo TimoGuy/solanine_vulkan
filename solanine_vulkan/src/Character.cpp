@@ -59,9 +59,54 @@ struct Character_XData
     struct AttackWaza
     {
         std::string wazaName = "";
-        std::vector<std::string> entranceCommands;
+
+        enum WazaInput
+        {
+            PRESS_X,       PRESS_A,       PRESS_X_A,
+            HOLD_X,        HOLD_A,        HOLD_X_A,
+            RELEASE_X,     RELEASE_A,     RELEASE_X_A,
+            DOUBLECLICK_X, DOUBLECLICK_A, DOUBLECLICK_X_A,
+            DOUBLEHOLD_X,  DOUBLEHOLD_A,  DOUBLEHOLD_X_A,
+        };
+        enum WazaInputType
+        {
+            NONE,
+            PRESS,
+            HOLD,
+            RELEASE,
+            DOUBLECLICK,
+            DOUBLEHOLD,
+        };
+
+        struct InputState
+        {
+            uint8_t numPressTicks = 0;
+            uint8_t numReleaseTicks = 0;
+            bool completedPress = false;
+        };
+        InputState currentInputState_x;
+        InputState currentInputState_a;
+        InputState currentInputState_x_a;
+        uint8_t ticksToHold = 12;  // For 40fps, 12 ticks == 0.3 seconds.
+        uint8_t ticksToClearState = 12;
+
+        struct EntranceInputParams
+        {
+            std::string weaponType = "NULL";  // Valid options: twohanded, bow, dual, spear (NULL means there is no entrance)
+            std::string movementState = "NULL";  // Valid options: grounded, midair, upsidedown (NULL means there is no entrance)
+            std::string inputName = "NULL";  // Valid options: press_(x/a/x_a), hold_(x/a/x_a), release_(x/a/x_a), doubleclick_(x/a/x_a), doublehold_(x/a/x_a)
+            WazaInput input;
+            // @NOTE: for `input`, there are some inputs that collide with each other. You will have to worry about this depending on what an available chain's inputs are and which entrances are available (i.e. if you're in an interruptable state at the moment).
+            //        The inputs that collide are:
+            //            press_@, doubleclick_@, doublehold_@    // Bc doubleclick and doublehold each of them require a `press_@` at the beginning.
+            //        These don't collide because:
+            //            press_@, hold_@                         // Bc press requires to click and release in a short amount of time. Hold requires to click and hold @ for an amount of time.
+            //            press_@, release_@                      // Bc release will trigger the moment @ is not pressed, whereas press will require >=1 tick of @ not pressed, then >=1 <time_for_hold_to_activate tick(s) of @ pressed, then will trigger the moment @ is not pressed again.
+        } entranceInputParams;
+
         std::string animationState;
-        int16_t staminaCost = 10;
+        int16_t staminaCost = 0;
+        int16_t staminaCostHold = 0;
         int16_t duration = 0;
         bool holdMidair = false;
         int16_t holdMidairTimeFrom = -1;
@@ -121,14 +166,20 @@ struct Character_XData
             int16_t inputTimeWindowEnd = 0;
             std::string nextWazaName = "";  // @NOTE: this is just for looking up the correct next action.
             AttackWaza* nextWazaPtr = nullptr;  // Baked data.
+            std::string inputName = "NULL";  // REQUIRED: see `EntranceInputParams::input` for list of valid inputs.
+            WazaInput input;
         };
         std::vector<Chain> chains;  // Note that you can have different chains depending on your rhythm in the attack.
 
+        std::string onHoldCancelWazaName = "NULL";
+        AttackWaza* onHoldCancelWazaPtr = nullptr;
+
         std::string onDurationPassedWazaName = "NULL";
         AttackWaza* onDurationPassedWazaPtr = nullptr;
+
+        bool isInterruptable = false;  // Can interrupt by moving, jumping, flipping over, or starting another waza.
     };
-    std::vector<AttackWaza> defaultWazaSet;
-    std::vector<AttackWaza> airWazaSet;
+    std::vector<AttackWaza> wazaSet;
 
     AttackWaza* currentWaza = nullptr;
     vec3        prevWazaHitscanNodeEnd1, prevWazaHitscanNodeEnd2;
@@ -138,6 +189,7 @@ struct Character_XData
     float_t     wazaHitTimescale = 1.0f;
     float_t     wazaHitTimescaleOnHit = 0.01f;
     float_t     wazaHitTimescaleReturnToOneSpeed = 500.0f;
+
 
     // Waza Editor/Viewer State
     struct AttackWazaEditor
@@ -428,7 +480,9 @@ void loadDataFromLine(Character_XData::AttackWaza& newWaza, const std::string& c
 {
     if (command == "entrance")
     {
-        newWaza.entranceCommands = params;
+        newWaza.entranceInputParams.weaponType = params[0];
+        newWaza.entranceInputParams.movementState = params[1];
+        newWaza.entranceInputParams.inputName = params[2];
     }
     else if (command == "animation_state")
     {
@@ -437,6 +491,10 @@ void loadDataFromLine(Character_XData::AttackWaza& newWaza, const std::string& c
     else if (command == "stamina_cost")
     {
         newWaza.staminaCost = std::stoi(params[0]);
+    }
+    else if (command == "stamina_cost_hold")
+    {
+        newWaza.staminaCostHold = std::stoi(params[0]);
     }
     else if (command == "duration")
     {
@@ -515,11 +573,20 @@ void loadDataFromLine(Character_XData::AttackWaza& newWaza, const std::string& c
         newChain.nextWazaName = params[0];
         newChain.inputTimeWindowStart = std::stoi(params[1]);
         newChain.inputTimeWindowEnd = std::stoi(params[2]);
+        newChain.inputName = params[3];
         newWaza.chains.push_back(newChain);
+    }
+    else if (command == "on_hold_cancel")
+    {
+        newWaza.onHoldCancelWazaName = params[0];
     }
     else if (command == "on_duration_passed")
     {
         newWaza.onDurationPassedWazaName = params[0];
+    }
+    else if (command == "interruptable")
+    {
+        newWaza.isInterruptable = true;
     }
     else
     {
@@ -545,6 +612,42 @@ Character_XData::AttackWaza* getWazaPtrFromName(std::vector<Character_XData::Att
     return nullptr;
 }
 
+Character_XData::AttackWaza::WazaInput getInputEnumFromName(const std::string& inputName)
+{
+    int32_t enumValue = -1;
+    int32_t x = -1;
+    if (inputName.rfind("press_", 0) == 0)
+        x = 0;
+    else if (inputName.rfind("hold_", 0) == 0)
+        x = 1;
+    else if (inputName.rfind("release_", 0) == 0)
+        x = 2;
+    else if (inputName.rfind("doubleclick_", 0) == 0)
+        x = 3;
+    else if (inputName.rfind("doublehold_", 0) == 0)
+        x = 4;
+    
+    int32_t y = -1;
+    std::string suffix = inputName.substr(inputName.find("_") + 1);
+    if (suffix == "x")
+        y = 0;
+    else if (suffix == "a")
+        y = 1;
+    else if (suffix == "x_a")
+        y = 2;
+    
+    enumValue = 3 * x + y;
+    
+    if (enumValue < 0)
+    {
+        std::cerr << "[WAZA LOADING]" << std::endl
+            << "ERROR: Waza input \"" << inputName << "\" was not found (`getInputEnumFromName`)." << std::endl;
+        return Character_XData::AttackWaza::WazaInput(0);
+    }
+
+    return Character_XData::AttackWaza::WazaInput(enumValue);
+}
+
 void initWazaSetFromFile(std::vector<Character_XData::AttackWaza>& wazas, const std::string& fname)
 {
     std::ifstream wazaFile(fname);
@@ -558,7 +661,6 @@ void initWazaSetFromFile(std::vector<Character_XData::AttackWaza>& wazas, const 
     //
     // Parse the commands
     //
-    wazas.clear();
     Character_XData::AttackWaza newWaza;
     std::string line;
     for (size_t lineNum = 1; std::getline(wazaFile, line); lineNum++)  // @COPYPASTA with SceneManagement.cpp
@@ -655,8 +757,15 @@ void initWazaSetFromFile(std::vector<Character_XData::AttackWaza>& wazas, const 
             break;
         }
 
+        if (waza.entranceInputParams.inputName != "NULL")
+            waza.entranceInputParams.input = getInputEnumFromName(waza.entranceInputParams.inputName);
+
         for (Character_XData::AttackWaza::Chain& chain : waza.chains)
+        {
             chain.nextWazaPtr = getWazaPtrFromName(wazas, chain.nextWazaName);
+            chain.input = getInputEnumFromName(chain.inputName);
+        }
+        waza.onHoldCancelWazaPtr = getWazaPtrFromName(wazas, waza.onHoldCancelWazaName);
         waza.onDurationPassedWazaPtr = getWazaPtrFromName(wazas, waza.onDurationPassedWazaName);
     }
 }
@@ -670,10 +779,11 @@ void processWeaponAttackInput(Character_XData* d)
     if (d->currentWaza == nullptr)
     {
         // By default start at the root waza.
-        if (input::keyAuraPressed)
-            nextWaza = &d->airWazaSet[0];
-        else
-            nextWaza = &d->defaultWazaSet[0];
+        // @NOCHECKIN: @FIXME: collect the inputs natively right here instead of having to wait for LMB input or whatever to trigger this function.
+        // if (input::keyAuraPressed)
+        //     nextWaza = &d->airWazaSet[0];
+        // else
+        //     nextWaza = &d->defaultWazaSet[0];
     }
     else
     {
@@ -730,6 +840,71 @@ void processWeaponAttackInput(Character_XData* d)
         d->characterRenderObj->animator->setState(d->currentWaza->animationState);
         d->characterRenderObj->animator->setMask("MaskCombatMode", (d->currentWaza == nullptr));
     }
+}
+
+Character_XData::AttackWaza::WazaInputType processInputForKey(bool currentInput, uint8_t ticksToHold, uint8_t ticksToClearState, Character_XData::AttackWaza::InputState& inoutIS)
+{
+    Character_XData::AttackWaza::WazaInputType wit = Character_XData::AttackWaza::WazaInputType::NONE;
+
+    // Increment ticks.
+    if (currentInput)
+        inoutIS.numPressTicks++;
+    else
+        inoutIS.numReleaseTicks++;
+
+    // Clamp ticks.
+    inoutIS.numPressTicks = std::min(inoutIS.numPressTicks, (uint8_t)254);
+    inoutIS.numReleaseTicks = std::min(inoutIS.numReleaseTicks, (uint8_t)254);
+
+    // Interpret.
+    if (inoutIS.numReleaseTicks >= ticksToClearState)
+    {
+        inoutIS.numPressTicks = 0;
+        inoutIS.numReleaseTicks = 0;
+        inoutIS.completedPress = false;
+    }
+    else
+    {
+        if (!currentInput && inoutIS.numPressTicks > 0 && inoutIS.numPressTicks <= ticksToHold)
+        {
+            // `press` was executed. (This is really a click.)
+            if (inoutIS.completedPress)
+                wit = Character_XData::AttackWaza::WazaInputType::DOUBLECLICK;
+            else
+            {
+                inoutIS.completedPress = true;
+                wit = Character_XData::AttackWaza::WazaInputType::PRESS;
+            }
+            inoutIS.numPressTicks = 0;
+        }
+        else if (currentInput && inoutIS.numPressTicks == ticksToHold)
+        {
+            // `hold` was executed.
+            if (inoutIS.completedPress)
+                wit = Character_XData::AttackWaza::WazaInputType::DOUBLEHOLD;
+            else
+                wit = Character_XData::AttackWaza::WazaInputType::HOLD;
+        }
+        else if (!currentInput && inoutIS.numPressTicks > ticksToHold)
+        {
+            // `release` was executed.
+            wit = Character_XData::AttackWaza::WazaInputType::RELEASE;
+            inoutIS.numPressTicks = 0;
+        }
+    }
+
+    // Clear ticks.
+    if (currentInput)
+        inoutIS.numReleaseTicks = 0;
+    else
+        inoutIS.numPressTicks = 0;
+
+    return wit;
+}
+
+void processInputForWaza(Character_XData* d)
+{
+    // @TODO: use `processInputForKey` HERE!!!!!!
 }
 
 void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& physicsDeltaTime, const std::string& myGuid)
@@ -1137,10 +1312,14 @@ Character::Character(EntityManager* em, RenderObjectManager* rom, Camera* camera
         glm_vec3_copy(vec3{ 25.0f, -135.0f, 0.0f }, _data->uiStamina->renderPosition);
         _data->uiStamina->scale = 25.0f;
 
-        initWazaSetFromFile(_data->defaultWazaSet, "res/waza/default_waza.hwac");  // @TODO: clean up this hotswap reload callback formation syntax. It requires the path 3 times per resource... probs not a good idea. Also, the lambda content and the function that gets called originally is identical.
-        initWazaSetFromFile(_data->airWazaSet, "res/waza/air_waza.hwac");
-        hotswapres::addReloadCallback("res/waza/default_waza.hwac", this, [&]() { initWazaSetFromFile(_data->defaultWazaSet, "res/waza/default_waza.hwac"); });
-        hotswapres::addReloadCallback("res/waza/air_waza.hwac", this, [&]() { initWazaSetFromFile(_data->airWazaSet, "res/waza/air_waza.hwac"); });
+        auto loadWazasLambda = [&]() {
+            _data->wazaSet.clear();
+            initWazaSetFromFile(_data->wazaSet, "res/waza/default_waza.hwac");
+            initWazaSetFromFile(_data->wazaSet, "res/waza/air_waza.hwac");
+        };
+        hotswapres::addReloadCallback("res/waza/default_waza.hwac", this, loadWazasLambda);
+        hotswapres::addReloadCallback("res/waza/air_waza.hwac", this, loadWazasLambda);
+        loadWazasLambda();
     }
 }
 
@@ -1178,6 +1357,9 @@ void updateWazaTimescale(const float_t& physicsDeltaTime, Character_XData* d)
 
 void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, EntityManager* em, const std::string& myGuid)
 {
+    if (!d->disableInput)
+        processInputForWaza(d);
+
     if (d->currentWaza == nullptr)
     {
         //

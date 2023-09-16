@@ -77,21 +77,22 @@
 
 
 
-:GustWall_Hold
-  entrance           grounded    hold_x
+:AirWaza_GustWall_Hold
+  entrance           twohanded    grounded    hold_x
   animation_state    StateAirWaza1stFormEntrance
   stamina_cost_hold  5
   duration           -1
-  chain              GustWall_Waza1_Execute    17    -1    release_x
-  on_hold_cancel     GustWall_Hold_Cancel
+  chain              AirWaza_GustWall_Waza1_Execute    17    -1    release_x
+  on_hold_cancel     AirWaza_GustWall_Hold_Cancel
 
-:GustWall_Hold_Cancel
+:AirWaza_GustWall_Hold_Cancel
   animation_state    StateAirWaza1stFormEntranceExit
   stamina_cost       0
   duration           22
   on_duration_passed NULL
+  interruptable
 
-:GustWall_Waza1_Execute
+:AirWaza_GustWall_Waza1_Execute
   animation_state    StateAirWaza1stFormPart1
   stamina_cost       25
   duration           25
@@ -103,37 +104,38 @@
   hitscan            -0.236201,0.454443,0.768883    -0.259243,0.158105,1.931490    8
   hs_launch_velocity 0.000000,0.000000,29.000000
   hs_rel_position    0.000000,0.000000,1.000000
-  chain              Updraft_Hold_From_GustWall    10     25    hold_x_a
-  on_duration_passed GustWall_Waza1_Finish
+  chain              AirWaza_Updraft_Hold_From_GustWall    10     25    hold_x_a
+  on_duration_passed AirWaza_GustWall_Waza1_Finish
 
-:GustWall_Waza1_Finish
+:AirWaza_GustWall_Waza1_Finish
   animation_state    StateAirWaza1stFormPart1Exit
   stamina_cost       0
   duration           9
   on_duration_passed NULL
 
-:Updraft_Hold
-  entrance           grounded    hold_x_a
+:AirWaza_Updraft_Hold
+  entrance           twohanded    grounded    hold_x_a
   animation_state    StateAirWaza2ndFormEntrance
   stamina_cost_hold  5
   duration           -1
-  chain              Updraft_Waza1_Execute    9    -1    release_a
-  on_hold_cancel     Updraft_Hold_Cancel
+  chain              AirWaza_Updraft_Waza1_Execute    9    -1    release_a
+  on_hold_cancel     AirWaza_Updraft_Hold_Cancel
 
-:Updraft_Hold_From_GustWall
+:AirWaza_Updraft_Hold_From_GustWall
   animation_state    StateAirWaza1stFormTo2ndForm  # @TODO: make this hold a lot shorter since you land in this position (if you're holding X,A before landing).
   stamina_cost_hold  5
   duration           -1
-  chain              Updraft_Waza1_Execute    5    -1    release_a
-  on_hold_cancel     Updraft_Hold_Cancel
+  chain              AirWaza_Updraft_Waza1_Execute    5    -1    release_a
+  on_hold_cancel     AirWaza_Updraft_Hold_Cancel
 
-:Updraft_Hold_Cancel
+:AirWaza_Updraft_Hold_Cancel
   animation_state    StateAirWaza2ndFormEntranceExit
   stamina_cost       0
   duration           9
   on_duration_passed NULL
+  interruptable
 
-:Updraft_Waza1_Execute
+:AirWaza_Updraft_Waza1_Execute
   animation_state    StateAirWaza2ndFormPart1
   stamina_cost       25
   stamina_cost_hold  5
@@ -141,10 +143,10 @@
   gravity_multiplier 0.25
   velocity_decay     0.5    0
   velocity           0.0,2.0,50.0    0
-  chain              Updraft_Waza2_Execute    2    30    release_x
-  on_land_cancel     Updraft_Waza1_Land_Cancel
+  chain              AirWaza_Updraft_Waza2_Execute    2    30    release_x
+  on_land_cancel     AirWaza_Updraft_Waza1_Land_Cancel
 
-:Updraft_Waza1_Land_Cancel
+:AirWaza_Updraft_Waza1_Land_Cancel
   animation_state    StateAirWaza2ndFormPart1Exit
   stamina_cost       0
   duration           25
@@ -152,7 +154,7 @@
   velocity           0.0,0.0,50.0    0
   on_duration_passed NULL
 
-:Updraft_Waza2_Execute
+:AirWaza_Updraft_Waza2_Execute
   animation_state    StateAirWaza2ndFormPart2
   stamina_cost       25
   duration           33
@@ -174,31 +176,32 @@
   #hs_launch_velocity 0.000000,15.000000,22.500000   # This one works sometimes
   hs_launch_velocity 0.000000,18.000000,20.500000    # This one also works... sometimes
   hs_rel_position    0.000000,1.000000,1.000000
-  chain              GiantLeap_Hold_From_Updraft    9    33    doublehold_a
-  on_duration_passed GiantLeap_Hold_Cancel
+  chain              AirWaza_GiantLeap_Hold_From_Updraft    9    33    doublehold_a
+  on_duration_passed AirWaza_GiantLeap_Hold_Cancel
 
-:GiantLeap_Hold
-  entrance           grounded    doublehold_a
+:AirWaza_GiantLeap_Hold
+  entrance           twohanded    grounded    doublehold_a
   animation_state    StateAirWaza3rdFormEntrance
   stamina_cost_hold  5
   duration           -1
-  chain              GiantLeap_Waza1_Execute    14    -1    release_a
-  on_hold_cancel     GiantLeap_Hold_Cancel
+  chain              AirWaza_GiantLeap_Waza1_Execute    14    -1    release_a
+  on_hold_cancel     AirWaza_GiantLeap_Hold_Cancel
 
-:GiantLeap_Hold_From_Updraft
+:AirWaza_GiantLeap_Hold_From_Updraft
   animation_state    StateAirWaza3rdFormEntrance
   stamina_cost_hold  5
   duration           -1
-  chain              GiantLeap_Waza1_Execute    14    -1    release_a
-  on_hold_cancel     GiantLeap_Hold_Cancel
+  chain              AirWaza_GiantLeap_Waza1_Execute    14    -1    release_a
+  on_hold_cancel     AirWaza_GiantLeap_Hold_Cancel
 
-:GiantLeap_Hold_Cancel
+:AirWaza_GiantLeap_Hold_Cancel
   animation_state    StateAirWaza2ndFormPart2Exit
   stamina_cost       0
   duration           14
   on_duration_passed NULL
+  interruptable
 
-:GiantLeap_Waza1_Execute
+:AirWaza_GiantLeap_Waza1_Execute
   animation_state    StateAirWaza3rdFormPart1
   stamina_cost       50
   duration           48
@@ -229,20 +232,20 @@
   hitscan            0.085692,1.822210,-0.563218    0.352167,1.653761,0.594633    25
   hitscan            0.085692,1.822210,-0.563218    0.352167,1.653761,0.594633    26
   hs_launch_velocity 0.000000,29.000000,10.500000
-  chain              EyeOfTheStorm_Waza1_Execute    4    48    doubleclick_x
+  chain              AirWaza_EyeOfTheStorm_Waza1_Execute    4    48    doubleclick_x
   on_duration_passed NULL
 
-:EyeOfTheStorm_Waza1_Execute
-  entrance           midair    doubleclick_x
+:AirWaza_EyeOfTheStorm_Waza1_Execute
+  entrance           twohanded    midair    doubleclick_x
   animation_state    StateAirWaza4thFormPart1
   stamina_cost       25
   stamina_cost_hold  10
   duration           -1
   hold_midair
   vacuum_suck_in     0.000000,0.200000,0.750000    6.000000    4.000000
-  chain              EyeOfTheStorm_Waza2_Execute    6    -1     press_x
+  chain              AirWaza_EyeOfTheStorm_Waza2_Execute    6    -1     press_x
 
-:EyeOfTheStorm_Waza2_Execute
+:AirWaza_EyeOfTheStorm_Waza2_Execute
   animation_state    StateAirWaza4thFormPart2
   stamina_cost       0
   duration           32
@@ -260,53 +263,55 @@
   hs_rel_position    0.000000,-0.500000,1.000000
   on_duration_passed NULL
 
-:FlipOver_UpsideDown  # @TODO: maybe this and :FlipOver_RightsideUp should be state changes rather than hwac waza states that're just part of the transformation.
-  entrance           midair    press_a
-  animation_state    StateAirWaza4thFormTo5thForm
-  stamina_cost       0
+#:FlipOver_UpsideDown  # @TODO: maybe this and :FlipOver_RightsideUp should be state changes rather than hwac waza states that're just part of the transformation.
+#  entrance           twohanded    midair    press_a
+#  animation_state    StateAirWaza4thFormTo5thForm
+#  stamina_cost       0
+#
+#:FlipOver_RightsideUp
+#  entrance           twohanded    upsidedown    press_a
+#  animation_state    StateAirWaza4thFormTo5thForm
+#  stamina_cost       0
 
-:FlipOver_RightsideUp
-  entrance           upsidedown    press_a
-  animation_state    StateAirWaza4thFormTo5thForm
-  stamina_cost       0
-
-:DownwardDive_Hold
-  entrance           upsidedown    doublehold_a
+:AirWaza_DownwardDive_Hold
+  entrance           twohanded    upsidedown    doublehold_a
   animation_state    StateAirWaza5thFormPart1
   stamina_cost_hold  5
   duration           -1
   hold_midair
-  chain              DownwardDive_Execute    10    -1    release_a
-  on_hold_cancel     DownwardDive_Hold_Cancel
+  chain              AirWaza_DownwardDive_Execute    10    -1    release_a
+  on_hold_cancel     AirWaza_DownwardDive_Hold_Cancel
 
-:DownwardDive_Hold_Cancel
+:AirWaza_DownwardDive_Hold_Cancel
   animation_state    StateAirWaza4thFormTo5thForm
   stamina_cost       0
   duration           10
   on_duration_passed NULL
+  interruptable
 
-:DownwardDive_Execute
+:AirWaza_DownwardDive_Execute
   animation_state    StateAirWaza5thFormPart1
   stamina_cost       5
   duration           1  # @TODO: @NOTE: I'm thinking this could be the way to define this move. Jump down super fast, and you're upside down, but you should be able to do any other move almost right after, hence the duration.
   velocity           0.0,-10.0,4.0    0
   on_duration_passed NULL
 
-:SpinnyHelicopter_Hold
-  entrance           upsidedown    hold_x
+:AirWaza_SpinnyHelicopter_Hold
+  entrance           twohanded    upsidedown    hold_x
   animation_state    StateAirWaza5thFormPart2
   stamina_cost_hold  5
   duration           -1
   hold_midair        0    9
-  chain              SpinnyHelicopter_Execute    5    -1    release_x
-  on_hold_cancel     SpinnyHelicopter_Hold_Cancel
+  chain              AirWaza_SpinnyHelicopter_Execute    5    -1    release_x
+  on_hold_cancel     AirWaza_SpinnyHelicopter_Hold_Cancel
 
-:SpinnyHelicopter_Hold_Cancel
+:AirWaza_SpinnyHelicopter_Hold_Cancel
   animation_state    StateAirWaza5thFormPart2Exit
   duration           10
   on_duration_passed NULL
+  interruptable
 
-:SpinnyHelicopter_Execute
+:AirWaza_SpinnyHelicopter_Execute
   animation_state    StateAirWaza5thFormPart3
   stamina_cost       0
   duration           50
@@ -323,20 +328,21 @@
   force_zone         0.000000,-5.500000,0.000000    2.250000,6.000000,2.250000    0.000000,-100.000000,0.000000    0    8
   on_duration_passed NULL
 
-:DerriereCut_Hold
-  entrance           midair    hold_x
+:AirWaza_DerriereCut_Hold
+  entrance           twohanded    midair    hold_x
   animation_state    StateAirWaza5thFormTo6thForm
   stamina_cost_hold  5
   duration           -1
-  chain              DerriereCut_Waza1_Execute    8    -1    release_x
-  on_hold_cancel     DerriereCut_Hold_Cancel
+  chain              AirWaza_DerriereCut_Waza1_Execute    8    -1    release_x
+  on_hold_cancel     AirWaza_DerriereCut_Hold_Cancel
 
-:DerriereCut_Hold_Cancel
+:AirWaza_DerriereCut_Hold_Cancel
   animation_state    StateAirWaza5thFormTo6thFormExit
   duration           10
   on_duration_passed NULL
+  interruptable
 
-:DerriereCut_Waza1_Execute
+:AirWaza_DerriereCut_Waza1_Execute
   animation_state    StateAirWaza6thFormPart1
   stamina_cost       0
   duration           50
@@ -348,10 +354,10 @@
   hitscan            0.017932,0.687713,0.279456    0.019525,-0.483034,0.016107    5
   hitscan            0.007860,0.626258,0.284364    -0.004754,-0.544271,0.020344    6
   hs_rel_position    0.000000,0.000000,0.000000    ignore_y
-  chain              DerriereCut_Waza2_Hold    5    50    hold_x
+  chain              AirWaza_DerriereCut_Waza2_Hold    5    50    hold_x
   on_duration_passed NULL
 
-:DerriereCut_Waza2_Hold
+:AirWaza_DerriereCut_Waza2_Hold
   animation_state    StateAirWaza6thFormPart2
   stamina_cost_hold  20
   duration           -1
@@ -359,15 +365,16 @@
   velocity           0.0,0.0,6.0    0
   velocity           0.0,0.0,0.5    6
   velocity           0.0,0.0,0.0    9
-  chain              DerriereCut_Waza2_Execute    7    -1    release_x
-  on_hold_cancel     DerriereCut_Waza2_Hold_Cancel
+  chain              AirWaza_DerriereCut_Waza2_Execute    7    -1    release_x
+  on_hold_cancel     AirWaza_DerriereCut_Waza2_Hold_Cancel
 
-:DerriereCut_Waza2_Hold_Cancel
+:AirWaza_DerriereCut_Waza2_Hold_Cancel
   animation_state    StateAirWaza5thFormTo6thFormExit
   duration           10
   on_duration_passed NULL
+  interruptable
 
-:DerriereCut_Waza2_Execute  # @NOTE: this is the one where the animation is the same but the game logic has to decide whether to keep the blade on the enemy or on the handle depending on poise and stuff.
+:AirWaza_DerriereCut_Waza2_Execute  # @NOTE: this is the one where the animation is the same but the game logic has to decide whether to keep the blade on the enemy or on the handle depending on poise and stuff.
   animation_state    StateAirWaza6thFormPart3
   stamina_cost       0
   duration           83
@@ -380,11 +387,12 @@
   hitscan            0.017790,1.707948,-0.042715    0.019162,2.714119,0.611211    4
   hs_launch_velocity 0.0,2.0,-7.0
   hs_rel_position    0.000000,0.000000,-2.000000    ignore_y
-  chain              DerriereCut_Waza2_Finish    17    83    any  # @THOUGHT: I personally feel like something other than a chiburi could be good.
-  on_duration_passed DerriereCut_Waza2_Finish
+  chain              AirWaza_DerriereCut_Waza2_Finish    17    83    any  # @THOUGHT: I personally feel like something other than a chiburi could be good.
+  on_duration_passed AirWaza_DerriereCut_Waza2_Finish
 
-:DerriereCut_Waza2_Finish
+:AirWaza_DerriereCut_Waza2_Finish
   animation_state    StateAirWaza6thFormPart3Exit
   stamina_cost       0
   duration           8
   on_duration_passed NULL  
+  interruptable
