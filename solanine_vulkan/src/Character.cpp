@@ -932,33 +932,22 @@ Character_XData::AttackWaza::WazaInputType processInputForKey(Character_XData::P
 
 void processInputForWaza(Character_XData* d)
 {
-    Character_XData::PressedState LMBKeyJumpPressed = Character_XData::PressedState::INVALID;
-    bool filterNonComboInput = false;
-    if (input::LMBPressed && input::keyJumpPressed)
-    {
-        LMBKeyJumpPressed = Character_XData::PressedState::PRESSED;
-        filterNonComboInput = true;
-    }
-    else if (!input::LMBPressed && !input::keyJumpPressed)
-    {
-        LMBKeyJumpPressed = Character_XData::PressedState::RELEASED;
-        filterNonComboInput = false;
-    }
+    // @NOCHECKIN: I don't like this system for doing the key combinations. `release` events don't work. Figure out some way for the key combination press, release, and hold, etc. to work. I think that keeping the 3 states for `currentInput` is good, but making the single input processing just use the pressed/released states only and not get changed/filtered out. Then, use the invalid/pressed/released for combination moves. Maybe HOLD/DOUBLEHOLD is really the only event needing to have priority in combo inputs.  -Timo 2023/09/17
+    // @REPLY: I think that this new system is what is needed.  -Timo 2023/09/17
+    Character_XData::PressedState LMBPressed =
+        input::LMBPressed ?
+            Character_XData::PressedState::PRESSED :
+            Character_XData::PressedState::RELEASED;
 
-    Character_XData::PressedState LMBPressed =  // @NOCHECKIN: I don't like this system for doing the key combinations. `release` events don't work. Figure out some way for the key combination press, release, and hold, etc. to work. I think that keeping the 3 states for `currentInput` is good, but making the single input processing just use the pressed/released states only and not get changed/filtered out. Then, use the invalid/pressed/released for combination moves. Maybe HOLD/DOUBLEHOLD is really the only event needing to have priority in combo inputs.  -Timo 2023/09/17
-        (filterNonComboInput ?
-            Character_XData::PressedState::INVALID :
-            (input::LMBPressed ?
-                Character_XData::PressedState::PRESSED :
-                Character_XData::PressedState::RELEASED));
     Character_XData::PressedState keyJumpPressed =
-        (filterNonComboInput ?
-            Character_XData::PressedState::INVALID :
-            (input::keyJumpPressed ?
-                Character_XData::PressedState::PRESSED :
-                Character_XData::PressedState::RELEASED));
+        input::keyJumpPressed ?
+            Character_XData::PressedState::PRESSED :
+            Character_XData::PressedState::RELEASED;
 
-    std::cout << LMBPressed << std::endl;
+    Character_XData::PressedState LMBKeyJumpPressed =
+        LMBPressed == keyJumpPressed ?
+            LMBPressed :
+            Character_XData::PressedState::INVALID;
 
     Character_XData::AttackWaza::WazaInputType xit = processInputForKey(LMBPressed, d->ticksToHold, d->ticksToClearState, d->invalidTicksToClearState, d->currentInputState_x);
     Character_XData::AttackWaza::WazaInputType ait = processInputForKey(keyJumpPressed, d->ticksToHold, d->ticksToClearState, d->invalidTicksToClearState, d->currentInputState_a);
