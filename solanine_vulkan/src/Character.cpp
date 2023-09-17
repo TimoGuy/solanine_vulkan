@@ -17,6 +17,7 @@
 #include "StringHelper.h"
 #include "HarvestableItem.h"
 #include "ScannableItem.h"
+#include "Debug.h"
 #include "imgui/imgui.h"
 #include "imgui/imgui_stdlib.h"
 #ifdef _DEVELOP
@@ -77,18 +78,6 @@ struct Character_XData
             DOUBLECLICK,
             DOUBLEHOLD,
         };
-
-        struct InputState
-        {
-            uint8_t numPressTicks = 0;
-            uint8_t numReleaseTicks = 0;
-            bool completedPress = false;
-        };
-        InputState currentInputState_x;
-        InputState currentInputState_a;
-        InputState currentInputState_x_a;
-        uint8_t ticksToHold = 12;  // For 40fps, 12 ticks == 0.3 seconds.
-        uint8_t ticksToClearState = 12;
 
         struct EntranceInputParams
         {
@@ -189,6 +178,21 @@ struct Character_XData
     float_t     wazaHitTimescale = 1.0f;
     float_t     wazaHitTimescaleOnHit = 0.01f;
     float_t     wazaHitTimescaleReturnToOneSpeed = 500.0f;
+
+    struct GestureInputState
+    {
+        uint8_t numPressTicks = 0;
+        uint8_t numReleaseTicks = 0;
+        uint8_t numInvalidTicks = 0;
+        bool completedPress = false;
+    };
+    enum PressedState { INVALID, RELEASED, PRESSED };
+    GestureInputState currentInputState_x;
+    GestureInputState currentInputState_a;
+    GestureInputState currentInputState_x_a;
+    uint8_t ticksToHold = 12;  // For 40fps, 12 ticks == 0.3 seconds.
+    uint8_t ticksToClearState = 12;
+    uint8_t invalidTicksToClearState = 12;
 
 
     // Waza Editor/Viewer State
@@ -842,30 +846,42 @@ void processWeaponAttackInput(Character_XData* d)
     }
 }
 
-Character_XData::AttackWaza::WazaInputType processInputForKey(bool currentInput, uint8_t ticksToHold, uint8_t ticksToClearState, Character_XData::AttackWaza::InputState& inoutIS)
+Character_XData::AttackWaza::WazaInputType processInputForKey(Character_XData::PressedState currentInput, uint8_t ticksToHold, uint8_t ticksToClearState, uint8_t invalidTicksToClearState, Character_XData::GestureInputState& inoutIS)
 {
     Character_XData::AttackWaza::WazaInputType wit = Character_XData::AttackWaza::WazaInputType::NONE;
 
     // Increment ticks.
-    if (currentInput)
-        inoutIS.numPressTicks++;
-    else
-        inoutIS.numReleaseTicks++;
+    switch (currentInput)
+    {
+        case Character_XData::PressedState::PRESSED:
+            inoutIS.numPressTicks++;
+            break;
+
+        case Character_XData::PressedState::RELEASED:
+            inoutIS.numReleaseTicks++;
+            break;
+
+        case Character_XData::PressedState::INVALID:
+            inoutIS.numInvalidTicks++;
+            break;
+    }
 
     // Clamp ticks.
     inoutIS.numPressTicks = std::min(inoutIS.numPressTicks, (uint8_t)254);
     inoutIS.numReleaseTicks = std::min(inoutIS.numReleaseTicks, (uint8_t)254);
 
     // Interpret.
-    if (inoutIS.numReleaseTicks >= ticksToClearState)
+    if (inoutIS.numReleaseTicks >= ticksToClearState ||
+        inoutIS.numInvalidTicks >= invalidTicksToClearState)
     {
         inoutIS.numPressTicks = 0;
         inoutIS.numReleaseTicks = 0;
+        inoutIS.numInvalidTicks = 0;
         inoutIS.completedPress = false;
     }
-    else
+    else if (currentInput != Character_XData::PressedState::INVALID)
     {
-        if (!currentInput && inoutIS.numPressTicks > 0 && inoutIS.numPressTicks <= ticksToHold)
+        if (currentInput == Character_XData::PressedState::RELEASED && inoutIS.numPressTicks > 0 && inoutIS.numPressTicks <= ticksToHold)
         {
             // `press` was executed. (This is really a click.)
             if (inoutIS.completedPress)
@@ -877,7 +893,7 @@ Character_XData::AttackWaza::WazaInputType processInputForKey(bool currentInput,
             }
             inoutIS.numPressTicks = 0;
         }
-        else if (currentInput && inoutIS.numPressTicks == ticksToHold)
+        else if (currentInput == Character_XData::PressedState::PRESSED && inoutIS.numPressTicks == ticksToHold)
         {
             // `hold` was executed.
             if (inoutIS.completedPress)
@@ -885,7 +901,7 @@ Character_XData::AttackWaza::WazaInputType processInputForKey(bool currentInput,
             else
                 wit = Character_XData::AttackWaza::WazaInputType::HOLD;
         }
-        else if (!currentInput && inoutIS.numPressTicks > ticksToHold)
+        else if (currentInput == Character_XData::PressedState::RELEASED && inoutIS.numPressTicks > ticksToHold)
         {
             // `release` was executed.
             wit = Character_XData::AttackWaza::WazaInputType::RELEASE;
@@ -894,17 +910,85 @@ Character_XData::AttackWaza::WazaInputType processInputForKey(bool currentInput,
     }
 
     // Clear ticks.
-    if (currentInput)
-        inoutIS.numReleaseTicks = 0;
-    else
-        inoutIS.numPressTicks = 0;
+    switch (currentInput)
+    {
+        case Character_XData::PressedState::PRESSED:
+            inoutIS.numReleaseTicks = 0;
+            inoutIS.numInvalidTicks = 0;
+            break;
+
+        case Character_XData::PressedState::RELEASED:
+            inoutIS.numPressTicks = 0;
+            inoutIS.numInvalidTicks = 0;
+            break;
+
+        case Character_XData::PressedState::INVALID:
+            // Do nothing.
+            break;
+    }
 
     return wit;
 }
 
 void processInputForWaza(Character_XData* d)
 {
+    Character_XData::PressedState LMBKeyJumpPressed = Character_XData::PressedState::INVALID;
+    bool filterNonComboInput = false;
+    if (input::LMBPressed && input::keyJumpPressed)
+    {
+        LMBKeyJumpPressed = Character_XData::PressedState::PRESSED;
+        filterNonComboInput = true;
+    }
+    else if (!input::LMBPressed && !input::keyJumpPressed)
+    {
+        LMBKeyJumpPressed = Character_XData::PressedState::RELEASED;
+        filterNonComboInput = false;
+    }
+
+    Character_XData::PressedState LMBPressed =  // @NOCHECKIN: I don't like this system for doing the key combinations. `release` events don't work. Figure out some way for the key combination press, release, and hold, etc. to work. I think that keeping the 3 states for `currentInput` is good, but making the single input processing just use the pressed/released states only and not get changed/filtered out. Then, use the invalid/pressed/released for combination moves. Maybe HOLD/DOUBLEHOLD is really the only event needing to have priority in combo inputs.  -Timo 2023/09/17
+        (filterNonComboInput ?
+            Character_XData::PressedState::INVALID :
+            (input::LMBPressed ?
+                Character_XData::PressedState::PRESSED :
+                Character_XData::PressedState::RELEASED));
+    Character_XData::PressedState keyJumpPressed =
+        (filterNonComboInput ?
+            Character_XData::PressedState::INVALID :
+            (input::keyJumpPressed ?
+                Character_XData::PressedState::PRESSED :
+                Character_XData::PressedState::RELEASED));
+
+    std::cout << LMBPressed << std::endl;
+
+    Character_XData::AttackWaza::WazaInputType xit = processInputForKey(LMBPressed, d->ticksToHold, d->ticksToClearState, d->invalidTicksToClearState, d->currentInputState_x);
+    Character_XData::AttackWaza::WazaInputType ait = processInputForKey(keyJumpPressed, d->ticksToHold, d->ticksToClearState, d->invalidTicksToClearState, d->currentInputState_a);
+    Character_XData::AttackWaza::WazaInputType xait = processInputForKey(LMBKeyJumpPressed, d->ticksToHold, d->ticksToClearState, d->invalidTicksToClearState, d->currentInputState_x_a);
+    // if (LMBKeyJumpPressed)
+    // {
+    //     // Filter out "hold" events for non combination keys so that combination keys will have priority.
+    //     if (xit == Character_XData::AttackWaza::WazaInputType::HOLD)
+    //         xit = Character_XData::AttackWaza::WazaInputType::NONE;
+    //     if (ait == Character_XData::AttackWaza::WazaInputType::HOLD)
+    //         ait = Character_XData::AttackWaza::WazaInputType::NONE;
+    // }
+
+    // @DEBUG: Show input events (after event filtering).
+    if (xit > Character_XData::AttackWaza::WazaInputType::NONE)
+        debug::pushDebugMessage({
+            .message = "xit: " + std::to_string((int32_t)xit),
+        });
+    if (ait > Character_XData::AttackWaza::WazaInputType::NONE)
+        debug::pushDebugMessage({
+            .message = "ait: " + std::to_string((int32_t)ait),
+        });
+    if (xait > Character_XData::AttackWaza::WazaInputType::NONE)
+        debug::pushDebugMessage({
+            .message = "xait: " + std::to_string((int32_t)xait),
+        });
+
     // @TODO: use `processInputForKey` HERE!!!!!!
+    //
+    // @NOTE: for testing this system out, push any waza input messages into the debug pushmessage() function.
 }
 
 void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& physicsDeltaTime, const std::string& myGuid)

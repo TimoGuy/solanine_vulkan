@@ -38,6 +38,7 @@ extern bool input::keyEscPressed = false;
 extern bool input::keyEnterPressed = false;
 extern bool input::keyAuraPressed = false;
 extern bool input::onKeyJumpPress = false;
+extern bool input::keyJumpPressed = false;
 extern bool input::onKeyInteractPress = false;
 extern bool input::onKeyF10Press = false;
 extern bool input::onKeyF9Press = false;
@@ -138,6 +139,7 @@ void input::processInput(bool* isRunning, bool* isWindowMinimized)
 			if (e.key.keysym.sym == SDLK_RETURN)                                      input::keyEnterPressed = (e.key.type == SDL_KEYDOWN);
 			if (e.key.keysym.sym == SDLK_LSHIFT)                                      input::keyAuraPressed = (e.key.type == SDL_KEYDOWN);
 			if (e.key.keysym.sym == SDLK_SPACE)                                       input::onKeyJumpPress = (e.key.type == SDL_KEYDOWN);
+			if (e.key.keysym.sym == SDLK_SPACE)                                       input::keyJumpPressed = (e.key.type == SDL_KEYDOWN);
 			if (e.key.keysym.sym == SDLK_e)                                           input::onKeyInteractPress = (e.key.type == SDL_KEYDOWN);
 			if (e.key.keysym.sym == SDLK_F10)                                         input::onKeyF10Press = (e.key.type == SDL_KEYDOWN);
 			if (e.key.keysym.sym == SDLK_F9)                                          input::onKeyF9Press = (e.key.type == SDL_KEYDOWN);
