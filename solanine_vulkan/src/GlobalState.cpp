@@ -46,6 +46,7 @@ namespace globalState
                 { .harvestableItemId = 0, .quantity = 1 }
             },
             .weaponStats = {
+                .weaponType = "twohanded",
                 .durability = 32,
                 .attackPower = 2,
                 .attackPowerWhenDulled = 1,

@@ -345,7 +345,7 @@
 :AirWaza_DerriereCut_Waza1_Execute
   animation_state    StateAirWaza6thFormPart1
   stamina_cost       0
-  duration           50
+  duration           100
   hold_midair
   hitscan            0.024397,1.884868,0.123193    0.062255,2.598900,-0.840511
   hitscan            0.030011,1.756374,0.528415    0.128556,2.913772,0.227216    2
@@ -354,7 +354,7 @@
   hitscan            0.017932,0.687713,0.279456    0.019525,-0.483034,0.016107    5
   hitscan            0.007860,0.626258,0.284364    -0.004754,-0.544271,0.020344    6
   hs_rel_position    0.000000,0.000000,0.000000    ignore_y
-  chain              AirWaza_DerriereCut_Waza2_Hold    5    50    hold_x
+  chain              AirWaza_DerriereCut_Waza2_Hold    5    100    hold_x
   on_duration_passed NULL
 
 :AirWaza_DerriereCut_Waza2_Hold

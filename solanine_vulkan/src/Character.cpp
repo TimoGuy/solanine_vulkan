@@ -61,17 +61,18 @@ struct Character_XData
     {
         std::string wazaName = "";
 
-        enum WazaInput
+        enum class WazaInput
         {
+            NONE = 0,
             PRESS_X,       PRESS_A,       PRESS_X_A,
             HOLD_X,        HOLD_A,        HOLD_X_A,
             RELEASE_X,     RELEASE_A,     RELEASE_X_A,
             DOUBLECLICK_X, DOUBLECLICK_A, DOUBLECLICK_X_A,
             DOUBLEHOLD_X,  DOUBLEHOLD_A,  DOUBLEHOLD_X_A,
         };
-        enum WazaInputType
+        enum class WazaInputType
         {
-            NONE,
+            NONE = 0,
             PRESS,
             HOLD,
             RELEASE,
@@ -81,6 +82,7 @@ struct Character_XData
 
         struct EntranceInputParams
         {
+            bool enabled = false;
             std::string weaponType = "NULL";  // Valid options: twohanded, bow, dual, spear (NULL means there is no entrance)
             std::string movementState = "NULL";  // Valid options: grounded, midair, upsidedown (NULL means there is no entrance)
             std::string inputName = "NULL";  // Valid options: press_(x/a/x_a), hold_(x/a/x_a), release_(x/a/x_a), doubleclick_(x/a/x_a), doublehold_(x/a/x_a)
@@ -194,6 +196,7 @@ struct Character_XData
     uint8_t ticksToClearState = 12;
     uint8_t invalidTicksToClearState = 12;
 
+    bool isMidairUpsideDown = false;  // @NOCHECKIN: implement the flipping action!  @REPLY: well, first, figure out how the heck you'll do it first.
 
     // Waza Editor/Viewer State
     struct AttackWazaEditor
@@ -285,7 +288,7 @@ struct Character_XData
     float_t iframesTimer = 0.0f;
 
     enum KnockbackStage { NONE, RECOVERY, KNOCKED_UP };
-    KnockbackStage knockbackMode = NONE;
+    KnockbackStage knockbackMode = KnockbackStage::NONE;
     float_t        knockedbackTime = 0.35f;
     float_t        knockedbackTimer = 0.0f;
 
@@ -335,8 +338,6 @@ void pushPlayerNotification(const std::string& message, Character_XData* d)
     else
         textmesh::regenerateTextMeshMesh(d->notification.message, message);
 }
-
-void processWeaponAttackInput(Character_XData* d);
 
 std::string getUIMaterializeItemText(Character_XData* d)
 {
@@ -423,9 +424,8 @@ void processAttack(Character_XData* d)
         switch (d->materializedItem->type)
         {
             case globalState::WEAPON:
-            {
-                processWeaponAttackInput(d);
-            } break;
+                // Do nothing. This section is being handled by `processWazaInput` bc the inputs are so complex.
+                break;
 
             case globalState::FOOD:
             {
@@ -484,6 +484,7 @@ void loadDataFromLine(Character_XData::AttackWaza& newWaza, const std::string& c
 {
     if (command == "entrance")
     {
+        newWaza.entranceInputParams.enabled = true;
         newWaza.entranceInputParams.weaponType = params[0];
         newWaza.entranceInputParams.movementState = params[1];
         newWaza.entranceInputParams.inputName = params[2];
@@ -640,9 +641,9 @@ Character_XData::AttackWaza::WazaInput getInputEnumFromName(const std::string& i
     else if (suffix == "x_a")
         y = 2;
     
-    enumValue = 3 * x + y;
+    enumValue = 3 * x + y + 1;  // @COPYPASTA
     
-    if (enumValue < 0)
+    if (enumValue < 1)
     {
         std::cerr << "[WAZA LOADING]" << std::endl
             << "ERROR: Waza input \"" << inputName << "\" was not found (`getInputEnumFromName`)." << std::endl;
@@ -774,77 +775,78 @@ void initWazaSetFromFile(std::vector<Character_XData::AttackWaza>& wazas, const 
     }
 }
 
-void processWeaponAttackInput(Character_XData* d)
-{
-    Character_XData::AttackWaza* nextWaza = nullptr;
-    bool attackFailed = false;
-    int16_t staminaCost;
+// @TODO: delete this once not needed. Well, it's not needed rn bc it's commented out, but once the knowledge isn't needed anymore, delete this.  -Timo 2023/09/19
+// void processWeaponAttackInput(Character_XData* d)
+// {
+//     Character_XData::AttackWaza* nextWaza = nullptr;
+//     bool attackFailed = false;
+//     int16_t staminaCost;
 
-    if (d->currentWaza == nullptr)
-    {
-        // By default start at the root waza.
-        // @NOCHECKIN: @FIXME: collect the inputs natively right here instead of having to wait for LMB input or whatever to trigger this function.
-        // if (input::keyAuraPressed)
-        //     nextWaza = &d->airWazaSet[0];
-        // else
-        //     nextWaza = &d->defaultWazaSet[0];
-    }
-    else
-    {
-        // Check if input chains into another attack.
-        bool doChain = false;
-        for (auto& chain : d->currentWaza->chains)
-            if (d->wazaTimer >= chain.inputTimeWindowStart &&
-                d->wazaTimer <= chain.inputTimeWindowEnd)
-            {
-                doChain = true;
-                nextWaza = chain.nextWazaPtr;
-                break;
-            }
+//     if (d->currentWaza == nullptr)
+//     {
+//         // By default start at the root waza.
+//         // @NOCHECKIN: @FIXME: collect the inputs natively right here instead of having to wait for LMB input or whatever to trigger this function.
+//         // if (input::keyAuraPressed)
+//         //     nextWaza = &d->airWazaSet[0];
+//         // else
+//         //     nextWaza = &d->defaultWazaSet[0];
+//     }
+//     else
+//     {
+//         // Check if input chains into another attack.
+//         bool doChain = false;
+//         for (auto& chain : d->currentWaza->chains)
+//             if (d->wazaTimer >= chain.inputTimeWindowStart &&
+//                 d->wazaTimer <= chain.inputTimeWindowEnd)
+//             {
+//                 doChain = true;
+//                 nextWaza = chain.nextWazaPtr;
+//                 break;
+//             }
 
-        if (!doChain)
-        {
-            attackFailed = true;  // No chain matched the timing: attack failure by bad rhythm.
-            staminaCost = 25;     // Bad rhythm penalty.
-        }
-    }
+//         if (!doChain)
+//         {
+//             attackFailed = true;  // No chain matched the timing: attack failure by bad rhythm.
+//             staminaCost = 25;     // Bad rhythm penalty.
+//         }
+//     }
 
-    // Check if stamina is sufficient.
-    if (!attackFailed)
-    {
-        staminaCost = nextWaza->staminaCost;
-        if (staminaCost > d->staminaData.currentStamina)
-            attackFailed = true;
-    }
+//     // Check if stamina is sufficient.
+//     if (!attackFailed)
+//     {
+//         staminaCost = nextWaza->staminaCost;
+//         if (staminaCost > d->staminaData.currentStamina)
+//             attackFailed = true;
+//     }
     
-    // Collect stamina cost
-    changeStamina(d, -staminaCost);
+//     // Collect stamina cost
+//     changeStamina(d, -staminaCost);
 
-    // Execute attack
-    if (attackFailed)
-    {
-        AudioEngine::getInstance().playSound("res/sfx/wip_SE_S_HP_GAUGE_DOWN.wav");
-        d->attackTwitchAngle = (float_t)std::rand() / (RAND_MAX / 2.0f) > 0.5f ? glm_rad(2.0f) : glm_rad(-2.0f);  // The most you could do was a twitch (attack failure).
-    }
-    else
-    {
-        AudioEngine::getInstance().playSoundFromList({
-            "res/sfx/wip_MM_Link_Attack1.wav",
-            "res/sfx/wip_MM_Link_Attack2.wav",
-            "res/sfx/wip_MM_Link_Attack3.wav",
-            "res/sfx/wip_MM_Link_Attack4.wav",
-            //"res/sfx/wip_hollow_knight_sfx/hero_nail_art_great_slash.wav",
-        });
+//     // Execute attack
+//     if (attackFailed)
+//     {
+//         AudioEngine::getInstance().playSound("res/sfx/wip_SE_S_HP_GAUGE_DOWN.wav");
+//         d->attackTwitchAngle = (float_t)std::rand() / (RAND_MAX / 2.0f) > 0.5f ? glm_rad(2.0f) : glm_rad(-2.0f);  // The most you could do was a twitch (attack failure).
+//     }
+//     else
+//     {
+//         AudioEngine::getInstance().playSoundFromList({
+//             "res/sfx/wip_MM_Link_Attack1.wav",
+//             "res/sfx/wip_MM_Link_Attack2.wav",
+//             "res/sfx/wip_MM_Link_Attack3.wav",
+//             "res/sfx/wip_MM_Link_Attack4.wav",
+//             //"res/sfx/wip_hollow_knight_sfx/hero_nail_art_great_slash.wav",
+//         });
 
-        // Kick off new waza with a clear state.
-        d->currentWaza = nextWaza;
-        d->wazaVelocityDecay = 0.0f;
-        glm_vec3_copy((d->currentWaza != nullptr && d->currentWaza->velocitySettings.size() > 0 && d->currentWaza->velocitySettings[0].executeAtTime == 0) ? d->currentWaza->velocitySettings[0].velocity : vec3{ 0.0f, 0.0f, 0.0f }, d->wazaVelocity);  // @NOTE: this doesn't work if the executeAtTime's aren't sorted asc.
-        d->wazaTimer = 0;
-        d->characterRenderObj->animator->setState(d->currentWaza->animationState);
-        d->characterRenderObj->animator->setMask("MaskCombatMode", (d->currentWaza == nullptr));
-    }
-}
+//         // Kick off new waza with a clear state.
+//         d->currentWaza = nextWaza;
+//         d->wazaVelocityDecay = 0.0f;
+//         glm_vec3_copy((d->currentWaza != nullptr && d->currentWaza->velocitySettings.size() > 0 && d->currentWaza->velocitySettings[0].executeAtTime == 0) ? d->currentWaza->velocitySettings[0].velocity : vec3{ 0.0f, 0.0f, 0.0f }, d->wazaVelocity);  // @NOTE: this doesn't work if the executeAtTime's aren't sorted asc.
+//         d->wazaTimer = 0;
+//         d->characterRenderObj->animator->setState(d->currentWaza->animationState);
+//         d->characterRenderObj->animator->setMask("MaskCombatMode", (d->currentWaza == nullptr));
+//     }
+// }
 
 Character_XData::AttackWaza::WazaInputType processInputForKey(Character_XData::PressedState currentInput, uint8_t ticksToHold, uint8_t ticksToClearState, uint8_t invalidTicksToClearState, Character_XData::GestureInputState& inoutIS)
 {
@@ -944,6 +946,7 @@ inline Character_XData::PressedState pressedStateCombo(const std::vector<Charact
     return originalState;
 }
 
+// @DEBUG
 std::string totootototNOCHECKIN(Character_XData::AttackWaza::WazaInputType wit)
 {
     switch (wit)
@@ -960,8 +963,19 @@ std::string totootototNOCHECKIN(Character_XData::AttackWaza::WazaInputType wit)
 }
 
 size_t jal = 0;
+////////
 
-void processInputForWaza(Character_XData* d)
+inline Character_XData::AttackWaza::WazaInput inputTypeToWazaInput(int32_t keyType, Character_XData::AttackWaza::WazaInputType inputType)
+{
+    // @NOTE: this function assumes that `inputType` is >=1.
+    return Character_XData::AttackWaza::WazaInput(
+        3 * ((int32_t)inputType - 1) + keyType + 1  // @COPYPASTA
+    );
+}
+
+#define MAX_SIMULTANEOUS_WAZA_INPUTS 8
+
+void processInputForWaza(Character_XData* d, Character_XData::AttackWaza::WazaInput* outWazaInputs, size_t& outNumInputs)
 {
     // @NOCHECKIN: I don't like this system for doing the key combinations. `release` events don't work.
     //             Figure out some way for the key combination press, release, and hold, etc. to work.
@@ -1004,9 +1018,104 @@ void processInputForWaza(Character_XData* d)
 
     jal++;
 
-    // @TODO: use `processInputForKey` HERE!!!!!!
-    //
-    // @NOTE: for testing this system out, push any waza input messages into the debug pushmessage() function.
+    // Fill in all the waza inputs. (@NOTE: start with key combinations and check inputs that are highest priority first)
+    outNumInputs = 0;
+    if (xait > Character_XData::AttackWaza::WazaInputType::NONE)
+        outWazaInputs[outNumInputs++] = inputTypeToWazaInput(2, xait);
+    if (xit > Character_XData::AttackWaza::WazaInputType::NONE)
+        outWazaInputs[outNumInputs++] = inputTypeToWazaInput(0, xit);
+    if (ait > Character_XData::AttackWaza::WazaInputType::NONE)
+        outWazaInputs[outNumInputs++] = inputTypeToWazaInput(1, ait);
+}
+
+void processWazaInput(Character_XData* d, Character_XData::AttackWaza::WazaInput* wazaInputs, size_t numInputs)
+{
+    std::string movementState = d->prevIsGrounded ? "grounded" : (d->isMidairUpsideDown ? "upsidedown" : "midair");
+
+    // Search for an action to do with the provided inputs.
+    Character_XData::AttackWaza* nextWaza = nullptr;
+    for (size_t i = 0; i < numInputs; i++)
+    {
+        Character_XData::AttackWaza::WazaInput wazaInput = wazaInputs[i];
+        if (d->currentWaza != nullptr)
+        {
+            // Search thru chains.
+            for (auto& chain : d->currentWaza->chains)
+                if (chain.input == wazaInput)
+                    if ((chain.inputTimeWindowStart < 0 || d->wazaTimer >= chain.inputTimeWindowStart) &&
+                        (chain.inputTimeWindowEnd < 0 || d->wazaTimer <= chain.inputTimeWindowEnd))
+                    {
+                        nextWaza = chain.nextWazaPtr;
+                        break;
+                    }
+                    else if (chain.input == Character_XData::AttackWaza::WazaInput::HOLD_X ||
+                        chain.input == Character_XData::AttackWaza::WazaInput::HOLD_A ||
+                        chain.input == Character_XData::AttackWaza::WazaInput::HOLD_X_A)
+                    {
+                        // The correct chain input for a release was done, however,
+                        // since it was in the wrong window of timing, it needs to be a hold cancel.
+                        nextWaza = d->currentWaza->onHoldCancelWazaPtr;
+                        break;
+                    }
+        }
+
+        if (d->currentWaza == nullptr || d->currentWaza->isInterruptable)
+        {
+            // Search thru entrances.
+            // @NOTE: this is lower priority than the chains in the event that a waza is interruptable.
+            for (auto& waza : d->wazaSet)
+                if (waza.entranceInputParams.enabled &&
+                    waza.entranceInputParams.input == wazaInput &&
+                    waza.entranceInputParams.weaponType == d->materializedItem->weaponStats.weaponType &&
+                    waza.entranceInputParams.movementState == movementState)
+                {
+                    nextWaza = &waza;
+                    break;
+                }
+        }
+
+        if (nextWaza != nullptr)
+            break;
+    }
+
+    // Ignore inputs if no next waza was found.
+    // @TODO: decide whether you want the twitch and stamina fail/timing punishment here. I personally feel like since there could be some noise coming thru this function, it wouldn't be good to punish a possibly false-negative combo input.
+    if (nextWaza == nullptr)
+        return;
+
+    // Calculate needed stamina cost. Attack fails if stamina is not enough.
+    int16_t staminaCost = nextWaza->staminaCost;
+    bool attackSuccess = true;
+
+    if (staminaCost > d->staminaData.currentStamina)
+        attackSuccess = false;
+
+    changeStamina(d, -staminaCost);
+
+    // Execute attack
+    if (attackSuccess)
+    {
+        AudioEngine::getInstance().playSoundFromList({
+            "res/sfx/wip_MM_Link_Attack1.wav",
+            "res/sfx/wip_MM_Link_Attack2.wav",
+            "res/sfx/wip_MM_Link_Attack3.wav",
+            "res/sfx/wip_MM_Link_Attack4.wav",
+            //"res/sfx/wip_hollow_knight_sfx/hero_nail_art_great_slash.wav",
+        });
+
+        // Kick off new waza with a clear state.
+        d->currentWaza = nextWaza;
+        d->wazaVelocityDecay = 0.0f;
+        glm_vec3_copy((d->currentWaza != nullptr && d->currentWaza->velocitySettings.size() > 0 && d->currentWaza->velocitySettings[0].executeAtTime == 0) ? d->currentWaza->velocitySettings[0].velocity : vec3{ 0.0f, 0.0f, 0.0f }, d->wazaVelocity);  // @NOTE: this doesn't work if the executeAtTime's aren't sorted asc.
+        d->wazaTimer = 0;
+        d->characterRenderObj->animator->setState(d->currentWaza->animationState);
+        d->characterRenderObj->animator->setMask("MaskCombatMode", (d->currentWaza == nullptr));
+    }
+    else
+    {
+        AudioEngine::getInstance().playSound("res/sfx/wip_SE_S_HP_GAUGE_DOWN.wav");
+        d->attackTwitchAngle = (float_t)std::rand() / (RAND_MAX / 2.0f) > 0.5f ? glm_rad(2.0f) : glm_rad(-2.0f);  // The most you could do was a twitch (attack failure).
+    }
 }
 
 void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& physicsDeltaTime, const std::string& myGuid)
@@ -1229,8 +1338,10 @@ void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& phy
         }
     }
 
-    // End waza if duration has passed.
-    if (++d->wazaTimer > d->currentWaza->duration)
+    // End waza if duration has passed. (ignore if duration is set to negative number; infinite time).
+    d->wazaTimer++;
+    if (d->currentWaza->duration >= 0 &&
+        d->wazaTimer > d->currentWaza->duration)
     {
         // @COPYPASTA
         d->currentWaza = d->currentWaza->onDurationPassedWazaPtr;
@@ -1459,9 +1570,6 @@ void updateWazaTimescale(const float_t& physicsDeltaTime, Character_XData* d)
 
 void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, EntityManager* em, const std::string& myGuid)
 {
-    if (!d->disableInput && d->characterType == CHARACTER_TYPE_PLAYER)
-        processInputForWaza(d);
-
     if (d->currentWaza == nullptr)
     {
         //
@@ -1523,16 +1631,34 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
     }
     else
     {
-        //
-        // Update waza performance
-        //
-        glm_vec3_zero(d->worldSpaceInput);  // Filter movement to put out the waza.
-        d->inputFlagJump = false;
+        glm_vec3_zero(d->worldSpaceInput);  // Filter movement until the waza is finished.
         d->inputFlagRelease = false;  // @NOTE: @TODO: Idk if this is appropriate or wanted behavior.
-
-        processWazaUpdate(d, em, physicsDeltaTime, myGuid);
     }
 
+    //
+    // Process weapon attack input
+    //
+    bool wazaInputFocus = false;
+    if (d->materializedItem != nullptr &&
+        d->materializedItem->type == globalState::WEAPON)
+    {
+        Character_XData::AttackWaza::WazaInput outWazaInputs[MAX_SIMULTANEOUS_WAZA_INPUTS];
+        size_t outNumWazaInputs = 0;
+        if (!d->disableInput && d->characterType == CHARACTER_TYPE_PLAYER)
+        {
+            wazaInputFocus = true;
+            processInputForWaza(d, outWazaInputs, outNumWazaInputs);
+        }
+        if (outNumWazaInputs > 0)
+            processWazaInput(d, outWazaInputs, outNumWazaInputs);
+        if (d->currentWaza != nullptr)
+            processWazaUpdate(d, em, physicsDeltaTime, myGuid);
+    }
+    if (wazaInputFocus)
+    {
+        d->inputFlagJump = false;
+        d->inputFlagAttack = false;
+    }
 
     //
     // Process input flags
