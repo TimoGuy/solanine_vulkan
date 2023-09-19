@@ -88,7 +88,7 @@ struct MainCamMode
 
 		float_t focusPositionExtraYOffsetWhenTargeting = -0.583333f;
 
-		float_t depthOfFieldSmoothTime = 0.1f;
+		float_t depthOfFieldSmoothTime = 0.000001f;
 		vec3    DOFPropsVelocities;
 		vec3    DOFPropsRelaxedState = { 50.0f, 50.0f, 40.0f };
 	} opponentTargetTransition;
