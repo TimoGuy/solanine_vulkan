@@ -69,6 +69,7 @@
 ########## NEW STYLE??????
 
 # @TODO: the biggest thing that would make this work is making `press_@` be immediate, instead of the motion of a press/release before the hold window.
+# @TODO: remove ONHOLDCANCEL
 
 # @Entrances
 #   twohanded    grounded    press_x    AirWaza_Start_GustWall_Hold    # @NOTE: entrance inputs should be able to switch from each other at will until something is held or some release is fulfilled.
