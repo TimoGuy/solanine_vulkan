@@ -98,7 +98,7 @@ struct Character_XData
         std::string animationState;
         int16_t staminaCost = 0;
         int16_t staminaCostHold = 0;
-        int16_t duration = 0;
+        int16_t duration = -1;
         bool holdMidair = false;
         int16_t holdMidairTimeFrom = -1;
         int16_t holdMidairTimeTo = -1;
@@ -1398,7 +1398,8 @@ Character::Character(EntityManager* em, RenderObjectManager* rom, Camera* camera
             "EventMaterializeBlade", [&]() {
                 std::cout << "MATERIALIZE BLADE" << std::endl;
                 _data->weaponRenderObj->renderLayer = RenderLayer::VISIBLE;  // @TODO: in the future will have model switching.
-                AudioEngine::getInstance().playSound("res/sfx/wip_Pl_Kago_Ready.wav");
+                // AudioEngine::getInstance().playSound("res/sfx/wip_Pl_Kago_Ready.wav");
+                AudioEngine::getInstance().playSound("res/sfx/wip_Weapon_Lsword_035_Blur01.wav");
             }
         },
         {
@@ -1900,7 +1901,7 @@ void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Character_XD
         Character_XData::AttackWaza& aw = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex];
 
         d->attackWazaEditor.minTick = 0;
-        d->attackWazaEditor.maxTick = aw.duration;
+        d->attackWazaEditor.maxTick = aw.duration >= 0 ? aw.duration : 100;  // @HARDCODE: if duration is infinite, just cap it at 100.  -Timo 2023/09/22
 
         d->characterRenderObj->animator->setState(aw.animationState, d->attackWazaEditor.currentTick * physicsDeltaTime);
 

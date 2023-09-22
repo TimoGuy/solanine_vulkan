@@ -71,131 +71,155 @@
 
 
 # @NOTE This is a test #
-
-# @IDEA: what if there's an attack that if you enter the form, you can't get out unless if you take damage.
-
-# 1st Form: Gust Wall.
-
-:StateAirWaza1stFormEntrance
-  animation Air_Waza_1_Enter
+:AirWaza_Start_GustWall_Hold
+  animation AirWaza_Start_GustWall_Hold
   loop 0
 
-:StateAirWaza1stFormEntranceExit  # @TODO: create hte animation for this.
-  animation Air_Waza_1_Enter_Exit
-  loop 0
-  on_finish StateIdle
-
-:StateAirWaza1stFormPart1
-  animation Air_Waza_1_1
-  loop 0
-  on_finish StateAirWaza1stFormPart1Exit
-
-:StateAirWaza1stFormPart1Exit
-  animation Air_Waza_1_1_Exit
-  loop 0
-  on_finish StateIdle
-
-# 2nd Form: Updraft.
-
-:StateAirWaza1stFormTo2ndForm
-  animation Air_Waza_1_to_2
+:AirWaza_GustWallS_01
+  animation AirWaza_GustWallS_01
   loop 0
 
-
-:StateAirWaza2ndFormEntrance
-  animation Air_Waza_2_Enter
+:AirWaza_GustWallS_02_Hold
+  animation AirWaza_GustWallS_02_Hold
   loop 0
 
-:StateAirWaza2ndFormEntranceExit
-  animation Air_Waza_2_Enter_Exit
+:AirWaza_GustWallS_02
+  animation AirWaza_GustWallS_02
   loop 0
 
-:StateAirWaza2ndFormPart1
-  animation Air_Waza_2_1
+:AirWaza_GustWallS_03
+  animation AirWaza_GustWallS_03
   loop 0
 
-:StateAirWaza2ndFormPart1Exit
-  animation Air_Waza_2_1_Exit
-  loop 0
-  on_finish StateIdle
-
-:StateAirWaza2ndFormPart2
-  animation Air_Waza_2_2
+:AirWaza_GustWall_01
+  animation AirWaza_GustWall_01
   loop 0
 
-:StateAirWaza2ndFormPart2Exit
-  animation Air_Waza_2_2_Exit
-  loop 0
-  on_finish StateIdle
-
-# 3rd Form: Takeoff.
-
-:StateAirWaza3rdFormEntrance
-  animation Air_Waza_3_Enter
-  loop 0
-
-:StateAirWaza3rdFormPart1
-  animation Air_Waza_3_1
-  loop 0
-
-# 4th Form: Vacuum
-
-:StateAirWaza3rdFormTo4thForm
-  animation Air_Waza_3_to_4
-  loop 0
-
-:StateAirWaza4thFormEntrance
-  animation Air_Waza_4_Enter
-  loop 0
-
-:StateAirWaza4thFormPart1
-  animation Air_Waza_4_1
-  loop 0
-
-:StateAirWaza4thFormPart2
-  animation Air_Waza_4_2
-  loop 0
-
-# 5th Form: Compression
-
-:StateAirWaza4thFormTo5thForm  # @NOTE: there is no normal entrance into the 5th form.
-  animation Air_Waza_4_to_5
-  loop 0
-
-:StateAirWaza5thFormPart1
-  animation Air_Waza_5_1
-  loop 0
-
-:StateAirWaza5thFormPart2
-  animation Air_Waza_5_2
-  loop 0
-
-:StateAirWaza5thFormPart3
-  animation Air_Waza_5_3
-  loop 0
-
-# 6th Form: Path of Most Resistance
-
-:StateAirWaza5thFormTo6thForm  # @NOTE: there is no normal entrance into the 6th form.
-  animation Air_Waza_5_to_6
-  loop 0
-
-:StateAirWaza6thFormPart1
-  animation Air_Waza_6_1
-  loop 0
-
-:StateAirWaza6thFormPart2
-  animation Air_Waza_6_2
-  loop 0
-
-:StateAirWaza6thFormPart3
-  animation Air_Waza_6_3
-  loop 0
-
-:StateAirWaza6thFormPart3Exit
-  animation Air_Waza_6_3_Exit
-  loop 0
-  on_finish StateIdle
+####
+##### @IDEA: what if there's an attack that if you enter the form, you can't get out unless if you take damage.
+####
+##### 1st Form: Gust Wall.
+####
+####:StateAirWaza1stFormEntrance
+####  animation Air_Waza_1_Enter
+####  loop 0
+####
+####:StateAirWaza1stFormEntranceExit  # @TODO: create hte animation for this.
+####  animation Air_Waza_1_Enter_Exit
+####  loop 0
+####  on_finish StateIdle
+####
+####:StateAirWaza1stFormPart1
+####  animation Air_Waza_1_1
+####  loop 0
+####  on_finish StateAirWaza1stFormPart1Exit
+####
+####:StateAirWaza1stFormPart1Exit
+####  animation Air_Waza_1_1_Exit
+####  loop 0
+####  on_finish StateIdle
+####
+##### 2nd Form: Updraft.
+####
+####:StateAirWaza1stFormTo2ndForm
+####  animation Air_Waza_1_to_2
+####  loop 0
+####
+####
+####:StateAirWaza2ndFormEntrance
+####  animation Air_Waza_2_Enter
+####  loop 0
+####
+####:StateAirWaza2ndFormEntranceExit
+####  animation Air_Waza_2_Enter_Exit
+####  loop 0
+####
+####:StateAirWaza2ndFormPart1
+####  animation Air_Waza_2_1
+####  loop 0
+####
+####:StateAirWaza2ndFormPart1Exit
+####  animation Air_Waza_2_1_Exit
+####  loop 0
+####  on_finish StateIdle
+####
+####:StateAirWaza2ndFormPart2
+####  animation Air_Waza_2_2
+####  loop 0
+####
+####:StateAirWaza2ndFormPart2Exit
+####  animation Air_Waza_2_2_Exit
+####  loop 0
+####  on_finish StateIdle
+####
+##### 3rd Form: Takeoff.
+####
+####:StateAirWaza3rdFormEntrance
+####  animation Air_Waza_3_Enter
+####  loop 0
+####
+####:StateAirWaza3rdFormPart1
+####  animation Air_Waza_3_1
+####  loop 0
+####
+##### 4th Form: Vacuum
+####
+####:StateAirWaza3rdFormTo4thForm
+####  animation Air_Waza_3_to_4
+####  loop 0
+####
+####:StateAirWaza4thFormEntrance
+####  animation Air_Waza_4_Enter
+####  loop 0
+####
+####:StateAirWaza4thFormPart1
+####  animation Air_Waza_4_1
+####  loop 0
+####
+####:StateAirWaza4thFormPart2
+####  animation Air_Waza_4_2
+####  loop 0
+####
+##### 5th Form: Compression
+####
+####:StateAirWaza4thFormTo5thForm  # @NOTE: there is no normal entrance into the 5th form.
+####  animation Air_Waza_4_to_5
+####  loop 0
+####
+####:StateAirWaza5thFormPart1
+####  animation Air_Waza_5_1
+####  loop 0
+####
+####:StateAirWaza5thFormPart2
+####  animation Air_Waza_5_2
+####  loop 0
+####
+####:StateAirWaza5thFormPart3
+####  animation Air_Waza_5_3
+####  loop 0
+####
+##### 6th Form: Path of Most Resistance
+####
+####:StateAirWaza5thFormTo6thForm  # @NOTE: there is no normal entrance into the 6th form.
+####  animation Air_Waza_5_to_6
+####  loop 0
+####
+####:StateAirWaza6thFormPart1
+####  animation Air_Waza_6_1
+####  loop 0
+####
+####:StateAirWaza6thFormPart2
+####  animation Air_Waza_6_2
+####  loop 0
+####
+####:StateAirWaza6thFormPart3
+####  animation Air_Waza_6_3
+####  loop 0
+####
+####:StateAirWaza6thFormPart3Exit
+####  animation Air_Waza_6_3_Exit
+####  loop 0
+####  on_finish StateIdle
 
 ########################
 

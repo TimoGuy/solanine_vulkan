@@ -137,6 +137,10 @@
         
     - [ ] Implement the new air waza design.
         - [x] Rewrite the .hwac file
+        - [ ] Implement the `grounded` attacks
+            - [ ] GustWall(S)
+            - [ ] LeapForward(S)
+            - [ ] Updraft(S)
 
     - [ ] Require holding shift to do the aura-based wazas.
         - [ ] Change the long wazas to have -1 duration so that it stays active until letting go of shift (or with something like WazaAir2nd_LeapForwardRaimei, it will continue until letting go of shift or landing on the ground)
