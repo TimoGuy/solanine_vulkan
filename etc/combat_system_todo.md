@@ -139,7 +139,17 @@
         - [x] Rewrite the .hwac file
         - [ ] Implement the `grounded` attacks
             - [x] GustWall(S)
-            - [ ] LeapForward(S)
+            - [ ] Animations:
+                - [ ] LeapForward(S)  (@NOTE: this will be Updraft but without holding X... so essentially if starting to hold X while starting this, then can switch to Updraft)
+                    - [ ] Hold
+                    - [ ] S_01
+                    - [ ] 01
+                - [ ] HighJump
+                    - [ ] Hold
+                    - [ ] 01
+            - [ ] Fix the hitscan baker.
+            - [ ] Put the animations into the hwac and set velocities and whatnot.
+
             - [ ] Updraft(S)
 
     - [ ] Require holding shift to do the aura-based wazas.

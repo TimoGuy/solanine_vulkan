@@ -81,11 +81,11 @@
 # @NOTE: after the duration goes up, it goes to NULL, bc `on_duration_passed`'s default state is NULL.  -Timo 2023/09/21
 
 :AirWaza_Start_GustWall_Hold
-  entrance           twohanded    grounded    press_x    # UNNEEDED: maybe
+  entrance           twohanded    grounded    press_x
   #
   chain              AirWaza_GustWallS_01    0    12    release_x
   chain              AirWaza_GustWall_01    13    -1    release_x
-  chain              AirWaza_Start_Updraft_Hold    0    4    press_a
+  chain              AirWaza_Start_Updraft_Hold    0    4    press_a  # @TODO: THIS FEELS REDUNDANT... see todo below.
   #
   animation_state    AirWaza_Start_GustWall_Hold
   stamina_cost_hold  15    13    -1
@@ -143,7 +143,7 @@
   chain              AirWaza_GustWallS_03    0    12    release_x
   chain              AirWaza_GustWall_01    13    -1    release_x
   #
-  animation_state    AirWaza_Start_GustWall_Hold  # @NOTE: this is a repeat; it's close enough to what I want.  -Timo 2023/09/22
+  animation_state    AirWaza_Start_GustWall_Hold    # @NOTE: this is a repeat; it's close enough to what I want.  -Timo 2023/09/22
   stamina_cost_hold  15    13    -1
   
 :AirWaza_GustWallS_03    # @NOTE: there are no chains, but bc it's interruptable after X time, you can start doing a gustwall hold if you wanted. The reason why _01 and _02 doesn't do this is so that there is a different animation for   -Timo 2023/09/21
@@ -182,21 +182,43 @@
   hitscan            -0.299872,0.363163,0.674450    -0.339409,-0.000675,1.817280    6
   hitscan            -0.318634,0.344454,0.625778    -0.356312,-0.038326,1.762468    7
 
+:AirWaza_Start_LeapForward_Hold
+  entrance           twohanded    grounded    press_a
+  #
+  chain              AirWaza_LeapForwardS_01    0    17    release_a
+  chain              AirWaza_LeapForward_01    18    -1    release_a
+  #
+  animation_state    AirWaza_Start_LeapForward_Hold
 
+:AirWaza_LeapForwardS_01
+  chain              AirWaza_Start_HighJump_Hold    0    6    press_a    # Doubleclick to get into `HighJump` (effectively, with the timing of the chains).
+  #
+  duration           37
+  interruptable      29    -1
+  #
+  animation_state    AirWaza_LeapForwardS_01
 
+:AirWaza_LeapForward_01
+  duration           37
+  interruptable      29    -1
+  #
+  animation_state    AirWaza_LeapForward_01
 
-# I NEED THIS BUT LATER!!!! #
-################################:AirWaza_Start_LeapForward_Hold
-################################  entrance           twohanded    grounded    press_a  # UNNEEDED: maybe
-################################  #
-################################  chain              AirWaza_LeapForwardS_01    0    17    release_a  # @TODO: @FIXME: Idk how to figure this out: for some reason the leap forward isn't doing 
-################################  chain              AirWaza_LeapForward_01    18    -1    release_a
-################################
-################################:AirWaza_Start_Updraft_Hold
-################################  entrance           twohanded    grounded    press_x_a  # UNNEEDED: maybe
-################################  #
-################################  chain              AirWaza_UpdraftS_01    0    17    release_a
-################################  chain              AirWaza_Updraft_01    18    -1    release_a
+:AirWaza_Start_HighJump_Hold
+  chain              AirWaza_LeapForwardS_01    0    17    release_a    # Go back to leap forward if not gonna hold it.
+  chain              AirWaza_HighJump_01    18    -1    release_a
+
+:AirWaza_HighJump_01
+  duration           37
+  interruptable      29    -1
+  #
+  animation_state    AirWaza_HighJump_01
+
+:AirWaza_Start_Updraft_Hold
+  entrance           twohanded    grounded    press_x_a
+  #
+  chain              AirWaza_UpdraftS_01    0    17    release_a
+  chain              AirWaza_Updraft_01    18    -1    release_a
 
 
 
