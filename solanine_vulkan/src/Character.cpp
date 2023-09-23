@@ -1023,16 +1023,31 @@ struct NextWazaPtr
 void processWazaInput(Character_XData* d, Character_XData::AttackWaza::WazaInput* wazaInputs, size_t numInputs, NextWazaPtr& inoutNextWaza)
 {
     std::string movementState = d->prevIsGrounded ? "grounded" : (d->isMidairUpsideDown ? "upsidedown" : "midair");
+
     bool isInInterruptableTimeWindow =
         d->currentWaza == nullptr ||
         (d->currentWaza->interruptable.enabled &&
             (d->currentWaza->interruptable.from < 0 || d->wazaTimer >= d->currentWaza->interruptable.from) &&
             (d->currentWaza->interruptable.to < 0 || d->wazaTimer <= d->currentWaza->interruptable.to));
 
+    bool chainIsFromStaminaCostHold =
+        d->currentWaza != nullptr &&
+        d->currentWaza->staminaCostHold > 0 &&
+        (d->currentWaza->staminaCostHoldTimeFrom < 0 || d->wazaTimer >= d->currentWaza->staminaCostHoldTimeFrom) &&
+        (d->currentWaza->staminaCostHoldTimeTo < 0 || d->wazaTimer <= d->currentWaza->staminaCostHoldTimeTo);
+
     // Search for an action to do with the provided inputs.
+    bool chainingIntoHoldRelease = false;
     for (size_t i = 0; i < numInputs; i++)
     {
         Character_XData::AttackWaza::WazaInput wazaInput = wazaInputs[i];
+        if (wazaInput == Character_XData::AttackWaza::WazaInput::NONE)
+        {
+            std::cerr << "[PROCESS WAZA INPUT]" << std::endl
+                << "ERROR: NONE type waza input came into the function `processWazaInput`" << std::endl;
+            continue;
+        }
+
         if (d->currentWaza != nullptr)
         {
             // Search thru chains.
@@ -1046,6 +1061,8 @@ void processWazaInput(Character_XData* d, Character_XData::AttackWaza::WazaInput
                     {
                         inoutNextWaza.nextWaza = chain.nextWazaPtr;
                         inoutNextWaza.set = true;
+                        if (chainIsFromStaminaCostHold)
+                            chainingIntoHoldRelease = true;
                         break;
                     }
                     // else if (chain.input == Character_XData::AttackWaza::WazaInput::HOLD_X ||
@@ -1087,16 +1104,18 @@ void processWazaInput(Character_XData* d, Character_XData::AttackWaza::WazaInput
 
     // Calculate needed stamina cost. Attack fails if stamina is not enough.
     bool staminaSufficient = ((float_t)inoutNextWaza.nextWaza->staminaCost <= d->staminaData.currentStamina);
+    changeStamina(d, -inoutNextWaza.nextWaza->staminaCost, chainingIntoHoldRelease);  // @NOTE: if a hold release action, then the depletion allows for you to dip into your reserves (health), and then execute the attack despite having no stamina.  -Timo 2023/09/22
     if (!staminaSufficient)
     {
         AudioEngine::getInstance().playSound("res/sfx/wip_SE_S_HP_GAUGE_DOWN.wav");
         d->attackTwitchAngle = (float_t)std::rand() / (RAND_MAX / 2.0f) > 0.5f ? glm_rad(2.0f) : glm_rad(-2.0f);  // The most you could do was a twitch (attack failure).
-        inoutNextWaza.nextWaza = nullptr;
-        inoutNextWaza.set = true;
-    }
 
-    // Pay the stamina cost regardless of whether stamina is sufficient.
-    changeStamina(d, -inoutNextWaza.nextWaza->staminaCost, false);
+        if (!chainingIntoHoldRelease)
+        {
+            inoutNextWaza.nextWaza = nullptr;
+            inoutNextWaza.set = true;
+        }
+    }
 }
 
 void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& physicsDeltaTime, const std::string& myGuid, NextWazaPtr& inoutNextWaza)
@@ -1104,7 +1123,8 @@ void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& phy
     //
     // Deplete stamina
     //
-    if ((d->currentWaza->staminaCostHoldTimeFrom < 0 || d->wazaTimer >= d->currentWaza->staminaCostHoldTimeFrom) &&
+    if (d->currentWaza->staminaCostHold > 0 &&
+        (d->currentWaza->staminaCostHoldTimeFrom < 0 || d->wazaTimer >= d->currentWaza->staminaCostHoldTimeFrom) &&
         (d->currentWaza->staminaCostHoldTimeTo < 0 || d->wazaTimer <= d->currentWaza->staminaCostHoldTimeTo))
         changeStamina(d, -d->currentWaza->staminaCostHold * physicsDeltaTime, true);
 

@@ -153,6 +153,7 @@
     - [ ] Change the exit animation to be a single forward tumble that ends with skidding to a halt with feet.
 - [ ] Change (WazaAir2nd_TwistingUpdraft) to not do landing animation until hitting the ground. If the landing animation never triggers, then you can't go to the next waza (WazaAir3rd_ShoulderLift)
 - [ ] When doing weight shift slice, just do simple flip vertical slice if there is nothing to hit (air) or the thing being sliced is super easy to slice. It's only when the thing being sliced is super strong that the blade gets "stuck", which requires the weight shift. The weight shift adds double "poise" to the attack, and if even then that's not enough, then have the blade snap off (scratch idea of doing a button mash) and stay on the enemy.
+    > @NOTE: if poise isn't enough for any attack, then the attack won't go thru, and the character will poink and get knocked back from the lack of poise.
 
 ### Bugs
 - [x] HIGH PRIORITY: Nvidia gpu doesn't do the z prepass correctly. Add a renderpass (with colorattachment of 0) to keep multiple writes on the z buffer.
