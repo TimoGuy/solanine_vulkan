@@ -2412,10 +2412,12 @@ namespace vkglTF
 		for (size_t i = 0; i < animStateMachineCopy.masks.size(); i++)
 		{
 			auto& mask = animStateMachineCopy.masks[i];
-			for (auto& state : mask.states)
+			for (size_t j = 0; j < mask.states.size(); j++)
 			{
+				auto& state = mask.states[j];
 				if (state.stateName == stateName)
 				{
+					mask.asmStateIndex = j;  // @NOTE: this needs to be set so that the event executor knows what states are being played by the mask players.
 					playAnimation(i, state.animationIndex, state.loop, time);
 					if (forceImmediateUpdate)
 						updateAnimation();

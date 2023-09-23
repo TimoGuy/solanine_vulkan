@@ -78,6 +78,7 @@
 :AirWaza_GustWallS_01
   animation AirWaza_GustWallS_01
   loop 0
+  event 0.0    EventPlaySFXAttack
 
 :AirWaza_GustWallS_02_Hold
   animation AirWaza_GustWallS_02_Hold
@@ -86,14 +87,18 @@
 :AirWaza_GustWallS_02
   animation AirWaza_GustWallS_02
   loop 0
+  event 0.0    EventPlaySFXAttack
 
 :AirWaza_GustWallS_03
   animation AirWaza_GustWallS_03
   loop 0
+  event 0.0    EventPlaySFXAttack
 
 :AirWaza_GustWall_01
   animation AirWaza_GustWall_01
   loop 0
+  event 0.0    EventPlaySFXAttack
+  event 0.0    EventPlaySFXGustWall
 
 ####
 ##### @IDEA: what if there's an attack that if you enter the form, you can't get out unless if you take damage.

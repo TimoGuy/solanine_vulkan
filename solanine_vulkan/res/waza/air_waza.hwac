@@ -88,6 +88,7 @@
   chain              AirWaza_Start_Updraft_Hold    0    4    press_a
   #
   animation_state    AirWaza_Start_GustWall_Hold
+  stamina_cost_hold  15    13    -1
 
 :AirWaza_GustWallS_01
   chain              AirWaza_GustWallS_02_Hold    5    15    press_x
@@ -98,8 +99,11 @@
   interruptable      15    -1
   #
   animation_state    AirWaza_GustWallS_01
+  stamina_cost       10
   velocity           -0.25,0.0,3.0    0
   velocity_decay     0.5    0
+  hs_launch_velocity 0.000000,0.000000,3.000000
+  hs_rel_position    0.000000,0.000000,1.000000    ignore_y
   #
   hitscan            0.420380,1.510411,0.140395    1.235070,2.109408,-0.505736
   hitscan            0.248846,1.328427,0.579996    1.141359,1.955333,1.080406    3
@@ -113,6 +117,7 @@
   chain              AirWaza_GustWall_01    13    -1    release_x
   #
   animation_state    AirWaza_GustWallS_02_Hold
+  stamina_cost_hold  15    13    -1
   
 :AirWaza_GustWallS_02
   chain              AirWaza_GustWallS_03_Hold    5    15    press_x
@@ -121,8 +126,11 @@
   interruptable      15    -1
   #
   animation_state    AirWaza_GustWallS_02
+  stamina_cost       10
   velocity           0.1,0.0,2.0    0
   velocity_decay     0.5    0
+  hs_launch_velocity 0.000000,0.000000,12.000000
+  hs_rel_position    0.000000,0.000000,1.000000    ignore_y
   #
   hitscan            -0.343394,1.480620,0.215008    -1.058334,2.357165,-0.185653
   hitscan            -0.262524,1.586554,0.470893    -0.844221,2.449966,1.067675    3
@@ -136,14 +144,18 @@
   chain              AirWaza_GustWall_01    13    -1    release_x
   #
   animation_state    AirWaza_Start_GustWall_Hold  # @NOTE: this is a repeat; it's close enough to what I want.  -Timo 2023/09/22
+  stamina_cost_hold  15    13    -1
   
 :AirWaza_GustWallS_03    # @NOTE: there are no chains, but bc it's interruptable after X time, you can start doing a gustwall hold if you wanted. The reason why _01 and _02 doesn't do this is so that there is a different animation for   -Timo 2023/09/21
   duration           40
   interruptable      31    -1
   #
   animation_state    AirWaza_GustWallS_03
+  stamina_cost       10
   velocity           0.0,6.0,12.0    0
   velocity_decay     0.5    0
+  hs_launch_velocity 0.000000,0.000000,13.000000
+  hs_rel_position    0.000000,0.000000,1.000000    ignore_y
   #
   hitscan            0.031297,1.912927,0.610377    0.034765,1.745532,-0.577886
   hitscan            0.060914,1.337398,1.283921    0.057880,2.533048,1.181883    11
@@ -156,8 +168,11 @@
   interruptable      29    -1
   #
   animation_state    AirWaza_GustWall_01
+  stamina_cost       20
   velocity           0.0,8.0,-10.0    6
   velocity_decay     0.5    0
+  hs_launch_velocity 0.000000,0.000000,29.000000
+  hs_rel_position    0.000000,0.000000,1.000000    ignore_y
   #
   hitscan            -0.034505,1.721008,0.164107    -0.028485,2.918638,0.088935
   hitscan            -0.000643,1.634387,0.406035    0.145280,2.786177,0.709497    4

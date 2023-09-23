@@ -138,7 +138,7 @@
     - [ ] Implement the new air waza design.
         - [x] Rewrite the .hwac file
         - [ ] Implement the `grounded` attacks
-            - [ ] GustWall(S)
+            - [x] GustWall(S)
             - [ ] LeapForward(S)
             - [ ] Updraft(S)
 

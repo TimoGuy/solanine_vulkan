@@ -48,13 +48,16 @@ struct Character_XData
     textmesh::TextMesh* uiStamina;
     struct StaminaData
     {
-        int16_t currentStamina;
+        float_t currentStamina;
         int16_t maxStamina = 100;
         float_t refillTime = 0.5f;  // Wait this time before starting to refill stamina.
         float_t refillTimer = 0.0f;
         float_t changedTime = 0.5f;  // Wait this time before disappearing after a stamina change occurred.
         float_t changedTimer = 0.0f;
-        int16_t refillRate = 50;
+        float_t refillRate = 50.0f;
+
+        float_t depletionOverflow = 0.0f;
+        float_t doRemove1HealthThreshold = 5.0f;
     } staminaData;
 
     struct AttackWaza
@@ -88,6 +91,8 @@ struct Character_XData
         std::string animationState;
         int16_t staminaCost = 0;
         int16_t staminaCostHold = 0;
+        int16_t staminaCostHoldTimeFrom = -1;
+        int16_t staminaCostHoldTimeTo = -1;
         int16_t duration = -1;
         bool holdMidair = false;
         int16_t holdMidairTimeFrom = -1;
@@ -269,7 +274,7 @@ struct Character_XData
     float_t modelSize = 0.3f;
     
     int32_t health = 100;
-    float_t iframesTime = 0.25f;
+    float_t iframesTime = 0.15f;
     float_t iframesTimer = 0.0f;
 
     enum KnockbackStage { NONE, RECOVERY, KNOCKED_UP };
@@ -350,13 +355,29 @@ std::string getUIMaterializeItemText(Character_XData* d)
 
 std::string getStaminaText(Character_XData* d)
 {
-    return "Stamina: " + std::to_string(d->staminaData.currentStamina) + "/" + std::to_string(d->staminaData.maxStamina);
+    return "Stamina: " + std::to_string((int32_t)std::round(d->staminaData.currentStamina)) + "/" + std::to_string(d->staminaData.maxStamina);
 }
 
-void changeStamina(Character_XData* d, int16_t amount)
+void changeStamina(Character_XData* d, float_t amount, bool allowDepletionOverflow)
 {
     d->staminaData.currentStamina += amount;
-    d->staminaData.currentStamina = std::clamp(d->staminaData.currentStamina, (int16_t)0, d->staminaData.maxStamina);
+    if (allowDepletionOverflow && d->staminaData.currentStamina < 0.0f)
+    {
+        // If character gets overexerted, `depletionOverflow` gets too large, then character will start losing health.
+        d->staminaData.depletionOverflow += -d->staminaData.currentStamina;
+        while (d->staminaData.depletionOverflow >= d->staminaData.doRemove1HealthThreshold)
+        {
+            d->staminaData.depletionOverflow -= d->staminaData.doRemove1HealthThreshold;
+            globalState::savedPlayerHealth -= 1;
+            AudioEngine::getInstance().playSoundFromList({
+                "res/sfx/wip_OOT_YoungLink_Hurt1.wav",
+                "res/sfx/wip_OOT_YoungLink_Hurt2.wav",
+                "res/sfx/wip_OOT_YoungLink_Hurt3.wav",
+            });
+        }
+    }
+
+    d->staminaData.currentStamina = std::clamp(d->staminaData.currentStamina, 0.0f, (float_t)d->staminaData.maxStamina);
 
     if (amount < 0)
         d->staminaData.refillTimer = d->staminaData.refillTime;
@@ -403,7 +424,7 @@ void processAttack(Character_XData* d)
             pushPlayerNotification("No item is selected to materialize.", d);
         }
     }
-    else if (d->staminaData.currentStamina > 0)
+    else if (d->staminaData.currentStamina > 0.0f)
     {
         // Attempt to use materialized item.
         switch (d->materializedItem->type)
@@ -485,6 +506,10 @@ void loadDataFromLine(Character_XData::AttackWaza& newWaza, const std::string& c
     else if (command == "stamina_cost_hold")
     {
         newWaza.staminaCostHold = std::stoi(params[0]);
+        if (params.size() >= 2)
+            newWaza.staminaCostHoldTimeFrom = std::stoi(params[1]);
+        if (params.size() >= 3)
+            newWaza.staminaCostHoldTimeTo = std::stoi(params[2]);
     }
     else if (command == "duration")
     {
@@ -989,7 +1014,13 @@ void processInputForWaza(Character_XData* d, Character_XData::AttackWaza::WazaIn
     d->prevInput_a = input_a;
 }
 
-void processWazaInput(Character_XData* d, Character_XData::AttackWaza::WazaInput* wazaInputs, size_t numInputs)
+struct NextWazaPtr
+{
+    Character_XData::AttackWaza* nextWaza = nullptr;
+    bool set = false;
+};
+
+void processWazaInput(Character_XData* d, Character_XData::AttackWaza::WazaInput* wazaInputs, size_t numInputs, NextWazaPtr& inoutNextWaza)
 {
     std::string movementState = d->prevIsGrounded ? "grounded" : (d->isMidairUpsideDown ? "upsidedown" : "midair");
     bool isInInterruptableTimeWindow =
@@ -999,7 +1030,6 @@ void processWazaInput(Character_XData* d, Character_XData::AttackWaza::WazaInput
             (d->currentWaza->interruptable.to < 0 || d->wazaTimer <= d->currentWaza->interruptable.to));
 
     // Search for an action to do with the provided inputs.
-    Character_XData::AttackWaza* nextWaza = nullptr;
     for (size_t i = 0; i < numInputs; i++)
     {
         Character_XData::AttackWaza::WazaInput wazaInput = wazaInputs[i];
@@ -1014,7 +1044,8 @@ void processWazaInput(Character_XData* d, Character_XData::AttackWaza::WazaInput
                         (chain.inputTimeWindowEnd < 0 || d->wazaTimer <= chain.inputTimeWindowEnd);
                     if (inChainTimeWindow)
                     {
-                        nextWaza = chain.nextWazaPtr;
+                        inoutNextWaza.nextWaza = chain.nextWazaPtr;
+                        inoutNextWaza.set = true;
                         break;
                     }
                     // else if (chain.input == Character_XData::AttackWaza::WazaInput::HOLD_X ||
@@ -1023,13 +1054,13 @@ void processWazaInput(Character_XData* d, Character_XData::AttackWaza::WazaInput
                     // {
                     //     // The correct chain input for a release was done, however,
                     //     // since it was in the wrong window of timing, it needs to be a hold cancel.
-                    //     nextWaza = d->currentWaza->onHoldCancelWazaPtr;
+                    //     inoutNextWaza.nextWaza = d->currentWaza->onHoldCancelWazaPtr;
                     //     break;
                     // }
                 }
         }
 
-        if (nextWaza == nullptr && isInInterruptableTimeWindow)
+        if (inoutNextWaza.nextWaza == nullptr && isInInterruptableTimeWindow)
         {
             // Search thru entrances.
             // @NOTE: this is lower priority than the chains in the event that a waza is interruptable.
@@ -1039,57 +1070,44 @@ void processWazaInput(Character_XData* d, Character_XData::AttackWaza::WazaInput
                     waza.entranceInputParams.weaponType == d->materializedItem->weaponStats.weaponType &&
                     waza.entranceInputParams.movementState == movementState)
                 {
-                    nextWaza = &waza;
+                    inoutNextWaza.nextWaza = &waza;
+                    inoutNextWaza.set = true;
                     break;
                 }
         }
 
-        if (nextWaza != nullptr)
+        if (inoutNextWaza.nextWaza != nullptr)
             break;
     }
 
     // Ignore inputs if no next waza was found.
     // @TODO: decide whether you want the twitch and stamina fail/timing punishment here. I personally feel like since there could be some noise coming thru this function, it wouldn't be good to punish a possibly false-negative combo input.
-    if (nextWaza == nullptr)
+    if (inoutNextWaza.nextWaza == nullptr)
         return;
 
     // Calculate needed stamina cost. Attack fails if stamina is not enough.
-    int16_t staminaCost = nextWaza->staminaCost;
-    bool attackSuccess = true;
-
-    if (staminaCost > d->staminaData.currentStamina)
-        attackSuccess = false;
-
-    changeStamina(d, -staminaCost);
-
-    // Execute attack
-    if (attackSuccess)
-    {
-        AudioEngine::getInstance().playSoundFromList({
-            "res/sfx/wip_MM_Link_Attack1.wav",
-            "res/sfx/wip_MM_Link_Attack2.wav",
-            "res/sfx/wip_MM_Link_Attack3.wav",
-            "res/sfx/wip_MM_Link_Attack4.wav",
-            //"res/sfx/wip_hollow_knight_sfx/hero_nail_art_great_slash.wav",
-        });
-
-        // Kick off new waza with a clear state.
-        d->currentWaza = nextWaza;
-        d->wazaVelocityDecay = 0.0f;
-        glm_vec3_copy((d->currentWaza != nullptr && d->currentWaza->velocitySettings.size() > 0 && d->currentWaza->velocitySettings[0].executeAtTime == 0) ? d->currentWaza->velocitySettings[0].velocity : vec3{ 0.0f, 0.0f, 0.0f }, d->wazaVelocity);  // @NOTE: this doesn't work if the executeAtTime's aren't sorted asc.
-        d->wazaTimer = 0;
-        d->characterRenderObj->animator->setState(d->currentWaza->animationState);
-        d->characterRenderObj->animator->setMask("MaskCombatMode", (d->currentWaza == nullptr));
-    }
-    else
+    bool staminaSufficient = ((float_t)inoutNextWaza.nextWaza->staminaCost <= d->staminaData.currentStamina);
+    if (!staminaSufficient)
     {
         AudioEngine::getInstance().playSound("res/sfx/wip_SE_S_HP_GAUGE_DOWN.wav");
         d->attackTwitchAngle = (float_t)std::rand() / (RAND_MAX / 2.0f) > 0.5f ? glm_rad(2.0f) : glm_rad(-2.0f);  // The most you could do was a twitch (attack failure).
+        inoutNextWaza.nextWaza = nullptr;
+        inoutNextWaza.set = true;
     }
+
+    // Pay the stamina cost regardless of whether stamina is sufficient.
+    changeStamina(d, -inoutNextWaza.nextWaza->staminaCost, false);
 }
 
-void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& physicsDeltaTime, const std::string& myGuid)
+void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& physicsDeltaTime, const std::string& myGuid, NextWazaPtr& inoutNextWaza)
 {
+    //
+    // Deplete stamina
+    //
+    if ((d->currentWaza->staminaCostHoldTimeFrom < 0 || d->wazaTimer >= d->currentWaza->staminaCostHoldTimeFrom) &&
+        (d->currentWaza->staminaCostHoldTimeTo < 0 || d->wazaTimer <= d->currentWaza->staminaCostHoldTimeTo))
+        changeStamina(d, -d->currentWaza->staminaCostHold * physicsDeltaTime, true);
+
     //
     // Execute all velocity decay settings.
     //
@@ -1313,17 +1331,22 @@ void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& phy
     if (d->currentWaza->duration >= 0 &&
         d->wazaTimer > d->currentWaza->duration)
     {
-        // @COPYPASTA
-        d->currentWaza = d->currentWaza->onDurationPassedWazaPtr;
-        d->wazaVelocityDecay = 0.0f;
-        glm_vec3_copy((d->currentWaza != nullptr && d->currentWaza->velocitySettings.size() > 0 && d->currentWaza->velocitySettings[0].executeAtTime == 0) ? d->currentWaza->velocitySettings[0].velocity : vec3{ 0.0f, 0.0f, 0.0f }, d->wazaVelocity);  // @NOTE: this doesn't work if the executeAtTime's aren't sorted asc.
-        d->wazaTimer = 0;
-        if (d->currentWaza == nullptr)
-            d->characterRenderObj->animator->setState("StateIdle");  // @TODO: this is a crutch.... need to turn this into more of a trigger based system.
-        else
-            d->characterRenderObj->animator->setState(d->currentWaza->animationState);
-        d->characterRenderObj->animator->setMask("MaskCombatMode", (d->currentWaza == nullptr));
+        inoutNextWaza.nextWaza = d->currentWaza->onDurationPassedWazaPtr;
+        inoutNextWaza.set = true;
     }
+}
+
+void setWazaToCurrent(Character_XData* d, Character_XData::AttackWaza* nextWaza)
+{
+    d->currentWaza = nextWaza;
+    d->wazaVelocityDecay = 0.0f;
+    glm_vec3_copy((d->currentWaza != nullptr && d->currentWaza->velocitySettings.size() > 0 && d->currentWaza->velocitySettings[0].executeAtTime == 0) ? d->currentWaza->velocitySettings[0].velocity : vec3{ 0.0f, 0.0f, 0.0f }, d->wazaVelocity);  // @NOTE: this doesn't work if the executeAtTime's aren't sorted asc.
+    d->wazaTimer = 0;
+    if (d->currentWaza == nullptr)
+        d->characterRenderObj->animator->setState("StateIdle");  // @TODO: this is a crutch.... need to turn this into more of a trigger based system.
+    else
+        d->characterRenderObj->animator->setState(d->currentWaza->animationState);
+    d->characterRenderObj->animator->setMask("MaskCombatMode", (d->currentWaza == nullptr));
 }
 
 Character::Character(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSerialized* ds) : Entity(em, ds), _data(new Character_XData())
@@ -1338,7 +1361,7 @@ Character::Character(EntityManager* em, RenderObjectManager* rom, Camera* camera
     if (ds)
         load(*ds);
 
-    _data->staminaData.currentStamina = _data->staminaData.maxStamina;
+    _data->staminaData.currentStamina = (float_t)_data->staminaData.maxStamina;
 
     _data->weaponAttachmentJointName = "Back Attachment";
     std::vector<vkglTF::Animator::AnimatorCallback> animatorCallbacks = {
@@ -1392,6 +1415,13 @@ Character::Character(EntityManager* em, RenderObjectManager* rom, Camera* camera
                     "res/sfx/wip_MM_Link_Attack3.wav",
                     "res/sfx/wip_MM_Link_Attack4.wav",
                     //"res/sfx/wip_hollow_knight_sfx/hero_nail_art_great_slash.wav",
+                });
+            }
+        },
+        {
+            "EventPlaySFXGustWall", [&]() {
+                AudioEngine::getInstance().playSoundFromList({
+                    "res/sfx/wip_hollow_knight_sfx/hero_nail_art_great_slash.wav",
                 });
             }
         },
@@ -1620,10 +1650,14 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
             wazaInputFocus = true;
             processInputForWaza(d, outWazaInputs, outNumWazaInputs);
         }
+
+        NextWazaPtr nextWaza;
         if (outNumWazaInputs > 0)
-            processWazaInput(d, outWazaInputs, outNumWazaInputs);
+            processWazaInput(d, outWazaInputs, outNumWazaInputs, nextWaza);
         if (d->currentWaza != nullptr)
-            processWazaUpdate(d, em, physicsDeltaTime, myGuid);
+            processWazaUpdate(d, em, physicsDeltaTime, myGuid, nextWaza);
+        if (nextWaza.set)
+            setWazaToCurrent(d, nextWaza.nextWaza);
     }
     if (wazaInputFocus)
     {
@@ -1651,8 +1685,11 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
     //
     if (d->staminaData.refillTimer > 0.0f)
         d->staminaData.refillTimer -= physicsDeltaTime;
-    else if (d->staminaData.currentStamina != d->staminaData.maxStamina)
-        changeStamina(d, (int16_t)(d->staminaData.refillRate * physicsDeltaTime));
+    else if (d->staminaData.currentStamina < d->staminaData.maxStamina)
+    {
+        d->staminaData.depletionOverflow = 0.0f;
+        changeStamina(d, d->staminaData.refillRate * physicsDeltaTime, false);
+    }
 
     if (d->characterType == CHARACTER_TYPE_PLAYER)
     {
@@ -1792,7 +1829,7 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
         d->iframesTimer = d->iframesTime;
         d->knockbackMode = Character_XData::KnockbackStage::KNOCKED_UP;
         d->knockedbackTimer = d->knockedbackTime;
-        d->currentWaza = nullptr;  // @TODO: fix up exiting the current waza, animation-wise.  -Timo 2023/08/15
+        setWazaToCurrent(d, nullptr);
 
         d->triggerLaunchVelocity = false;
     }
@@ -1804,7 +1841,7 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
         d->gravityForce = d->forceZoneVelocity[1];
         if (d->gravityForce > 0.0f)
             d->prevIsGrounded = false;
-        d->currentWaza = nullptr;  // @TODO: fix up exiting the current waza, animation-wise.  -Timo 2023/08/23
+        setWazaToCurrent(d, nullptr);
 
         if (d->forceZoneVelocity[1] < 0.0f && d->prevIsGrounded)
         {
