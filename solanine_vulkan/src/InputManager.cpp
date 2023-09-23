@@ -36,7 +36,7 @@ extern bool input::keyCPressed = false;
 extern bool input::keyXPressed = false;
 extern bool input::keyEscPressed = false;
 extern bool input::keyEnterPressed = false;
-extern bool input::keyAuraPressed = false;
+extern bool input::keyTargetPressed = false;
 extern bool input::onKeyJumpPress = false;
 extern bool input::keyJumpPressed = false;
 extern bool input::onKeyInteractPress = false;
@@ -137,7 +137,7 @@ void input::processInput(bool* isRunning, bool* isWindowMinimized)
 			if (e.key.keysym.sym == SDLK_x)                                           input::keyXPressed = (e.key.type == SDL_KEYDOWN);
 			if (e.key.keysym.sym == SDLK_ESCAPE)                                      input::keyEscPressed = (e.key.type == SDL_KEYDOWN);
 			if (e.key.keysym.sym == SDLK_RETURN)                                      input::keyEnterPressed = (e.key.type == SDL_KEYDOWN);
-			if (e.key.keysym.sym == SDLK_LSHIFT)                                      input::keyAuraPressed = (e.key.type == SDL_KEYDOWN);
+			if (e.key.keysym.sym == SDLK_LSHIFT)                                      input::keyTargetPressed = (e.key.type == SDL_KEYDOWN);
 			if (e.key.keysym.sym == SDLK_SPACE)                                       input::onKeyJumpPress = (e.key.type == SDL_KEYDOWN);
 			if (e.key.keysym.sym == SDLK_SPACE)                                       input::keyJumpPressed = (e.key.type == SDL_KEYDOWN);
 			if (e.key.keysym.sym == SDLK_e)                                           input::onKeyInteractPress = (e.key.type == SDL_KEYDOWN);

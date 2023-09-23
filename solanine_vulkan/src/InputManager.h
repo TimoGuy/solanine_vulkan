@@ -33,7 +33,7 @@ namespace input
 		keyXPressed,
 		keyEscPressed,
 		keyEnterPressed,
-		keyAuraPressed,
+		keyTargetPressed,
 		onKeyJumpPress,
 		keyJumpPressed,
 		onKeyInteractPress,

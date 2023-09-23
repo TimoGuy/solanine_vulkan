@@ -266,6 +266,7 @@ struct Character_XData
     float_t recoveryGroundedXZDeceleration = 0.75f;
     vec3    prevCPDBasePosition;
 
+    bool isTargetingOpponentObject = false;
     std::vector<int32_t> auraSfxChannelIds;
 
     // Tweak Props
@@ -794,7 +795,7 @@ void initWazaSetFromFile(std::vector<Character_XData::AttackWaza>& wazas, const 
 //     {
 //         // By default start at the root waza.
 //         // @NOCHECKIN: @FIXME: collect the inputs natively right here instead of having to wait for LMB input or whatever to trigger this function.
-//         // if (input::keyAuraPressed)
+//         // if (input::keyTargetPressed)
 //         //     nextWaza = &d->airWazaSet[0];
 //         // else
 //         //     nextWaza = &d->defaultWazaSet[0];
@@ -1118,7 +1119,7 @@ void processWazaInput(Character_XData* d, Character_XData::AttackWaza::WazaInput
     }
 }
 
-void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& physicsDeltaTime, const std::string& myGuid, NextWazaPtr& inoutNextWaza)
+void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& physicsDeltaTime, const std::string& myGuid, NextWazaPtr& inoutNextWaza, bool& inoutPlayAuraSfx)
 {
     //
     // Deplete stamina
@@ -1126,7 +1127,10 @@ void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& phy
     if (d->currentWaza->staminaCostHold > 0 &&
         (d->currentWaza->staminaCostHoldTimeFrom < 0 || d->wazaTimer >= d->currentWaza->staminaCostHoldTimeFrom) &&
         (d->currentWaza->staminaCostHoldTimeTo < 0 || d->wazaTimer <= d->currentWaza->staminaCostHoldTimeTo))
+    {
         changeStamina(d, -d->currentWaza->staminaCostHold * physicsDeltaTime, true);
+        inoutPlayAuraSfx = true;
+    }
 
     //
     // Execute all velocity decay settings.
@@ -1660,6 +1664,7 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
     // Process weapon attack input
     //
     bool wazaInputFocus = false;
+    bool playAuraSfx = false;
     if (d->materializedItem != nullptr &&
         d->materializedItem->type == globalState::WEAPON)
     {
@@ -1674,8 +1679,10 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
         NextWazaPtr nextWaza;
         if (outNumWazaInputs > 0)
             processWazaInput(d, outWazaInputs, outNumWazaInputs, nextWaza);
+        
         if (d->currentWaza != nullptr)
-            processWazaUpdate(d, em, physicsDeltaTime, myGuid, nextWaza);
+            processWazaUpdate(d, em, physicsDeltaTime, myGuid, nextWaza, playAuraSfx);
+
         if (nextWaza.set)
             setWazaToCurrent(d, nextWaza.nextWaza);
     }
@@ -1683,6 +1690,39 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
     {
         d->inputFlagJump = false;
         d->inputFlagAttack = false;
+    }
+
+    //
+    // Play Aura SFX.
+    //
+    if (playAuraSfx)
+    {
+        if (d->auraSfxChannelIds.empty())
+        {
+            // Spin up aura sfx            
+            d->auraSfxChannelIds.push_back(
+                AudioEngine::getInstance().playSound("res/sfx/wip_hollow_knight_sfx/hero_super_dash_burst.wav")  // Aura burst start
+            );
+            d->auraSfxChannelIds.push_back(
+                AudioEngine::getInstance().playSound("res/sfx/wip_hollow_knight_sfx/hero_super_dash_loop.wav", true)  // Aura loop
+            );
+            d->auraSfxChannelIds.push_back(
+                AudioEngine::getInstance().playSound("res/sfx/wip_hollow_knight_sfx/hero_fury_charm_loop.wav", true)  // Heartbeat loop
+            );
+        }
+    }
+    else
+    {
+        if (!d->auraSfxChannelIds.empty())
+        {
+            // Shut down aura sfx
+            for (int32_t id : d->auraSfxChannelIds)
+                AudioEngine::getInstance().stopChannel(id);
+            d->auraSfxChannelIds.clear();
+            
+            // Play ending sound
+            AudioEngine::getInstance().playSound("res/sfx/wip_hollow_knight_sfx/hero_super_dash_ready.wav");
+        }
     }
 
     //
@@ -2305,23 +2345,12 @@ void Character::update(const float_t& deltaTime)
             _data->inputFlagRelease |= !_data->disableInput && input::onRMBPress;
         }
 
-        // Change aura
+        // Target an opponent.
         if (_data->knockbackMode == Character_XData::KnockbackStage::NONE &&
-            input::keyAuraPressed)
+            input::keyTargetPressed)
         {
-            if (_data->auraSfxChannelIds.empty())
+            if (!_data->isTargetingOpponentObject)
             {
-                // Spin up aura sfx            
-                _data->auraSfxChannelIds.push_back(
-                    AudioEngine::getInstance().playSound("res/sfx/wip_hollow_knight_sfx/hero_super_dash_burst.wav")  // Aura burst start
-                );
-                _data->auraSfxChannelIds.push_back(
-                    AudioEngine::getInstance().playSound("res/sfx/wip_hollow_knight_sfx/hero_super_dash_loop.wav", true)  // Aura loop
-                );
-                _data->auraSfxChannelIds.push_back(
-                    AudioEngine::getInstance().playSound("res/sfx/wip_hollow_knight_sfx/hero_fury_charm_loop.wav", true)  // Heartbeat loop
-                );
-
                 // Search for opponent to target.
                 // @COPYPASTA
                 physengine::CapsulePhysicsData* closestCPD = nullptr;
@@ -2340,22 +2369,16 @@ void Character::update(const float_t& deltaTime)
                     }
                 }
                 _data->camera->mainCamMode.setOpponentCamTargetObject(closestCPD);
+                _data->isTargetingOpponentObject = true;
             }
         }
         else
         {
-            if (!_data->auraSfxChannelIds.empty())
+            if (_data->isTargetingOpponentObject)
             {
-                // Shut down aura sfx
-                for (int32_t id : _data->auraSfxChannelIds)
-                    AudioEngine::getInstance().stopChannel(id);
-                _data->auraSfxChannelIds.clear();
-                
-                // Play ending sound
-                AudioEngine::getInstance().playSound("res/sfx/wip_hollow_knight_sfx/hero_super_dash_ready.wav");
-
                 // Release targeting opponent.
                 _data->camera->mainCamMode.setOpponentCamTargetObject(nullptr);
+                _data->isTargetingOpponentObject = false;
             }
         }
     }
