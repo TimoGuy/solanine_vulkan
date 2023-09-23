@@ -183,6 +183,7 @@ RenderObjectManager::~RenderObjectManager()
 {
     for (auto it = _renderObjectModels.begin(); it != _renderObjectModels.end(); it++)
 		it->second->destroy(_allocator);
+	delete[] _renderObjectLayersEnabled;
 }
 
 void RenderObjectManager::recalculateAnimatorIndices()
