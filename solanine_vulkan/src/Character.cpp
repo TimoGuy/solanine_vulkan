@@ -57,7 +57,7 @@ struct Character_XData
         float_t refillRate = 50.0f;
 
         float_t depletionOverflow = 0.0f;
-        float_t doRemove1HealthThreshold = 5.0f;
+        float_t doRemove1HealthThreshold = 10.0f;
     } staminaData;
 
     struct AttackWaza

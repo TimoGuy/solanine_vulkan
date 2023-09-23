@@ -68,7 +68,7 @@ struct MainCamMode
 	{
 		bool first = false;
 
-		float_t targetYOrbitAngleSideOffset = glm_rad(30.0f);
+		float_t targetYOrbitAngleSideOffset = glm_rad(45.0f);  // @NOTE: this makes keyboard controls easier since you can hold two keys to move in 45deg.  -Timo 2023/09/23
 		float_t targetYOrbitAngle;
 		float_t yOrbitAngleDampVelocity;
 
