@@ -98,6 +98,15 @@
   interruptable      15    -1
   #
   animation_state    AirWaza_GustWallS_01
+  velocity           -0.25,0.0,3.0    0
+  velocity_decay     0.5    0
+  #
+  hitscan            0.420380,1.510411,0.140395    1.235070,2.109408,-0.505736
+  hitscan            0.248846,1.328427,0.579996    1.141359,1.955333,1.080406    3
+  hitscan            -0.103063,0.968857,0.757945    0.120247,0.949861,1.936831    4
+  hitscan            -0.460478,0.664404,0.590176    -1.105188,-0.005177,1.349130    5
+  hitscan            -0.461754,0.660007,0.588742    -1.109778,-0.015669,1.339428    6
+
 
 :AirWaza_GustWallS_02_Hold
   chain              AirWaza_GustWallS_02    0    12    release_x
@@ -112,6 +121,15 @@
   interruptable      15    -1
   #
   animation_state    AirWaza_GustWallS_02
+  velocity           0.1,0.0,2.0    0
+  velocity_decay     0.5    0
+  #
+  hitscan            -0.343394,1.480620,0.215008    -1.058334,2.357165,-0.185653
+  hitscan            -0.262524,1.586554,0.470893    -0.844221,2.449966,1.067675    3
+  hitscan            0.048694,1.044904,0.667717    0.247432,1.130626,1.848038    4
+  hitscan            0.246678,0.722854,0.557188    0.932723,-0.020538,1.202721    5
+  hitscan            0.247281,0.717396,0.555597    0.939498,-0.032413,1.186964    6
+
 
 :AirWaza_GustWallS_03_Hold
   chain              AirWaza_GustWallS_03    0    12    release_x
@@ -120,16 +138,40 @@
   animation_state    AirWaza_Start_GustWall_Hold  # @NOTE: this is a repeat; it's close enough to what I want.  -Timo 2023/09/22
   
 :AirWaza_GustWallS_03    # @NOTE: there are no chains, but bc it's interruptable after X time, you can start doing a gustwall hold if you wanted. The reason why _01 and _02 doesn't do this is so that there is a different animation for   -Timo 2023/09/21
-  duration           59
-  interruptable      50    -1
+  duration           40
+  interruptable      31    -1
   #
   animation_state    AirWaza_GustWallS_03
+  velocity           0.0,6.0,12.0    0
+  velocity_decay     0.5    0
+  #
+  hitscan            0.031297,1.912927,0.610377    0.034765,1.745532,-0.577886
+  hitscan            0.060914,1.337398,1.283921    0.057880,2.533048,1.181883    11
+  hitscan            0.044313,0.669276,1.164261    0.149226,1.167080,2.251086    12
+  hitscan            0.050574,0.348969,1.193428    0.152088,0.280264,2.387152    13
+  hitscan            0.031809,0.247814,1.190649    0.034567,-0.010431,2.362529    14
 
 :AirWaza_GustWall_01
   duration           37
   interruptable      29    -1
   #
   animation_state    AirWaza_GustWall_01
+  velocity           0.0,8.0,-10.0    6
+  velocity_decay     0.5    0
+  #
+  hitscan            -0.034505,1.721008,0.164107    -0.028485,2.918638,0.088935
+  hitscan            -0.000643,1.634387,0.406035    0.145280,2.786177,0.709497    4
+  hitscan            -0.057297,1.346670,0.545070    0.072716,2.303055,1.258112    5
+  hitscan            -0.045768,1.014132,0.906707    0.154257,1.458718,2.003218    6
+  hitscan            -0.177852,0.606422,0.884952    -0.195764,0.478227,2.077950    7
+  hitscan            -0.238393,0.447960,0.784669    -0.283608,0.158052,1.948245    8
+  hitscan            -0.283146,0.373154,0.700045    -0.326983,0.017968,1.845436    9
+  hitscan            -0.318097,0.342896,0.625313    -0.353482,-0.040436,1.761890    10
+  hitscan            -0.319409,0.348132,0.626089    -0.361451,-0.034102,1.762809    11
+  hitscan            -0.319667,0.356413,0.625224    -0.367730,-0.025759,1.761727    12
+  hitscan            -0.320528,0.366416,0.625368    -0.376276,-0.014526,1.761932    13
+  hitscan            -0.321198,0.372829,0.625121    -0.383020,-0.002763,1.763150    14
+
 
 # I NEED THIS BUT LATER!!!! #
 ################################:AirWaza_Start_LeapForward_Hold

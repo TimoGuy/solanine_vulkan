@@ -158,7 +158,12 @@ struct Character_XData
         std::string onDurationPassedWazaName = "NULL";
         AttackWaza* onDurationPassedWazaPtr = nullptr;
 
-        bool isInterruptable = false;  // Can interrupt by moving, jumping, flipping over, or starting another waza.  @REPLY: will just be interruptable by starting another waza. @TODO: implement the REPLY.
+        struct IsInterruptable  // Can interrupt by starting another waza.
+        {
+            bool enabled = false;
+            int16_t from = -1;
+            int16_t to = -1;
+        } interruptable;
     };
     std::vector<AttackWaza> wazaSet;
 
@@ -571,7 +576,11 @@ void loadDataFromLine(Character_XData::AttackWaza& newWaza, const std::string& c
     }
     else if (command == "interruptable")
     {
-        newWaza.isInterruptable = true;
+        newWaza.interruptable.enabled = true;
+        if (params.size() >= 1)
+            newWaza.interruptable.from = std::stoi(params[0]);
+        if (params.size() >= 2)
+            newWaza.interruptable.to = std::stoi(params[1]);
     }
     else
     {
@@ -983,6 +992,11 @@ void processInputForWaza(Character_XData* d, Character_XData::AttackWaza::WazaIn
 void processWazaInput(Character_XData* d, Character_XData::AttackWaza::WazaInput* wazaInputs, size_t numInputs)
 {
     std::string movementState = d->prevIsGrounded ? "grounded" : (d->isMidairUpsideDown ? "upsidedown" : "midair");
+    bool isInInterruptableTimeWindow =
+        d->currentWaza == nullptr ||
+        (d->currentWaza->interruptable.enabled &&
+            (d->currentWaza->interruptable.from < 0 || d->wazaTimer >= d->currentWaza->interruptable.from) &&
+            (d->currentWaza->interruptable.to < 0 || d->wazaTimer <= d->currentWaza->interruptable.to));
 
     // Search for an action to do with the provided inputs.
     Character_XData::AttackWaza* nextWaza = nullptr;
@@ -994,8 +1008,11 @@ void processWazaInput(Character_XData* d, Character_XData::AttackWaza::WazaInput
             // Search thru chains.
             for (auto& chain : d->currentWaza->chains)
                 if (chain.input == wazaInput)
-                    if ((chain.inputTimeWindowStart < 0 || d->wazaTimer >= chain.inputTimeWindowStart) &&
-                        (chain.inputTimeWindowEnd < 0 || d->wazaTimer <= chain.inputTimeWindowEnd))
+                {
+                    bool inChainTimeWindow =
+                        (chain.inputTimeWindowStart < 0 || d->wazaTimer >= chain.inputTimeWindowStart) &&
+                        (chain.inputTimeWindowEnd < 0 || d->wazaTimer <= chain.inputTimeWindowEnd);
+                    if (inChainTimeWindow)
                     {
                         nextWaza = chain.nextWazaPtr;
                         break;
@@ -1009,8 +1026,10 @@ void processWazaInput(Character_XData* d, Character_XData::AttackWaza::WazaInput
                     //     nextWaza = d->currentWaza->onHoldCancelWazaPtr;
                     //     break;
                     // }
+                }
         }
-        if (d->currentWaza == nullptr || d->currentWaza->isInterruptable)   // @TODO: start here... figure out why there isn't a successful chain.
+
+        if (nextWaza == nullptr && isInInterruptableTimeWindow)
         {
             // Search thru entrances.
             // @NOTE: this is lower priority than the chains in the event that a waza is interruptable.
@@ -2655,7 +2674,10 @@ void defaultRenderImGui(Character_XData* d)
                 d->characterRenderObj->animator->setUpdateSpeedMultiplier(0.0f);
 
                 d->attackWazaEditor.editingWazaFname = path;
+
+                d->attackWazaEditor.editingWazaSet.clear();
                 initWazaSetFromFile(d->attackWazaEditor.editingWazaSet, d->attackWazaEditor.editingWazaFname);
+
                 d->attackWazaEditor.wazaIndex = 0;
                 d->attackWazaEditor.currentTick = 0;
                 ImGui::CloseCurrentPopup();
