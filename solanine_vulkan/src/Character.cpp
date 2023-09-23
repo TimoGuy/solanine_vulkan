@@ -179,7 +179,7 @@ struct Character_XData
     int16_t     wazaTimer = 0;  // Used for timing chains and hitscans.
     float_t     wazaHitTimescale = 1.0f;
     float_t     wazaHitTimescaleOnHit = 0.01f;
-    float_t     wazaHitTimescaleReturnToOneSpeed = 500.0f;
+    float_t     wazaHitTimescaleReturnToOneSpeed = 1500.0f;
 
     enum PressedState { INVALID = 0, PRESSED, RELEASED, };
     PressedState prevInput_x;
