@@ -1464,6 +1464,25 @@ Character::Character(EntityManager* em, RenderObjectManager* rom, Camera* camera
             }
         },
         {
+            "EventPlaySFXSmallJump", [&]() {
+                AudioEngine::getInstance().playSoundFromList({
+                    "res/sfx/wip_jump1.ogg",
+                    "res/sfx/wip_jump2.ogg",
+                });
+            }
+        },
+        {
+            "EventPlaySFXLargeJump", [&]() {
+                AudioEngine::getInstance().playSoundFromList({
+                    "res/sfx/wip_LSword_SwingFast1.wav",
+                    "res/sfx/wip_LSword_SwingFast2.wav",
+                    "res/sfx/wip_LSword_SwingFast3.wav",
+                    "res/sfx/wip_LSword_SwingFast4.wav",
+                    "res/sfx/wip_LSword_SwingFast5.wav",
+                });
+            }
+        },
+        {
             "EventAllowComboInput", [&]() {
                 // _allowComboInput = true;
             }

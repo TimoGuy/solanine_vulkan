@@ -185,40 +185,59 @@
 :AirWaza_Start_LeapForward_Hold
   entrance           twohanded    grounded    press_a
   #
-  chain              AirWaza_LeapForwardS_01    0    17    release_a
-  chain              AirWaza_LeapForward_01    18    -1    release_a
+  chain              AirWaza_LeapForwardS_01    0    13    release_a
+  chain              AirWaza_LeapForward_01    14    -1    release_a
   #
   animation_state    AirWaza_Start_LeapForward_Hold
+  stamina_cost_hold  15    13    -1
 
 :AirWaza_LeapForwardS_01
-  chain              AirWaza_Start_HighJump_Hold    0    6    press_a    # Doubleclick to get into `HighJump` (effectively, with the timing of the chains).
+  chain              AirWaza_Start_HighJump_Hold    0    7    press_a    # Doubleclick to get into `HighJump` (effectively, with the timing of the chains).
   #
-  duration           37
-  interruptable      29    -1
+  duration           64
+  interruptable      51    -1
   #
   animation_state    AirWaza_LeapForwardS_01
+  stamina_cost       10
+  velocity           0.0,15.0,15.0    8
+  velocity_decay     0.25    0
+  velocity_decay     0.5    42
 
 :AirWaza_LeapForward_01
-  duration           37
-  interruptable      29    -1
+  duration           57
+  interruptable      55    -1
   #
   animation_state    AirWaza_LeapForward_01
+  stamina_cost       50
+  gravity_multiplier 0.25
+  velocity           0.0,2.0,50.0    0
+  velocity_decay     0.5    0
+  velocity_decay     1.0    17
 
 :AirWaza_Start_HighJump_Hold
-  chain              AirWaza_LeapForwardS_01    0    17    release_a    # Go back to leap forward if not gonna hold it.
-  chain              AirWaza_HighJump_01    18    -1    release_a
+  chain              AirWaza_LeapForwardS_01    0    13    release_a    # Go back to leap forward if not gonna hold it.
+  chain              AirWaza_HighJump_01    14    -1    release_a
+  #
+  animation_state    AirWaza_Start_HighJump_Hold
+  stamina_cost_hold  15    13    -1
 
 :AirWaza_HighJump_01
-  duration           37
-  interruptable      29    -1
+  duration           87
+  interruptable      43    -1
   #
   animation_state    AirWaza_HighJump_01
+  stamina_cost       50
+  velocity           0.0,30.0,10.0    0
+  velocity_decay     0.25    0
 
 :AirWaza_Start_Updraft_Hold
   entrance           twohanded    grounded    press_x_a
   #
   chain              AirWaza_UpdraftS_01    0    17    release_a
   chain              AirWaza_Updraft_01    18    -1    release_a
+  #
+  animation_state    AirWaza_Start_Updraft_Hold
+  stamina_cost_hold  15    13    -1
 
 
 

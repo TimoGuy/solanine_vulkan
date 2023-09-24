@@ -100,6 +100,33 @@
   event 0.0    EventPlaySFXAttack
   event 0.0    EventPlaySFXGustWall
 
+:AirWaza_Start_LeapForward_Hold
+  animation AirWaza_Start_LeapForward_Hold
+  loop 0
+
+:AirWaza_LeapForwardS_01
+  animation AirWaza_LeapForwardS_01
+  loop 0
+  event 0.208333    EventPlaySFXSmallJump
+
+:AirWaza_LeapForward_01
+  animation AirWaza_LeapForward_01
+  loop 0
+  event 0.0    EventPlaySFXLargeJump
+
+:AirWaza_Start_HighJump_Hold
+  animation AirWaza_Start_HighJump_Hold
+  loop 0
+
+:AirWaza_HighJump_01
+  animation AirWaza_HighJump_01
+  loop 0
+  event 0.0    EventPlaySFXLargeJump
+
+:AirWaza_Start_Updraft_Hold
+  animation AirWaza_Start_Updraft_Hold
+  loop 0
+
 ####
 ##### @IDEA: what if there's an attack that if you enter the form, you can't get out unless if you take damage.
 ####
