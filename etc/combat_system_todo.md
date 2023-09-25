@@ -140,15 +140,15 @@
         - [ ] Implement the `grounded` attacks
             - [x] GustWall(S)
             - [ ] Animations:
-                - [ ] LeapForward(S)  (@NOTE: this will be Updraft but without holding X... so essentially if starting to hold X while starting this, then can switch to Updraft)
-                    - [ ] Hold
-                    - [ ] S_01
-                    - [ ] 01
-                - [ ] HighJump
-                    - [ ] Hold
-                    - [ ] 01
+                - [x] LeapForward(S)  (@NOTE: this will be Updraft but without holding X... so essentially if starting to hold X while starting this, then can switch to Updraft)
+                    - [x] Hold
+                    - [x] S_01
+                    - [x] 01
+                - [x] HighJump
+                    - [x] Hold
+                    - [x] 01
+            - [x] Put the animations into the hwac and set velocities and whatnot.
             - [ ] Fix the hitscan baker.
-            - [ ] Put the animations into the hwac and set velocities and whatnot.
 
             - [ ] Updraft(S)
 

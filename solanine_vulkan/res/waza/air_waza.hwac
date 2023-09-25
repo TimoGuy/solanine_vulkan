@@ -192,16 +192,16 @@
   stamina_cost_hold  15    13    -1
 
 :AirWaza_LeapForwardS_01
-  chain              AirWaza_Start_HighJump_Hold    0    7    press_a    # Doubleclick to get into `HighJump` (effectively, with the timing of the chains).
+  chain              AirWaza_Start_HighJump_Hold    0    4    press_a    # Doubleclick to get into `HighJump` (effectively, with the timing of the chains).
   #
-  duration           64
-  interruptable      51    -1
+  duration           61
+  interruptable      48    -1
   #
   animation_state    AirWaza_LeapForwardS_01
   stamina_cost       10
-  velocity           0.0,15.0,15.0    8
+  velocity           0.0,15.0,15.0    5
   velocity_decay     0.25    0
-  velocity_decay     0.5    42
+  velocity_decay     0.5    39
 
 :AirWaza_LeapForward_01
   duration           57
