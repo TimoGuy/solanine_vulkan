@@ -165,7 +165,7 @@
 
 :AirWaza_GustWall_01
   duration           37
-  interruptable      29    -1
+  interruptable      18    -1
   #
   animation_state    AirWaza_GustWall_01
   stamina_cost       20
