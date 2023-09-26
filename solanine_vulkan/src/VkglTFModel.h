@@ -379,7 +379,7 @@ namespace vkglTF
 	private:
 		VulkanEngine* engine;
 		StateMachine  animStateMachine;
-		std::mutex    skinNodeDSMutex;
+
 
 		friend struct Animator;
 	};
@@ -421,11 +421,10 @@ namespace vkglTF
 		std::map<std::string, mat4s>  jointNameToMatrix;
 
 		bool updateAnimator = true;
-		std::mutex setUpdateAnimatorMutex;  // @NOCHECKIN: the new way of doing setUpdateAnimator doesn't require a lock guard.
-		bool debughelios = false;
+		std::mutex setUpdateAnimatorMutex;
 
-		void updateAnimation(bool diag = false);
-		void updateJointMatrices(size_t globalNodeReservedIndex, size_t collectionBufferIdx, vkglTF::Skin* skin, mat4& m);
+		void updateAnimation();
+		void updateJointMatrices(size_t globalNodeReservedIndex, vkglTF::Skin* skin, mat4& m);
 	public:
 		bool getJointMatrix(const std::string& jointName, mat4& out);
 		size_t skinIndexToGlobalReservedNodeIndex(size_t skinIndex);

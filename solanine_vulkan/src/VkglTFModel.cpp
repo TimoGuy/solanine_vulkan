@@ -2436,7 +2436,7 @@ namespace vkglTF
 					mask.asmStateIndex = j;  // @NOTE: this needs to be set so that the event executor knows what states are being played by the mask players.
 					playAnimation(i, state.animationIndex, state.loop, time);
 					if (forceImmediateUpdate)
-						updateAnimation(true);
+						updateAnimation();
 
 					// Turn off all triggers
 					// @NOTE: this is to prevent a trigger changing the state after the state was just changed with this function!  -Timo 2023/08/08
@@ -2494,10 +2494,8 @@ namespace vkglTF
 		return speedMultiplier;
 	}
 
-	void Animator::updateAnimation(bool diag)
+	void Animator::updateAnimation()
 	{
-		std::lock_guard<std::mutex> lg(model->skinNodeDSMutex);  // @NOTE: since multiple animators use the same model to temporarily store the skinned channels, there needs to be some kind of guard to prevent overwriting. It feels stupid though, this solution.  -Timo 2023/09/26
-
 		bool updated = false;
 		for (size_t i = 0; i < animStateMachineCopy.masks.size(); i++)
 		{
@@ -2507,11 +2505,6 @@ namespace vkglTF
 
 			if (!mask.enabled)
 				continue;
-
-			// if (diag)
-			// 	std::cout << "MP time(" << i << "): " << mp.time << std::endl;
-			// else if (!updateAnimator)
-			// 	std::cout << "MP time HELIOS(" << i << "): " << mp.time << std::endl;
 
 			for (auto& channel : animation.channels)
 			{
@@ -2539,11 +2532,9 @@ namespace vkglTF
 
 				for (size_t i = 0, inputsSizeSub1 = sampler.inputs.size() - 1; i < inputsSizeSub1; i++)
 				{
-					if (mp.time >= sampler.inputs[i] && mp.time < sampler.inputs[i + 1])
+					if (mp.time >= sampler.inputs[i] && mp.time <= sampler.inputs[i + 1])
 					{
 						float_t u = std::max(0.0f, mp.time - sampler.inputs[i]) / (sampler.inputs[i + 1] - sampler.inputs[i]);
-						if (diag && channel.node->name == "Hand Attachment")
-							std::cout << "U: " << u << "\tI=" << i << "\tMP_time=" << mp.time << std::endl;
 						switch (channel.path)
 						{
 							case vkglTF::AnimationChannel::PathType::TRANSLATION:
@@ -2551,8 +2542,6 @@ namespace vkglTF
 								vec4 translation;
 								glm_vec4_lerp(sampler.outputsVec4[i].raw, sampler.outputsVec4[i + 1].raw, u, translation);
 								glm_vec4_copy3(translation, channel.node->translation);
-								if (diag && channel.node->name == "Hand Attachment")
-									std::cout << "MP TRANS: " << channel.node->translation[0] << ",\t" << channel.node->translation[1] << ",\t" << channel.node->translation[2] << std::endl;
 								break;
 							}
 							case vkglTF::AnimationChannel::PathType::SCALE:
@@ -2560,8 +2549,6 @@ namespace vkglTF
 								vec4 scale;
 								glm_vec4_lerp(sampler.outputsVec4[i].raw, sampler.outputsVec4[i + 1].raw, u, scale);
 								glm_vec4_copy3(scale, channel.node->scale);
-								if (diag && channel.node->name == "Hand Attachment")
-									std::cout << "MP SCALE: " << channel.node->scale[0] << ",\t" << channel.node->scale[1] << ",\t" << channel.node->scale[2] << std::endl;
 								break;
 							}
 							case vkglTF::AnimationChannel::PathType::ROTATION:
@@ -2572,10 +2559,6 @@ namespace vkglTF
 								r0[3] += twitchAngle;
 								r1[3] += twitchAngle;
 								glm_quat_nlerp(r0, r1, u, channel.node->rotation);
-								// glm_quat_slerp(r0, r1, u, channel.node->rotation);
-								if (diag && channel.node->name == "Hand Attachment")
-									std::cout << "MP VERSOR: " << channel.node->rotation[0] << ",\t" << channel.node->rotation[1] << ",\t" << channel.node->rotation[2] << ",\t" << channel.node->rotation[3] << std::endl;
-
 								break;
 							}
 						}
@@ -2584,8 +2567,6 @@ namespace vkglTF
 				}
 			}
 		}
-		// if (diag)
-		// 	std::cout << "MP UPDATE CALL: " << updated << std::endl;
 		if (updated)
 		{
 			// Update the joint matrices.
@@ -2595,11 +2576,7 @@ namespace vkglTF
 				mat4 m = GLM_MAT4_IDENTITY_INIT;
 				if (skin->skeletonRoot)
 					skin->skeletonRoot->getMatrix(m);
-				if (diag)
-					for (size_t j = 0; j < FRAME_OVERLAP; j++)
-						updateJointMatrices(skinIndexToGlobalReservedNodeIndex(i), j, skin, m);
-				else
-					updateJointMatrices(skinIndexToGlobalReservedNodeIndex(i), engine->_frameNumber % FRAME_OVERLAP, skin, m);
+				updateJointMatrices(skinIndexToGlobalReservedNodeIndex(i), skin, m);
 			}
 
 			// Insert in the joint matrices into list in animator.
@@ -2616,7 +2593,7 @@ namespace vkglTF
 		}
 	}
 
-	void Animator::updateJointMatrices(size_t globalNodeReservedIndex, size_t collectionBufferIdx, vkglTF::Skin* skin, mat4& m)
+	void Animator::updateJointMatrices(size_t globalNodeReservedIndex, vkglTF::Skin* skin, mat4& m)
 	{
 		auto& uniformBlock = uniformBlocks[globalNodeReservedIndex];
 		glm_mat4_copy(m, uniformBlock.matrix);
@@ -2676,7 +2653,7 @@ namespace vkglTF
 #endif
 
 		uniformBlock.jointcount = (float)numJoints;
-		memcpy(nodeCollectionBuffers[collectionBufferIdx].mapped + globalNodeReservedIndex, &uniformBlock, sizeof(GPUAnimatorNode));
+		memcpy(nodeCollectionBuffers[engine->_frameNumber % FRAME_OVERLAP].mapped + globalNodeReservedIndex, &uniformBlock, sizeof(GPUAnimatorNode));
 	}
 
 	bool Animator::getJointMatrix(const std::string& jointName, mat4& out)
