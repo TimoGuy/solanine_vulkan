@@ -2186,6 +2186,16 @@ namespace vkglTF
 
 	void Animator::update(const float_t& deltaTime)
 	{
+#ifdef _DEVELOP
+		if (!updateAnimator)
+			return;
+
+		std::lock_guard<std::mutex> lg(setUpdateAnimatorMutex);  // @NOTE: this lock guard is only useful for doing animator manipulations in the physics thread (i.e. baking hitscan nodes).
+
+		if (!updateAnimator)
+			return;
+#endif
+
 		for (auto& mp : animStateMachineCopy.maskPlayers)
 		{
 			mp.timeRange[0] = mp.time;
@@ -2388,6 +2398,12 @@ namespace vkglTF
 
 		// Process animation
 		updateAnimation();
+	}
+
+	void Animator::setUpdateAnimator(bool flag)
+	{
+		std::lock_guard<std::mutex> lg(setUpdateAnimatorMutex);
+		updateAnimator = flag;
 	}
 
 	void Animator::runEvent(const std::string& eventName)
