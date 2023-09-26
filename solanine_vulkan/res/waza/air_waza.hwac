@@ -85,7 +85,7 @@
   #
   chain              AirWaza_GustWallS_01    0    12    release_x
   chain              AirWaza_GustWall_01    13    -1    release_x
-  chain              AirWaza_Start_Updraft_Hold    0    4    press_a  # @TODO: THIS FEELS REDUNDANT... see todo below.
+  chain              AirWaza_Start_Updraft_Hold    0    4    press_x_a  # @TODO: THIS FEELS REDUNDANT... see todo below.
   #
   animation_state    AirWaza_Start_GustWall_Hold
   stamina_cost_hold  15    13    -1
@@ -187,7 +187,7 @@
   #
   chain              AirWaza_LeapForwardS_01    0    13    release_a
   chain              AirWaza_LeapForward_01    14    -1    release_a
-  chain              AirWaza_Start_Updraft_Hold    0    4    press_x  # @TODO: THIS FEELS REDUNDANT... see todo in `:AirWaza_GustWallS_01`.
+  chain              AirWaza_Start_Updraft_Hold    0    4    press_x_a  # @TODO: THIS FEELS REDUNDANT... see todo in `:AirWaza_GustWallS_01`.
   #
   animation_state    AirWaza_Start_LeapForward_Hold
   stamina_cost_hold  15    13    -1
@@ -283,7 +283,9 @@
 :AirWaza_Start_Updraft_Hold
   entrance           twohanded    grounded    press_x_a
   #
-  chain              AirWaza_UpdraftS_01    0    17    release_x_a  # @TODO: @CHECK: this will be buggy......... I don't know what to do yet.
+  chain              AirWaza_UpdraftS_01    0    17    release_x
+  chain              AirWaza_LeapForwardS_01    0    17    release_a
+  chain              AirWaza_Updraft_02    18    -1    release_x
   chain              AirWaza_Updraft_01    18    -1    release_a    # @NOTE: user must release the `a` button during the chain, the input doesn't stick until it gets consumed somewhere.  -Timo 2023/09/25
   #
   animation_state    AirWaza_Start_Updraft_Hold
