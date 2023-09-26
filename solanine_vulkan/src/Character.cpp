@@ -1974,7 +1974,7 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
         d->gravityForce = 0.0f;
 }
 
-void calculateBladeStartEndFromHandAttachment(Character_XData* d, vec3& bladeStart, vec3& bladeEnd)
+void calculateBladeStartEndFromHandAttachment(Character_XData* d, vec3& bladeStart, vec3& bladeEnd, float_t DEBUGNOCHECKIN_time)
 {
     mat4 attachmentJointMat;
     d->characterRenderObj->animator->getJointMatrix(d->attackWazaEditor.bladeBoneName, attachmentJointMat);
@@ -1991,7 +1991,7 @@ void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Character_XD
         d->attackWazaEditor.minTick = 0;
         d->attackWazaEditor.maxTick = aw.duration >= 0 ? aw.duration : 100;  // @HARDCODE: if duration is infinite, just cap it at 100.  -Timo 2023/09/22
 
-        d->characterRenderObj->animator->setState(aw.animationState, d->attackWazaEditor.currentTick * physicsDeltaTime);
+        d->characterRenderObj->animator->setState(aw.animationState, d->attackWazaEditor.currentTick * physicsDeltaTime, true);
 
         d->attackWazaEditor.triggerRecalcWazaCache = false;
     }
@@ -2112,22 +2112,21 @@ void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Character_XD
         Character_XData::AttackWaza& aw = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex];
 
         // Fill in hitscan flow nodes according to baked range.
-        d->characterRenderObj->animator->setUpdateAnimator(false);
-
         aw.hitscanNodes.clear();
         for (int16_t i = d->attackWazaEditor.bakeHitscanStartTick; i <= d->attackWazaEditor.bakeHitscanEndTick; i++)
         {
+            // std::cout << "SETTING TIME TO " << i * physicsDeltaTime << std::endl;
             d->characterRenderObj->animator->setState(aw.animationState, i * physicsDeltaTime, true);
 
             Character_XData::AttackWaza::HitscanFlowNode hfn;
-            calculateBladeStartEndFromHandAttachment(d, hfn.nodeEnd1, hfn.nodeEnd2);
+            calculateBladeStartEndFromHandAttachment(d, hfn.nodeEnd1, hfn.nodeEnd2, i * physicsDeltaTime);
             glm_vec3_scale(hfn.nodeEnd1, d->modelSize, hfn.nodeEnd1);
             glm_vec3_scale(hfn.nodeEnd2, d->modelSize, hfn.nodeEnd2);
             hfn.executeAtTime = i;
             aw.hitscanNodes.push_back(hfn);
         }
 
-        d->characterRenderObj->animator->setUpdateAnimator(true);
+        std::cout << "===========" << std::endl;
 
         // Fill out the export string.
         d->attackWazaEditor.hitscanSetExportString = "";
@@ -2269,13 +2268,13 @@ void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Character_XD
     }
 
     // Draw visual line showing where weapon hitscan will show up.
-    vec3 bladeStart, bladeEnd;
-    calculateBladeStartEndFromHandAttachment(d, bladeStart, bladeEnd);
-    glm_vec3_scale(bladeStart, d->modelSize, bladeStart);
-    glm_vec3_scale(bladeEnd, d->modelSize, bladeEnd);
-    glm_vec3_add(bladeStart, d->position, bladeStart);
-    glm_vec3_add(bladeEnd, d->position, bladeEnd);
-    physengine::drawDebugVisLine(bladeStart, bladeEnd, physengine::DebugVisLineType::YUUJUUFUDAN);
+    // vec3 bladeStart, bladeEnd;   // @NOCHECKIN
+    // calculateBladeStartEndFromHandAttachment(d, bladeStart, bladeEnd);
+    // glm_vec3_scale(bladeStart, d->modelSize, bladeStart);
+    // glm_vec3_scale(bladeEnd, d->modelSize, bladeEnd);
+    // glm_vec3_add(bladeStart, d->position, bladeStart);
+    // glm_vec3_add(bladeEnd, d->position, bladeEnd);
+    // physengine::drawDebugVisLine(bladeStart, bladeEnd, physengine::DebugVisLineType::YUUJUUFUDAN);
 }
 
 void Character::physicsUpdate(const float_t& physicsDeltaTime)
@@ -2776,7 +2775,8 @@ void defaultRenderImGui(Character_XData* d)
                 d->attackWazaEditor.triggerRecalcHitscanLaunchVelocityCache = true;
                 d->attackWazaEditor.triggerRecalcSelfVelocitySimCache = true;
                 d->attackWazaEditor.preEditorAnimatorSpeedMultiplier = d->characterRenderObj->animator->getUpdateSpeedMultiplier();
-                d->characterRenderObj->animator->setUpdateSpeedMultiplier(0.0f);
+                d->characterRenderObj->animator->setUpdateSpeedMultiplier(0.0f);  // @NOCHECKIN: with setUpdateAnimator, this doesn't look like it's being needed.
+                d->characterRenderObj->animator->setUpdateAnimator(false);
 
                 d->attackWazaEditor.editingWazaFname = path;
 
@@ -2817,6 +2817,7 @@ void attackWazaEditorRenderImGui(Character_XData* d)
     {
         d->attackWazaEditor.isEditingMode = false;
         d->characterRenderObj->animator->setUpdateSpeedMultiplier(d->attackWazaEditor.preEditorAnimatorSpeedMultiplier);
+        d->characterRenderObj->animator->setUpdateAnimator(true);
         // @TODO: reset animator and asm to default/root animation state.
         return;
     }
