@@ -62,7 +62,7 @@
       <WholeProgramOptimization>false</WholeProgramOptimization>
       <EnableEnhancedInstructionSet>NotSet</EnableEnhancedInstructionSet>
       <ExceptionHandling>false</ExceptionHandling>
-      <FloatingPointModel>Fast</FloatingPointModel>
+      <FloatingPointModel>Precise</FloatingPointModel>
       <StructMemberAlignment>16Bytes</StructMemberAlignment>
     </ClCompile>
     <Link>
@@ -100,7 +100,7 @@ copy $(SolutionDir)libs\cglm\cglm.dll $(OutDirfullPath)cglm.dll</Command>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <EnableEnhancedInstructionSet>NotSet</EnableEnhancedInstructionSet>
       <ExceptionHandling>false</ExceptionHandling>
-      <FloatingPointModel>Fast</FloatingPointModel>
+      <FloatingPointModel>Precise</FloatingPointModel>
       <StructMemberAlignment>16Bytes</StructMemberAlignment>
     </ClCompile>
     <Link>

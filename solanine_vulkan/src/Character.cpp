@@ -2112,8 +2112,6 @@ void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Character_XD
         Character_XData::AttackWaza& aw = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex];
 
         // Fill in hitscan flow nodes according to baked range.
-        d->characterRenderObj->animator->setUpdateAnimator(false);
-
         aw.hitscanNodes.clear();
         for (int16_t i = d->attackWazaEditor.bakeHitscanStartTick; i <= d->attackWazaEditor.bakeHitscanEndTick; i++)
         {
@@ -2126,8 +2124,6 @@ void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Character_XD
             hfn.executeAtTime = i;
             aw.hitscanNodes.push_back(hfn);
         }
-
-        d->characterRenderObj->animator->setUpdateAnimator(true);
 
         // Fill out the export string.
         d->attackWazaEditor.hitscanSetExportString = "";

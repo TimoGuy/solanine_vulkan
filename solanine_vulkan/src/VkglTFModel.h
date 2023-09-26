@@ -379,7 +379,7 @@ namespace vkglTF
 	private:
 		VulkanEngine* engine;
 		StateMachine  animStateMachine;
-
+		std::mutex    skinNodeDSMutex;
 
 		friend struct Animator;
 	};
@@ -401,7 +401,6 @@ namespace vkglTF
 
 		void playAnimation(size_t maskIndex, uint32_t animationIndex, bool loop, float_t time = 0.0f);  // This is for direct control of the animation index
 		void update(const float_t& deltaTime);
-		void setUpdateAnimator(bool flag);
 
 		void runEvent(const std::string& eventName);  // @NOTE: this is really naive btw
 		void setState(const std::string& stateName, float_t time = 0.0f, bool forceImmediateUpdate = false);
@@ -419,9 +418,6 @@ namespace vkglTF
 		float_t                       twitchAngle;
 		float_t                       speedMultiplier = 1.0f;
 		std::map<std::string, mat4s>  jointNameToMatrix;
-
-		bool updateAnimator = true;
-		std::mutex setUpdateAnimatorMutex;
 
 		void updateAnimation();
 		void updateJointMatrices(size_t globalNodeReservedIndex, vkglTF::Skin* skin, mat4& m);

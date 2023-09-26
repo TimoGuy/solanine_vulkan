@@ -2186,16 +2186,6 @@ namespace vkglTF
 
 	void Animator::update(const float_t& deltaTime)
 	{
-#ifdef _DEVELOP
-		if (!updateAnimator)
-			return;
-
-		std::lock_guard<std::mutex> lg(setUpdateAnimatorMutex);  // @NOTE: this lock guard is only useful for doing animator manipulations in the physics thread (i.e. baking hitscan nodes).
-
-		if (!updateAnimator)
-			return;
-#endif
-
 		for (auto& mp : animStateMachineCopy.maskPlayers)
 		{
 			mp.timeRange[0] = mp.time;
@@ -2400,12 +2390,6 @@ namespace vkglTF
 		updateAnimation();
 	}
 
-	void Animator::setUpdateAnimator(bool flag)
-	{
-		std::lock_guard<std::mutex> lg(setUpdateAnimatorMutex);
-		updateAnimator = flag;
-	}
-
 	void Animator::runEvent(const std::string& eventName)
 	{
 		for (auto& eventCallback : eventCallbacks)
@@ -2496,6 +2480,8 @@ namespace vkglTF
 
 	void Animator::updateAnimation()
 	{
+		std::lock_guard<std::mutex> lg(model->skinNodeDSMutex); // @NOTE: since multiple animators use the same model to temporarily store the skinned channels, there needs to be some kind of guard to prevent overwriting. It feels stupid though, this solution. -Timo 2023/09/26
+
 		bool updated = false;
 		for (size_t i = 0; i < animStateMachineCopy.masks.size(); i++)
 		{
