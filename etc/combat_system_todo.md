@@ -147,10 +147,13 @@
                 - [x] HighJump
                     - [x] Hold
                     - [x] 01
+                - [x] Updraft(S)
+                    - [x] Hold
+                    - [x] S_01
+                    - [x] 01
+                    - [x] 02
             - [x] Put the animations into the hwac and set velocities and whatnot.
             - [ ] Fix the hitscan baker.
-
-            - [ ] Updraft(S)
 
     - [ ] Require holding shift to do the aura-based wazas.
         - [ ] Change the long wazas to have -1 duration so that it stays active until letting go of shift (or with something like WazaAir2nd_LeapForwardRaimei, it will continue until letting go of shift or landing on the ground)

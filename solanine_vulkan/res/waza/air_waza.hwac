@@ -92,8 +92,8 @@
 
 :AirWaza_GustWallS_01
   chain              AirWaza_GustWallS_02_Hold    5    15    press_x
-  chain              AirWaza_Start_LeapForward_Hold    5    15    press_a  # @TODO: figure out a way to easier switch combo chains in the middle of a combo!!!!!!  @REPLY: maybe just making `interruptable` just mean that you can do another entrance, not necessarily that you can jump and move.
-  chain              AirWaza_Start_Updraft_Hold    5    15    press_x_a  # @TODO: THIS FEELS REDUNDANT... see todo above.
+  ######chain              AirWaza_Start_LeapForward_Hold    5    15    press_a  # @TODO: figure out a way to easier switch combo chains in the middle of a combo!!!!!!  @REPLY: maybe just making `interruptable` just mean that you can do another entrance, not necessarily that you can jump and move.
+  ######chain              AirWaza_Start_Updraft_Hold    5    15    press_x_a  # @TODO: THIS FEELS REDUNDANT... see todo above.
   #
   duration           25
   interruptable      15    -1
@@ -233,11 +233,47 @@
 :AirWaza_Start_Updraft_Hold
   entrance           twohanded    grounded    press_x_a
   #
-  chain              AirWaza_UpdraftS_01    0    17    release_a
-  chain              AirWaza_Updraft_01    18    -1    release_a
+  chain              AirWaza_UpdraftS_01    0    17    release_x_a  # @TODO: @CHECK: this will be buggy......... I don't know what to do yet.
+  chain              AirWaza_Updraft_01    18    -1    release_a    # @NOTE: user must release the `a` button during the chain, the input doesn't stick until it gets consumed somewhere.  -Timo 2023/09/25
   #
   animation_state    AirWaza_Start_Updraft_Hold
   stamina_cost_hold  15    13    -1
+
+:AirWaza_UpdraftS_01
+  duration           61
+  interruptable      48    -1
+  #
+  animation_state    AirWaza_UpdraftS_01
+  stamina_cost       10
+  velocity           0.0,15.0,15.0    5
+  velocity_decay     0.25    0
+  velocity_decay     0.5    39
+
+:AirWaza_Updraft_01
+  chain              AirWaza_Updraft_02    0    17    release_x
+  #
+  duration           57
+  interruptable      55    -1
+  #
+  animation_state    AirWaza_Updraft_01
+  stamina_cost       50
+  gravity_multiplier 0.25
+  velocity           0.0,2.0,50.0    0
+  velocity_decay     0.5    0
+  velocity_decay     1.0    17
+
+:AirWaza_Updraft_02
+  chain              AirWaza_HighJump_01    14    20    release_a    # @NOTE: since it's release_a, the user has to press and then release `a` within the region of time.
+  #
+  duration           57
+  interruptable      55    -1
+  #
+  animation_state    AirWaza_Updraft_01
+  stamina_cost       50
+  gravity_multiplier 0.25
+  velocity           0.0,2.0,50.0    0
+  velocity_decay     0.5    0
+  velocity_decay     1.0    17
 
 
 

@@ -127,6 +127,18 @@
   animation AirWaza_Start_Updraft_Hold
   loop 0
 
+:AirWaza_UpdraftS_01
+  animation AirWaza_UpdraftS_01
+  loop 0
+
+:AirWaza_Updraft_01
+  animation AirWaza_Updraft_01
+  loop 0
+
+:AirWaza_Updraft_02
+  animation AirWaza_Updraft_02
+  loop 0
+
 ####
 ##### @IDEA: what if there's an attack that if you enter the form, you can't get out unless if you take damage.
 ####
