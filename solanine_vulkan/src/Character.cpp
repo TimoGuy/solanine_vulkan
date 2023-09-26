@@ -1025,6 +1025,8 @@ void processWazaInput(Character_XData* d, Character_XData::AttackWaza::WazaInput
 {
     std::string movementState = d->prevIsGrounded ? "grounded" : (d->isMidairUpsideDown ? "upsidedown" : "midair");
 
+    std::cout << "MVT ST: " << movementState << std::endl;
+
     bool isInInterruptableTimeWindow =
         d->currentWaza == nullptr ||
         (d->currentWaza->interruptable.enabled &&
@@ -1698,7 +1700,7 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
         }
 
         NextWazaPtr nextWaza;
-        if (outNumWazaInputs > 0)
+        // if (outNumWazaInputs > 0)
             processWazaInput(d, outWazaInputs, outNumWazaInputs, nextWaza);
         
         if (d->currentWaza != nullptr)
