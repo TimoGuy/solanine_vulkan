@@ -130,14 +130,17 @@
 :AirWaza_UpdraftS_01
   animation AirWaza_UpdraftS_01
   loop 0
+  event 0.0    EventPlaySFXAttack
 
 :AirWaza_Updraft_01
   animation AirWaza_Updraft_01
   loop 0
+  event 0.0    EventPlaySFXLargeJump
 
 :AirWaza_Updraft_02
   animation AirWaza_Updraft_02
   loop 0
+  event 0.0    EventPlaySFXGustWall
 
 ####
 ##### @IDEA: what if there's an attack that if you enter the form, you can't get out unless if you take damage.

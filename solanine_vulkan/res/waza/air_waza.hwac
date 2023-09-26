@@ -187,6 +187,7 @@
   #
   chain              AirWaza_LeapForwardS_01    0    13    release_a
   chain              AirWaza_LeapForward_01    14    -1    release_a
+  chain              AirWaza_Start_Updraft_Hold    0    4    press_x  # @TODO: THIS FEELS REDUNDANT... see todo in `:AirWaza_GustWallS_01`.
   #
   animation_state    AirWaza_Start_LeapForward_Hold
   stamina_cost_hold  15    13    -1
@@ -240,17 +241,23 @@
   stamina_cost_hold  15    13    -1
 
 :AirWaza_UpdraftS_01
-  duration           61
-  interruptable      48    -1
+  duration           25
+  interruptable      19    -1
   #
   animation_state    AirWaza_UpdraftS_01
   stamina_cost       10
-  velocity           0.0,15.0,15.0    5
+  velocity           -1.0,0.0,1.5    0
+  velocity           -5.0,0.0,7.5    1
+  velocity           -1.0,0.0,1.5    3
+  velocity           -0.5,0.0,0.8    7
+  velocity           -1.5,0.0,2.0    13
+  velocity           -2.5,0.0,4.0    14
+  velocity           -1.5,0.0,2.0    23
   velocity_decay     0.25    0
   velocity_decay     0.5    39
 
 :AirWaza_Updraft_01
-  chain              AirWaza_Updraft_02    0    17    release_x
+  chain              AirWaza_Updraft_02    1    17    release_x
   #
   duration           57
   interruptable      55    -1
@@ -263,17 +270,16 @@
   velocity_decay     1.0    17
 
 :AirWaza_Updraft_02
-  chain              AirWaza_HighJump_01    14    20    release_a    # @NOTE: since it's release_a, the user has to press and then release `a` within the region of time.
+  chain              AirWaza_HighJump_01    15    31    release_a    # @NOTE: since it's release_a, the user has to press and then release `a` within the region of time.
   #
-  duration           57
-  interruptable      55    -1
+  duration           45
+  interruptable      31    -1
   #
-  animation_state    AirWaza_Updraft_01
-  stamina_cost       50
-  gravity_multiplier 0.25
-  velocity           0.0,2.0,50.0    0
+  animation_state    AirWaza_Updraft_02
+  stamina_cost       10
+  velocity           0.0,0.0,40.0    0
   velocity_decay     0.5    0
-  velocity_decay     1.0    17
+  velocity_decay     2.5    15
 
 
 

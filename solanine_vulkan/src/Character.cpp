@@ -49,7 +49,7 @@ struct Character_XData
     struct StaminaData
     {
         float_t currentStamina;
-        int16_t maxStamina = 100;
+        int16_t maxStamina = 10000;
         float_t refillTime = 0.5f;  // Wait this time before starting to refill stamina.
         float_t refillTimer = 0.0f;
         float_t changedTime = 0.5f;  // Wait this time before disappearing after a stamina change occurred.
@@ -1362,6 +1362,8 @@ void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& phy
 
 void setWazaToCurrent(Character_XData* d, Character_XData::AttackWaza* nextWaza)
 {
+    std::cout << "[SET WAZA STATE]" << std::endl
+        << "New state: " << (nextWaza != nullptr ? nextWaza->wazaName : "NULL") << std::endl;
     d->currentWaza = nextWaza;
     d->wazaVelocityDecay = 0.0f;
     glm_vec3_copy((d->currentWaza != nullptr && d->currentWaza->velocitySettings.size() > 0 && d->currentWaza->velocitySettings[0].executeAtTime == 0) ? d->currentWaza->velocitySettings[0].velocity : vec3{ 0.0f, 0.0f, 0.0f }, d->wazaVelocity);  // @NOTE: this doesn't work if the executeAtTime's aren't sorted asc.
