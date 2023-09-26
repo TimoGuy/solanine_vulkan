@@ -171,7 +171,7 @@
   stamina_cost       20
   velocity           0.0,8.0,-10.0    4
   velocity_decay     0.5    0
-  hs_launch_velocity 0.000000,0.000000,29.000000
+  hs_launch_velocity 0.000000,0.000000,20.000000
   hs_rel_position    0.000000,0.000000,1.000000    ignore_y
   #
   hitscan            -0.036131,1.698976,0.180510    -0.037169,2.897389,0.118808
@@ -211,7 +211,7 @@
   animation_state    AirWaza_LeapForward_01
   stamina_cost       50
   gravity_multiplier 0.25
-  velocity           0.0,2.0,50.0    0
+  velocity           0.0,2.0,35.0    0
   velocity_decay     0.5    0
   velocity_decay     1.0    17
 
@@ -265,7 +265,7 @@
   animation_state    AirWaza_Updraft_01
   stamina_cost       50
   gravity_multiplier 0.25
-  velocity           0.0,2.0,50.0    0
+  velocity           0.0,2.0,35.0    0
   velocity_decay     0.5    0
   velocity_decay     1.0    17
 
@@ -277,7 +277,7 @@
   #
   animation_state    AirWaza_Updraft_02
   stamina_cost       10
-  velocity           0.0,0.0,40.0    0
+  velocity           0.0,0.0,30.0    0
   velocity_decay     0.5    0
   velocity_decay     2.5    15
 
