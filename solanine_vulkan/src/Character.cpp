@@ -268,6 +268,8 @@ struct Character_XData
 
     bool isTargetingOpponentObject = false;
     std::vector<int32_t> auraSfxChannelIds;
+    float_t auraTimer = 0.0f;
+    float_t auraPersistanceTime = 1.0f;
 
     // Tweak Props
     vec3 position;
@@ -1121,7 +1123,7 @@ void processWazaInput(Character_XData* d, Character_XData::AttackWaza::WazaInput
     }
 }
 
-void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& physicsDeltaTime, const std::string& myGuid, NextWazaPtr& inoutNextWaza, bool& inoutPlayAuraSfx)
+void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& physicsDeltaTime, const std::string& myGuid, NextWazaPtr& inoutNextWaza, bool& inoutTurnOnAura)
 {
     //
     // Deplete stamina
@@ -1131,7 +1133,7 @@ void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& phy
         (d->currentWaza->staminaCostHoldTimeTo < 0 || d->wazaTimer <= d->currentWaza->staminaCostHoldTimeTo))
     {
         changeStamina(d, -d->currentWaza->staminaCostHold * physicsDeltaTime, true);
-        inoutPlayAuraSfx = true;
+        inoutTurnOnAura = true;
     }
 
     //
@@ -1687,7 +1689,7 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
     // Process weapon attack input
     //
     bool wazaInputFocus = false;
-    bool playAuraSfx = false;
+    bool turnOnAura = false;
     if (d->materializedItem != nullptr &&
         d->materializedItem->type == globalState::WEAPON)
     {
@@ -1704,7 +1706,7 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
             processWazaInput(d, outWazaInputs, outNumWazaInputs, nextWaza);
         
         if (d->currentWaza != nullptr)
-            processWazaUpdate(d, em, physicsDeltaTime, myGuid, nextWaza, playAuraSfx);
+            processWazaUpdate(d, em, physicsDeltaTime, myGuid, nextWaza, turnOnAura);
 
         if (nextWaza.set)
             setWazaToCurrent(d, nextWaza.nextWaza);
@@ -1718,7 +1720,7 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
     //
     // Play Aura SFX.
     //
-    if (playAuraSfx)
+    if (turnOnAura)
     {
         if (d->auraSfxChannelIds.empty())
         {
@@ -1733,10 +1735,15 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
                 AudioEngine::getInstance().playSound("res/sfx/wip_hollow_knight_sfx/hero_fury_charm_loop.wav", true)  // Heartbeat loop
             );
         }
+
+        // Set aura persistance timer.
+        d->auraTimer = d->auraPersistanceTime;
     }
-    else
+    else if (d->auraTimer > 0.0f)
     {
-        if (!d->auraSfxChannelIds.empty())
+        if (d->currentWaza == nullptr &&
+            (d->auraTimer -= physicsDeltaTime) <= 0.0f &&  // Only decrement aura timer if not doing a waza anymore (you can keep trying to do wazas and prolong the aura).
+            !d->auraSfxChannelIds.empty())
         {
             // Shut down aura sfx
             for (int32_t id : d->auraSfxChannelIds)
@@ -1768,7 +1775,8 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
     //
     if (d->staminaData.refillTimer > 0.0f)
         d->staminaData.refillTimer -= physicsDeltaTime;
-    else if (d->staminaData.currentStamina < d->staminaData.maxStamina)
+    else if (d->staminaData.currentStamina < d->staminaData.maxStamina &&
+        d->auraSfxChannelIds.empty())  // Don't refill stamina while aura is on!  -Timo 2023/09/26
     {
         d->staminaData.depletionOverflow = 0.0f;
         changeStamina(d, d->staminaData.refillRate * physicsDeltaTime, false);
@@ -1779,7 +1787,8 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
         if (d->staminaData.changedTimer > 0.0f)
         {
             d->uiStamina->excludeFromBulkRender = false;
-            d->staminaData.changedTimer -= physicsDeltaTime;
+            if ((int16_t)d->staminaData.currentStamina == d->staminaData.maxStamina)
+                d->staminaData.changedTimer -= physicsDeltaTime;
         }
         else
             d->uiStamina->excludeFromBulkRender = true;

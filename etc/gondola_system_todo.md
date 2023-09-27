@@ -1,0 +1,11 @@
+> CONTEXT: the gondolas should be the primary "fast-travel" in the game. They're trains where the track materializes right underneath them, and then disappears after the train like atoms disintegrating. This way there is no collision for the rails and it just makes the gondola just be essentially a floating platform that can be as fast as possible. When an entity moves into a track that is done, the particles will float away.
+
+- [ ] Change physics to Jolt Physics
+    - [ ] Wowee, really, really think about what you're doing first. Is this really what you want????? Sign below if you really want it, with the date.
+        - x____________
+    - [ ] Get movement down with the rigidbody character controller.
+    - [ ] Get moving platform movement down with the rigidbody char controller.
+- [ ] Create path system for gondola to show up at a station.
+    - [ ] Gondola accelerates along bezier curve towards a max speed.
+    - [ ] Copy design of station from Unity Concept Prototype (have station that merely displays how many meters away the next gondola is)
+    - [ ] Next in line gondola decelerates with `smoothDamp` function.

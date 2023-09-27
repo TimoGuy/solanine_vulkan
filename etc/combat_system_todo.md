@@ -154,14 +154,15 @@
                     - [x] 02
             - [x] Put the animations into the hwac and set velocities and whatnot.
             - [x] Fix the hitscan baker.
-        - [ ] Make aura be something that happens while you're performing wazas after a hold waza, so doing a hold waza starts a combo, then keeping up wazas will keep the aura going.
-            - [ ] After around 2 seconds of idling, the aura wears off.
+        - [x] Make aura be something that happens while you're performing wazas after a hold waza, so doing a hold waza starts a combo, then keeping up wazas will keep the aura going.
+            - [x] After around ~~2 seconds~~ 1 second of idling, the aura wears off.
         > FROM HERE ON, DO IN THE FUTURE!!!!!
         - [ ] Let user slowly move during midair times.
         - [ ] Implement flipping over.
             - [ ] Make character take damage when hitting the ground while flipped over.
         - [ ] Create `barrier` that doesn't step forward time in the waza past the indicated tick number (inclusive).
             - [ ] Modify `chain` to be able to select where in a state to start other than 0 (use square brackets).
+            - [ ] Modify `chain` again, but this time to have `to_grounded` as an input.
 
 - [ ] Create simple tool to set the hitscan lines along with the animations of the hwac.
     - [ ] Checkbox for "allow movement" with the certain waza.
