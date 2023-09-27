@@ -424,8 +424,9 @@ namespace physengine
         }
 
 #if defined(JPH_EXTERNAL_PROFILE) || defined(JPH_PROFILE_ENABLED)
-        virtual const char* GetBroadPhaseLayerName(BroadPhaseLayer inLayer) const override
+        virtual const char* GetBroadPhaseLayerName(JPH::BroadPhaseLayer inLayer) const override
         {
+            using namespace JPH;
             switch ((BroadPhaseLayer::Type)inLayer)
             {
             case (BroadPhaseLayer::Type)BroadPhaseLayers::NON_MOVING:	return "NON_MOVING";
