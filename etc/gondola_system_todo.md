@@ -9,6 +9,7 @@
         - [ ] Create add body into world system. (how: load a level and allow all the constructors, which should include rigidbody create to run, then have all of them batch into a list where at the end of the step it will add in all the rigidbodies)
         - [ ] Create voxel field to compound collider (using multiple boxes and creating stair set pieces and scale and stuff).
             - [ ] For now just do the boxes voxels (and make it greedy grouping!!!!)
+        - [ ] Create recording system (refer to samples).
         - [ ] Create virtual character controller system. (UNKNOWN AS OF YET).
             > I don't think it will work. I want multiple character controllers that interact with each other instead of one singular character controller. Maybe that's not the best idea???? Or maybe navmeshes with capsule colliders riding on the navmeshes is how it works typically????? Idk.
     - [ ] Get movement down with the ~~rigidbody~~ virtual character controller.

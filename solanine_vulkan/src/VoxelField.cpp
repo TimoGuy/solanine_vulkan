@@ -66,6 +66,7 @@ VoxelField::VoxelField(VulkanEngine* engine, EntityManager* em, RenderObjectMana
 
     _data->voxelModel = _data->rom->getModel("DevBoxWood", this, [](){});
     assembleVoxelRenderObjects(*_data, getGUID(), {});
+    physengine::cookVoxelDataIntoShape(*_data->vfpd);
     triggerLoadLightingIfExists(*_data, getGUID());
 }
 
@@ -369,6 +370,9 @@ void VoxelField::physicsUpdate(const float_t& physicsDeltaTime)
 {
     if (_data->isPicked)  // @NOTE: this picked checking system, bc physicsupdate() runs outside of the render thread, could easily get out of sync, but as long as the render thread is >40fps it should be fine.
     {
+        // @DEBUG: @NOCHECKIN: print out the current position and velocity.
+        physengine::asdfalskdjflkasdhflkahsdlgkh(*_data->vfpd);
+
         static bool prevCorXPressed = false;
 
         if (_data->editorState.editing)
@@ -473,6 +477,7 @@ void VoxelField::physicsUpdate(const float_t& physicsDeltaTime)
                 if (!dirtyPositions.empty())
                 {
                     assembleVoxelRenderObjects(*_data, getGUID(), dirtyPositions);
+                    physengine::cookVoxelDataIntoShape(*_data->vfpd);
                     _data->isLightingDirty = true;
                 }
             }

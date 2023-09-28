@@ -5,6 +5,7 @@
 #include "ImportGLM.h"
 class EntityManager;
 struct DeletionQueue;
+namespace JPH { struct Body; }
 
 #ifdef _DEVELOP
 #include <vulkan/vulkan.h>
@@ -16,6 +17,7 @@ namespace physengine
 #ifdef _DEVELOP
     void initDebugVisDescriptors(VulkanEngine* engine);
     void initDebugVisPipelines(VkRenderPass mainRenderPass, VkViewport& screenspaceViewport, VkRect2D& screenspaceScissor, DeletionQueue& deletionQueue);
+    void savePhysicsWorldSnapshot();
 #endif
 
     void start(EntityManager* em);
@@ -51,6 +53,7 @@ namespace physengine
         mat4 transform = GLM_MAT4_IDENTITY_INIT;
         mat4 prevTransform = GLM_MAT4_IDENTITY_INIT;
         mat4 interpolTransform = GLM_MAT4_IDENTITY_INIT;
+        JPH::Body* body = nullptr;
     };
 
     VoxelFieldPhysicsData* createVoxelField(const std::string& entityGuid, const size_t& sizeX, const size_t& sizeY, const size_t& sizeZ, uint8_t* voxelData);
@@ -59,6 +62,8 @@ namespace physengine
     bool setVoxelDataAtPosition(const VoxelFieldPhysicsData& vfpd, const int32_t& x, const int32_t& y, const int32_t& z, uint8_t data);
     void expandVoxelFieldBounds(VoxelFieldPhysicsData& vfpd, ivec3 boundsMin, ivec3 boundsMax, ivec3& outOffset);
     void shrinkVoxelFieldBoundsAuto(VoxelFieldPhysicsData& vfpd, ivec3& outOffset);
+    void asdfalskdjflkasdhflkahsdlgkh(VoxelFieldPhysicsData& vfpd); // @NOCHECKIN
+    void cookVoxelDataIntoShape(VoxelFieldPhysicsData& vfpd);
 
     struct CapsulePhysicsData
     {

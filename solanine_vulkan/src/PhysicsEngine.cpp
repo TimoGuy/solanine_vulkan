@@ -20,11 +20,14 @@
 #include <Jolt/RegisterTypes.h>
 #include <Jolt/Core/Factory.h>
 #include <Jolt/Core/TempAllocator.h>
+#include <Jolt/Core/StreamWrapper.h>
 #include <Jolt/Core/JobSystemThreadPool.h>
 #include <Jolt/Physics/PhysicsSettings.h>
 #include <Jolt/Physics/PhysicsSystem.h>
+#include <Jolt/Physics/PhysicsScene.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
+#include <Jolt/Physics/Collision/Shape/StaticCompoundShape.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
 #include <Jolt/Physics/Body/BodyActivationListener.h>
 #include "PhysUtil.h"
@@ -52,6 +55,8 @@ namespace physengine
     bool isAsyncRunnerRunning;
     std::thread* asyncRunner = nullptr;
     uint64_t lastTick;
+
+    PhysicsSystem physicsSystem;
 
 #ifdef _DEVELOP
     struct DebugStats
@@ -302,6 +307,19 @@ namespace physengine
             deletionQueue
         );
     }
+
+    void savePhysicsWorldSnapshot()
+    {
+        // Convert physics system to scene
+        Ref<PhysicsScene> scene = new PhysicsScene();
+        scene->FromPhysicsSystem(&physicsSystem);
+
+        // Save scene
+        std::ofstream stream("physics_world_snapshot.bin", std::ofstream::out | std::ofstream::trunc | std::ofstream::binary);
+        StreamOutWrapper wrapper(stream);
+        if (stream.is_open())
+            scene->SaveBinaryState(wrapper, true, true);
+    }
 #endif
 
     void start(EntityManager* em)
@@ -531,7 +549,6 @@ namespace physengine
         ObjectVsBroadPhaseLayerFilterImpl objectVsBroadphaseLayerFilter;
         ObjectLayerPairFilterImpl objectVsObjectLayerFilter;
 
-        PhysicsSystem physicsSystem;
         physicsSystem.Init(maxBodies, numBodyMutexes, maxBodyPairs, maxContactConstraints, broadphaseLayerInterface, objectVsBroadphaseLayerFilter, objectVsObjectLayerFilter);
 
         MyBodyActivationListener bodyActivationListener;
@@ -552,7 +569,7 @@ namespace physengine
             return;
         }
         ShapeRefC floorShape = floorShapeResult.Get();
-        BodyCreationSettings floorSettings(floorShape, RVec3(0.0_r, -1.0_r, 0.0_r), Quat::sIdentity(), EMotionType::Static, Layers::NON_MOVING);
+        BodyCreationSettings floorSettings(floorShape, RVec3(0.0_r, -500.0_r, 0.0_r), Quat::sIdentity(), EMotionType::Static, Layers::NON_MOVING);
         BodyID floorId =
             bodyInterface.CreateAndAddBody(
                 floorSettings,
@@ -593,11 +610,6 @@ namespace physengine
                 debugVisLines.clear();
             }
 #endif
-
-            // RVec3 position = bodyInterface.GetCenterOfMassPosition(ballId);
-            // Vec3 velocity = bodyInterface.GetLinearVelocity(ballId);
-            // std::cout << "Position = (" << position.GetX() << ", " << position.GetY() << ", " << position.GetZ() << "), Velocity = (" << velocity.GetX() << ", " << velocity.GetY() << ", " << velocity.GetZ() << ")" << std::endl;
-
             // @NOTE: this is the only place where `timeScale` is used. That's
             //        because this system is designed to be running at 40fps constantly
             //        in real time, so it doesn't slow down or speed up with time scale.
@@ -605,7 +617,7 @@ namespace physengine
             //         if the timescale slows down, then the tick rate should also slow down
             //         proportionate to the timescale.  -Timo 2023/06/10
             tick();
-            // entityManager->INTERNALphysicsUpdate(physicsDeltaTime);  // @NOTE: if timescale changes, then the system just waits longer/shorter.
+            entityManager->INTERNALphysicsUpdate(physicsDeltaTime);  // @NOTE: if timescale changes, then the system just waits longer/shorter.
             physicsSystem.Update(physicsDeltaTime, 1, 1, &tempAllocator, &jobSystem);  // @NOCHECKIN
 
 #ifdef _DEVELOP
@@ -828,6 +840,113 @@ namespace physengine
         glm_translate(vfpd.transform, vec3{ -(float_t)outOffset[0], -(float_t)outOffset[1], -(float_t)outOffset[2] });
 
         std::cout << "Shurnk to { " << vfpd.sizeX << ", " << vfpd.sizeY << ", " << vfpd.sizeZ << " }" << std::endl;
+    }
+
+    void asdfalskdjflkasdhflkahsdlgkh(VoxelFieldPhysicsData& vfpd)
+    {
+        BodyInterface& bodyInterface = physicsSystem.GetBodyInterface();
+        std::cout << vfpd.body << std::endl;
+        RVec3 position = bodyInterface.GetCenterOfMassPosition(vfpd.body->GetID());
+		Vec3 velocity = bodyInterface.GetLinearVelocity(vfpd.body->GetID());
+		std::cout << "Position = (" << position.GetX() << ", " << position.GetY() << ", " << position.GetZ() << "), Velocity = (" << velocity.GetX() << ", " << velocity.GetY() << ", " << velocity.GetZ() << ")" << std::endl;
+    }
+
+    void cookVoxelDataIntoShape(VoxelFieldPhysicsData& vfpd)
+    {
+        BodyInterface& bodyInterface = physicsSystem.GetBodyInterface();
+
+        // Recreate shape from scratch (property/feature of static compound shape).
+        if (vfpd.body != nullptr)
+        {
+            bodyInterface.RemoveBody(vfpd.body->GetID());
+            bodyInterface.DestroyBody(vfpd.body->GetID());
+        }
+
+        // Create shape for each voxel.
+        // (Simple greedy algorithm that pushes as far as possible in one dimension, then in another while throwing away portions that don't fit)
+        // (Actually..... right now it's not a greedy algorithm and it's just a simple depth first flood that's good enough for now)  -Timo 2023/09/27
+        Ref<StaticCompoundShapeSettings> compoundShape = new StaticCompoundShapeSettings;
+
+        bool* processed = new bool[vfpd.sizeX * vfpd.sizeY * vfpd.sizeZ];
+        for (size_t i = 0; i < vfpd.sizeX; i++)
+        for (size_t j = 0; j < vfpd.sizeY; j++)
+        for (size_t k = 0; k < vfpd.sizeZ; k++)
+        {
+            size_t idx = i * vfpd.sizeY * vfpd.sizeZ + j * vfpd.sizeZ + k;
+            if (vfpd.voxelData[idx] == 0 || processed[idx])
+                continue;
+            
+            // Start greedy search.
+            size_t encX = 1,  // Encapsulation sizes. Multiply it all together to get the count of encapsulation.
+                encY = 1,
+                encZ = 1;
+            for (size_t x = i + 1; x < vfpd.sizeX; x++)
+            {
+                // Test whether next position is viable.
+                size_t idx = x * vfpd.sizeY * vfpd.sizeZ + j * vfpd.sizeZ + k;
+                bool viable = (vfpd.voxelData[idx] != 0 && !processed[idx]);
+                if (!viable)
+                    break;  // Exit if not viable.
+                
+                encX++; // March forward.
+            }
+            for (size_t y = j + 1; y < vfpd.sizeY; y++)
+            {
+                // Test whether next row of positions are viable.
+                bool viable = true;
+                for (size_t x = i; x < vfpd.sizeX; x++)
+                {
+                    size_t idx = x * vfpd.sizeY * vfpd.sizeZ + y * vfpd.sizeZ + k;
+                    viable &= (vfpd.voxelData[idx] != 0 && !processed[idx]);
+                    if (!viable)
+                        break;
+                }
+
+                if (!viable)
+                    break;  // Exit if not viable.
+                
+                encY++; // March forward.
+            }
+            for (size_t z = k + 1; z < vfpd.sizeZ; z++)
+            {
+                // Test whether next sheet of positions are viable.
+                bool viable = true;
+                for (size_t x = i; x < vfpd.sizeX; x++)
+                for (size_t y = j; y < vfpd.sizeY; y++)
+                {
+                    size_t idx = x * vfpd.sizeY * vfpd.sizeZ + y * vfpd.sizeZ + z;
+                    viable &= (vfpd.voxelData[idx] != 0 && !processed[idx]);
+                    if (!viable)
+                        break;
+                }
+
+                if (!viable)
+                    break;  // Exit if not viable.
+                
+                encZ++; // March forward.
+            }
+
+            // Mark all claimed as processed.
+            for (size_t x = 0; x < encX; x++)
+            for (size_t y = 0; y < encY; y++)
+            for (size_t z = 0; z < encZ; z++)
+            {
+                size_t idx = (x + i) * vfpd.sizeY * vfpd.sizeZ + (y + j) * vfpd.sizeZ + (z + k);
+                processed[idx] = true;
+            }
+
+            // Create shape.
+            Vec3 extent((float_t)encX * 0.5f, (float_t)encY * 0.5f, (float_t)encZ * 0.5f);
+            Vec3 origin((float_t)i + extent.GetX(), (float_t)j + extent.GetY(), (float_t)k + extent.GetZ());
+            compoundShape->AddShape(origin, Quat::sIdentity(), new BoxShape(extent));
+        }
+
+        if (compoundShape->mSubShapes.size() == 0)
+            return;  // Cannot create empty body.
+
+        // Create body.
+        vfpd.body = bodyInterface.CreateBody(BodyCreationSettings(compoundShape, RVec3(0.0_r, 0.0_r, 0.0_r), Quat::sIdentity(), EMotionType::Dynamic, Layers::MOVING));
+        bodyInterface.AddBody(vfpd.body->GetID(), EActivation::Activate);
     }
 
     //

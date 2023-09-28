@@ -4,6 +4,7 @@
 #include <sstream>
 #include "DataSerialization.h"
 #include "VulkanEngine.h"
+#include "PhysicsEngine.h"
 #include "Camera.h"
 #include "Debug.h"
 #include "StringHelper.h"
@@ -159,6 +160,9 @@ namespace scene
                 .message = "Loaded scene \"" + name + "\" with errors (see console output)",
                 .type = 1,
                 });
+
+        // @DEBUG: save snapshot of physics frame.
+        physengine::savePhysicsWorldSnapshot();
 
         return success;
     }
