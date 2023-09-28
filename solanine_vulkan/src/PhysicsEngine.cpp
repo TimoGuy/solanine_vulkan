@@ -692,7 +692,7 @@ namespace physengine
     size_t voxelFieldIndices[PHYSICS_OBJECTS_MAX_CAPACITY];
     size_t numVFsCreated = 0;
 
-    VoxelFieldPhysicsData* createVoxelField(const std::string& entityGuid, const size_t& sizeX, const size_t& sizeY, const size_t& sizeZ, uint8_t* voxelData)
+    VoxelFieldPhysicsData* createVoxelField(const std::string& entityGuid, mat4 transform, const size_t& sizeX, const size_t& sizeY, const size_t& sizeZ, uint8_t* voxelData)
     {
         if (numVFsCreated < PHYSICS_OBJECTS_MAX_CAPACITY)
         {
@@ -708,6 +708,7 @@ namespace physengine
 
             // Insert in the data
             vfpd.entityGuid = entityGuid;
+            glm_mat4_copy(transform, vfpd.transform);
             vfpd.sizeX = sizeX;
             vfpd.sizeY = sizeY;
             vfpd.sizeZ = sizeZ;
@@ -954,16 +955,16 @@ namespace physengine
             return;  // Cannot create empty body.
 
         // Create body.
-        // @TODO: kinematic is set here bc the weighted island mechanic will come later.
-        vfpd.body = bodyInterface.CreateBody(BodyCreationSettings(compoundShape, RVec3(0.0_r, 0.0_r, 0.0_r), Quat::sIdentity(), EMotionType::Kinematic, Layers::NON_MOVING));
-        bodyInterface.AddBody(vfpd.body->GetID(), EActivation::DontActivate);
-
         vec4 pos;
         mat4 rot;
         vec3 sca;
-        glm_decompose(vfpd.transform, pos, rot, sca);  // @NOCHECKIN: @FIXME.
+        glm_decompose(vfpd.transform, pos, rot, sca);
+        versor rotV;
+        glm_mat4_quat(rot, rotV);
 
-        bodyInterface.MoveKinematic();
+        // @TODO: kinematic is set here bc the weighted island mechanic will come later.
+        vfpd.body = bodyInterface.CreateBody(BodyCreationSettings(compoundShape, RVec3(pos[0], pos[1], pos[2]), Quat(rotV[0], rotV[1], rotV[2], rotV[3]), EMotionType::Kinematic, Layers::NON_MOVING));
+        bodyInterface.AddBody(vfpd.body->GetID(), EActivation::DontActivate);
     }
 
     //
@@ -973,7 +974,7 @@ namespace physengine
     size_t capsuleIndices[PHYSICS_OBJECTS_MAX_CAPACITY];
     size_t numCapsCreated = 0;
 
-    CapsulePhysicsData* createCapsule(const std::string& entityGuid, const float_t& radius, const float_t& height)
+    CapsulePhysicsData* createCharacter(const std::string& entityGuid, vec3 position, const float_t& radius, const float_t& height)
     {
         if (numCapsCreated < PHYSICS_OBJECTS_MAX_CAPACITY)
         {
@@ -989,6 +990,7 @@ namespace physengine
 
             // Insert in the data
             cpd.entityGuid = entityGuid;
+            glm_vec3_copy(position, cpd.basePosition);
             cpd.radius = radius;
             cpd.height = height;
 
@@ -1001,7 +1003,7 @@ namespace physengine
             settings->mShape = capsuleShape;
             settings->mFriction = 0.5f;
             settings->mSupportingVolume = Plane(Vec3::sAxisY(), -radius);
-            cpd.character = new Character(settings, RVec3::sZero(), Quat::sIdentity(), 0, physicsSystem);
+            cpd.character = new Character(settings, RVec3(position[0], position[1], position[2]), Quat::sIdentity(), 0, physicsSystem);
             cpd.character->AddToPhysicsSystem(EActivation::Activate);
 
             return &cpd;

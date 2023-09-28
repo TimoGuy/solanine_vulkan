@@ -1554,8 +1554,8 @@ Character::Character(EntityManager* em, RenderObjectManager* rom, Camera* camera
     for (auto& inst : _data->weaponRenderObj->calculatedModelInstances)
         inst.voxelFieldLightingGridID = 1;
 
-    _data->cpd = physengine::createCapsule(getGUID(), 0.5f, 1.0f);  // Total height is 2, but r*2 is subtracted to get the capsule height (i.e. the line segment length that the capsule rides along)
-    glm_vec3_copy(_data->position, _data->cpd->basePosition);
+    _data->cpd = physengine::createCharacter(getGUID(), _data->position, 0.5f, 1.0f);  // Total height is 2, but r*2 is subtracted to get the capsule height (i.e. the line segment length that the capsule rides along)
+    // glm_vec3_copy(_data->position, _data->cpd->basePosition);
     glm_vec3_copy(_data->cpd->basePosition, _data->prevCPDBasePosition);
 
     if (_data->characterType == CHARACTER_TYPE_PLAYER)

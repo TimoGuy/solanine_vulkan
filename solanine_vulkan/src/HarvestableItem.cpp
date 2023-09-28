@@ -51,8 +51,8 @@ HarvestableItem::HarvestableItem(EntityManager* em, RenderObjectManager* rom, Da
     );
     glm_translate(_data->renderObj->transformMatrix, _data->position);
 
-    _data->cpd = physengine::createCapsule(getGUID(), 1.0f, 0.0f);
-    glm_vec3_add(_data->position, vec3{ 0.0f, -_data->cpd->radius, 0.0f }, _data->cpd->basePosition);    // @DEBUG
+    // _data->cpd = physengine::createCharacter(getGUID(), 1.0f, 0.0f);  // @FIXME: this should be a sensor instead. @NOCHECKIN
+    // glm_vec3_add(_data->position, vec3{ 0.0f, -_data->cpd->radius, 0.0f }, _data->cpd->basePosition);    // @DEBUG
 }
 
 HarvestableItem::~HarvestableItem()

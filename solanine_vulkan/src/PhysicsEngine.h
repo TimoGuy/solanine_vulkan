@@ -60,7 +60,7 @@ namespace physengine
         JPH::Body* body = nullptr;  // @TODO: @NOCHECKIN: get this back to body_id instead of body ptr.
     };
 
-    VoxelFieldPhysicsData* createVoxelField(const std::string& entityGuid, const size_t& sizeX, const size_t& sizeY, const size_t& sizeZ, uint8_t* voxelData);
+    VoxelFieldPhysicsData* createVoxelField(const std::string& entityGuid, mat4 transform, const size_t& sizeX, const size_t& sizeY, const size_t& sizeZ, uint8_t* voxelData);
     bool destroyVoxelField(VoxelFieldPhysicsData* vfpd);
     uint8_t getVoxelDataAtPosition(const VoxelFieldPhysicsData& vfpd, const int32_t& x, const int32_t& y, const int32_t& z);
     bool setVoxelDataAtPosition(const VoxelFieldPhysicsData& vfpd, const int32_t& x, const int32_t& y, const int32_t& z, uint8_t data);
@@ -81,7 +81,7 @@ namespace physengine
         JPH::Character* character = nullptr;
     };
 
-    CapsulePhysicsData* createCapsule(const std::string& entityGuid, const float_t& radius, const float_t& height);
+    CapsulePhysicsData* createCharacter(const std::string& entityGuid, vec3 position, const float_t& radius, const float_t& height);
     bool destroyCapsule(CapsulePhysicsData* cpd);
     size_t getNumCapsules();
     CapsulePhysicsData* getCapsuleByIndex(size_t index);

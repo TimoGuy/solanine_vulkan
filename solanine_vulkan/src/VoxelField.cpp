@@ -623,8 +623,7 @@ void VoxelField::load(DataSerialized& ds)
     }
 
     // Create Voxel Field Physics Data
-    _data->vfpd = physengine::createVoxelField(getGUID(), load_size[0], load_size[1], load_size[2], load_voxelData);
-    glm_mat4_copy(load_transform, _data->vfpd->transform);
+    _data->vfpd = physengine::createVoxelField(getGUID(), load_transform, load_size[0], load_size[1], load_size[2], load_voxelData);
 }
 
 void VoxelField::reportMoved(mat4* matrixMoved)
@@ -1147,7 +1146,8 @@ inline void buildDefaultVoxelData(VoxelField_XData& data, const std::string& myG
     for (size_t j = 0; j < sizeY; j++)
     for (size_t k = 0; k < sizeZ; k++)
         vd[i * sizeY * sizeZ + j * sizeZ + k] = 1;
-    data.vfpd = physengine::createVoxelField(myGuid, sizeX, sizeY, sizeZ, vd);
+    mat4 identity = GLM_MAT4_IDENTITY_INIT;
+    data.vfpd = physengine::createVoxelField(myGuid, identity, sizeX, sizeY, sizeZ, vd);
 }
 
 inline void assembleVoxelRenderObjects(VoxelField_XData& data, const std::string& attachedEntityGuid, std::vector<ivec3s> dirtyPositions)
