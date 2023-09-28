@@ -33,6 +33,10 @@
 #include "imgui/imgui.h"
 #include "imgui/implot.h"
 
+JPH_SUPPRESS_WARNINGS
+using namespace JPH;
+using namespace JPH::literals;
+
 
 namespace physengine
 {
@@ -327,8 +331,6 @@ namespace physengine
 
     void tick();
 
-    JPH_SUPPRESS_WARNINGS
-
     static void TraceImpl(const char* inFMT, ...)  // Callback for traces, connect this to your own trace function if you have one
     {
         // Format the message
@@ -362,18 +364,17 @@ namespace physengine
 // but only if you do collision testing).
     namespace Layers
     {
-        static constexpr JPH::ObjectLayer NON_MOVING = 0;
-        static constexpr JPH::ObjectLayer MOVING = 1;
-        static constexpr JPH::ObjectLayer NUM_LAYERS = 2;
+        static constexpr ObjectLayer NON_MOVING = 0;
+        static constexpr ObjectLayer MOVING = 1;
+        static constexpr ObjectLayer NUM_LAYERS = 2;
     };
 
     /// Class that determines if two object layers can collide
-    class ObjectLayerPairFilterImpl : public JPH::ObjectLayerPairFilter
+    class ObjectLayerPairFilterImpl : public ObjectLayerPairFilter
     {
     public:
-        virtual bool ShouldCollide(JPH::ObjectLayer inObject1, JPH::ObjectLayer inObject2) const override
+        virtual bool ShouldCollide(ObjectLayer inObject1, ObjectLayer inObject2) const override
         {
-            using namespace JPH;
             switch (inObject1)
             {
             case Layers::NON_MOVING:
@@ -394,14 +395,14 @@ namespace physengine
     // your broadphase layers define JPH_TRACK_BROADPHASE_STATS and look at the stats reported on the TTY.
     namespace BroadPhaseLayers
     {
-        static constexpr JPH::BroadPhaseLayer NON_MOVING(0);
-        static constexpr JPH::BroadPhaseLayer MOVING(1);
+        static constexpr BroadPhaseLayer NON_MOVING(0);
+        static constexpr BroadPhaseLayer MOVING(1);
         static constexpr uint32_t NUM_LAYERS(2);
     };
 
     // BroadPhaseLayerInterface implementation
     // This defines a mapping between object and broadphase layers.
-    class BPLayerInterfaceImpl final : public JPH::BroadPhaseLayerInterface
+    class BPLayerInterfaceImpl final : public BroadPhaseLayerInterface
     {
     public:
         BPLayerInterfaceImpl()
@@ -416,17 +417,15 @@ namespace physengine
             return BroadPhaseLayers::NUM_LAYERS;
         }
 
-        virtual JPH::BroadPhaseLayer GetBroadPhaseLayer(JPH::ObjectLayer inLayer) const override
+        virtual BroadPhaseLayer GetBroadPhaseLayer(ObjectLayer inLayer) const override
         {
-            using namespace JPH;
             JPH_ASSERT(inLayer < Layers::NUM_LAYERS);
             return mObjectToBroadPhase[inLayer];
         }
 
 #if defined(JPH_EXTERNAL_PROFILE) || defined(JPH_PROFILE_ENABLED)
-        virtual const char* GetBroadPhaseLayerName(JPH::BroadPhaseLayer inLayer) const override
+        virtual const char* GetBroadPhaseLayerName(BroadPhaseLayer inLayer) const override
         {
-            using namespace JPH;
             switch ((BroadPhaseLayer::Type)inLayer)
             {
             case (BroadPhaseLayer::Type)BroadPhaseLayers::NON_MOVING:	return "NON_MOVING";
@@ -437,16 +436,15 @@ namespace physengine
 #endif // JPH_EXTERNAL_PROFILE || JPH_PROFILE_ENABLED
 
     private:
-        JPH::BroadPhaseLayer mObjectToBroadPhase[Layers::NUM_LAYERS];
+        BroadPhaseLayer mObjectToBroadPhase[Layers::NUM_LAYERS];
     };
 
     /// Class that determines if an object layer can collide with a broadphase layer
-    class ObjectVsBroadPhaseLayerFilterImpl : public JPH::ObjectVsBroadPhaseLayerFilter
+    class ObjectVsBroadPhaseLayerFilterImpl : public ObjectVsBroadPhaseLayerFilter
     {
     public:
-        virtual bool ShouldCollide(JPH::ObjectLayer inLayer1, JPH::BroadPhaseLayer inLayer2) const override
+        virtual bool ShouldCollide(ObjectLayer inLayer1, BroadPhaseLayer inLayer2) const override
         {
-            using namespace JPH;
             switch (inLayer1)
             {
             case Layers::NON_MOVING:
@@ -461,46 +459,46 @@ namespace physengine
     };
 
     // An example contact listener
-    class MyContactListener : public JPH::ContactListener
+    class MyContactListener : public ContactListener
     {
     public:
         // See: ContactListener
-        virtual JPH::ValidateResult OnContactValidate(const JPH::Body& inBody1, const JPH::Body& inBody2, JPH::RVec3Arg inBaseOffset, const JPH::CollideShapeResult& inCollisionResult) override
+        virtual ValidateResult OnContactValidate(const Body& inBody1, const Body& inBody2, RVec3Arg inBaseOffset, const CollideShapeResult& inCollisionResult) override
         {
-            std::cout << "Contact validate callback" << std::endl;
+            //std::cout << "Contact validate callback" << std::endl;
 
             // Allows you to ignore a contact before it is created (using layers to not make objects collide is cheaper!)
-            return JPH::ValidateResult::AcceptAllContactsForThisBodyPair;
+            return ValidateResult::AcceptAllContactsForThisBodyPair;
         }
 
-        virtual void OnContactAdded(const JPH::Body& inBody1, const JPH::Body& inBody2, const JPH::ContactManifold& inManifold, JPH::ContactSettings& ioSettings) override
+        virtual void OnContactAdded(const Body& inBody1, const Body& inBody2, const ContactManifold& inManifold, ContactSettings& ioSettings) override
         {
-            std::cout << "A contact was added" << std::endl;
+            //std::cout << "A contact was added" << std::endl;
         }
 
-        virtual void OnContactPersisted(const JPH::Body& inBody1, const JPH::Body& inBody2, const JPH::ContactManifold& inManifold, JPH::ContactSettings& ioSettings) override
+        virtual void OnContactPersisted(const Body& inBody1, const Body& inBody2, const ContactManifold& inManifold, ContactSettings& ioSettings) override
         {
-            std::cout << "A contact was persisted" << std::endl;
+            //std::cout << "A contact was persisted" << std::endl;
         }
 
-        virtual void OnContactRemoved(const JPH::SubShapeIDPair& inSubShapePair) override
+        virtual void OnContactRemoved(const SubShapeIDPair& inSubShapePair) override
         {
-            std::cout << "A contact was removed" << std::endl;
+            //std::cout << "A contact was removed" << std::endl;
         }
     };
 
     // An example activation listener
-    class MyBodyActivationListener : public JPH::BodyActivationListener
+    class MyBodyActivationListener : public BodyActivationListener
     {
     public:
-        virtual void OnBodyActivated(const JPH::BodyID& inBodyID, uint64_t inBodyUserData) override
+        virtual void OnBodyActivated(const BodyID& inBodyID, uint64_t inBodyUserData) override
         {
-            std::cout << "A body got activated" << std::endl;
+            //std::cout << "A body got activated" << std::endl;
         }
 
-        virtual void OnBodyDeactivated(const JPH::BodyID& inBodyID, uint64_t inBodyUserData) override
+        virtual void OnBodyDeactivated(const BodyID& inBodyID, uint64_t inBodyUserData) override
         {
-            std::cout << "A body went to sleep" << std::endl;
+            //std::cout << "A body went to sleep" << std::endl;
         }
     };
 
@@ -510,19 +508,19 @@ namespace physengine
         // Init Physics World.
         // REFERENCE: https://github.com/jrouwe/JoltPhysics/blob/master/HelloWorld/HelloWorld.cpp
         //
-        JPH::RegisterDefaultAllocator();
+        RegisterDefaultAllocator();
 
-        JPH::Trace = TraceImpl;
-        JPH_IF_ENABLE_ASSERTS(JPH::AssertFailed = AssertFailedImpl);
+        Trace = TraceImpl;
+        JPH_IF_ENABLE_ASSERTS(AssertFailed = AssertFailedImpl);
 
-        JPH::Factory::sInstance = new JPH::Factory();
-        JPH::RegisterTypes();
+        Factory::sInstance = new Factory();
+        RegisterTypes();
 
-        JPH::TempAllocatorImpl tempAllocator(10 * 1024 * 1024);
+        TempAllocatorImpl tempAllocator(10 * 1024 * 1024);
 
         constexpr int32_t maxPhysicsJobs = 2048;
         constexpr int32_t maxPhysicsBarriers = 8;
-        JPH::JobSystemThreadPool jobSystem(maxPhysicsJobs, maxPhysicsBarriers, std::thread::hardware_concurrency() - 1);
+        JobSystemThreadPool jobSystem(maxPhysicsJobs, maxPhysicsBarriers, std::thread::hardware_concurrency() - 1);
 
         const uint32_t maxBodies = 65536;
         const uint32_t numBodyMutexes = 0;  // Default settings is no mutexes to protect bodies from concurrent access.
@@ -533,7 +531,7 @@ namespace physengine
         ObjectVsBroadPhaseLayerFilterImpl objectVsBroadphaseLayerFilter;
         ObjectLayerPairFilterImpl objectVsObjectLayerFilter;
 
-        JPH::PhysicsSystem physicsSystem;
+        PhysicsSystem physicsSystem;
         physicsSystem.Init(maxBodies, numBodyMutexes, maxBodyPairs, maxContactConstraints, broadphaseLayerInterface, objectVsBroadphaseLayerFilter, objectVsObjectLayerFilter);
 
         MyBodyActivationListener bodyActivationListener;
@@ -542,7 +540,41 @@ namespace physengine
         MyContactListener contactListener;
         physicsSystem.SetContactListener(&contactListener);
 
-        // @TODO: Insert all bodies in right here.
+        // @TODO: Insert all bodies in right here. //
+        BodyInterface& bodyInterface = physicsSystem.GetBodyInterface();
+
+        BoxShapeSettings floorShapeSettings(Vec3(100.0f, 1.0f, 100.0f));
+        ShapeSettings::ShapeResult floorShapeResult = floorShapeSettings.Create();
+        if (floorShapeResult.HasError())
+        {
+            std::cerr << "[Shape Creation]" << std::endl
+                << "ERROR: " << floorShapeResult.GetError() << std::endl;
+            return;
+        }
+        ShapeRefC floorShape = floorShapeResult.Get();
+        BodyCreationSettings floorSettings(floorShape, RVec3(0.0_r, -1.0_r, 0.0_r), Quat::sIdentity(), EMotionType::Static, Layers::NON_MOVING);
+        BodyID floorId =
+            bodyInterface.CreateAndAddBody(
+                floorSettings,
+                (floorSettings.mMotionType == EMotionType::Dynamic ? EActivation::Activate : EActivation::DontActivate)
+            );  // @TODO: make this batched! Use `AddBodies` instead, to keep the broadphase optimized as possible.
+
+        SphereShapeSettings ballShapeSettings(0.5f);  // @COPYPASTA... almost.
+        ShapeSettings::ShapeResult ballShapeResult = ballShapeSettings.Create();
+        if (ballShapeResult.HasError())
+        {
+            std::cerr << "[Shape Creation]" << std::endl
+                << "ERROR: " << ballShapeResult.GetError() << std::endl;
+            return;
+        }
+        ShapeRefC ballShape = ballShapeResult.Get();
+        BodyCreationSettings ballSettings(ballShape, RVec3(0.0_r, 5.0_r, 0.0_r), Quat::sIdentity(), EMotionType::Dynamic, Layers::MOVING);
+        BodyID ballId =
+            bodyInterface.CreateAndAddBody(
+                ballSettings,
+                (ballSettings.mMotionType == EMotionType::Dynamic ? EActivation::Activate : EActivation::DontActivate)
+            );  // @TODO: make this batched! Use `AddBodies` instead, to keep the broadphase optimized as possible.
+        /////////////////////////////////////////////
 
         physicsSystem.OptimizeBroadPhase();
 
@@ -562,6 +594,10 @@ namespace physengine
             }
 #endif
 
+            // RVec3 position = bodyInterface.GetCenterOfMassPosition(ballId);
+            // Vec3 velocity = bodyInterface.GetLinearVelocity(ballId);
+            // std::cout << "Position = (" << position.GetX() << ", " << position.GetY() << ", " << position.GetZ() << "), Velocity = (" << velocity.GetX() << ", " << velocity.GetY() << ", " << velocity.GetZ() << ")" << std::endl;
+
             // @NOTE: this is the only place where `timeScale` is used. That's
             //        because this system is designed to be running at 40fps constantly
             //        in real time, so it doesn't slow down or speed up with time scale.
@@ -569,7 +605,7 @@ namespace physengine
             //         if the timescale slows down, then the tick rate should also slow down
             //         proportionate to the timescale.  -Timo 2023/06/10
             tick();
-            entityManager->INTERNALphysicsUpdate(physicsDeltaTime);  // @NOTE: if timescale changes, then the system just waits longer/shorter.
+            // entityManager->INTERNALphysicsUpdate(physicsDeltaTime);  // @NOTE: if timescale changes, then the system just waits longer/shorter.
             physicsSystem.Update(physicsDeltaTime, 1, 1, &tempAllocator, &jobSystem);  // @NOCHECKIN
 
 #ifdef _DEVELOP
@@ -618,12 +654,15 @@ namespace physengine
         // Clean up physics world.
         //
 
-        // @TODO: insert all the delete functions (rest of the bodies (remove then destroy)) into here before unregistering and deleting the world.
+        // @TODO: insert all the delete functions (rest of the bodies (remove then destroy)) into here before unregistering and deleting the world. //
+        bodyInterface.RemoveBody(floorId);  // @TODO: use `RemoveBodies` where possible!
+        bodyInterface.DestroyBody(floorId);  // @TODO: use `DestroyBodies` where possible!
+        //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-        JPH::UnregisterTypes();
+        UnregisterTypes();
 
-        delete JPH::Factory::sInstance;
-        JPH::Factory::sInstance = nullptr;
+        delete Factory::sInstance;
+        Factory::sInstance = nullptr;
     }
 
     //

@@ -3,9 +3,17 @@
 - [ ] Change physics to Jolt Physics
     - [ ] Wowee, really, really think about what you're doing first. Is this really what you want????? Sign below if you really want it, with the date.
         - x____________
+    - [ ] Basic API implementation
+        - [ ] Create shape initializers. (sphere, box, capsule, mesh)
+        - [ ] Create body initializers that ingest the shape. (note: the createBody system is thread-safe already)
+        - [ ] Create add body into world system. (how: load a level and allow all the constructors, which should include rigidbody create to run, then have all of them batch into a list where at the end of the step it will add in all the rigidbodies)
+        - [ ] Create voxel field to compound collider (using multiple boxes and creating stair set pieces and scale and stuff).
+            - [ ] For now just do the boxes voxels (and make it greedy grouping!!!!)
+        - [ ] Create virtual character controller system. (UNKNOWN AS OF YET).
+            > I don't think it will work. I want multiple character controllers that interact with each other instead of one singular character controller. Maybe that's not the best idea???? Or maybe navmeshes with capsule colliders riding on the navmeshes is how it works typically????? Idk.
     - [ ] Get movement down with the ~~rigidbody~~ virtual character controller.
         > After trying out the samples, this type of character controller is what I am looking for. It handles slopes and stairs well and moving platforms, while also being fairly good at being an interactor within the simulation world.
-    - [ ] Get moving platform movement down with the rigidbody char controller.
+    - [ ] Get moving platform movement down with the ~~rigidbody~~ virtual char controller.
 - [ ] Create path system for gondola to show up at a station.
     - [ ] Gondola accelerates along bezier curve towards a max speed.
     - [ ] Copy design of station from Unity Concept Prototype (have station that merely displays how many meters away the next gondola is)
