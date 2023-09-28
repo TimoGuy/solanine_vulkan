@@ -26,8 +26,11 @@
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/Physics/PhysicsScene.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
-#include <Jolt/Physics/Collision/Shape/SphereShape.h>
+#include <Jolt/Physics/Collision/Shape/SphereShape.h>  // @TODO: don't need this.
+#include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
+#include <Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h>
 #include <Jolt/Physics/Collision/Shape/StaticCompoundShape.h>
+#include <Jolt/Physics/Character/Character.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
 #include <Jolt/Physics/Body/BodyActivationListener.h>
 #include "PhysUtil.h"
@@ -955,7 +958,7 @@ namespace physengine
         vfpd.body = bodyInterface.CreateBody(BodyCreationSettings(compoundShape, RVec3(0.0_r, 0.0_r, 0.0_r), Quat::sIdentity(), EMotionType::Kinematic, Layers::NON_MOVING));
         bodyInterface.AddBody(vfpd.body->GetID(), EActivation::DontActivate);
 
-        vec3 pos;
+        vec4 pos;
         mat4 rot;
         vec3 sca;
         glm_decompose(vfpd.transform, pos, rot, sca);  // @NOCHECKIN: @FIXME.
@@ -989,6 +992,18 @@ namespace physengine
             cpd.radius = radius;
             cpd.height = height;
 
+            // Create physics capsule.
+            ShapeRefC capsuleShape = RotatedTranslatedShapeSettings(Vec3(0, 0.5f * height + radius, 0), Quat::sIdentity(), new CapsuleShape(0.5f * height, radius)).Create().Get();
+
+            Ref<CharacterSettings> settings = new CharacterSettings;
+            settings->mMaxSlopeAngle = glm_rad(45.0f);
+            settings->mLayer = Layers::MOVING;
+            settings->mShape = capsuleShape;
+            settings->mFriction = 0.5f;
+            settings->mSupportingVolume = Plane(Vec3::sAxisY(), -radius);
+            cpd.character = new Character(settings, RVec3::sZero(), Quat::sIdentity(), 0, physicsSystem);
+            cpd.character->AddToPhysicsSystem(EActivation::Activate);
+
             return &cpd;
         }
         else
@@ -1012,6 +1027,10 @@ namespace physengine
                     index = capsuleIndices[numCapsCreated - 1];
                 }
                 numCapsCreated--;
+
+                // Remove and delete the physics capsule.
+                cpd->character->RemoveFromPhysicsSystem();
+
                 return true;
             }
         }

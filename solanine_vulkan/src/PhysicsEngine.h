@@ -5,7 +5,11 @@
 #include "ImportGLM.h"
 class EntityManager;
 struct DeletionQueue;
-namespace JPH { struct Body; }
+namespace JPH
+{
+    struct Body;
+    struct Character;
+}
 
 #ifdef _DEVELOP
 #include <vulkan/vulkan.h>
@@ -53,7 +57,7 @@ namespace physengine
         mat4 transform = GLM_MAT4_IDENTITY_INIT;
         mat4 prevTransform = GLM_MAT4_IDENTITY_INIT;
         mat4 interpolTransform = GLM_MAT4_IDENTITY_INIT;
-        JPH::Body* body = nullptr;
+        JPH::Body* body = nullptr;  // @TODO: @NOCHECKIN: get this back to body_id instead of body ptr.
     };
 
     VoxelFieldPhysicsData* createVoxelField(const std::string& entityGuid, const size_t& sizeX, const size_t& sizeY, const size_t& sizeZ, uint8_t* voxelData);
@@ -74,6 +78,7 @@ namespace physengine
         vec3 basePosition = GLM_VEC3_ZERO_INIT;  // It takes `radius + 0.5 * height` to get to the midpoint
         vec3 prevBasePosition = GLM_VEC3_ZERO_INIT;
         vec3 interpolBasePosition = GLM_VEC3_ZERO_INIT;
+        JPH::Character* character = nullptr;
     };
 
     CapsulePhysicsData* createCapsule(const std::string& entityGuid, const float_t& radius, const float_t& height);
