@@ -56,7 +56,7 @@ namespace physengine
     std::thread* asyncRunner = nullptr;
     uint64_t lastTick;
 
-    PhysicsSystem physicsSystem;
+    PhysicsSystem* physicsSystem = nullptr;
 
 #ifdef _DEVELOP
     struct DebugStats
@@ -312,7 +312,7 @@ namespace physengine
     {
         // Convert physics system to scene
         Ref<PhysicsScene> scene = new PhysicsScene();
-        scene->FromPhysicsSystem(&physicsSystem);
+        scene->FromPhysicsSystem(physicsSystem);
 
         // Save scene
         std::ofstream stream("physics_world_snapshot.bin", std::ofstream::out | std::ofstream::trunc | std::ofstream::binary);
@@ -549,16 +549,17 @@ namespace physengine
         ObjectVsBroadPhaseLayerFilterImpl objectVsBroadphaseLayerFilter;
         ObjectLayerPairFilterImpl objectVsObjectLayerFilter;
 
-        physicsSystem.Init(maxBodies, numBodyMutexes, maxBodyPairs, maxContactConstraints, broadphaseLayerInterface, objectVsBroadphaseLayerFilter, objectVsObjectLayerFilter);
+        physicsSystem = new PhysicsSystem;
+        physicsSystem->Init(maxBodies, numBodyMutexes, maxBodyPairs, maxContactConstraints, broadphaseLayerInterface, objectVsBroadphaseLayerFilter, objectVsObjectLayerFilter);
 
         MyBodyActivationListener bodyActivationListener;
-        physicsSystem.SetBodyActivationListener(&bodyActivationListener);
+        physicsSystem->SetBodyActivationListener(&bodyActivationListener);
 
         MyContactListener contactListener;
-        physicsSystem.SetContactListener(&contactListener);
+        physicsSystem->SetContactListener(&contactListener);
 
         // @TODO: Insert all bodies in right here. //
-        BodyInterface& bodyInterface = physicsSystem.GetBodyInterface();
+        BodyInterface& bodyInterface = physicsSystem->GetBodyInterface();
 
         BoxShapeSettings floorShapeSettings(Vec3(100.0f, 1.0f, 100.0f));
         ShapeSettings::ShapeResult floorShapeResult = floorShapeSettings.Create();
@@ -569,7 +570,7 @@ namespace physengine
             return;
         }
         ShapeRefC floorShape = floorShapeResult.Get();
-        BodyCreationSettings floorSettings(floorShape, RVec3(0.0_r, -500.0_r, 0.0_r), Quat::sIdentity(), EMotionType::Static, Layers::NON_MOVING);
+        BodyCreationSettings floorSettings(floorShape, RVec3(0.0_r, -10.0_r, 0.0_r), Quat::sIdentity(), EMotionType::Static, Layers::NON_MOVING);
         BodyID floorId =
             bodyInterface.CreateAndAddBody(
                 floorSettings,
@@ -593,7 +594,7 @@ namespace physengine
             );  // @TODO: make this batched! Use `AddBodies` instead, to keep the broadphase optimized as possible.
         /////////////////////////////////////////////
 
-        physicsSystem.OptimizeBroadPhase();
+        physicsSystem->OptimizeBroadPhase();
 
         //
         // Run Physics Simulation until no more.
@@ -618,7 +619,7 @@ namespace physengine
             //         proportionate to the timescale.  -Timo 2023/06/10
             tick();
             entityManager->INTERNALphysicsUpdate(physicsDeltaTime);  // @NOTE: if timescale changes, then the system just waits longer/shorter.
-            physicsSystem.Update(physicsDeltaTime, 1, 1, &tempAllocator, &jobSystem);  // @NOCHECKIN
+            physicsSystem->Update(physicsDeltaTime, 1, 1, &tempAllocator, &jobSystem);  // @NOCHECKIN
 
 #ifdef _DEVELOP
             {
@@ -670,6 +671,8 @@ namespace physengine
         bodyInterface.RemoveBody(floorId);  // @TODO: use `RemoveBodies` where possible!
         bodyInterface.DestroyBody(floorId);  // @TODO: use `DestroyBodies` where possible!
         //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+        delete physicsSystem;
 
         UnregisterTypes();
 
@@ -844,7 +847,7 @@ namespace physengine
 
     void asdfalskdjflkasdhflkahsdlgkh(VoxelFieldPhysicsData& vfpd)
     {
-        BodyInterface& bodyInterface = physicsSystem.GetBodyInterface();
+        BodyInterface& bodyInterface = physicsSystem->GetBodyInterface();
         std::cout << vfpd.body << std::endl;
         RVec3 position = bodyInterface.GetCenterOfMassPosition(vfpd.body->GetID());
 		Vec3 velocity = bodyInterface.GetLinearVelocity(vfpd.body->GetID());
@@ -853,7 +856,7 @@ namespace physengine
 
     void cookVoxelDataIntoShape(VoxelFieldPhysicsData& vfpd)
     {
-        BodyInterface& bodyInterface = physicsSystem.GetBodyInterface();
+        BodyInterface& bodyInterface = physicsSystem->GetBodyInterface();
 
         // Recreate shape from scratch (property/feature of static compound shape).
         if (vfpd.body != nullptr)
@@ -867,7 +870,10 @@ namespace physengine
         // (Actually..... right now it's not a greedy algorithm and it's just a simple depth first flood that's good enough for now)  -Timo 2023/09/27
         Ref<StaticCompoundShapeSettings> compoundShape = new StaticCompoundShapeSettings;
 
-        bool* processed = new bool[vfpd.sizeX * vfpd.sizeY * vfpd.sizeZ];
+        bool* processed = new bool[vfpd.sizeX * vfpd.sizeY * vfpd.sizeZ];  // Init processing datastructure
+        for (size_t i = 0; i < vfpd.sizeX * vfpd.sizeY * vfpd.sizeZ; i++)
+            processed[i] = false;
+
         for (size_t i = 0; i < vfpd.sizeX; i++)
         for (size_t j = 0; j < vfpd.sizeY; j++)
         for (size_t k = 0; k < vfpd.sizeZ; k++)
@@ -894,7 +900,7 @@ namespace physengine
             {
                 // Test whether next row of positions are viable.
                 bool viable = true;
-                for (size_t x = i; x < vfpd.sizeX; x++)
+                for (size_t x = i; x < i + encX; x++)
                 {
                     size_t idx = x * vfpd.sizeY * vfpd.sizeZ + y * vfpd.sizeZ + k;
                     viable &= (vfpd.voxelData[idx] != 0 && !processed[idx]);
@@ -911,8 +917,8 @@ namespace physengine
             {
                 // Test whether next sheet of positions are viable.
                 bool viable = true;
-                for (size_t x = i; x < vfpd.sizeX; x++)
-                for (size_t y = j; y < vfpd.sizeY; y++)
+                for (size_t x = i; x < i + encX; x++)
+                for (size_t y = j; y < j + encY; y++)
                 {
                     size_t idx = x * vfpd.sizeY * vfpd.sizeZ + y * vfpd.sizeZ + z;
                     viable &= (vfpd.voxelData[idx] != 0 && !processed[idx]);
@@ -945,8 +951,16 @@ namespace physengine
             return;  // Cannot create empty body.
 
         // Create body.
-        vfpd.body = bodyInterface.CreateBody(BodyCreationSettings(compoundShape, RVec3(0.0_r, 0.0_r, 0.0_r), Quat::sIdentity(), EMotionType::Dynamic, Layers::MOVING));
-        bodyInterface.AddBody(vfpd.body->GetID(), EActivation::Activate);
+        // @TODO: kinematic is set here bc the weighted island mechanic will come later.
+        vfpd.body = bodyInterface.CreateBody(BodyCreationSettings(compoundShape, RVec3(0.0_r, 0.0_r, 0.0_r), Quat::sIdentity(), EMotionType::Kinematic, Layers::NON_MOVING));
+        bodyInterface.AddBody(vfpd.body->GetID(), EActivation::DontActivate);
+
+        vec3 pos;
+        mat4 rot;
+        vec3 sca;
+        glm_decompose(vfpd.transform, pos, rot, sca);  // @NOCHECKIN: @FIXME.
+
+        bodyInterface.MoveKinematic();
     }
 
     //
