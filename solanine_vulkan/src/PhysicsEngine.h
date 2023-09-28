@@ -25,6 +25,7 @@ namespace physengine
 #endif
 
     void start(EntityManager* em);
+    void haltAsyncRunner();
     void cleanup();
 
     float_t getPhysicsAlpha();

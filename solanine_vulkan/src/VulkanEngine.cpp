@@ -283,21 +283,26 @@ void VulkanEngine::cleanup()
 		<< "[CLEANUP PROCEDURE BEGIN]" << std::endl
 		<< "===================================================================================================" << std::endl << std::endl;
 
-#ifdef _DEVELOP
-	hotswapres::flagStopRunning();
-#endif
-
 	if (_isInitialized)
 	{
-		vkDeviceWaitIdle(_device);
+		vkDeviceWaitIdle(_device);  // @NOTE: in subsequent cleanup procedures, Vulkan objects will get deleted, so to prevent anything being used from getting deleted, this barrier is here.
+		SDL_DestroyWindow(_window);
+
+#ifdef _DEVELOP
+		hotswapres::flagStopRunning();
+#endif
 
 		globalState::cleanupGlobalState();
-		physengine::cleanup();
 		AudioEngine::getInstance().cleanup();
 
+		// @NOTE: halting the async runner allows for an immediate flush of entities since it's guaranteed to not be read anymore
+		//        once the async runner is halted. While entities are being flushed, their physics bodies are getting destroyed.
+		//        Then, the physics world gets destroyed in `::cleanup()` after all the bodies in the world have been destroyed.  -Timo 2023/09/28
+		physengine::haltAsyncRunner();
 		delete _entityManager;
-		delete _roManager;
+		physengine::cleanup();
 
+		delete _roManager;
 		vkglTF::Animator::destroyEmpty(this);
 
 		_mainDeletionQueue.flush();
@@ -314,8 +319,6 @@ void VulkanEngine::cleanup()
 		vkb::destroy_debug_utils_messenger(_instance, _debugMessenger);
 		vkDestroyDevice(_device, nullptr);
 		vkDestroyInstance(_instance, nullptr);
-
-		SDL_DestroyWindow(_window);
 
 #ifdef _DEVELOP
 		hotswapres::waitForShutdownAndTeardownResourceList();

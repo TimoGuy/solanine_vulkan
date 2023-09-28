@@ -332,11 +332,21 @@ namespace physengine
         asyncRunner = new std::thread(runPhysicsEngineAsync);
     }
 
-    void cleanup()
+    void haltAsyncRunner()
     {
         isAsyncRunnerRunning = false;
         asyncRunner->join();
+    }
+
+    void cleanup()
+    {
         delete asyncRunner;
+        delete physicsSystem;
+
+        UnregisterTypes();
+
+        delete Factory::sInstance;
+        Factory::sInstance = nullptr;
 
 #ifdef _DEVELOP
         vmaDestroyBuffer(engine->_allocator, visCameraBuffer._buffer, visCameraBuffer._allocation);
@@ -506,7 +516,7 @@ namespace physengine
         {
             //std::cout << "A contact was removed" << std::endl;
         }
-    };
+    } contactListener;
 
     // An example activation listener
     class MyBodyActivationListener : public BodyActivationListener
@@ -521,7 +531,7 @@ namespace physengine
         {
             //std::cout << "A body went to sleep" << std::endl;
         }
-    };
+    } bodyActivationListener;
 
     void runPhysicsEngineAsync()
     {
@@ -554,48 +564,44 @@ namespace physengine
 
         physicsSystem = new PhysicsSystem;
         physicsSystem->Init(maxBodies, numBodyMutexes, maxBodyPairs, maxContactConstraints, broadphaseLayerInterface, objectVsBroadphaseLayerFilter, objectVsObjectLayerFilter);
-
-        MyBodyActivationListener bodyActivationListener;
         physicsSystem->SetBodyActivationListener(&bodyActivationListener);
-
-        MyContactListener contactListener;
         physicsSystem->SetContactListener(&contactListener);
 
-        // @TODO: Insert all bodies in right here. //
-        BodyInterface& bodyInterface = physicsSystem->GetBodyInterface();
-
-        BoxShapeSettings floorShapeSettings(Vec3(100.0f, 1.0f, 100.0f));
-        ShapeSettings::ShapeResult floorShapeResult = floorShapeSettings.Create();
-        if (floorShapeResult.HasError())
-        {
-            std::cerr << "[Shape Creation]" << std::endl
-                << "ERROR: " << floorShapeResult.GetError() << std::endl;
-            return;
-        }
-        ShapeRefC floorShape = floorShapeResult.Get();
-        BodyCreationSettings floorSettings(floorShape, RVec3(0.0_r, -10.0_r, 0.0_r), Quat::sIdentity(), EMotionType::Static, Layers::NON_MOVING);
-        BodyID floorId =
-            bodyInterface.CreateAndAddBody(
-                floorSettings,
-                (floorSettings.mMotionType == EMotionType::Dynamic ? EActivation::Activate : EActivation::DontActivate)
-            );  // @TODO: make this batched! Use `AddBodies` instead, to keep the broadphase optimized as possible.
-
-        SphereShapeSettings ballShapeSettings(0.5f);  // @COPYPASTA... almost.
-        ShapeSettings::ShapeResult ballShapeResult = ballShapeSettings.Create();
-        if (ballShapeResult.HasError())
-        {
-            std::cerr << "[Shape Creation]" << std::endl
-                << "ERROR: " << ballShapeResult.GetError() << std::endl;
-            return;
-        }
-        ShapeRefC ballShape = ballShapeResult.Get();
-        BodyCreationSettings ballSettings(ballShape, RVec3(0.0_r, 5.0_r, 0.0_r), Quat::sIdentity(), EMotionType::Dynamic, Layers::MOVING);
-        BodyID ballId =
-            bodyInterface.CreateAndAddBody(
-                ballSettings,
-                (ballSettings.mMotionType == EMotionType::Dynamic ? EActivation::Activate : EActivation::DontActivate)
-            );  // @TODO: make this batched! Use `AddBodies` instead, to keep the broadphase optimized as possible.
-        /////////////////////////////////////////////
+        // // @TODO: Insert all bodies in right here. //
+        // BodyInterface& bodyInterface = physicsSystem->GetBodyInterface();
+        // 
+        // BoxShapeSettings floorShapeSettings(Vec3(100.0f, 1.0f, 100.0f));
+        // ShapeSettings::ShapeResult floorShapeResult = floorShapeSettings.Create();
+        // if (floorShapeResult.HasError())
+        // {
+        //     std::cerr << "[Shape Creation]" << std::endl
+        //         << "ERROR: " << floorShapeResult.GetError() << std::endl;
+        //     return;
+        // }
+        // ShapeRefC floorShape = floorShapeResult.Get();
+        // BodyCreationSettings floorSettings(floorShape, RVec3(0.0_r, -10.0_r, 0.0_r), Quat::sIdentity(), EMotionType::Static, Layers::NON_MOVING);
+        // BodyID floorId =
+        //     bodyInterface.CreateAndAddBody(
+        //         floorSettings,
+        //         (floorSettings.mMotionType == EMotionType::Dynamic ? EActivation::Activate : EActivation::DontActivate)
+        //     );  // @TODO: make this batched! Use `AddBodies` instead, to keep the broadphase optimized as possible.
+        // 
+        // SphereShapeSettings ballShapeSettings(0.5f);  // @COPYPASTA... almost.
+        // ShapeSettings::ShapeResult ballShapeResult = ballShapeSettings.Create();
+        // if (ballShapeResult.HasError())
+        // {
+        //     std::cerr << "[Shape Creation]" << std::endl
+        //         << "ERROR: " << ballShapeResult.GetError() << std::endl;
+        //     return;
+        // }
+        // ShapeRefC ballShape = ballShapeResult.Get();
+        // BodyCreationSettings ballSettings(ballShape, RVec3(0.0_r, 5.0_r, 0.0_r), Quat::sIdentity(), EMotionType::Dynamic, Layers::MOVING);
+        // BodyID ballId =
+        //     bodyInterface.CreateAndAddBody(
+        //         ballSettings,
+        //         (ballSettings.mMotionType == EMotionType::Dynamic ? EActivation::Activate : EActivation::DontActivate)
+        //     );  // @TODO: make this batched! Use `AddBodies` instead, to keep the broadphase optimized as possible.
+        // /////////////////////////////////////////////
 
         physicsSystem->OptimizeBroadPhase();
 
@@ -665,22 +671,6 @@ namespace physengine
                 SDL_Delay((uint32_t)(physicsDeltaTimeInMSScaled - timeDiff));
             }
         }
-
-        //
-        // Clean up physics world.
-        //
-
-        // @TODO: insert all the delete functions (rest of the bodies (remove then destroy)) into here before unregistering and deleting the world. //
-        bodyInterface.RemoveBody(floorId);  // @TODO: use `RemoveBodies` where possible!
-        bodyInterface.DestroyBody(floorId);  // @TODO: use `DestroyBodies` where possible!
-        //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-        delete physicsSystem;
-
-        UnregisterTypes();
-
-        delete Factory::sInstance;
-        Factory::sInstance = nullptr;
     }
 
     //
@@ -1054,15 +1044,52 @@ namespace physengine
     //
     void tick()
     {
+        auto& bodyInterface = physicsSystem->GetBodyInterface();
+
         // Set previous transform
         for (size_t i = 0; i < numVFsCreated; i++)
         {
             VoxelFieldPhysicsData& vfpd = voxelFieldPool[voxelFieldIndices[i]];
+            if (vfpd.body == nullptr)
+                continue;
+
+            RMat44 trans = bodyInterface.GetWorldTransform(vfpd.body->GetID());
+            // Copy to cglm style.
+            Vec4 c0 = trans.GetColumn4(0);
+            Vec4 c1 = trans.GetColumn4(1);
+            Vec4 c2 = trans.GetColumn4(2);
+            Vec4 c3 = trans.GetColumn4(3);
+            vfpd.transform[0][0] = c0.GetX();
+            vfpd.transform[0][1] = c0.GetY();
+            vfpd.transform[0][2] = c0.GetZ();
+            vfpd.transform[0][3] = c0.GetW();
+            vfpd.transform[1][0] = c1.GetX();
+            vfpd.transform[1][1] = c1.GetY();
+            vfpd.transform[1][2] = c1.GetZ();
+            vfpd.transform[1][3] = c1.GetW();
+            vfpd.transform[2][0] = c2.GetX();
+            vfpd.transform[2][1] = c2.GetY();
+            vfpd.transform[2][2] = c2.GetZ();
+            vfpd.transform[2][3] = c2.GetW();
+            vfpd.transform[3][0] = c3.GetX();
+            vfpd.transform[3][1] = c3.GetY();
+            vfpd.transform[3][2] = c3.GetZ();
+            vfpd.transform[3][3] = c3.GetW();
+            //////////////////////
             glm_mat4_copy(vfpd.transform, vfpd.prevTransform);
         }
         for (size_t i = 0; i < numCapsCreated; i++)
         {
             CapsulePhysicsData& cpd = capsulePool[capsuleIndices[i]];
+            if (cpd.character == nullptr)
+                continue;
+
+            // Copy to cglm style.
+            RVec3 pos = cpd.character->GetCenterOfMassPosition();  // @NOTE: I thought that `GetPosition` would be quicker/lighter than `GetCenterOfMassPosition`, but getting the position negates the center of mass, thus causing an extra subtract operation.
+            cpd.basePosition[0] = pos.GetX();
+            cpd.basePosition[1] = pos.GetY();
+            cpd.basePosition[2] = pos.GetZ();
+            //////////////////////
             glm_vec3_copy(cpd.basePosition, cpd.prevBasePosition);
         }
     }
