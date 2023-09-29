@@ -176,6 +176,7 @@ struct Character_XData
     vec3        prevWazaHitscanNodeEnd1, prevWazaHitscanNodeEnd2;
     float_t     wazaVelocityDecay = 0.0f;
     vec3        wazaVelocity;
+    bool        wazaVelocityFirstStep = false;
     int16_t     wazaTimer = 0;  // Used for timing chains and hitscans.
     float_t     wazaHitTimescale = 1.0f;
     float_t     wazaHitTimescaleOnHit = 0.01f;
@@ -262,7 +263,6 @@ struct Character_XData
     float_t midairXZDeceleration = 0.25f;
     float_t knockedbackGroundedXZDeceleration = 0.5f;
     float_t recoveryGroundedXZDeceleration = 0.75f;
-    vec3    prevCPDBasePosition;
 
     bool isTargetingOpponentObject = false;
     std::vector<int32_t> auraSfxChannelIds;
@@ -1152,8 +1152,9 @@ void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& phy
     for (Character_XData::AttackWaza::VelocitySetting& velocitySetting : d->currentWaza->velocitySettings)
         if (velocitySetting.executeAtTime == d->wazaTimer)
         {
-            setNewVelocity = true;
             glm_vec3_copy(velocitySetting.velocity, d->wazaVelocity);
+            d->wazaVelocityFirstStep = true;
+            setNewVelocity = true;
             break;
         }
 
@@ -1555,8 +1556,6 @@ Character::Character(EntityManager* em, RenderObjectManager* rom, Camera* camera
         inst.voxelFieldLightingGridID = 1;
 
     _data->cpd = physengine::createCharacter(getGUID(), _data->position, 0.5f, 1.0f);  // Total height is 2, but r*2 is subtracted to get the capsule height (i.e. the line segment length that the capsule rides along)
-    // glm_vec3_copy(_data->position, _data->cpd->currentCOMPosition);
-    glm_vec3_copy(_data->cpd->currentCOMPosition, _data->prevCPDBasePosition);
 
     if (_data->characterType == CHARACTER_TYPE_PLAYER)
     {
@@ -1893,23 +1892,21 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
         }
 
         // Add waza velocity
-        if (glm_vec3_norm2(d->wazaVelocity) > 0.0f)
+        if (glm_vec3_norm2(d->wazaVelocity) > 0.000001f)
         {
             mat4 rotation;
             glm_euler_zyx(vec3{ 0.0f, d->facingDirection, 0.0f }, rotation);
             vec3 facingWazaVelocity;
             glm_mat4_mulv3(rotation, d->wazaVelocity, 0.0f, facingWazaVelocity);
-            glm_vec3_scale(facingWazaVelocity, physicsDeltaTime, velocity);
-            
-            // Execute jump.
-            if (d->wazaVelocity[1] > 0.0f)  // @CHECK: I think that maybe... negative velocities should be copied to `gravityForce` as well. CHECK!  -Timo 2023/08/14
+
+            velocity[0] = facingWazaVelocity[0];
+            velocity[2] = facingWazaVelocity[2];
+
+            // Execute vertical waza velocity.
+            if (d->wazaVelocityFirstStep)
             {
                 velocity[1] = d->wazaVelocity[1];
-                d->prevIsGrounded = false;
-
-                d->wazaVelocity[1] = 0.0f;  // @REPLY: maybe this line is what the >0 check is for with the vertical waza velocity????  -Timo 2023/08/14
-                // velocity[1] = 0.0f;  // @AMEND: I added this line after analyzing this code block... bc velocity[1] gets a += later with gravityforce leading it, I think that wazaVelocity[1] shouldn't be added on twice, so I added this line. It's sure to require some adjusting of the hwacs.  -Timo 2023/08/14
-                // @NOCHECKIN: check the line up 1 and see if there's still an issue with what it's talking about.
+                d->wazaVelocityFirstStep = false;  // This flag isn't used anymore so turn it off since the first frame is effectively over.
             }
         }
     }
@@ -1936,7 +1933,7 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
 
     if (d->triggerApplyForceZone)
     {
-        glm_vec3_copy(d->forceZoneVelocity, velocity);  // @COPYPASTA
+        glm_vec3_copy(d->forceZoneVelocity, velocity);
         if (velocity[1] > 0.0f)
             d->prevIsGrounded = false;
         setWazaToCurrent(d, nullptr);
@@ -1960,7 +1957,7 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
 
     if (d->triggerSuckIn)
     {
-        glm_vec3_scale(d->suckInVelocity, physicsDeltaTime, velocity);  // Completely overwrite velocity.
+        glm_vec3_copy(d->suckInVelocity, velocity);
 
         vec3 deltaPosition;  // Check if going to move past target position. If so, cut the velocity short.
         glm_vec3_sub(d->suckInTargetPosition, d->cpd->currentCOMPosition, deltaPosition);
@@ -1971,7 +1968,7 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
         d->triggerSuckIn = false;
     }
 
-    glm_vec3_copy(d->cpd->currentCOMPosition, d->prevCPDBasePosition);
+    // Execute character simulation.
     physengine::moveCharacter(*d->cpd, velocity);
     // physengine::moveCapsuleAccountingForCollision(*d->cpd, velocity, d->prevIsGrounded, d->prevGroundNormal);  // @NOCHECKIN: @FIXME
     glm_vec3_copy(d->cpd->currentCOMPosition, d->position);
