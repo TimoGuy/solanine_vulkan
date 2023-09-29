@@ -186,8 +186,8 @@ void HarvestableItem::reportMoved(mat4* matrixMoved)
     glm_decompose(*matrixMoved, pos, rot, sca);
     glm_vec3_copy(pos, _data->position);
     
-    // @DEBUG: update the capsule collider position
-    glm_vec3_add(_data->position, vec3{ 0.0f, -_data->cpd->radius, 0.0f }, _data->cpd->basePosition);    // @DEBUG
+    // // @DEBUG: update the capsule collider position
+    // glm_vec3_add(_data->position, vec3{ 0.0f, -_data->cpd->radius, 0.0f }, _data->cpd->basePosition);    // @DEBUG
 }
 
 void HarvestableItem::renderImGui()

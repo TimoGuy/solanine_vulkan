@@ -3,13 +3,12 @@
 #include <string>
 #include <vector>
 #include "ImportGLM.h"
+#include <Jolt/Jolt.h>
+#include <Jolt/Physics/Body/BodyID.h>
+#include <Jolt/Math/Mat44.h>
 class EntityManager;
 struct DeletionQueue;
-namespace JPH
-{
-    struct Body;
-    struct Character;
-}
+namespace JPH { struct Character; }
 
 #ifdef _DEVELOP
 #include <vulkan/vulkan.h>
@@ -58,7 +57,7 @@ namespace physengine
         mat4 transform = GLM_MAT4_IDENTITY_INIT;
         mat4 prevTransform = GLM_MAT4_IDENTITY_INIT;
         mat4 interpolTransform = GLM_MAT4_IDENTITY_INIT;
-        JPH::Body* body = nullptr;  // @TODO: @NOCHECKIN: get this back to body_id instead of body ptr.
+        JPH::BodyID bodyId;
     };
 
     VoxelFieldPhysicsData* createVoxelField(const std::string& entityGuid, mat4 transform, const size_t& sizeX, const size_t& sizeY, const size_t& sizeZ, uint8_t* voxelData);
@@ -76,23 +75,29 @@ namespace physengine
 
         float_t radius;
         float_t height;
-        vec3 basePosition = GLM_VEC3_ZERO_INIT;  // It takes `radius + 0.5 * height` to get to the midpoint
-        vec3 prevBasePosition = GLM_VEC3_ZERO_INIT;
-        vec3 interpolBasePosition = GLM_VEC3_ZERO_INIT;
         JPH::Character* character = nullptr;
+        vec3 currentCOMPosition = GLM_VEC3_ZERO_INIT;
+        vec3 prevCOMPosition = GLM_VEC3_ZERO_INIT;
+        vec3 interpolCOMPosition = GLM_VEC3_ZERO_INIT;
+        bool COMPositionDifferent = false;
     };
 
     CapsulePhysicsData* createCharacter(const std::string& entityGuid, vec3 position, const float_t& radius, const float_t& height);
     bool destroyCapsule(CapsulePhysicsData* cpd);
     size_t getNumCapsules();
     CapsulePhysicsData* getCapsuleByIndex(size_t index);
+    float_t getLengthOffsetToBase(const CapsulePhysicsData& cpd);
 
+#if 0
     void moveCapsuleAccountingForCollision(CapsulePhysicsData& cpd, vec3 deltaPosition, bool stickToGround, vec3& outNormal, float_t ccdDistance = 0.25f);  // @NOTE: `ccdDistance` is fine as long as it's below the capsule radius (or the radius of the voxels, whichever is smaller)
+#endif
 
     void setPhysicsObjectInterpolation(const float_t& physicsAlpha);
 
     size_t getCollisionLayer(const std::string& layerName);
+#if 0
     bool lineSegmentCast(vec3& pt1, vec3& pt2, size_t collisionLayer, bool getAllGuids, std::vector<std::string>& outHitGuid);
+#endif
 
 #ifdef _DEVELOP
     enum DebugVisLineType { PURPTEAL, AUDACITY, SUCCESS, VELOCITY, KIKKOARMY, YUUJUUFUDAN };

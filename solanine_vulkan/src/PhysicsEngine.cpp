@@ -53,6 +53,8 @@ namespace physengine
     constexpr float_t physicsDeltaTimeInMS = physicsDeltaTime * 1000.0f;
     constexpr float_t oneOverPhysicsDeltaTimeInMS = 1.0f / physicsDeltaTimeInMS;
 
+    constexpr float_t collisionTolerance = 0.05f;  // For physics characters.
+
     void runPhysicsEngineAsync();
     EntityManager* entityManager;
     bool isAsyncRunnerRunning;
@@ -361,6 +363,7 @@ namespace physengine
     }
 
     void tick();
+    void tock();
 
     static void TraceImpl(const char* inFMT, ...)  // Callback for traces, connect this to your own trace function if you have one
     {
@@ -627,8 +630,9 @@ namespace physengine
             //         if the timescale slows down, then the tick rate should also slow down
             //         proportionate to the timescale.  -Timo 2023/06/10
             tick();
-            entityManager->INTERNALphysicsUpdate(physicsDeltaTime);  // @NOTE: if timescale changes, then the system just waits longer/shorter.
+            // entityManager->INTERNALphysicsUpdate(physicsDeltaTime);  // @NOTE: if timescale changes, then the system just waits longer/shorter.
             physicsSystem->Update(physicsDeltaTime, 1, 1, &tempAllocator, &jobSystem);  // @NOCHECKIN
+            tock();
 
 #ifdef _DEVELOP
             {
@@ -842,9 +846,8 @@ namespace physengine
     void asdfalskdjflkasdhflkahsdlgkh(VoxelFieldPhysicsData& vfpd)
     {
         BodyInterface& bodyInterface = physicsSystem->GetBodyInterface();
-        std::cout << vfpd.body << std::endl;
-        RVec3 position = bodyInterface.GetCenterOfMassPosition(vfpd.body->GetID());
-		Vec3 velocity = bodyInterface.GetLinearVelocity(vfpd.body->GetID());
+        RVec3 position = bodyInterface.GetCenterOfMassPosition(vfpd.bodyId);
+		Vec3 velocity = bodyInterface.GetLinearVelocity(vfpd.bodyId);
 		std::cout << "Position = (" << position.GetX() << ", " << position.GetY() << ", " << position.GetZ() << "), Velocity = (" << velocity.GetX() << ", " << velocity.GetY() << ", " << velocity.GetZ() << ")" << std::endl;
     }
 
@@ -853,10 +856,10 @@ namespace physengine
         BodyInterface& bodyInterface = physicsSystem->GetBodyInterface();
 
         // Recreate shape from scratch (property/feature of static compound shape).
-        if (vfpd.body != nullptr)
+        if (!vfpd.bodyId.IsInvalid())
         {
-            bodyInterface.RemoveBody(vfpd.body->GetID());
-            bodyInterface.DestroyBody(vfpd.body->GetID());
+            bodyInterface.RemoveBody(vfpd.bodyId);
+            bodyInterface.DestroyBody(vfpd.bodyId);
         }
 
         // Create shape for each voxel.
@@ -953,8 +956,8 @@ namespace physengine
         glm_mat4_quat(rot, rotV);
 
         // @TODO: kinematic is set here bc the weighted island mechanic will come later.
-        vfpd.body = bodyInterface.CreateBody(BodyCreationSettings(compoundShape, RVec3(pos[0], pos[1], pos[2]), Quat(rotV[0], rotV[1], rotV[2], rotV[3]), EMotionType::Kinematic, Layers::NON_MOVING));
-        bodyInterface.AddBody(vfpd.body->GetID(), EActivation::DontActivate);
+        vfpd.bodyId = bodyInterface.CreateBody(BodyCreationSettings(compoundShape, RVec3(pos[0], pos[1], pos[2]), Quat(rotV[0], rotV[1], rotV[2], rotV[3]), EMotionType::Kinematic, Layers::NON_MOVING))->GetID();
+        bodyInterface.AddBody(vfpd.bodyId, EActivation::DontActivate);
     }
 
     //
@@ -980,7 +983,8 @@ namespace physengine
 
             // Insert in the data
             cpd.entityGuid = entityGuid;
-            glm_vec3_copy(position, cpd.basePosition);
+            glm_vec3_copy(position, cpd.currentCOMPosition);
+            glm_vec3_copy(position, cpd.prevCOMPosition);
             cpd.radius = radius;
             cpd.height = height;
 
@@ -1039,6 +1043,11 @@ namespace physengine
         return &capsulePool[capsuleIndices[index]];
     }
 
+    float_t getLengthOffsetToBase(const CapsulePhysicsData& cpd)
+    {
+        return cpd.height * 0.5f + cpd.radius - collisionTolerance * 0.5f;
+    }
+
     //
     // Tick
     //
@@ -1050,10 +1059,29 @@ namespace physengine
         for (size_t i = 0; i < numVFsCreated; i++)
         {
             VoxelFieldPhysicsData& vfpd = voxelFieldPool[voxelFieldIndices[i]];
-            if (vfpd.body == nullptr)
+            glm_mat4_copy(vfpd.transform, vfpd.prevTransform);
+        }
+        for (size_t i = 0; i < numCapsCreated; i++)
+        {
+            CapsulePhysicsData& cpd = capsulePool[capsuleIndices[i]];
+            glm_vec3_copy(cpd.currentCOMPosition, cpd.prevCOMPosition);
+        }
+    }
+
+    void tock()
+    {
+        auto& bodyInterface = physicsSystem->GetBodyInterface();
+
+        // Set current transform.
+        for (size_t i = 0; i < numVFsCreated; i++)
+        {
+            VoxelFieldPhysicsData& vfpd = voxelFieldPool[voxelFieldIndices[i]];
+            // vfpd.COMPositionDifferent = false;  // @TODO: implement this!
+
+            if (!vfpd.bodyId.IsInvalid() || !bodyInterface.IsActive(vfpd.bodyId))
                 continue;
 
-            RMat44 trans = bodyInterface.GetWorldTransform(vfpd.body->GetID());
+            RMat44 trans = bodyInterface.GetWorldTransform(vfpd.bodyId);
             // Copy to cglm style.
             Vec4 c0 = trans.GetColumn4(0);
             Vec4 c1 = trans.GetColumn4(1);
@@ -1076,24 +1104,28 @@ namespace physengine
             vfpd.transform[3][2] = c3.GetZ();
             vfpd.transform[3][3] = c3.GetW();
             //////////////////////
-            glm_mat4_copy(vfpd.transform, vfpd.prevTransform);
         }
         for (size_t i = 0; i < numCapsCreated; i++)
         {
             CapsulePhysicsData& cpd = capsulePool[capsuleIndices[i]];
+            cpd.COMPositionDifferent = false;
+
             if (cpd.character == nullptr)
                 continue;
+            
+            cpd.character->PostSimulation(collisionTolerance);
 
             // Copy to cglm style.
             RVec3 pos = cpd.character->GetCenterOfMassPosition();  // @NOTE: I thought that `GetPosition` would be quicker/lighter than `GetCenterOfMassPosition`, but getting the position negates the center of mass, thus causing an extra subtract operation.
-            cpd.basePosition[0] = pos.GetX();
-            cpd.basePosition[1] = pos.GetY();
-            cpd.basePosition[2] = pos.GetZ();
+            cpd.currentCOMPosition[0] = pos.GetX();
+            cpd.currentCOMPosition[1] = pos.GetY();
+            cpd.currentCOMPosition[2] = pos.GetZ();
             //////////////////////
-            glm_vec3_copy(cpd.basePosition, cpd.prevBasePosition);
+            cpd.COMPositionDifferent = (glm_vec3_distance2(cpd.currentCOMPosition, cpd.prevCOMPosition) > 0.000001f);
         }
     }
 
+#if 0
     //
     // Collision algorithms
     //
@@ -1144,7 +1176,7 @@ namespace physengine
         mat4 vfpdTransInv;
         glm_mat4_inv(vfpd.transform, vfpdTransInv);
         glm_vec3_copy(cpd.basePosition, capsulePtATransformed);
-        glm_vec3_copy(cpd.basePosition, capsulePtBTransformed);
+       COM_vec3_copy(cpd.basePosition, capsulePtBTransformed);
         capsulePtATransformed[1] += cpd.radius + cpd.height;
         capsulePtBTransformed[1] += cpd.radius;
         glm_mat4_mulv3(vfpdTransInv, capsulePtATransformed, 1.0f, capsulePtATransformed);
@@ -1383,9 +1415,12 @@ namespace physengine
             // }
         } while (glm_vec3_norm2(deltaPosition) > 0.000001f);
     }
+#endif
 
     void setPhysicsObjectInterpolation(const float_t& physicsAlpha)
     {
+        auto& bodyInterface = physicsSystem->GetBodyInterface();
+
         //
         // Set interpolated transform
         //
@@ -1423,10 +1458,10 @@ namespace physengine
         for (size_t i = 0; i < numCapsCreated; i++)
         {
             CapsulePhysicsData& cpd = capsulePool[capsuleIndices[i]];
-            if (cpd.prevBasePosition != cpd.basePosition)
-            {
-                glm_vec3_lerp(cpd.prevBasePosition, cpd.basePosition, physicsAlpha, cpd.interpolBasePosition);
-            }
+            if (cpd.COMPositionDifferent)
+                glm_vec3_lerp(cpd.prevCOMPosition, cpd.currentCOMPosition, physicsAlpha, cpd.interpolCOMPosition);
+            else
+                glm_vec3_copy(cpd.currentCOMPosition, cpd.interpolCOMPosition);
         }
     }
 
@@ -1436,6 +1471,7 @@ namespace physengine
         return 0;  // @INCOMPLETE: for now, just ignore the collision layers and check everything.
     }
 
+#if 0
     bool checkLineSegmentIntersectingCapsule(CapsulePhysicsData& cpd, vec3& pt1, vec3& pt2, std::string& outHitGuid)
     {
 #ifdef _DEVELOP
@@ -1501,6 +1537,7 @@ namespace physengine
 
         return success;
     }
+#endif
 
 #ifdef _DEVELOP
     void drawDebugVisLine(vec3 pt1, vec3 pt2, DebugVisLineType type)
@@ -1549,9 +1586,9 @@ namespace physengine
                 GPUVisInstancePushConst pc = {};
                 glm_vec4_copy(vec4{ 0.25f, 1.0f, 0.0f, 1.0f }, pc.color1);
                 glm_vec4_copy(pc.color1, pc.color2);
-                glm_vec4(cpd.basePosition, 0.0f, pc.pt1);
+                glm_vec4(cpd.currentCOMPosition, 0.0f, pc.pt1);
                 glm_vec4_add(pc.pt1, vec4{ 0.0f, cpd.radius, 0.0f, 0.0f }, pc.pt1);
-                glm_vec4(cpd.basePosition, 0.0f, pc.pt2);
+                glm_vec4(cpd.currentCOMPosition, 0.0f, pc.pt2);
                 glm_vec4_add(pc.pt2, vec4{ 0.0f, cpd.radius + cpd.height, 0.0f, 0.0f }, pc.pt2);
                 pc.capsuleRadius = cpd.radius;
                 vkCmdPushConstants(cmd, debugVisPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUVisInstancePushConst), &pc);

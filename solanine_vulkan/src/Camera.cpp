@@ -377,12 +377,12 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 		if (mainCamMode.opponentTargetObject != nullptr)  // Opponent target position mixing in.
 		{
 			// Pre-mutation calcs.
-			float_t deltaYPosition = mainCamMode.opponentTargetObject->interpolBasePosition[1] - targetPosition[1];
+			float_t deltaYPosition = mainCamMode.opponentTargetObject->interpolCOMPosition[1] - targetPosition[1];
 
 			// Use dot product between opponent facing direction
 			// and current camera direction to find focus position.
 			vec2 flatTargetPosition = { targetPosition[0], targetPosition[2] };
-			vec2 flatOpponentPosition = { mainCamMode.opponentTargetObject->interpolBasePosition[0], mainCamMode.opponentTargetObject->interpolBasePosition[2] };
+			vec2 flatOpponentPosition = { mainCamMode.opponentTargetObject->interpolCOMPosition[0], mainCamMode.opponentTargetObject->interpolCOMPosition[2] };
 
 			vec2 flatDeltaPosition;
 			vec2 normFlatDeltaPosition;
@@ -397,8 +397,8 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 			
 			float_t fDeltaPosDotfLookDir = glm_vec2_dot(normFlatDeltaPosition, normFlatLookDirection);
 
-			float_t midY = glm_lerp(mainCamMode.opponentTargetObject->interpolBasePosition[1], targetPosition[1], 0.5f);
-			glm_vec3_lerp(targetPosition, mainCamMode.opponentTargetObject->interpolBasePosition, 1.0f - (fDeltaPosDotfLookDir * 0.5f + 0.5f), targetPosition);
+			float_t midY = glm_lerp(mainCamMode.opponentTargetObject->interpolCOMPosition[1], targetPosition[1], 0.5f);
+			glm_vec3_lerp(targetPosition, mainCamMode.opponentTargetObject->interpolCOMPosition, 1.0f - (fDeltaPosDotfLookDir * 0.5f + 0.5f), targetPosition);
 			targetPosition[1] = midY + ott.focusPositionExtraYOffsetWhenTargeting;
 
 			// Update look direction based off previous delta angle.

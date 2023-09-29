@@ -1205,7 +1205,8 @@ void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& phy
                 glm_vec3_lerp(d->prevWazaHitscanNodeEnd1, d->prevWazaHitscanNodeEnd2, t, pt2);
 
                 std::vector<std::string> hitGuids;
-                if (physengine::lineSegmentCast(pt1, pt2, hitscanLayer, true, hitGuids))
+                // if (physengine::lineSegmentCast(pt1, pt2, hitscanLayer, true, hitGuids))    // @NOCHECKIN: @FIXME: just putting `false` in instead for now.
+                if (false)
                 {
                     float_t attackLvl =
                         (float_t)(d->currentWeaponDurability > 0 ?
@@ -1298,7 +1299,7 @@ void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& phy
             if (d->currentWaza->vacuumSuckIn.enabled)
             {
                 vec3 deltaPosition;
-                glm_vec3_sub(suckPositionWS, otherCPD->basePosition, deltaPosition);
+                glm_vec3_sub(suckPositionWS, otherCPD->currentCOMPosition, deltaPosition);
                 float_t radius = d->currentWaza->vacuumSuckIn.radius;
                 if (glm_vec3_norm2(deltaPosition) < radius * radius)
                 {
@@ -1316,16 +1317,16 @@ void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& phy
                 // @DEBUG: visualization that shows how far away vacuum radius is.
                 vec3 midpt;
                 float_t t = radius / glm_vec3_norm(deltaPosition);
-                glm_vec3_lerp(suckPositionWS, otherCPD->basePosition, t, midpt);
+                glm_vec3_lerp(suckPositionWS, otherCPD->currentCOMPosition, t, midpt);
                 if (glm_vec3_norm2(deltaPosition) < radius * radius)
                 {
-                    physengine::drawDebugVisLine(suckPositionWS, otherCPD->basePosition, physengine::DebugVisLineType::SUCCESS);
-                    physengine::drawDebugVisLine(otherCPD->basePosition, midpt, physengine::DebugVisLineType::KIKKOARMY);
+                    physengine::drawDebugVisLine(suckPositionWS, otherCPD->currentCOMPosition, physengine::DebugVisLineType::SUCCESS);
+                    physengine::drawDebugVisLine(otherCPD->currentCOMPosition, midpt, physengine::DebugVisLineType::KIKKOARMY);
                 }
                 else
                 {
                     physengine::drawDebugVisLine(suckPositionWS, midpt, physengine::DebugVisLineType::AUDACITY);
-                    physengine::drawDebugVisLine(midpt, otherCPD->basePosition, physengine::DebugVisLineType::VELOCITY);
+                    physengine::drawDebugVisLine(midpt, otherCPD->currentCOMPosition, physengine::DebugVisLineType::VELOCITY);
                 }
             }
 
@@ -1333,7 +1334,7 @@ void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& phy
             if (forceZoneEnabled)
             {
                 vec3 deltaPosition;
-                glm_vec3_sub(forceZoneOriginWS, otherCPD->basePosition, deltaPosition);
+                glm_vec3_sub(forceZoneOriginWS, otherCPD->currentCOMPosition, deltaPosition);
                 vec3 deltaPositionAbs;
                 glm_vec3_abs(deltaPosition, deltaPositionAbs);
                 vec3 boundsComparison;
@@ -1555,15 +1556,15 @@ Character::Character(EntityManager* em, RenderObjectManager* rom, Camera* camera
         inst.voxelFieldLightingGridID = 1;
 
     _data->cpd = physengine::createCharacter(getGUID(), _data->position, 0.5f, 1.0f);  // Total height is 2, but r*2 is subtracted to get the capsule height (i.e. the line segment length that the capsule rides along)
-    // glm_vec3_copy(_data->position, _data->cpd->basePosition);
-    glm_vec3_copy(_data->cpd->basePosition, _data->prevCPDBasePosition);
+    // glm_vec3_copy(_data->position, _data->cpd->currentCOMPosition);
+    glm_vec3_copy(_data->cpd->currentCOMPosition, _data->prevCPDBasePosition);
 
     if (_data->characterType == CHARACTER_TYPE_PLAYER)
     {
         _data->camera->mainCamMode.setMainCamTargetObject(_data->characterRenderObj);  // @NOTE: I believe that there should be some kind of main camera system that targets the player by default but when entering different volumes etc. the target changes depending.... essentially the system needs to be more built out imo
 
         globalState::playerGUID = getGUID();
-        globalState::playerPositionRef = &_data->cpd->basePosition;
+        globalState::playerPositionRef = &_data->cpd->currentCOMPosition;
 
         _data->uiMaterializeItem = textmesh::createAndRegisterTextMesh("defaultFont", textmesh::RIGHT, textmesh::BOTTOM, getUIMaterializeItemText(_data));
         _data->uiMaterializeItem->isPositionScreenspace = true;
@@ -1595,7 +1596,7 @@ Character::~Character()
     textmesh::destroyAndUnregisterTextMesh(_data->uiMaterializeItem);
 
     if (globalState::playerGUID == getGUID() ||
-        globalState::playerPositionRef == &_data->cpd->basePosition)
+        globalState::playerPositionRef == &_data->cpd->currentCOMPosition)
     {
         globalState::playerGUID = "";
         globalState::playerPositionRef = nullptr;
@@ -1821,7 +1822,7 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
             glm_vec3_scale(d->worldSpaceInput, d->inputMaxXZSpeed * physicsDeltaTime, targetVelocity);
 
             vec3 flatDeltaPosition;
-            glm_vec3_sub(d->cpd->basePosition, d->prevCPDBasePosition, flatDeltaPosition);
+            glm_vec3_sub(d->cpd->currentCOMPosition, d->prevCPDBasePosition, flatDeltaPosition);
             flatDeltaPosition[1] = 0.0f;
 
             vec3 targetDelta;
@@ -1908,11 +1909,11 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
     {
         if (d->launchRelPosIgnoreY)
         {
-            d->cpd->basePosition[0] = d->launchSetPosition[0];
-            d->cpd->basePosition[2] = d->launchSetPosition[2];
+            d->cpd->currentCOMPosition[0] = d->launchSetPosition[0];
+            d->cpd->currentCOMPosition[2] = d->launchSetPosition[2];
         }
         else
-            glm_vec3_copy(d->launchSetPosition, d->cpd->basePosition);
+            glm_vec3_copy(d->launchSetPosition, d->cpd->currentCOMPosition);
         velocity[0] = d->launchVelocity[0] * physicsDeltaTime;
         velocity[2] = d->launchVelocity[2] * physicsDeltaTime;
         d->gravityForce = d->launchVelocity[1];
@@ -1968,7 +1969,7 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
         glm_vec3_scale(d->suckInVelocity, physicsDeltaTime, velocity);  // Completely overwrite velocity.
 
         vec3 deltaPosition;  // Check if going to move past target position. If so, cut the velocity short.
-        glm_vec3_sub(d->suckInTargetPosition, d->cpd->basePosition, deltaPosition);
+        glm_vec3_sub(d->suckInTargetPosition, d->cpd->currentCOMPosition, deltaPosition);
         if (glm_vec3_norm2(deltaPosition) < glm_vec3_norm2(velocity))
             glm_vec3_copy(deltaPosition, velocity);
 
@@ -1976,9 +1977,9 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
         d->triggerSuckIn = false;
     }
 
-    glm_vec3_copy(d->cpd->basePosition, d->prevCPDBasePosition);
-    physengine::moveCapsuleAccountingForCollision(*d->cpd, velocity, d->prevIsGrounded, d->prevGroundNormal);
-    glm_vec3_copy(d->cpd->basePosition, d->position);
+    glm_vec3_copy(d->cpd->currentCOMPosition, d->prevCPDBasePosition);
+    // physengine::moveCapsuleAccountingForCollision(*d->cpd, velocity, d->prevIsGrounded, d->prevGroundNormal);  // @NOCHECKIN: @FIXME
+    glm_vec3_copy(d->cpd->currentCOMPosition, d->position);
 
     d->prevIsGrounded = (d->prevGroundNormal[1] >= 0.707106781187);  // >=45 degrees
     if (d->prevIsGrounded)
@@ -2393,7 +2394,7 @@ void Character::update(const float_t& deltaTime)
                     if (otherCPD->entityGuid == getGUID())
                         continue;  // Don't target self!
 
-                    float_t thisDistance = glm_vec3_distance2(_data->cpd->basePosition, otherCPD->basePosition);
+                    float_t thisDistance = glm_vec3_distance2(_data->cpd->currentCOMPosition, otherCPD->currentCOMPosition);
                     if (closestDistance < 0.0 || thisDistance < closestDistance)
                     {
                         closestCPD = otherCPD;
@@ -2424,12 +2425,16 @@ void Character::lateUpdate(const float_t& deltaTime)
     //
     // Update position of character and weapon
     //
+    vec3 offset(0.0f, -physengine::getLengthOffsetToBase(*_data->cpd), 0.0f);
+    vec3 position;
+    glm_vec3_add(_data->cpd->interpolCOMPosition, offset, position);
+
     vec3 eulerAngles = { 0.0f, _data->facingDirection, 0.0f };
     mat4 rotation;
     glm_euler_zyx(eulerAngles, rotation);
 
     mat4 transform = GLM_MAT4_IDENTITY_INIT;
-    glm_translate(transform, _data->cpd->interpolBasePosition);
+    glm_translate(transform, position);
     glm_mat4_mul(transform, rotation, transform);
     glm_scale(transform, vec3{ _data->modelSize, _data->modelSize, _data->modelSize });
     glm_mat4_copy(transform, _data->characterRenderObj->transformMatrix);
@@ -2651,7 +2656,7 @@ void Character::reportMoved(mat4* matrixMoved)
     vec3 sca;
     glm_decompose(*matrixMoved, pos, rot, sca);
     glm_vec3_copy(pos, _data->position);
-    glm_vec3_copy(_data->position, _data->cpd->basePosition);
+    glm_vec3_copy(_data->position, _data->cpd->currentCOMPosition);
 }
 
 std::vector<std::string> getListOfWazaFnames()
