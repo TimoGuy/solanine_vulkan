@@ -1982,8 +1982,13 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
 
 void calculateBladeStartEndFromHandAttachment(Character_XData* d, vec3& bladeStart, vec3& bladeEnd)
 {
+    mat4 offsetMat = GLM_MAT4_IDENTITY_INIT;
+    glm_translate(offsetMat, vec3{ 0.0f, -physengine::getLengthOffsetToBase(*d->cpd) / d->modelSize, 0.0f });
+
     mat4 attachmentJointMat;
     d->characterRenderObj->animator->getJointMatrix(d->attackWazaEditor.bladeBoneName, attachmentJointMat);
+    glm_mat4_mul(offsetMat, attachmentJointMat, attachmentJointMat);
+
     glm_mat4_mulv3(attachmentJointMat, vec3{ 0.0f, d->attackWazaEditor.bladeDistanceStartEnd[0], 0.0f }, 1.0f, bladeStart);
     glm_mat4_mulv3(attachmentJointMat, vec3{ 0.0f, d->attackWazaEditor.bladeDistanceStartEnd[1], 0.0f }, 1.0f, bladeEnd);
 }

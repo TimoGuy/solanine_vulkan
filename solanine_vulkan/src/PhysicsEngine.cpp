@@ -573,7 +573,7 @@ namespace physengine
         physicsSystem->Init(maxBodies, numBodyMutexes, maxBodyPairs, maxContactConstraints, broadphaseLayerInterface, objectVsBroadphaseLayerFilter, objectVsObjectLayerFilter);
         physicsSystem->SetBodyActivationListener(&bodyActivationListener);
         physicsSystem->SetContactListener(&contactListener);
-        setWorldGravity(vec3{ 0.0f, -40.0f, 0.0f });
+        setWorldGravity(vec3{ 0.0f, -37.5f, 0.0f });  // @NOTE: This is tuned to be the original.  -Timo 2023/09/29
 
         physicsSystem->OptimizeBroadPhase();
 
@@ -1476,6 +1476,15 @@ namespace physengine
 
     bool raycast(vec3 origin, vec3 directionAndMagnitude, std::string& outHitGuid)
     {
+#ifdef _DEVELOP
+        if (engine->generateCollisionDebugVisualization)
+        {
+            vec3 pt2;
+            glm_vec3_add(origin, directionAndMagnitude, pt2);
+            drawDebugVisLine(origin, pt2);
+        }
+#endif
+
         RRayCast ray{
             Vec3(origin[0], origin[1], origin[2]),
             Vec3(directionAndMagnitude[0], directionAndMagnitude[1], directionAndMagnitude[2])
@@ -1614,9 +1623,9 @@ namespace physengine
                 glm_vec4_copy(vec4{ 0.25f, 1.0f, 0.0f, 1.0f }, pc.color1);
                 glm_vec4_copy(pc.color1, pc.color2);
                 glm_vec4(cpd.currentCOMPosition, 0.0f, pc.pt1);
-                glm_vec4_add(pc.pt1, vec4{ 0.0f, cpd.radius, 0.0f, 0.0f }, pc.pt1);
+                glm_vec4_add(pc.pt1, vec4{ 0.0f, -cpd.height * 0.5f, 0.0f, 0.0f }, pc.pt1);
                 glm_vec4(cpd.currentCOMPosition, 0.0f, pc.pt2);
-                glm_vec4_add(pc.pt2, vec4{ 0.0f, cpd.radius + cpd.height, 0.0f, 0.0f }, pc.pt2);
+                glm_vec4_add(pc.pt2, vec4{ 0.0f, cpd.height * 0.5f, 0.0f, 0.0f }, pc.pt2);
                 pc.capsuleRadius = cpd.radius;
                 vkCmdPushConstants(cmd, debugVisPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUVisInstancePushConst), &pc);
 
