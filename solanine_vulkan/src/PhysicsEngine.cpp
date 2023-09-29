@@ -569,6 +569,7 @@ namespace physengine
         physicsSystem->Init(maxBodies, numBodyMutexes, maxBodyPairs, maxContactConstraints, broadphaseLayerInterface, objectVsBroadphaseLayerFilter, objectVsObjectLayerFilter);
         physicsSystem->SetBodyActivationListener(&bodyActivationListener);
         physicsSystem->SetContactListener(&contactListener);
+        physicsSystem->SetGravity(Vec3(0.0f, -9.8f * 2.0f, 0.0f));
 
         // // @TODO: Insert all bodies in right here. //
         // BodyInterface& bodyInterface = physicsSystem->GetBodyInterface();
@@ -630,7 +631,7 @@ namespace physengine
             //         if the timescale slows down, then the tick rate should also slow down
             //         proportionate to the timescale.  -Timo 2023/06/10
             tick();
-            // entityManager->INTERNALphysicsUpdate(physicsDeltaTime);  // @NOTE: if timescale changes, then the system just waits longer/shorter.
+            entityManager->INTERNALphysicsUpdate(physicsDeltaTime);  // @NOTE: if timescale changes, then the system just waits longer/shorter.
             physicsSystem->Update(physicsDeltaTime, 1, 1, &tempAllocator, &jobSystem);  // @NOCHECKIN
             tock();
 
@@ -1046,6 +1047,25 @@ namespace physengine
     float_t getLengthOffsetToBase(const CapsulePhysicsData& cpd)
     {
         return cpd.height * 0.5f + cpd.radius - collisionTolerance * 0.5f;
+    }
+
+    void moveCharacter(CapsulePhysicsData& cpd, vec3 velocity)
+    {
+        cpd.character->SetLinearVelocity(Vec3(velocity[0], velocity[1], velocity[2]));
+    }
+
+    void setGravityFactor(CapsulePhysicsData& cpd, float_t newGravityFactor)
+    {
+        BodyInterface& bodyInterface = physicsSystem->GetBodyInterface();
+        bodyInterface.SetGravityFactor(cpd.character->GetBodyID(), newGravityFactor);
+    }
+
+    void getLinearVelocity(const CapsulePhysicsData& cpd, vec3& outVelocity)
+    {
+        Vec3 velo = cpd.character->GetLinearVelocity();
+        outVelocity[0] = velo.GetX();
+        outVelocity[1] = velo.GetY();
+        outVelocity[2] = velo.GetZ();
     }
 
     //

@@ -230,7 +230,6 @@ struct Character_XData
     } notification;
 
     vec3 worldSpaceInput = GLM_VEC3_ZERO_INIT;
-    float_t gravityForce = 0.0f;
 #ifdef _DEVELOP
     bool    disableInput = false;  // @DEBUG for level editor
 #endif
@@ -1798,28 +1797,30 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
     //
     // Update movement and collision
     //
-    constexpr float_t gravity = -0.98f / 0.025f;  // @TODO: put physicsengine constexpr of `physicsDeltaTime` into the header file and rename it to `constantPhysicsDeltaTime` and replace the 0.025f with it.
-    constexpr float_t jumpHeight = 2.0f;
-    d->gravityForce += gravity * (d->currentWaza != nullptr ? d->currentWaza->gravityMultiplier : 1.0f) * physicsDeltaTime;
+    vec3 velocity;
+    physengine::getLinearVelocity(*d->cpd, velocity);
+    physengine::setGravityFactor(*d->cpd, d->currentWaza != nullptr ? d->currentWaza->gravityMultiplier : 1.0f);
+
     d->prevPerformedJump = false;  // For animation state machine (differentiate goto_jump and goto_fall)
     if (d->prevIsGrounded && d->inputFlagJump)
     {
-        d->gravityForce = std::sqrtf(jumpHeight * 2.0f * std::abs(gravity));  // @COPYPASTA
+        constexpr float_t jumpHeight = 20.0f;
+        velocity[1] = jumpHeight;
         d->prevIsGrounded = false;
         d->inputFlagJump = false;
         d->prevPerformedJump = true;
         d->characterRenderObj->animator->setTrigger("goto_jump");
     }
 
-    vec3 velocity = GLM_VEC3_ZERO_INIT;
     if (d->currentWaza == nullptr)
     {
+        vec3 flatVelocity;
         if (d->prevIsGrounded && d->knockbackMode == Character_XData::KnockbackStage::NONE)
-            glm_vec3_scale(d->worldSpaceInput, d->inputMaxXZSpeed * physicsDeltaTime, velocity);
+            glm_vec3_scale(d->worldSpaceInput, d->inputMaxXZSpeed, flatVelocity);
         else
         {
             vec3 targetVelocity;
-            glm_vec3_scale(d->worldSpaceInput, d->inputMaxXZSpeed * physicsDeltaTime, targetVelocity);
+            glm_vec3_scale(d->worldSpaceInput, d->inputMaxXZSpeed, targetVelocity);
 
             vec3 flatDeltaPosition;
             glm_vec3_sub(d->cpd->currentCOMPosition, d->prevCPDBasePosition, flatDeltaPosition);
@@ -1834,28 +1835,28 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
                 vec3 targetVelocityNormalized;
                 glm_vec3_normalize_to(targetVelocity, targetVelocityNormalized);
                 bool useAcceleration = (glm_vec3_dot(targetVelocityNormalized, flatDeltaPositionNormalized) < 0.0f || glm_vec3_norm2(targetVelocity) > glm_vec3_norm2(flatDeltaPosition));
-                float_t maxAllowedDeltaMagnitude = (useAcceleration ? d->midairXZAcceleration : d->midairXZDeceleration) * physicsDeltaTime;
+                float_t maxAllowedDeltaMagnitude = (useAcceleration ? d->midairXZAcceleration : d->midairXZDeceleration);
 
                 // @NOTE: Assumption is that during recovery and knocked back stages, the input is set to 0,0
                 //        thus deceleration is the acceleration method at all times.
                 if (d->prevIsGrounded)
                     if (d->knockbackMode == Character_XData::KnockbackStage::RECOVERY)
                     {
-                        maxAllowedDeltaMagnitude = d->recoveryGroundedXZDeceleration * physicsDeltaTime;
+                        maxAllowedDeltaMagnitude = d->recoveryGroundedXZDeceleration;
                     }
                     else if (d->knockbackMode == Character_XData::KnockbackStage::KNOCKED_UP)
                     {
-                        maxAllowedDeltaMagnitude = d->knockedbackGroundedXZDeceleration * physicsDeltaTime;
+                        maxAllowedDeltaMagnitude = d->knockedbackGroundedXZDeceleration;
                     }
 
                 if (glm_vec3_norm2(targetDelta) > maxAllowedDeltaMagnitude * maxAllowedDeltaMagnitude)
                     glm_vec3_scale_as(targetDelta, maxAllowedDeltaMagnitude, targetDelta);
 
-                glm_vec3_add(flatDeltaPosition, targetDelta, velocity);
+                glm_vec3_add(flatDeltaPosition, targetDelta, flatVelocity);
             }
             else
             {
-                glm_vec3_copy(flatDeltaPosition, velocity);
+                glm_vec3_copy(flatDeltaPosition, flatVelocity);
             }
 
             // Process knockback stages. @TODO: put this into its own function/process.
@@ -1868,10 +1869,14 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
             }
             if (d->knockbackMode == Character_XData::KnockbackStage::RECOVERY &&
                 d->prevIsGrounded &&
-                std::abs(velocity[0]) < 0.001f &&
-                std::abs(velocity[2]) < 0.001f)
+                std::abs(flatVelocity[0]) < 0.001f &&
+                std::abs(flatVelocity[2]) < 0.001f)
                 d->knockbackMode = Character_XData::KnockbackStage::NONE;
         }
+
+        // Apply X and Z to velocity.
+        velocity[0] = flatVelocity[0];
+        velocity[2] = flatVelocity[2];
     }
     else
     {
@@ -1881,7 +1886,11 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
             (d->currentWaza->holdMidairTimeFrom <= d->wazaTimer - 1 &&
             d->currentWaza->holdMidairTimeTo >= d->wazaTimer - 1))
         {
-            d->gravityForce = std::max(0.0f, d->gravityForce);
+            if (velocity[1] < 0.0f)
+            {
+                velocity[1] = 0.0f;
+                physengine::setGravityFactor(*d->cpd, 0.0f);
+            }
         }
 
         // Add waza velocity
@@ -1896,11 +1905,12 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
             // Execute jump.
             if (d->wazaVelocity[1] > 0.0f)  // @CHECK: I think that maybe... negative velocities should be copied to `gravityForce` as well. CHECK!  -Timo 2023/08/14
             {
-                d->gravityForce = d->wazaVelocity[1];
+                velocity[1] = d->wazaVelocity[1];
                 d->prevIsGrounded = false;
 
                 d->wazaVelocity[1] = 0.0f;  // @REPLY: maybe this line is what the >0 check is for with the vertical waza velocity????  -Timo 2023/08/14
-                velocity[1] = 0.0f;  // @AMEND: I added this line after analyzing this code block... bc velocity[1] gets a += later with gravityforce leading it, I think that wazaVelocity[1] shouldn't be added on twice, so I added this line. It's sure to require some adjusting of the hwacs.  -Timo 2023/08/14
+                // velocity[1] = 0.0f;  // @AMEND: I added this line after analyzing this code block... bc velocity[1] gets a += later with gravityforce leading it, I think that wazaVelocity[1] shouldn't be added on twice, so I added this line. It's sure to require some adjusting of the hwacs.  -Timo 2023/08/14
+                // @NOCHECKIN: check the line up 1 and see if there's still an issue with what it's talking about.
             }
         }
     }
@@ -1914,10 +1924,8 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
         }
         else
             glm_vec3_copy(d->launchSetPosition, d->cpd->currentCOMPosition);
-        velocity[0] = d->launchVelocity[0] * physicsDeltaTime;
-        velocity[2] = d->launchVelocity[2] * physicsDeltaTime;
-        d->gravityForce = d->launchVelocity[1];
-        if (d->gravityForce > 0.0f)
+        glm_vec3_copy(d->launchVelocity, velocity);
+        if (velocity[1] > 0.0f)
             d->prevIsGrounded = false;
         d->iframesTimer = d->iframesTime;
         d->knockbackMode = Character_XData::KnockbackStage::KNOCKED_UP;
@@ -1929,10 +1937,8 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
 
     if (d->triggerApplyForceZone)
     {
-        velocity[0] = d->forceZoneVelocity[0] * physicsDeltaTime;  // @COPYPASTA
-        velocity[2] = d->forceZoneVelocity[2] * physicsDeltaTime;
-        d->gravityForce = d->forceZoneVelocity[1];
-        if (d->gravityForce > 0.0f)
+        glm_vec3_copy(d->forceZoneVelocity, velocity);  // @COPYPASTA
+        if (velocity[1] > 0.0f)
             d->prevIsGrounded = false;
         setWazaToCurrent(d, nullptr);
 
@@ -1962,7 +1968,7 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
         glm_mat3_mulv(groundNormalRotationM3, velocity, velocity);
     }
 
-    velocity[1] += d->gravityForce * physicsDeltaTime;
+    // velocity[1] += d->gravityForce * physicsDeltaTime;
 
     if (d->triggerSuckIn)
     {
@@ -1973,17 +1979,22 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
         if (glm_vec3_norm2(deltaPosition) < glm_vec3_norm2(velocity))
             glm_vec3_copy(deltaPosition, velocity);
 
-        d->gravityForce = velocity[1];
+        // d->gravityForce = velocity[1];  @NOCHECKIN
         d->triggerSuckIn = false;
     }
 
     glm_vec3_copy(d->cpd->currentCOMPosition, d->prevCPDBasePosition);
+    physengine::moveCharacter(*d->cpd, velocity);
     // physengine::moveCapsuleAccountingForCollision(*d->cpd, velocity, d->prevIsGrounded, d->prevGroundNormal);  // @NOCHECKIN: @FIXME
     glm_vec3_copy(d->cpd->currentCOMPosition, d->position);
 
-    d->prevIsGrounded = (d->prevGroundNormal[1] >= 0.707106781187);  // >=45 degrees
-    if (d->prevIsGrounded)
-        d->gravityForce = 0.0f;
+    // @NOCHECKIN: @FIXME: instead of this little block below for calculating the 
+    //                     `isGrounded` statement, use the built in physics functions.
+    d->prevIsGrounded = true;  // This is for unlocking some functionality for testing.  @NOCHECKIN
+    // d->prevIsGrounded = (d->prevGroundNormal[1] >= 0.707106781187);  // >=45 degrees
+    // if (d->prevIsGrounded)
+    //     velocity[1] = 0.0f;
+    //     d->gravityForce = 0.0f;
 }
 
 void calculateBladeStartEndFromHandAttachment(Character_XData* d, vec3& bladeStart, vec3& bladeEnd)
