@@ -16,6 +16,7 @@
 #include <thread>
 #include <algorithm>
 #include <format>
+#include <map>
 #include <Jolt/Jolt.h>
 #include <Jolt/RegisterTypes.h>
 #include <Jolt/Core/Factory.h>
@@ -25,6 +26,8 @@
 #include <Jolt/Physics/PhysicsSettings.h>
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/Physics/PhysicsScene.h>
+#include <Jolt/Physics/Collision/RayCast.h>
+#include <Jolt/Physics/Collision/CastResult.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>  // @TODO: don't need this.
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
@@ -62,6 +65,7 @@ namespace physengine
     uint64_t lastTick;
 
     PhysicsSystem* physicsSystem = nullptr;
+    std::map<uint32_t, std::string> bodyIdToEntityGuidMap;
 
 #ifdef _DEVELOP
     struct DebugStats
@@ -360,11 +364,6 @@ namespace physengine
     float_t getPhysicsAlpha()
     {
         return (SDL_GetTicks64() - lastTick) * oneOverPhysicsDeltaTimeInMS * globalState::timescale;
-    }
-
-    void setWorldGravity(vec3 newGravity)
-    {
-        physicsSystem->SetGravity(Vec3(newGravity[0], newGravity[1], newGravity[2]));
     }
 
     void tick();
@@ -821,7 +820,7 @@ namespace physengine
 		std::cout << "Position = (" << position.GetX() << ", " << position.GetY() << ", " << position.GetZ() << "), Velocity = (" << velocity.GetX() << ", " << velocity.GetY() << ", " << velocity.GetZ() << ")" << std::endl;
     }
 
-    void cookVoxelDataIntoShape(VoxelFieldPhysicsData& vfpd)
+    void cookVoxelDataIntoShape(VoxelFieldPhysicsData& vfpd, const std::string& entityGuid)
     {
         BodyInterface& bodyInterface = physicsSystem->GetBodyInterface();
 
@@ -928,6 +927,9 @@ namespace physengine
         // @TODO: kinematic is set here bc the weighted island mechanic will come later.
         vfpd.bodyId = bodyInterface.CreateBody(BodyCreationSettings(compoundShape, RVec3(pos[0], pos[1], pos[2]), Quat(rotV[0], rotV[1], rotV[2], rotV[3]), EMotionType::Kinematic, Layers::NON_MOVING))->GetID();
         bodyInterface.AddBody(vfpd.bodyId, EActivation::DontActivate);
+
+        // Add guid into references.
+        bodyIdToEntityGuidMap[vfpd.bodyId.GetIndex()] = entityGuid;
     }
 
     //
@@ -969,6 +971,9 @@ namespace physengine
             settings->mSupportingVolume = Plane(Vec3::sAxisY(), -radius);
             cpd.character = new Character(settings, RVec3(position[0], position[1], position[2]), Quat::sIdentity(), 0, physicsSystem);
             cpd.character->AddToPhysicsSystem(EActivation::Activate);
+
+            // Add guid into references.
+            bodyIdToEntityGuidMap[cpd.character->GetBodyID().GetIndex()] = entityGuid;
 
             return &cpd;
         }
@@ -1459,10 +1464,38 @@ namespace physengine
         }
     }
 
+    void setWorldGravity(vec3 newGravity)
+    {
+        physicsSystem->SetGravity(Vec3(newGravity[0], newGravity[1], newGravity[2]));
+    }
 
     size_t getCollisionLayer(const std::string& layerName)
     {
         return 0;  // @INCOMPLETE: for now, just ignore the collision layers and check everything.
+    }
+
+    bool raycast(vec3 origin, vec3 directionAndMagnitude, std::string& outHitGuid)
+    {
+        RRayCast ray{
+            Vec3(origin[0], origin[1], origin[2]),
+            Vec3(directionAndMagnitude[0], directionAndMagnitude[1], directionAndMagnitude[2])
+        };
+        RayCastResult result;
+        if (physicsSystem->GetNarrowPhaseQuery().CastRay(ray, result, SpecifiedBroadPhaseLayerFilter(BroadPhaseLayers::MOVING), SpecifiedObjectLayerFilter(Layers::MOVING)))
+        {
+            const uint32_t bodyIdIdx = result.mBodyID.GetIndex();
+            if (bodyIdToEntityGuidMap.find(bodyIdIdx) == bodyIdToEntityGuidMap.end())
+            {
+                std::cout << "[RAYCAST]" << std::endl
+                    << "WARNING: body ID " << bodyIdIdx << " didn\'t match any entity GUIDs." << std::endl;
+            }
+            else
+            {
+                outHitGuid = bodyIdToEntityGuidMap[bodyIdIdx];
+            }
+            return true;
+        }
+        return false;
     }
 
 #if 0

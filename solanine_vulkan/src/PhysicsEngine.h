@@ -28,7 +28,6 @@ namespace physengine
     void cleanup();
 
     float_t getPhysicsAlpha();
-    void setWorldGravity(vec3 newGravity);
 
     struct VoxelFieldPhysicsData
     {
@@ -68,7 +67,7 @@ namespace physengine
     void expandVoxelFieldBounds(VoxelFieldPhysicsData& vfpd, ivec3 boundsMin, ivec3 boundsMax, ivec3& outOffset);
     void shrinkVoxelFieldBoundsAuto(VoxelFieldPhysicsData& vfpd, ivec3& outOffset);
     void asdfalskdjflkasdhflkahsdlgkh(VoxelFieldPhysicsData& vfpd); // @NOCHECKIN
-    void cookVoxelDataIntoShape(VoxelFieldPhysicsData& vfpd);
+    void cookVoxelDataIntoShape(VoxelFieldPhysicsData& vfpd, const std::string& entityGuid);
 
     struct CapsulePhysicsData
     {
@@ -99,7 +98,9 @@ namespace physengine
 
     void setPhysicsObjectInterpolation(const float_t& physicsAlpha);
 
+    void setWorldGravity(vec3 newGravity);
     size_t getCollisionLayer(const std::string& layerName);
+    bool raycast(vec3 origin, vec3 directionAndMagnitude, std::string& outHitGuid);
 #if 0
     bool lineSegmentCast(vec3& pt1, vec3& pt2, size_t collisionLayer, bool getAllGuids, std::vector<std::string>& outHitGuid);
 #endif

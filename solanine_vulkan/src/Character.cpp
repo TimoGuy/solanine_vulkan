@@ -1204,54 +1204,52 @@ void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& phy
                 glm_vec3_lerp(nodeEnd1WS, nodeEnd2WS, t, pt1);
                 glm_vec3_lerp(d->prevWazaHitscanNodeEnd1, d->prevWazaHitscanNodeEnd2, t, pt2);
 
-                std::vector<std::string> hitGuids;
-                // if (physengine::lineSegmentCast(pt1, pt2, hitscanLayer, true, hitGuids))    // @NOCHECKIN: @FIXME: just putting `false` in instead for now.
-                if (false)
+                vec3 directionAndMagnitude;  // https://www.youtube.com/watch?v=A05n32Bl0aY
+                glm_vec3_sub(pt2, pt1, directionAndMagnitude);
+
+                std::string hitGuid;
+                if (physengine::raycast(pt1, directionAndMagnitude, hitGuid))
                 {
+                    // Successful hitscan!
                     float_t attackLvl =
                         (float_t)(d->currentWeaponDurability > 0 ?
                             d->materializedItem->weaponStats.attackPower :
                             d->materializedItem->weaponStats.attackPowerWhenDulled);
 
-                    // Successful hitscan!
-                    for (auto& guid : hitGuids)
+                    if (hitGuid == myGuid)
+                        continue;  // Ignore if hitscan to self
+
+                    DataSerializer ds;
+                    ds.dumpString("msg_hitscan_hit");
+                    ds.dumpFloat(attackLvl);
+                    
+                    mat4 rotation;
+                    glm_euler_zyx(vec3{ 0.0f, d->facingDirection, 0.0f }, rotation);
+                    vec3 facingWazaHSLaunchVelocity;
+                    glm_mat4_mulv3(rotation, d->currentWaza->hitscanLaunchVelocity, 0.0f, facingWazaHSLaunchVelocity);
+                    ds.dumpVec3(facingWazaHSLaunchVelocity);
+
+                    vec3 setPosition;
+                    glm_mat4_mulv3(rotation, d->currentWaza->hitscanLaunchRelPosition, 0.0f, setPosition);
+                    glm_vec3_add(d->position, setPosition, setPosition);
+                    ds.dumpVec3(setPosition);
+
+                    float_t ignoreYF = (float_t)d->currentWaza->hitscanLaunchRelPositionIgnoreY;
+                    ds.dumpFloat(ignoreYF);
+
+                    DataSerialized dsd = ds.getSerializedData();
+                    if (em->sendMessage(hitGuid, dsd))
                     {
-                        if (guid == myGuid)
-                            continue;
+                        playWazaHitSfx = true;
 
-                        DataSerializer ds;
-                        ds.dumpString("msg_hitscan_hit");
-                        ds.dumpFloat(attackLvl);
-                        
-                        mat4 rotation;
-                        glm_euler_zyx(vec3{ 0.0f, d->facingDirection, 0.0f }, rotation);
-                        vec3 facingWazaHSLaunchVelocity;
-                        glm_mat4_mulv3(rotation, d->currentWaza->hitscanLaunchVelocity, 0.0f, facingWazaHSLaunchVelocity);
-                        ds.dumpVec3(facingWazaHSLaunchVelocity);
-
-                        vec3 setPosition;
-                        glm_mat4_mulv3(rotation, d->currentWaza->hitscanLaunchRelPosition, 0.0f, setPosition);
-                        glm_vec3_add(d->position, setPosition, setPosition);
-                        ds.dumpVec3(setPosition);
-
-                        float_t ignoreYF = (float_t)d->currentWaza->hitscanLaunchRelPositionIgnoreY;
-                        ds.dumpFloat(ignoreYF);
-
-                        DataSerialized dsd = ds.getSerializedData();
-                        if (em->sendMessage(guid, dsd))
+                        // Take off some durability bc of successful hitscan.
+                        if (d->currentWeaponDurability > 0)
                         {
-                            playWazaHitSfx = true;
-
-                            // Take off some durability bc of successful hitscan.
-                            if (d->currentWeaponDurability > 0)
-                            {
-                                d->currentWeaponDurability--;
-                                if (d->currentWeaponDurability <= 0)
-                                    pushPlayerNotification("Weapon has dulled!", d);
-                            }
+                            d->currentWeaponDurability--;
+                            if (d->currentWeaponDurability <= 0)
+                                pushPlayerNotification("Weapon has dulled!", d);
                         }
                     }
-                    // break;  @NOTE: in situations where self gets hit by the hitscan, I don't want the search to end.
                 }
             }
 

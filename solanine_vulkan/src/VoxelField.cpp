@@ -66,7 +66,7 @@ VoxelField::VoxelField(VulkanEngine* engine, EntityManager* em, RenderObjectMana
 
     _data->voxelModel = _data->rom->getModel("DevBoxWood", this, [](){});
     assembleVoxelRenderObjects(*_data, getGUID(), {});
-    physengine::cookVoxelDataIntoShape(*_data->vfpd);
+    physengine::cookVoxelDataIntoShape(*_data->vfpd, getGUID());
     triggerLoadLightingIfExists(*_data, getGUID());
 }
 
@@ -477,7 +477,7 @@ void VoxelField::physicsUpdate(const float_t& physicsDeltaTime)
                 if (!dirtyPositions.empty())
                 {
                     assembleVoxelRenderObjects(*_data, getGUID(), dirtyPositions);
-                    physengine::cookVoxelDataIntoShape(*_data->vfpd);
+                    physengine::cookVoxelDataIntoShape(*_data->vfpd, getGUID());
                     _data->isLightingDirty = true;
                 }
             }
