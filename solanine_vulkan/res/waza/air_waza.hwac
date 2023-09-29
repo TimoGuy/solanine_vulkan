@@ -248,6 +248,7 @@
   stamina_cost       50
   velocity           0.0,30.0,10.0    0
   velocity_decay     0.25    0
+  velocity_decay     0.5    66
   hs_launch_velocity 0.000000,29.000000,10.500000
   #
   hitscan            0.281816,0.132649,-0.567789    0.166787,-0.228106,0.883633

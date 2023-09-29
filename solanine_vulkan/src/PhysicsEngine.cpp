@@ -967,8 +967,8 @@ namespace physengine
             settings->mMaxSlopeAngle = glm_rad(45.0f);
             settings->mLayer = Layers::MOVING;
             settings->mShape = capsuleShape;
-            settings->mFriction = 0.5f;
-            settings->mSupportingVolume = Plane(Vec3::sAxisY(), -radius);
+            settings->mFriction = 0.0f;
+            settings->mSupportingVolume = Plane(Vec3::sAxisY(), -(0.5f * height));
             cpd.character = new Character(settings, RVec3(position[0], position[1], position[2]), Quat::sIdentity(), 0, physicsSystem);
             cpd.character->AddToPhysicsSystem(EActivation::Activate);
 

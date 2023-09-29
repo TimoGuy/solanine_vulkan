@@ -8,11 +8,14 @@
         - [ ] Create body initializers that ingest the shape. (note: the createBody system is thread-safe already)
         - [ ] Create add body into world system. (how: load a level and allow all the constructors, which should include rigidbody create to run, then have all of them batch into a list where at the end of the step it will add in all the rigidbodies)
         - [x] Create voxel field to compound collider (using multiple boxes and creating stair set pieces and scale and stuff).
-            - [ ] For now just do the boxes voxels (and make it greedy grouping!!!!)
+            - [x] For now just do the boxes voxels (and make it greedy grouping!!!!)
+        - [ ] Create Rigidbody Character Controller
+            - [x] Get basic movement down
+            - [ ] Get bug: XZ doesn't slow down when holding a movement direction and then going into a waza.
+            - [ ] Get bug: XZ friction doesn't match up anywhere near to what is going on.
+            - [ ] Make all bottom collision flat (maybe... just prevent from sliding down steep slopes).
         - [ ] Create renderer. (or not...)
         - [ ] Create recording system (refer to samples).
-        - [ ] Create virtual character controller system. (UNKNOWN AS OF YET).
-            > I don't think it will work. I want multiple character controllers that interact with each other instead of one singular character controller. Maybe that's not the best idea???? Or maybe navmeshes with capsule colliders riding on the navmeshes is how it works typically????? Idk.
     - [ ] Get movement down with the ~~rigidbody~~ virtual character controller.
         > After trying out the samples, this type of character controller is what I am looking for. It handles slopes and stairs well and moving platforms, while also being fairly good at being an interactor within the simulation world.
     - [ ] Get moving platform movement down with the ~~rigidbody~~ virtual char controller.
