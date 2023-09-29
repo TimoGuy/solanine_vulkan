@@ -239,7 +239,7 @@ struct Character_XData
     float_t attackTwitchAngle = 0.0f;
     float_t attackTwitchAngleReturnSpeed = 3.0f;
     bool    prevIsGrounded = false;
-    vec3    prevGroundNormal = GLM_VEC3_ZERO_INIT;
+    bool    prevPrevIsGrounded = false;
 
     vec3    launchVelocity;
     vec3    launchSetPosition;
@@ -255,7 +255,6 @@ struct Character_XData
     bool    inGettingPressedAnim = false;
 
     bool    prevIsMoving = false;
-    bool    prevPrevIsGrounded = false;
     bool    prevPerformedJump = false;
 
     float_t inputMaxXZSpeed = 7.5f;
@@ -274,6 +273,7 @@ struct Character_XData
     vec3 position;
     float_t facingDirection = 0.0f;
     float_t modelSize = 0.3f;
+    float_t jumpHeight = 15.0f;
     
     int32_t health = 100;
     float_t iframesTime = 0.15f;
@@ -1804,8 +1804,7 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
     d->prevPerformedJump = false;  // For animation state machine (differentiate goto_jump and goto_fall)
     if (d->prevIsGrounded && d->inputFlagJump)
     {
-        constexpr float_t jumpHeight = 20.0f;
-        velocity[1] = jumpHeight;
+        velocity[1] = d->jumpHeight;
         d->prevIsGrounded = false;
         d->inputFlagJump = false;
         d->prevPerformedJump = true;
@@ -1814,27 +1813,27 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
 
     if (d->currentWaza == nullptr)
     {
-        vec3 flatVelocity;
+        vec3 flatVelocity = GLM_VEC3_ZERO_INIT;
         if (d->prevIsGrounded && d->knockbackMode == Character_XData::KnockbackStage::NONE)
             glm_vec3_scale(d->worldSpaceInput, d->inputMaxXZSpeed, flatVelocity);
         else
         {
-            vec3 targetVelocity;
-            glm_vec3_scale(d->worldSpaceInput, d->inputMaxXZSpeed, targetVelocity);
+            vec3 targetFlatVelocity;
+            glm_vec3_scale(d->worldSpaceInput, d->inputMaxXZSpeed, targetFlatVelocity);
 
-            vec3 flatDeltaPosition;
-            glm_vec3_sub(d->cpd->currentCOMPosition, d->prevCPDBasePosition, flatDeltaPosition);
-            flatDeltaPosition[1] = 0.0f;
+            vec3 prevFlatVelocity;
+            glm_vec3_copy(velocity, prevFlatVelocity);
+            prevFlatVelocity[1] = 0.0f;
 
             vec3 targetDelta;
-            glm_vec3_sub(targetVelocity, flatDeltaPosition, targetDelta);
+            glm_vec3_sub(targetFlatVelocity, prevFlatVelocity, targetDelta);
             if (glm_vec3_norm2(targetDelta) > 0.000001f)
             {
-                vec3 flatDeltaPositionNormalized;
-                glm_vec3_normalize_to(flatDeltaPosition, flatDeltaPositionNormalized);
+                vec3 prevFlatVelocityNormalized;
+                glm_vec3_normalize_to(prevFlatVelocity, prevFlatVelocityNormalized);
                 vec3 targetVelocityNormalized;
-                glm_vec3_normalize_to(targetVelocity, targetVelocityNormalized);
-                bool useAcceleration = (glm_vec3_dot(targetVelocityNormalized, flatDeltaPositionNormalized) < 0.0f || glm_vec3_norm2(targetVelocity) > glm_vec3_norm2(flatDeltaPosition));
+                glm_vec3_normalize_to(targetFlatVelocity, targetVelocityNormalized);
+                bool useAcceleration = (glm_vec3_dot(targetVelocityNormalized, prevFlatVelocityNormalized) < 0.0f || glm_vec3_norm2(targetFlatVelocity) > glm_vec3_norm2(prevFlatVelocity));
                 float_t maxAllowedDeltaMagnitude = (useAcceleration ? d->midairXZAcceleration : d->midairXZDeceleration);
 
                 // @NOTE: Assumption is that during recovery and knocked back stages, the input is set to 0,0
@@ -1852,11 +1851,11 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
                 if (glm_vec3_norm2(targetDelta) > maxAllowedDeltaMagnitude * maxAllowedDeltaMagnitude)
                     glm_vec3_scale_as(targetDelta, maxAllowedDeltaMagnitude, targetDelta);
 
-                glm_vec3_add(flatDeltaPosition, targetDelta, flatVelocity);
+                glm_vec3_add(prevFlatVelocity, targetDelta, flatVelocity);
             }
             else
             {
-                glm_vec3_copy(flatDeltaPosition, flatVelocity);
+                glm_vec3_copy(prevFlatVelocity, flatVelocity);
             }
 
             // Process knockback stages. @TODO: put this into its own function/process.
@@ -1959,17 +1958,6 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
         }
     }
 
-    if (d->prevIsGrounded && d->prevGroundNormal[1] < 0.999f)
-    {
-        versor groundNormalRotation;
-        glm_quat_from_vecs(vec3{ 0.0f, 1.0f, 0.0f }, d->prevGroundNormal, groundNormalRotation);
-        mat3 groundNormalRotationM3;
-        glm_quat_mat3(groundNormalRotation, groundNormalRotationM3);
-        glm_mat3_mulv(groundNormalRotationM3, velocity, velocity);
-    }
-
-    // velocity[1] += d->gravityForce * physicsDeltaTime;
-
     if (d->triggerSuckIn)
     {
         glm_vec3_scale(d->suckInVelocity, physicsDeltaTime, velocity);  // Completely overwrite velocity.
@@ -1990,7 +1978,7 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
 
     // @NOCHECKIN: @FIXME: instead of this little block below for calculating the 
     //                     `isGrounded` statement, use the built in physics functions.
-    d->prevIsGrounded = true;  // This is for unlocking some functionality for testing.  @NOCHECKIN
+    d->prevIsGrounded = physengine::isGrounded(*d->cpd);
     // d->prevIsGrounded = (d->prevGroundNormal[1] >= 0.707106781187);  // >=45 degrees
     // if (d->prevIsGrounded)
     //     velocity[1] = 0.0f;
@@ -2692,6 +2680,7 @@ void defaultRenderImGui(Character_XData* d)
     if (ImGui::CollapsingHeader("Tweak Props", ImGuiTreeNodeFlags_DefaultOpen))
     {
         ImGui::DragFloat("modelSize", &d->modelSize);
+        ImGui::DragFloat("jumpHeight", &d->jumpHeight);
         ImGui::InputInt("health", &d->health);
         ImGui::DragFloat("iframesTime", &d->iframesTime);
         ImGui::DragFloat("iframesTimer", &d->iframesTimer);

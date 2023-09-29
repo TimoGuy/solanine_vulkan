@@ -362,6 +362,11 @@ namespace physengine
         return (SDL_GetTicks64() - lastTick) * oneOverPhysicsDeltaTimeInMS * globalState::timescale;
     }
 
+    void setWorldGravity(vec3 newGravity)
+    {
+        physicsSystem->SetGravity(Vec3(newGravity[0], newGravity[1], newGravity[2]));
+    }
+
     void tick();
     void tock();
 
@@ -569,43 +574,7 @@ namespace physengine
         physicsSystem->Init(maxBodies, numBodyMutexes, maxBodyPairs, maxContactConstraints, broadphaseLayerInterface, objectVsBroadphaseLayerFilter, objectVsObjectLayerFilter);
         physicsSystem->SetBodyActivationListener(&bodyActivationListener);
         physicsSystem->SetContactListener(&contactListener);
-        physicsSystem->SetGravity(Vec3(0.0f, -9.8f * 2.0f, 0.0f));
-
-        // // @TODO: Insert all bodies in right here. //
-        // BodyInterface& bodyInterface = physicsSystem->GetBodyInterface();
-        // 
-        // BoxShapeSettings floorShapeSettings(Vec3(100.0f, 1.0f, 100.0f));
-        // ShapeSettings::ShapeResult floorShapeResult = floorShapeSettings.Create();
-        // if (floorShapeResult.HasError())
-        // {
-        //     std::cerr << "[Shape Creation]" << std::endl
-        //         << "ERROR: " << floorShapeResult.GetError() << std::endl;
-        //     return;
-        // }
-        // ShapeRefC floorShape = floorShapeResult.Get();
-        // BodyCreationSettings floorSettings(floorShape, RVec3(0.0_r, -10.0_r, 0.0_r), Quat::sIdentity(), EMotionType::Static, Layers::NON_MOVING);
-        // BodyID floorId =
-        //     bodyInterface.CreateAndAddBody(
-        //         floorSettings,
-        //         (floorSettings.mMotionType == EMotionType::Dynamic ? EActivation::Activate : EActivation::DontActivate)
-        //     );  // @TODO: make this batched! Use `AddBodies` instead, to keep the broadphase optimized as possible.
-        // 
-        // SphereShapeSettings ballShapeSettings(0.5f);  // @COPYPASTA... almost.
-        // ShapeSettings::ShapeResult ballShapeResult = ballShapeSettings.Create();
-        // if (ballShapeResult.HasError())
-        // {
-        //     std::cerr << "[Shape Creation]" << std::endl
-        //         << "ERROR: " << ballShapeResult.GetError() << std::endl;
-        //     return;
-        // }
-        // ShapeRefC ballShape = ballShapeResult.Get();
-        // BodyCreationSettings ballSettings(ballShape, RVec3(0.0_r, 5.0_r, 0.0_r), Quat::sIdentity(), EMotionType::Dynamic, Layers::MOVING);
-        // BodyID ballId =
-        //     bodyInterface.CreateAndAddBody(
-        //         ballSettings,
-        //         (ballSettings.mMotionType == EMotionType::Dynamic ? EActivation::Activate : EActivation::DontActivate)
-        //     );  // @TODO: make this batched! Use `AddBodies` instead, to keep the broadphase optimized as possible.
-        // /////////////////////////////////////////////
+        setWorldGravity(vec3{ 0.0f, -40.0f, 0.0f });
 
         physicsSystem->OptimizeBroadPhase();
 
@@ -1066,6 +1035,11 @@ namespace physengine
         outVelocity[0] = velo.GetX();
         outVelocity[1] = velo.GetY();
         outVelocity[2] = velo.GetZ();
+    }
+
+    bool isGrounded(const CapsulePhysicsData& cpd)
+    {
+        return (cpd.character->GetGroundState() == CharacterBase::EGroundState::OnGround);
     }
 
     //

@@ -5850,6 +5850,13 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 			ImGui::DragFloat("scrollSpeed", &scrollSpeed);
 		}
 
+		if (ImGui::CollapsingHeader("Physics Properties", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			static vec3 worldGravity = GLM_VEC3_ZERO_INIT;
+			if (ImGui::DragFloat3("worldGravity", worldGravity))
+				physengine::setWorldGravity(worldGravity);
+		}
+
 		if (ImGui::CollapsingHeader("Camera Properties", ImGuiTreeNodeFlags_DefaultOpen))
 		{
 			ImGui::Text("NOTE: press F10 to change camera types");
