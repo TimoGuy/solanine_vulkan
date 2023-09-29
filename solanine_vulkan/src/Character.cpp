@@ -1169,6 +1169,7 @@ void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& phy
     // Execute all hitscans that need to be executed in the timeline.
     //
     size_t hitscanLayer = physengine::getCollisionLayer("HitscanInteractible");
+    vec3 offset(0.0f, -physengine::getLengthOffsetToBase(*d->cpd), 0.0f);
     assert(d->currentWaza->hitscanNodes.size() != 1);
 
     bool playWazaHitSfx = false;
@@ -1232,6 +1233,7 @@ void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& phy
                     vec3 setPosition;
                     glm_mat4_mulv3(rotation, d->currentWaza->hitscanLaunchRelPosition, 0.0f, setPosition);
                     glm_vec3_add(d->position, setPosition, setPosition);
+                    glm_vec3_add(offset, setPosition, setPosition);
                     ds.dumpVec3(setPosition);
 
                     float_t ignoreYF = (float_t)d->currentWaza->hitscanLaunchRelPositionIgnoreY;
@@ -1911,16 +1913,16 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
 
     if (d->triggerLaunchVelocity)
     {
+        vec3 setPosition;
+        glm_vec3_copy(d->launchSetPosition, setPosition);
         if (d->launchRelPosIgnoreY)
-        {
-            d->cpd->currentCOMPosition[0] = d->launchSetPosition[0];
-            d->cpd->currentCOMPosition[2] = d->launchSetPosition[2];
-        }
-        else
-            glm_vec3_copy(d->launchSetPosition, d->cpd->currentCOMPosition);
+            setPosition[1] = d->cpd->currentCOMPosition[1] - physengine::getLengthOffsetToBase(*d->cpd);
+        physengine::setCharacterPosition(*d->cpd, setPosition);
+
         glm_vec3_copy(d->launchVelocity, velocity);
         if (velocity[1] > 0.0f)
             d->prevIsGrounded = false;
+
         d->iframesTimer = d->iframesTime;
         d->knockbackMode = Character_XData::KnockbackStage::KNOCKED_UP;
         d->knockedbackTimer = d->knockedbackTime;

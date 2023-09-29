@@ -1023,6 +1023,11 @@ namespace physengine
         return cpd.height * 0.5f + cpd.radius - collisionTolerance * 0.5f;
     }
 
+    void setCharacterPosition(CapsulePhysicsData& cpd, vec3 position)
+    {
+        cpd.character->SetPosition(RVec3(position[0], position[1], position[2]));
+    }
+
     void moveCharacter(CapsulePhysicsData& cpd, vec3 velocity)
     {
         cpd.character->SetLinearVelocity(Vec3(velocity[0], velocity[1], velocity[2]));

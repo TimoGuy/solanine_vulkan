@@ -87,6 +87,7 @@ namespace physengine
     size_t getNumCapsules();
     CapsulePhysicsData* getCapsuleByIndex(size_t index);
     float_t getLengthOffsetToBase(const CapsulePhysicsData& cpd);
+    void setCharacterPosition(CapsulePhysicsData& cpd, vec3 position);
     void moveCharacter(CapsulePhysicsData& cpd, vec3 velocity);
     void setGravityFactor(CapsulePhysicsData& cpd, float_t newGravityFactor);
     void getLinearVelocity(const CapsulePhysicsData& cpd, vec3& outVelocity);
