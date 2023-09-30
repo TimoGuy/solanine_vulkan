@@ -1161,8 +1161,17 @@ void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& phy
     if (!setNewVelocity)
     {
         // Apply velocity decay
-        float_t newNorm = std::max(0.0f, glm_vec3_norm(d->wazaVelocity) - d->wazaVelocityDecay);
-        glm_vec3_scale_as(d->wazaVelocity, newNorm, d->wazaVelocity);
+        vec3 flatWazaVelocity = {
+            d->wazaVelocity[0],
+            0.0f,
+            d->wazaVelocity[2],
+        };
+
+        float_t newNorm = std::max(0.0f, glm_vec3_norm(flatWazaVelocity) - d->wazaVelocityDecay);
+        glm_vec3_scale_as(flatWazaVelocity, newNorm, flatWazaVelocity);
+
+        d->wazaVelocity[0] = flatWazaVelocity[0];
+        d->wazaVelocity[2] = flatWazaVelocity[2];
     }
 
     //
@@ -1892,7 +1901,6 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
         }
 
         // Add waza velocity
-        if (glm_vec3_norm2(d->wazaVelocity) > 0.000001f)
         {
             mat4 rotation;
             glm_euler_zyx(vec3{ 0.0f, d->facingDirection, 0.0f }, rotation);
