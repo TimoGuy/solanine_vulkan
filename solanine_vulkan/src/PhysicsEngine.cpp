@@ -939,7 +939,7 @@ namespace physengine
     size_t capsuleIndices[PHYSICS_OBJECTS_MAX_CAPACITY];
     size_t numCapsCreated = 0;
 
-    CapsulePhysicsData* createCharacter(const std::string& entityGuid, vec3 position, const float_t& radius, const float_t& height)
+    CapsulePhysicsData* createCharacter(const std::string& entityGuid, vec3 position, const float_t& radius, const float_t& height, bool enableCCD)
     {
         if (numCapsCreated < PHYSICS_OBJECTS_MAX_CAPACITY)
         {
@@ -970,6 +970,8 @@ namespace physengine
             settings->mFriction = 0.0f;
             settings->mSupportingVolume = Plane(Vec3::sAxisY(), -(0.5f * height));
             cpd.character = new Character(settings, RVec3(position[0], position[1], position[2]), Quat::sIdentity(), 0, physicsSystem);
+            if (enableCCD)
+                physicsSystem->GetBodyInterface().SetMotionQuality(cpd.character->GetBodyID(), EMotionQuality::LinearCast);
             cpd.character->AddToPhysicsSystem(EActivation::Activate);
 
             // Add guid into references.

@@ -1148,31 +1148,13 @@ void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& phy
     //
     // Execute all velocity settings corresponding to the timer.
     //
-    bool setNewVelocity = false;
     for (Character_XData::AttackWaza::VelocitySetting& velocitySetting : d->currentWaza->velocitySettings)
         if (velocitySetting.executeAtTime == d->wazaTimer)
         {
             glm_vec3_copy(velocitySetting.velocity, d->wazaVelocity);
             d->wazaVelocityFirstStep = true;
-            setNewVelocity = true;
             break;
         }
-
-    if (!setNewVelocity)
-    {
-        // Apply velocity decay
-        vec3 flatWazaVelocity = {
-            d->wazaVelocity[0],
-            0.0f,
-            d->wazaVelocity[2],
-        };
-
-        float_t newNorm = std::max(0.0f, glm_vec3_norm(flatWazaVelocity) - d->wazaVelocityDecay);
-        glm_vec3_scale_as(flatWazaVelocity, newNorm, flatWazaVelocity);
-
-        d->wazaVelocity[0] = flatWazaVelocity[0];
-        d->wazaVelocity[2] = flatWazaVelocity[2];
-    }
 
     //
     // Execute all hitscans that need to be executed in the timeline.
@@ -1564,7 +1546,8 @@ Character::Character(EntityManager* em, RenderObjectManager* rom, Camera* camera
     for (auto& inst : _data->weaponRenderObj->calculatedModelInstances)
         inst.voxelFieldLightingGridID = 1;
 
-    _data->cpd = physengine::createCharacter(getGUID(), _data->position, 0.5f, 1.0f);  // Total height is 2, but r*2 is subtracted to get the capsule height (i.e. the line segment length that the capsule rides along)
+    bool useCCD = (_data->characterType == CHARACTER_TYPE_PLAYER);
+    _data->cpd = physengine::createCharacter(getGUID(), _data->position, 0.5f, 1.0f, useCCD);  // Total height is 2, but r*2 is subtracted to get the capsule height (i.e. the line segment length that the capsule rides along)
 
     if (_data->characterType == CHARACTER_TYPE_PLAYER)
     {
@@ -1887,7 +1870,7 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
     }
     else
     {
-        // Hold in midair if wanted by waza
+        // Hold in midair if wanted by waza.
         if (d->currentWaza->holdMidair &&
             d->currentWaza->holdMidairTimeFrom < 0 ||
             (d->currentWaza->holdMidairTimeFrom <= d->wazaTimer - 1 &&
@@ -1900,21 +1883,36 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
             }
         }
 
-        // Add waza velocity
+        // Add waza velocity.
         {
-            mat4 rotation;
-            glm_euler_zyx(vec3{ 0.0f, d->facingDirection, 0.0f }, rotation);
-            vec3 facingWazaVelocity;
-            glm_mat4_mulv3(rotation, d->wazaVelocity, 0.0f, facingWazaVelocity);
-
-            velocity[0] = facingWazaVelocity[0];
-            velocity[2] = facingWazaVelocity[2];
-
-            // Execute vertical waza velocity.
             if (d->wazaVelocityFirstStep)
             {
+                // Set new velocity.
+                mat4 rotation;
+                glm_euler_zyx(vec3{ 0.0f, d->facingDirection, 0.0f }, rotation);
+                vec3 facingWazaVelocity;
+                glm_mat4_mulv3(rotation, d->wazaVelocity, 0.0f, facingWazaVelocity);
+
+                velocity[0] = facingWazaVelocity[0];
                 velocity[1] = d->wazaVelocity[1];
+                velocity[2] = facingWazaVelocity[2];
+
                 d->wazaVelocityFirstStep = false;  // This flag isn't used anymore so turn it off since the first frame is effectively over.
+            }
+            else if (d->wazaVelocityDecay > 0.000001f)
+            {
+                // Decay velocity XZ.
+                vec3 flatWazaVelocity = {
+                    velocity[0],
+                    0.0f,
+                    velocity[2],
+                };
+
+                float_t newNorm = std::max(0.0f, glm_vec3_norm(flatWazaVelocity) - d->wazaVelocityDecay);
+                glm_vec3_scale_as(flatWazaVelocity, newNorm, flatWazaVelocity);
+
+                velocity[0] = flatWazaVelocity[0];
+                velocity[2] = flatWazaVelocity[2];
             }
         }
     }

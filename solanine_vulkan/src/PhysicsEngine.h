@@ -82,7 +82,7 @@ namespace physengine
         bool COMPositionDifferent = false;
     };
 
-    CapsulePhysicsData* createCharacter(const std::string& entityGuid, vec3 position, const float_t& radius, const float_t& height);
+    CapsulePhysicsData* createCharacter(const std::string& entityGuid, vec3 position, const float_t& radius, const float_t& height, bool enableCCD);
     bool destroyCapsule(CapsulePhysicsData* cpd);
     size_t getNumCapsules();
     CapsulePhysicsData* getCapsuleByIndex(size_t index);
