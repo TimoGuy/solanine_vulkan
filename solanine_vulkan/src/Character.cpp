@@ -1569,7 +1569,7 @@ Character::Character(EntityManager* em, RenderObjectManager* rom, Camera* camera
         inst.voxelFieldLightingGridID = 1;
 
     bool useCCD = (_data->characterType == CHARACTER_TYPE_PLAYER);
-    _data->cpd = physengine::createCharacter(getGUID(), _data->position, 0.5f, 1.0f, useCCD);  // Total height is 2, but r*2 is subtracted to get the capsule height (i.e. the line segment length that the capsule rides along)
+    _data->cpd = physengine::createCharacter(getGUID(), _data->position, 0.375f, 1.25f, useCCD);  // Total height is 2, but r*2 is subtracted to get the capsule height (i.e. the line segment length that the capsule rides along)
 
     if (_data->characterType == CHARACTER_TYPE_PLAYER)
     {
