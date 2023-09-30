@@ -2663,7 +2663,11 @@ void Character::reportMoved(mat4* matrixMoved)
     vec3 sca;
     glm_decompose(*matrixMoved, pos, rot, sca);
     glm_vec3_copy(pos, _data->position);
-    glm_vec3_copy(_data->position, _data->cpd->currentCOMPosition);
+
+    vec3 charPos;
+    glm_vec3_add(pos, vec3{ 0.0f, physengine::getLengthOffsetToBase(*_data->cpd), 0.0f }, charPos);
+    glm_vec3_copy(charPos, _data->cpd->currentCOMPosition);
+    physengine::setCharacterPosition(*_data->cpd, charPos);
 }
 
 std::vector<std::string> getListOfWazaFnames()

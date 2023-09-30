@@ -932,6 +932,13 @@ namespace physengine
         bodyIdToEntityGuidMap[vfpd.bodyId.GetIndex()] = entityGuid;
     }
 
+    void setVoxelFieldBodyTransform(VoxelFieldPhysicsData& vfpd, vec3 newPosition, versor newRotation)
+    {
+        RVec3 newPositionReal(newPosition[0], newPosition[1], newPosition[2]);
+        Quat newRotationJolt(newRotation[0], newRotation[1], newRotation[2], newRotation[3]);
+        physicsSystem->GetBodyInterface().SetPositionAndRotation(vfpd.bodyId, newPositionReal, newRotationJolt, EActivation::DontActivate);
+    }
+
     //
     // Capsule pool
     //

@@ -639,6 +639,14 @@ void VoxelField::reportMoved(mat4* matrixMoved)
     glm_vec3_negate_to(_data->voxelOffsets[i].raw, negVoxelOffsets);
     glm_translate(_data->vfpd->transform, negVoxelOffsets);
 
+    vec4 pos;
+    mat4 rot;
+    vec3 sca;
+    glm_decompose(_data->vfpd->transform, pos, rot, sca);
+    versor rotV;
+    glm_mat4_quat(rot, rotV);
+    physengine::setVoxelFieldBodyTransform(*_data->vfpd, pos, rotV);
+
     // Move all blocks according to the transform
     for (size_t i2 = 0; i2 < _data->voxelOffsets.size(); i2++)
     {

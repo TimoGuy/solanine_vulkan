@@ -68,6 +68,7 @@ namespace physengine
     void shrinkVoxelFieldBoundsAuto(VoxelFieldPhysicsData& vfpd, ivec3& outOffset);
     void asdfalskdjflkasdhflkahsdlgkh(VoxelFieldPhysicsData& vfpd); // @NOCHECKIN
     void cookVoxelDataIntoShape(VoxelFieldPhysicsData& vfpd, const std::string& entityGuid);
+    void setVoxelFieldBodyTransform(VoxelFieldPhysicsData& vfpd, vec3 newPosition, versor newRotation);
 
     struct CapsulePhysicsData
     {
