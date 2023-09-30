@@ -925,7 +925,8 @@ namespace physengine
         glm_mat4_quat(rot, rotV);
 
         // @TODO: kinematic is set here bc the weighted island mechanic will come later.
-        vfpd.bodyId = bodyInterface.CreateBody(BodyCreationSettings(compoundShape, RVec3(pos[0], pos[1], pos[2]), Quat(rotV[0], rotV[1], rotV[2], rotV[3]), EMotionType::Kinematic, Layers::NON_MOVING))->GetID();
+        vfpd.bodyId = bodyInterface.CreateBody(BodyCreationSettings(compoundShape, RVec3(pos[0], pos[1], pos[2]), Quat(rotV[0], rotV[1], rotV[2], rotV[3]), EMotionType::Dynamic, Layers::MOVING))->GetID();
+        bodyInterface.SetGravityFactor(vfpd.bodyId, 0.0f);
         bodyInterface.AddBody(vfpd.bodyId, EActivation::DontActivate);
 
         // Add guid into references.
@@ -1091,7 +1092,7 @@ namespace physengine
             VoxelFieldPhysicsData& vfpd = voxelFieldPool[voxelFieldIndices[i]];
             // vfpd.COMPositionDifferent = false;  // @TODO: implement this!
 
-            if (!vfpd.bodyId.IsInvalid() || !bodyInterface.IsActive(vfpd.bodyId))
+            if (vfpd.bodyId.IsInvalid() || !bodyInterface.IsActive(vfpd.bodyId))
                 continue;
 
             RMat44 trans = bodyInterface.GetWorldTransform(vfpd.bodyId);

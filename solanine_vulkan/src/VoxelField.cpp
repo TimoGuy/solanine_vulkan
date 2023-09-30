@@ -533,6 +533,13 @@ void VoxelField::lateUpdate(const float_t& deltaTime)
         glm_mat4_mul(newTrans, invTransform, newTrans);
         glm_mat4_copy(newTrans, _data->engine->_voxelFieldLightingGridTextureSet.transforms[_data->lightgridId].transform);
     }
+
+    // Update block render object positions.
+    for (size_t i = 0; i < _data->voxelRenderObjs.size(); i++)
+    {
+        glm_mat4_copy(_data->vfpd->interpolTransform, _data->voxelRenderObjs[i]->transformMatrix);
+        glm_translate(_data->voxelRenderObjs[i]->transformMatrix, _data->voxelOffsets[i].raw);
+    }
 }
 
 void VoxelField::dump(DataSerializer& ds)
