@@ -1,6 +1,9 @@
 #include "Character.h"
 
 #include <cstdlib>
+#include <Jolt/Jolt.h>
+#include <Jolt/Physics/Body/Body.h>
+#include <Jolt/Physics/Collision/ContactListener.h>
 #include "Imports.h"
 #include "PhysUtil.h"
 #include "PhysicsEngine.h"
@@ -40,6 +43,25 @@ struct Character_XData
     std::string              weaponAttachmentJointName;
 
     physengine::CapsulePhysicsData* cpd;
+
+    struct MovingPlatformAttachment
+    {
+        enum class AttachmentStage
+        {
+            NO_ATTACHMENT = 0,
+            INITIAL_ATTACHMENT,  // Initial attachment position is calculated.
+            FIRST_DELTA_ATTACHMENT,  // Got delta position for first step attaching to the platform. Don't subtract from the velocity but add to it.
+            RECURRING_ATTACHMENT  // First step was applied to velocity at this point. Add and subtract from velocity.
+        };
+        AttachmentStage attachmentStage = AttachmentStage::NO_ATTACHMENT;
+        JPH::BodyID attachedBodyId;
+        JPH::RVec3 attachmentPositionWorld;
+        JPH::Vec3 attachmentPositionLocal;
+        float_t   attachmentYAxisAngularVelocity;
+        vec3      nextDeltaPosition;
+        vec3      prevDeltaPosition;
+        bool      attachmentIsStale = true;  // If `reportPhysicsContact` doesn't come in to reset this to `false` then the attachment stage will get reset.
+    } movingPlatformAttachment;
 
     textmesh::TextMesh* uiMaterializeItem;  // @NOTE: This is a debug ui thing. In the real thing, I'd really want there to be in the bottom right the ancient weapon handle pointing vertically with the materializing item in a wireframe with a mysterious blue hue at the end of the handle, and when the item does get materialized, it becomes a rendered version.
     globalState::ScannableItemOption* materializedItem = nullptr;
@@ -1790,6 +1812,11 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
     //
     vec3 velocity;
     physengine::getLinearVelocity(*d->cpd, velocity);
+
+    Character_XData::MovingPlatformAttachment& mpa = d->movingPlatformAttachment;
+    if (mpa.attachmentStage >= Character_XData::MovingPlatformAttachment::AttachmentStage::RECURRING_ATTACHMENT)
+        glm_vec3_muladds(mpa.prevDeltaPosition, -1.0f / physicsDeltaTime, velocity);  // Subtract previous tick's attachment deltaposition.
+
     physengine::setGravityFactor(*d->cpd, d->currentWaza != nullptr ? d->currentWaza->gravityMultiplier : 1.0f);
 
     d->prevPerformedJump = false;  // For animation state machine (differentiate goto_jump and goto_fall)
@@ -1974,18 +2001,24 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
         d->triggerSuckIn = false;
     }
 
+    if (mpa.attachmentIsStale)
+    {
+        // Reset attachment.
+        mpa.attachmentStage = Character_XData::MovingPlatformAttachment::AttachmentStage::NO_ATTACHMENT;
+        mpa.attachedBodyId = JPH::BodyID();  // Invalidate body id.
+    }
+    if (mpa.attachmentStage >= Character_XData::MovingPlatformAttachment::AttachmentStage::FIRST_DELTA_ATTACHMENT)
+    {
+        glm_vec3_muladds(mpa.nextDeltaPosition, 1.0f / physicsDeltaTime, velocity);  // Apply attachment delta position.
+        glm_vec3_copy(mpa.nextDeltaPosition, mpa.prevDeltaPosition);
+        mpa.attachmentIsStale = true;
+    }
+
     // Execute character simulation.
     physengine::moveCharacter(*d->cpd, velocity);
-    // physengine::moveCapsuleAccountingForCollision(*d->cpd, velocity, d->prevIsGrounded, d->prevGroundNormal);  // @NOCHECKIN: @FIXME
-    glm_vec3_copy(d->cpd->currentCOMPosition, d->position);
 
-    // @NOCHECKIN: @FIXME: instead of this little block below for calculating the 
-    //                     `isGrounded` statement, use the built in physics functions.
+    glm_vec3_copy(d->cpd->currentCOMPosition, d->position);
     d->prevIsGrounded = physengine::isGrounded(*d->cpd);
-    // d->prevIsGrounded = (d->prevGroundNormal[1] >= 0.707106781187);  // >=45 degrees
-    // if (d->prevIsGrounded)
-    //     velocity[1] = 0.0f;
-    //     d->gravityForce = 0.0f;
 }
 
 void calculateBladeStartEndFromHandAttachment(Character_XData* d, vec3& bladeStart, vec3& bladeEnd)
@@ -2432,6 +2465,9 @@ void Character::lateUpdate(const float_t& deltaTime)
     //
     // Update position of character and weapon
     //
+    if (_data->movingPlatformAttachment.attachmentStage >= Character_XData::MovingPlatformAttachment::AttachmentStage::FIRST_DELTA_ATTACHMENT)
+        _data->facingDirection += _data->movingPlatformAttachment.attachmentYAxisAngularVelocity * deltaTime;
+
     vec3 offset(0.0f, -physengine::getLengthOffsetToBase(*_data->cpd), 0.0f);
     vec3 position;
     glm_vec3_add(_data->cpd->interpolCOMPosition, offset, position);
@@ -3018,4 +3054,51 @@ void Character::renderImGui()
         attackWazaEditorRenderImGui(_data);
     else
         defaultRenderImGui(_data);
+}
+
+void Character::reportPhysicsContact(const JPH::Body& otherBody, const JPH::ContactManifold& manifold, JPH::ContactSettings* ioSettings)
+{
+    Character_XData::MovingPlatformAttachment& mpa = _data->movingPlatformAttachment;
+
+    if (otherBody.IsStatic())
+    {
+        mpa.attachmentStage = Character_XData::MovingPlatformAttachment::AttachmentStage::NO_ATTACHMENT;
+        return;
+    }
+
+    JPH::Vec3 attachmentNormal = -manifold.mWorldSpaceNormal;
+    if (physengine::isSlopeTooSteepForCharacter(*_data->cpd, attachmentNormal))
+    {
+        mpa.attachmentStage = Character_XData::MovingPlatformAttachment::AttachmentStage::NO_ATTACHMENT;
+        return;
+    }
+
+    // std::cout << "ATT NORM: " << attachmentNormal.GetX() << ",\t" <<  attachmentNormal.GetY() << ",\t" <<  attachmentNormal.GetZ() << ",\t" << std::endl;
+
+    if (mpa.attachmentStage == Character_XData::MovingPlatformAttachment::AttachmentStage::NO_ATTACHMENT ||
+        mpa.attachedBodyId != otherBody.GetID())
+    {
+        // Initial attachment.
+        mpa.attachmentStage = Character_XData::MovingPlatformAttachment::AttachmentStage::INITIAL_ATTACHMENT;
+        mpa.attachedBodyId = otherBody.GetID();
+    }
+    else
+    {
+        // Calc where in the attachment amortization chain.
+        if (mpa.attachmentStage != Character_XData::MovingPlatformAttachment::AttachmentStage::RECURRING_ATTACHMENT)
+            mpa.attachmentStage = Character_XData::MovingPlatformAttachment::AttachmentStage((int32_t)mpa.attachmentStage + 1);
+
+        // This is past the initial attachment! Calculate how much has moved.
+        JPH::RVec3 attachmentDeltaPos = otherBody.GetWorldTransform() * mpa.attachmentPositionLocal - mpa.attachmentPositionWorld;
+        mpa.nextDeltaPosition[0] = attachmentDeltaPos[0];
+        mpa.nextDeltaPosition[1] = attachmentDeltaPos[1];
+        mpa.nextDeltaPosition[2] = attachmentDeltaPos[2];
+    }
+
+    // Calculate attachment to body!
+    mpa.attachmentPositionWorld = manifold.GetWorldSpaceContactPointOn1(0) + _data->cpd->radius * attachmentNormal;  // Suck it into the capsule's base sphere origin point.
+    mpa.attachmentPositionLocal = otherBody.GetWorldTransform().Inversed() * mpa.attachmentPositionWorld;
+    mpa.attachmentYAxisAngularVelocity = otherBody.GetAngularVelocity().GetY();
+
+    mpa.attachmentIsStale = false;
 }

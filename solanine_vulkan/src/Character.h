@@ -5,6 +5,12 @@ class EntityManager;
 class RenderObjectManager;
 struct Camera;
 struct Character_XData;
+namespace JPH
+{
+    class Body;
+    class ContactManifold;
+    class ContactSettings;
+}
 
 
 class Character : public Entity
@@ -26,6 +32,8 @@ public:
 
     void reportMoved(mat4* matrixMoved);
     void renderImGui();
+
+    void reportPhysicsContact(const JPH::Body& otherBody, const JPH::ContactManifold& manifold, JPH::ContactSettings* ioSettings);
 
 private:
     Character_XData* _data;

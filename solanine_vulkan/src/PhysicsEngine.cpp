@@ -38,6 +38,7 @@
 #include <Jolt/Physics/Body/BodyActivationListener.h>
 #include "PhysUtil.h"
 #include "EntityManager.h"
+#include "Character.h"
 #include "GlobalState.h"
 #include "imgui/imgui.h"
 #include "imgui/implot.h"
@@ -66,6 +67,12 @@ namespace physengine
 
     PhysicsSystem* physicsSystem = nullptr;
     std::map<uint32_t, std::string> bodyIdToEntityGuidMap;
+
+    enum class UserDataMeaning
+    {
+        NOTHING = 0,
+        IS_CHARACTER,
+    };
 
 #ifdef _DEVELOP
     struct DebugStats
@@ -509,14 +516,34 @@ namespace physengine
             return ValidateResult::AcceptAllContactsForThisBodyPair;
         }
 
+        void processUserDataMeaning(const Body& thisBody, const Body& otherBody, const ContactManifold& manifold, ContactSettings& ioSettings)
+        {
+            switch (UserDataMeaning(thisBody.GetUserData()))
+            {
+                case UserDataMeaning::NOTHING:
+                    return;
+                
+                case UserDataMeaning::IS_CHARACTER:
+                {
+                    static_cast<::Character*>(
+                        entityManager->getEntityViaGUID(bodyIdToEntityGuidMap[thisBody.GetID().GetIndex()])
+                    )->reportPhysicsContact(otherBody, manifold, &ioSettings);
+                } return;
+            }
+        }
+
         virtual void OnContactAdded(const Body& inBody1, const Body& inBody2, const ContactManifold& inManifold, ContactSettings& ioSettings) override
         {
             //std::cout << "A contact was added" << std::endl;
+            processUserDataMeaning(inBody1, inBody2, inManifold, ioSettings);
+            processUserDataMeaning(inBody2, inBody1, inManifold.SwapShapes(), ioSettings);
         }
 
         virtual void OnContactPersisted(const Body& inBody1, const Body& inBody2, const ContactManifold& inManifold, ContactSettings& ioSettings) override
         {
             //std::cout << "A contact was persisted" << std::endl;
+            processUserDataMeaning(inBody1, inBody2, inManifold, ioSettings);
+            processUserDataMeaning(inBody2, inBody1, inManifold.SwapShapes(), ioSettings);
         }
 
         virtual void OnContactRemoved(const SubShapeIDPair& inSubShapePair) override
@@ -975,9 +1002,14 @@ namespace physengine
             settings->mMaxSlopeAngle = glm_rad(45.0f);
             settings->mLayer = Layers::MOVING;
             settings->mShape = capsuleShape;
-            settings->mFriction = 0.0f;
+
+            // @NOTE: this was in the past 0.0f, but after introducing the slightest slope, the character starts sliding down.
+            //        This gives everything a bit of a tacky feel, but I feel like that makes the physics for the characters
+            //        feel real (gives character lol). Plus, the characters can hold up to a rotating moving platform.  -Timo 2023/09/30
+            settings->mFriction = 0.5f;
+
             settings->mSupportingVolume = Plane(Vec3::sAxisY(), -(0.5f * height));
-            cpd.character = new Character(settings, RVec3(position[0], position[1], position[2]), Quat::sIdentity(), 0, physicsSystem);
+            cpd.character = new JPH::Character(settings, RVec3(position[0], position[1], position[2]), Quat::sIdentity(), (int64_t)UserDataMeaning::IS_CHARACTER, physicsSystem);
             if (enableCCD)
                 physicsSystem->GetBodyInterface().SetMotionQuality(cpd.character->GetBodyID(), EMotionQuality::LinearCast);
             cpd.character->AddToPhysicsSystem(EActivation::Activate);
@@ -1060,6 +1092,11 @@ namespace physengine
     bool isGrounded(const CapsulePhysicsData& cpd)
     {
         return (cpd.character->GetGroundState() == CharacterBase::EGroundState::OnGround);
+    }
+
+    bool isSlopeTooSteepForCharacter(const CapsulePhysicsData& cpd, Vec3Arg normal)
+    {
+        return cpd.character->IsSlopeTooSteep(normal);
     }
 
     //

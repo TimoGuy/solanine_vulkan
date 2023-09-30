@@ -6,6 +6,8 @@
 #include <Jolt/Jolt.h>
 #include <Jolt/Physics/Body/BodyID.h>
 #include <Jolt/Math/Mat44.h>
+#include <Jolt/Math/Vec3.h>
+#include <Jolt/Math/MathTypes.h>
 class EntityManager;
 struct DeletionQueue;
 namespace JPH { struct Character; }
@@ -93,6 +95,7 @@ namespace physengine
     void setGravityFactor(CapsulePhysicsData& cpd, float_t newGravityFactor);
     void getLinearVelocity(const CapsulePhysicsData& cpd, vec3& outVelocity);
     bool isGrounded(const CapsulePhysicsData& cpd);
+    bool isSlopeTooSteepForCharacter(const CapsulePhysicsData& cpd, JPH::Vec3Arg normal);
 
 #if 0
     void moveCapsuleAccountingForCollision(CapsulePhysicsData& cpd, vec3 deltaPosition, bool stickToGround, vec3& outNormal, float_t ccdDistance = 0.25f);  // @NOTE: `ccdDistance` is fine as long as it's below the capsule radius (or the radius of the voxels, whichever is smaller)
