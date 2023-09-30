@@ -12,8 +12,10 @@
         - [ ] Create Rigidbody Character Controller
             - [x] Get basic movement down
             - [ ] Get bug: XZ doesn't slow down when holding a movement direction and then going into a waza.
-            - [ ] Get bug: XZ friction doesn't match up anywhere near to what is going on.
-            - [ ] Make all bottom collision flat (maybe... just prevent from sliding down steep slopes).
+            - [x] Get bug: XZ friction doesn't match up anywhere near to what is going on.
+            - [x] Make all bottom collision flat (maybe... just prevent from sliding down steep slopes).
+                > Walls feel tacky (not sticky), but 0.5 fricion smoothed over pretty much everything. Having an animation for "pushing against something but against the wall midair" could be good.
+        - [x] BUG: rigidbodies are not deleted upon entity delete.
         - [ ] Create renderer. (or not...)
         - [ ] Create recording system (refer to samples).
     - [ ] Get movement down with the ~~rigidbody~~ virtual character controller.

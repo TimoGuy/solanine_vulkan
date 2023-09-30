@@ -727,6 +727,12 @@ namespace physengine
                     index = voxelFieldIndices[numVFsCreated - 1];
                 }
                 numVFsCreated--;
+
+                // Remove and delete the voxel field body.
+                BodyInterface& bodyInterface = physicsSystem->GetBodyInterface();
+                bodyInterface.RemoveBody(vfpd->bodyId);
+                bodyInterface.DestroyBody(vfpd->bodyId);
+
                 return true;
             }
         }
