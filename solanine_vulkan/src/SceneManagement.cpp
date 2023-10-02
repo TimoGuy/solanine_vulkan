@@ -77,8 +77,8 @@ namespace scene
         }
         return scenes;
     }
-    
-    bool loadScene(const std::string& name, VulkanEngine* engine)
+
+    bool loadPrefab(const std::string& name, VulkanEngine* engine, std::vector<Entity*>& outEntityPtrs)
     {
         bool success = true;
 
@@ -113,7 +113,9 @@ namespace scene
                 if (!newObjectType.empty())
                 {
                     auto dsCooked = ds.getSerializedData();
-                    success &= (spinupNewObject(newObjectType, engine, &dsCooked) != nullptr);
+                    Entity* newEntity = spinupNewObject(newObjectType, engine, &dsCooked);
+                    outEntityPtrs.push_back(newEntity);
+                    success &= (newEntity != nullptr);
                 }
 
                 // New object
@@ -161,10 +163,18 @@ namespace scene
                 .type = 1,
                 });
 
+        return success;
+    }
+    
+    bool loadScene(const std::string& name, VulkanEngine* engine)
+    {
+        std::vector<Entity*> _;
+        bool ret = loadPrefab(name, engine, _);
+
         // @DEBUG: save snapshot of physics frame.
         physengine::savePhysicsWorldSnapshot();
 
-        return success;
+        return ret;
     }
 
     bool saveScene(const std::string& name, const std::vector<Entity*>& entities, VulkanEngine* engine)
