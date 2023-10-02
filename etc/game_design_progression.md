@@ -6,7 +6,7 @@ NOTE: "you" means "the player"
         - Local
         - Sub-express
         - Express
-        - Shink
+        - Shink (essentially an elevator. It gets super fast then goes up a 90deg slope that goes straight up)
 
     - You start out in a shut-off Local network that has like 4 stops.
         - The 4th stop is the big station that joins a couple local networks with a sub-express, but the ticket gate is soft-blocked by a bunch of difficult enemies.
@@ -33,3 +33,7 @@ NOTE: "you" means "the player"
 
 - Third island archipelago.
     - Village with survivors.
+        - I can't think of really anything interesting with the villagers, other than them giving lore of the world.
+        - One of the villagers could give you a portable train map of this part of the world (end of the line is the shink)
+            > @NOTE: each train station will also have this map printed at the ticket kiosk, though it's just the tier. So for the local area, it's just the local line and stations that connect to a different tier are circled. For the sub-express area, it's just that line, and stations it's connected to local networks and express networks are circled.
+            > ASIDE: The ticket gates shut if you don't put in a ticket, but since it's unmanned you can just jump over the barrier.
