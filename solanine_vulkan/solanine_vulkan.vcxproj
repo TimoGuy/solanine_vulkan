@@ -198,6 +198,7 @@ copy $(SolutionDir)libs\cglm\cglm.dll $(OutDirfullPath)cglm.dll</Command>
     <ClInclude Include="src\PhysicsEngine.h" />
     <ClInclude Include="src\HotswapResources.h" />
     <ClInclude Include="src\VkDescriptorBuilderUtil.h" />
+    <ClInclude Include="src\GondolaSystem.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\AudioEngine.cpp" />
@@ -246,6 +247,7 @@ copy $(SolutionDir)libs\cglm\cglm.dll $(OutDirfullPath)cglm.dll</Command>
     <ClCompile Include="src\PhysicsEngine.cpp" />
     <ClCompile Include="src\HotswapResources.cpp" />
     <ClCompile Include="src\VkDescriptorBuilderUtil.cpp" />
+    <ClCompile Include="src\GondolaSystem.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\core\core.vcxproj">

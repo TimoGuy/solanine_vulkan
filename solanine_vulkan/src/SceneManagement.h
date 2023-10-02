@@ -14,6 +14,7 @@ namespace scene
 
     const std::string SCENE_DIRECTORY_PATH = "res/scenes/";
     std::vector<std::string> getListOfScenes();
+    bool loadPrefab(const std::string& name, VulkanEngine* engine, std::vector<Entity*>& outEntityPtrs);
     bool loadScene(const std::string& name, VulkanEngine* engine);  // @NOTE: when an entity is created, it is automatically connected to the engine
     bool saveScene(const std::string& name, const std::vector<Entity*>& entities, VulkanEngine* engine);
 }

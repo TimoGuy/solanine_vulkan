@@ -30,6 +30,7 @@ public:
 	Entity* getEntityViaGUID(const std::string& guid);
 	bool sendMessage(const std::string& guid, DataSerialized& message);
 	void destroyEntity(Entity* entity);    // Do not use the destructor or INTERNALdestroyEntity(), use this function!
+	void destroyOwnedEntity(Entity* entity);    // DITTO as above.
 
 private:
 	std::vector<Entity*> _entities;
