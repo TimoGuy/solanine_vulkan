@@ -42,7 +42,7 @@ HarvestableItem::HarvestableItem(EntityManager* em, RenderObjectManager* rom, Da
 
     _data->rom->registerRenderObjects({
             {
-                .model = _data->rom->getModel(globalState::getHarvestableItemByIndex(_data->harvestableItemId)->modelName, this, []() {}),
+                .model = _data->rom->getModel(globalState::getHarvestableItemByIndex(_data->harvestableItemId)->modelName, this, [](){}),
                 .renderLayer = RenderLayer::VISIBLE,
                 .attachedEntityGuid = getGUID(),
             }

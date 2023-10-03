@@ -3,6 +3,7 @@
 #include "Entity.h"
 class EntityManager;
 class RenderObjectManager;
+class VulkanEngine;
 struct GondolaSystem_XData;
 
 
@@ -12,7 +13,7 @@ public:
     static const std::string TYPE_NAME;
     std::string getTypeName() { return TYPE_NAME; };
 
-    GondolaSystem(EntityManager* em, RenderObjectManager* rom, DataSerialized* ds);
+    GondolaSystem(EntityManager* em, RenderObjectManager* rom, VulkanEngine* engineRef, DataSerialized* ds);
     ~GondolaSystem();
 
     void physicsUpdate(const float_t& physicsDeltaTime);

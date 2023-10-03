@@ -56,7 +56,7 @@ namespace scene
         if (objectName == HarvestableItem::TYPE_NAME)
             ent = new HarvestableItem(engine->_entityManager, engine->_roManager, ds);
         if (objectName == GondolaSystem::TYPE_NAME)
-            ent = new GondolaSystem(engine->_entityManager, engine->_roManager, ds);
+            ent = new GondolaSystem(engine->_entityManager, engine->_roManager, engine, ds);
 
         if (ent == nullptr)
         {
@@ -83,14 +83,14 @@ namespace scene
         return scenes;
     }
 
-    bool loadPrefab(const std::string& name, VulkanEngine* engine, std::vector<Entity*>& outEntityPtrs)
+    bool loadPrefab(const std::string& fullFname, VulkanEngine* engine, std::vector<Entity*>& outEntityPtrs)
     {
         bool success = true;
 
         DataSerializer ds;
         std::string newObjectType = "";
 
-        std::ifstream infile(SCENE_DIRECTORY_PATH + name);
+        std::ifstream infile(fullFname);
         std::string line;
         for (size_t lineNum = 1; std::getline(infile, line); lineNum++)
         {
@@ -143,7 +143,7 @@ namespace scene
             {
                 // ERROR
                 std::cerr << "[SCENE MANAGEMENT]" << std::endl
-                    << "ERROR (line " << lineNum << ") (file: " << SCENE_DIRECTORY_PATH << name << "): Headless data" << std::endl
+                    << "ERROR (line " << lineNum << ") (file: " << SCENE_DIRECTORY_PATH << fullFname << "): Headless data" << std::endl
                     << "   Trimmed line: " << line << std::endl
                     << "  Original line: " << line << std::endl;
             }
@@ -156,9 +156,17 @@ namespace scene
             success &= (spinupNewObject(newObjectType, engine, &dsCooked) != nullptr);
         }
 
+        return success;
+    }
+    
+    bool loadScene(const std::string& name, VulkanEngine* engine)
+    {
+        std::vector<Entity*> _;
+        bool ret = loadPrefab(SCENE_DIRECTORY_PATH + name, engine, _);
+
         globalState::savedActiveScene = name;
 
-        if (success)
+        if (ret)
             debug::pushDebugMessage({
 			    .message = "Successfully loaded scene \"" + name + "\"",
 			    });
@@ -167,14 +175,6 @@ namespace scene
                 .message = "Loaded scene \"" + name + "\" with errors (see console output)",
                 .type = 1,
                 });
-
-        return success;
-    }
-    
-    bool loadScene(const std::string& name, VulkanEngine* engine)
-    {
-        std::vector<Entity*> _;
-        bool ret = loadPrefab(name, engine, _);
 
         // @DEBUG: save snapshot of physics frame.
         physengine::savePhysicsWorldSnapshot();

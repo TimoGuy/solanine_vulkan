@@ -32,7 +32,20 @@
     - [x] Get moving platform movement down with the ~~rigidbody~~ ~~virtual~~ char controller.
 - [ ] Create path system for gondola to show up at a station.
     - [x] Create Gondola collision info as a voxel field.
-    - [ ] Figure out way to load it into the gondola system object.
-    - [ ] Gondola accelerates along bezier curve towards a max speed.
+    - [x] Figure out way to load it into the gondola system object.
+        > Prefab loading system, which is the same as the scene loading system except it returns the entity pointers.
+    - [ ] Gondola accelerates along ~~bezier curve~~ B-spline towards a max speed.
+        > Not bezier curve, do a uniform B-spline (See https://www.youtube.com/watch?v=jvPPXbo87ds)
+        > This is the characteristic matrix:
+                | 1  4  1  0 |
+            1/6 |-3  0  3  0 |
+                | 3 -6  3  0 |
+                |-1  3 -3  1 |
+        > Thus, this is the polynomial coefficients version of the b-spline:
+            P =  (   P0 + 4*P1 +   P2) +
+                t(-3*P0 +        3*P2) +
+              t^2( 3*P0 - 6*P1 + 3*P2) +
+              t^3(-1*P0 + 3*P1 - 3*P2 + P3) +
+            > Ahhhh, except I forgot to include the 1/6.
     - [ ] Copy design of station from Unity Concept Prototype (have station that merely displays how many meters away the next gondola is)
     - [ ] Next in line gondola decelerates with `smoothDamp` function.

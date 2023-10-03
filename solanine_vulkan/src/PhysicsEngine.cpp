@@ -525,9 +525,10 @@ namespace physengine
                 
                 case UserDataMeaning::IS_CHARACTER:
                 {
-                    static_cast<::Character*>(
-                        entityManager->getEntityViaGUID(bodyIdToEntityGuidMap[thisBody.GetID().GetIndex()])
-                    )->reportPhysicsContact(otherBody, manifold, &ioSettings);
+                    uint32_t id = thisBody.GetID().GetIndex();
+                    ::Character* entityAsChar;
+                    if (entityAsChar = dynamic_cast<::Character*>(entityManager->getEntityViaGUID(bodyIdToEntityGuidMap[id])))
+                        entityAsChar->reportPhysicsContact(otherBody, manifold, &ioSettings);
                 } return;
             }
         }

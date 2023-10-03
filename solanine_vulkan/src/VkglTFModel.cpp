@@ -2154,7 +2154,7 @@ namespace vkglTF
 		}
 	}
 
-	VkDescriptorSet* Animator::getGlobalAnimatorNodeCollectionDescriptorSet()
+	VkDescriptorSet* Animator::getGlobalAnimatorNodeCollectionDescriptorSet(VulkanEngine* engine)
 	{
 		return &nodeCollectionBuffers[engine->_frameNumber % FRAME_OVERLAP].descriptorSet;
 	}

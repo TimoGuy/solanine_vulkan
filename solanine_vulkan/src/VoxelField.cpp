@@ -1210,7 +1210,7 @@ inline void assembleVoxelRenderObjects(VoxelField_XData& data, const std::string
                 vec3s ijk_0_5 = { i + 0.5f, j + 0.5f, k + 0.5f };
                 RenderObject newRO = {
                     .model = data.voxelModel,
-                    .renderLayer = RenderLayer::VISIBLE,
+                    .renderLayer = RenderLayer::BUILDER,
                     .attachedEntityGuid = attachedEntityGuid,
                 };
                 glm_mat4_copy(data.vfpd->transform, newRO.transformMatrix);
