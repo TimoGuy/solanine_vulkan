@@ -212,7 +212,7 @@ bool calculatePositionOnCurveFromT(GondolaSystem_XData* d, float_t t, vec3& outP
         return false;  // Return false bc out of range.
 
     auto& coefficients = d->splineCoefficientsCache[(size_t)wholeT];
-    remainderT += 1.0f;  // @NOTE: the spline is supposed to be calculated at arange [1, 2), hence remainderT getting +1
+
     vec4 tInputs = {
         1.0f,
         remainderT,
