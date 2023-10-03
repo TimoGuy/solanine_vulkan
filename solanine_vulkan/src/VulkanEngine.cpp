@@ -5668,6 +5668,24 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 			ImGui::EndPopup();
 		}
 
+		static std::vector<std::string> listOfPrefabs;
+		if (ImGui::Button("Open Prefab.."))
+		{
+			listOfPrefabs = scene::getListOfPrefabs();
+			ImGui::OpenPopup("open_prefab_popup");
+		}
+		if (ImGui::BeginPopup("open_prefab_popup"))
+		{
+			for (auto& path : listOfPrefabs)
+				if (ImGui::Button(("Open \"" + path + "\"").c_str()))
+				{
+					std::vector<Entity*> _;
+					scene::loadPrefab(path, this, _);
+					ImGui::CloseCurrentPopup();
+				}
+			ImGui::EndPopup();
+		}
+
 		scenePropertiesWindowWidth = ImGui::GetWindowWidth();
 	}
 	ImGui::End();

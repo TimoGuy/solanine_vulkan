@@ -1,6 +1,7 @@
 #include "VoxelField.h"
 
 #include <stb_image_write.h>
+#include <mutex>
 #include "Imports.h"
 #include "VkglTFModel.h"
 #include "VkTextures.h"
@@ -36,6 +37,7 @@ struct VoxelField_XData
         ivec3 flatAxis = { 0, 0, 0 };
         ivec3 editStartPosition = { 0, 0, 0 };
         ivec3 editEndPosition = { 0, 0, 0 };
+        std::mutex* editingVoxelRenderObjsMutex;  // Making this not a pointer deletes the struct's default constructor for some reason. I guess mutexes don't want to be double-referenced.
     } editorState;
     bool isLightingDirty = true;  // True unless built lighting was loaded in automatically.
 };
@@ -54,6 +56,7 @@ VoxelField::VoxelField(VulkanEngine* engine, EntityManager* em, RenderObjectMana
 
     _data->engine = engine;
     _data->rom = rom;
+    _data->editorState.editingVoxelRenderObjsMutex = new std::mutex;
 
     if (ds)
         load(*ds);
@@ -72,6 +75,7 @@ VoxelField::VoxelField(VulkanEngine* engine, EntityManager* em, RenderObjectMana
 
 VoxelField::~VoxelField()
 {
+    delete _data->editorState.editingVoxelRenderObjsMutex;
     deleteVoxelRenderObjects(*_data, {});
     physengine::destroyVoxelField(_data->vfpd);
     delete _data;
@@ -535,10 +539,14 @@ void VoxelField::lateUpdate(const float_t& deltaTime)
     }
 
     // Update block render object positions.
-    for (size_t i = 0; i < _data->voxelRenderObjs.size(); i++)
     {
-        glm_mat4_copy(_data->vfpd->interpolTransform, _data->voxelRenderObjs[i]->transformMatrix);
-        glm_translate(_data->voxelRenderObjs[i]->transformMatrix, _data->voxelOffsets[i].raw);
+        std::lock_guard<std::mutex> lg(*_data->editorState.editingVoxelRenderObjsMutex);
+
+        for (size_t i = 0; i < _data->voxelRenderObjs.size(); i++)
+        {
+            glm_mat4_copy(_data->vfpd->interpolTransform, _data->voxelRenderObjs[i]->transformMatrix);
+            glm_translate(_data->voxelRenderObjs[i]->transformMatrix, _data->voxelOffsets[i].raw);
+        }
     }
 }
 
@@ -1167,6 +1175,8 @@ inline void buildDefaultVoxelData(VoxelField_XData& data, const std::string& myG
 
 inline void assembleVoxelRenderObjects(VoxelField_XData& data, const std::string& attachedEntityGuid, std::vector<ivec3s> dirtyPositions)
 {
+    std::lock_guard<std::mutex> lg(*data.editorState.editingVoxelRenderObjsMutex);
+
     deleteVoxelRenderObjects(data, dirtyPositions);
 
     // Check for if voxel is filled and not surrounded

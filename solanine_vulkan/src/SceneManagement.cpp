@@ -83,7 +83,23 @@ namespace scene
         return scenes;
     }
 
-    bool loadPrefab(const std::string& fullFname, VulkanEngine* engine, std::vector<Entity*>& outEntityPtrs)
+    std::vector<std::string> getListOfPrefabs()
+    {
+        std::vector<std::string> prefabs;
+        for (const auto& entry : std::filesystem::recursive_directory_iterator(PREFAB_DIRECTORY_PATH))
+        {
+            const auto& path = entry.path();
+            if (std::filesystem::is_directory(path))
+                continue;
+            if (!path.has_extension() || path.extension().compare(".hunk") != 0)
+                continue;
+            auto relativePath = std::filesystem::relative(path, PREFAB_DIRECTORY_PATH);
+            prefabs.push_back(relativePath.string());  // @NOTE: that this line could be dangerous if there are any filenames or directory names that have utf8 chars or wchars in it
+        }
+        return prefabs;
+    }
+
+    bool loadSerializationFull(const std::string& fullFname, VulkanEngine* engine, std::vector<Entity*>& outEntityPtrs)
     {
         bool success = true;
 
@@ -158,11 +174,16 @@ namespace scene
 
         return success;
     }
+
+    bool loadPrefab(const std::string& name, VulkanEngine* engine, std::vector<Entity*>& outEntityPtrs)
+    {
+        return loadSerializationFull(PREFAB_DIRECTORY_PATH + name, engine, outEntityPtrs);
+    }
     
     bool loadScene(const std::string& name, VulkanEngine* engine)
     {
         std::vector<Entity*> _;
-        bool ret = loadPrefab(SCENE_DIRECTORY_PATH + name, engine, _);
+        bool ret = loadSerializationFull(SCENE_DIRECTORY_PATH + name, engine, _);
 
         globalState::savedActiveScene = name;
 

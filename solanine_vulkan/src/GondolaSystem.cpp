@@ -84,19 +84,19 @@ void buildCollisions(GondolaSystem_XData* d, VulkanEngine* engineRef, std::vecto
             return;
             
         case GondolaSystem_XData::GondolaNetworkType::FUTSUU:
-            scene::loadPrefab("res/prefabs/gondola_collision_futsuu.hunk", engineRef, ents);  // Supposed to contain all the cars for collision (even though there are repeats in the collision data).
+            scene::loadPrefab("gondola_collision_futsuu.hunk", engineRef, ents);  // Supposed to contain all the cars for collision (even though there are repeats in the collision data).
             break;
 
         case GondolaSystem_XData::GondolaNetworkType::JUNKYUU:
-            scene::loadPrefab("res/prefabs/gondola_collision_junkyuu.hunk", engineRef, ents);
+            scene::loadPrefab("gondola_collision_junkyuu.hunk", engineRef, ents);
             break;
 
         case GondolaSystem_XData::GondolaNetworkType::KAISOKU:
-            scene::loadPrefab("res/prefabs/gondola_collision_kaisoku.hunk", engineRef, ents);
+            scene::loadPrefab("gondola_collision_kaisoku.hunk", engineRef, ents);
             break;
 
         case GondolaSystem_XData::GondolaNetworkType::TOKKYUU:
-            scene::loadPrefab("res/prefabs/gondola_collision_tokkyuu.hunk", engineRef, ents);
+            scene::loadPrefab("gondola_collision_tokkyuu.hunk", engineRef, ents);
             break;
     }
 

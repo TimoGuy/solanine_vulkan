@@ -34,7 +34,7 @@
     - [x] Create Gondola collision info as a voxel field.
     - [x] Figure out way to load it into the gondola system object.
         > Prefab loading system, which is the same as the scene loading system except it returns the entity pointers.
-    - [ ] Gondola accelerates along ~~bezier curve~~ B-spline towards a max speed.
+    - [x] Gondola accelerates along ~~bezier curve~~ B-spline towards a max speed.
         > Not bezier curve, do a uniform B-spline (See https://www.youtube.com/watch?v=jvPPXbo87ds)
         > This is the characteristic matrix:
                 | 1  4  1  0 |
@@ -49,3 +49,5 @@
             > Ahhhh, except I forgot to include the 1/6.
     - [ ] Copy design of station from Unity Concept Prototype (have station that merely displays how many meters away the next gondola is)
     - [ ] Next in line gondola decelerates with `smoothDamp` function.
+
+- [ ] EMERGENCY DETOUR

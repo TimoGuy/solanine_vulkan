@@ -704,6 +704,7 @@ namespace physengine
             vfpd.sizeY = sizeY;
             vfpd.sizeZ = sizeZ;
             vfpd.voxelData = voxelData;
+            vfpd.bodyId = JPH::BodyID();
 
             return &vfpd;
         }
