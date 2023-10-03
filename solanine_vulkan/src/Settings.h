@@ -16,7 +16,7 @@ constexpr uint32_t SHADOWMAP_JITTERMAP_DIMENSION_Z = 16 / 2;  // 4x4 samples (??
 
 constexpr unsigned int FRAME_OVERLAP = 2;
 
-constexpr size_t RENDER_OBJECTS_MAX_CAPACITY = 100000;
+constexpr size_t RENDER_OBJECTS_MAX_CAPACITY = 10000;
 constexpr size_t INSTANCE_PTR_MAX_CAPACITY   = 100000;
 
 constexpr size_t MAX_NUM_MAPS = 128;
