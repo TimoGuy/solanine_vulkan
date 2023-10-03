@@ -6,7 +6,7 @@ layout (location = 0) flat in uint inID;
 layout (location = 0) out float outFragColor;
 
 
-#define RENDER_OBJECTS_MAX_CAPACITY 10000
+#define RENDER_OBJECTS_MAX_CAPACITY 100000
 layout (set = 3, binding = 0) buffer ShaderStorageBufferObject
 {
 	uint selectedId[RENDER_OBJECTS_MAX_CAPACITY];
