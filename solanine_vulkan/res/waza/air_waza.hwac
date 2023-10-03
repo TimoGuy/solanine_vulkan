@@ -1,71 +1,3 @@
-## NEW FORMAT
-#:GustWall
-#  waza 1
-#    inputs           grounded    hold(x)
-#    animation_state  StateAirWaza1stFormEntrance
-#    hold_cancel      :GustWall.hold_cancel
-#    can_chain        17    -1    :GustWall.2
-#
-#  waza hold_cancel
-#    animation_state  StateAirWaza1stFormEntranceExit
-#    goto_null_on_finish
-#
-#  waza 2
-#    inputs           grounded    release(x)
-#    animation_state  StateAirWaza1stFormPart1
-#    can_chain        9    -1    :Updraft.1
-#
-#:Updraft
-#  waza 1
-#    inputs           grounded    hold(x,a)
-#    animation_state  StateAirWaza2ndFormEntrance
-#    hold_cancel      :Updraft.hold_cancel
-#    can_chain        10    -1    :Updraft.2
-#
-#  waza hold_cancel
-#    animation_state  StateAirWaza2ndFormEntranceExit
-#    goto_null_on_finish
-#
-#  waza 2
-#    inputs           grounded    release(a)
-#    animation_state  StateAirWaza2ndFormPart1
-#    land_ground      :Updraft.land_cancel
-#    can_chain        10    -1    :Updraft.3
-#
-#  waza land_cancel
-#    animation_state  StateAirWaza2ndFormPart1Exit
-#    goto_null_on_finish
-#
-#  waza 3
-#    inputs           midair    release(x)
-#    animation_state  StateAirWaza2ndFormPart2
-#    can_chain        9    -1    :GiantLeap.1_from_Updraft
-#
-#:GiantLeap
-#  waza 1
-#    inputs           grounded    doublehold(a,17)
-#    animation_state  StateAirWaza3rdFormEntrance
-#    hold_cancel      StateAirWaza2ndFormPart2Exit
-#    can_chain        :GiantLeap.2
-#
-#  waza 1_from_Updraft
-#    inputs           doublehold(a,0)
-#    animation_state  StateAirWaza3rdFormEntranceFromUpdraft
-#    hold_cancel      StateAirWaza2ndFormPart2Exit
-#    can_chain        :GiantLeap.2
-#
-#  waza 2
-#    inputs           release(a)
-#    animation_state  StateAirWaza3rdFormPart1
-
-
-
-
-
-
-
-
-
 ########## NEW STYLE??????
 
 # @TODO: the biggest thing that would make this work is making `press_@` be immediate, instead of the motion of a press/release before the hold window.
@@ -374,6 +306,41 @@
 #        But, if you just let go before the hold timing, then you continue into the next attack in the combo.
 #
 # Use `wip_LTTP_Sword_Charge.wav` when hold is held.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
