@@ -47,7 +47,8 @@ struct GondolaSystem_XData
         KAISOKU,
         TOKKYUU,
     };
-    GondolaNetworkType initializedInteractiveGondolaType = GondolaNetworkType::NONE;
+    GondolaNetworkType gondolaNetworkType = GondolaNetworkType::NONE;
+    bool               gondolaCollisionActive = false;
     bool               playerCharWithinRange = false;
     float_t            priorityRange = 200.0f;
 
@@ -65,11 +66,12 @@ struct GondolaSystem_XData
 
     struct Simulation
     {
-        vec3               position;
-        GondolaNetworkType type;
+        float_t            positionT;
         RenderObject*      renderObj;
+        vec3               calculatedPositionWorld;
     };
     std::vector<Simulation> simulations;
+    size_t simSpawnTimer = 0;
 };
 
 void buildCollisions(GondolaSystem_XData* d, VulkanEngine* engineRef, std::vector<VoxelField*>& outCollisions, GondolaSystem_XData::GondolaNetworkType networkType)
@@ -116,15 +118,13 @@ void destructAndResetCollisions(GondolaSystem_XData* d, EntityManager* em)
 
 void readyGondolaInteraction(GondolaSystem_XData* d, EntityManager* em, const GondolaSystem_XData::Simulation& simulation)
 {
-    // Check that the collisions are correct.
-    if (d->initializedInteractiveGondolaType != simulation.type)
-    {
-        // Clear and rebuild
-        destructAndResetCollisions(d, em);
-        // buildCollisions(d, d->engineRef, d->collisions, simulation.type);  @TODO: @FIXME: @NOCHECKIN
+    // @TODO: This is how I want this to work. Have a timer that runs if player is out of range. if the time runs past 5 seconds, unload collision. As soon as player gets into range, load in collision for the nearest simulation.
+    //        Use the `gondolaCollisionActive` flag.
+    return;
 
-        d->initializedInteractiveGondolaType = simulation.type;
-    }
+    // Clear and rebuild
+    destructAndResetCollisions(d, em);
+    // buildCollisions(d, d->engineRef, d->collisions, d->gondolaNetworkType);  @TODO: @FIXME: @NOCHECKIN
 }
 
 GondolaSystem::GondolaSystem(EntityManager* em, RenderObjectManager* rom, VulkanEngine* engineRef, DataSerialized* ds) : Entity(em, ds), _data(new GondolaSystem_XData())
@@ -202,6 +202,29 @@ void calculateSplineCoefficients(vec3 p0, vec3 p1, vec3 p2, vec3 p3, GondolaSyst
     calculateSplineCoefficient(p0[2], p1[2], p2[2], p3[2], outBSC.coefficientsZ);
 }
 
+bool calculatePositionOnCurveFromT(GondolaSystem_XData* d, float_t t, vec3& outPosition)
+{
+    float_t wholeT, remainderT;
+    remainderT = std::modf(t, &wholeT);
+
+    if (t < 0.0f ||
+        (size_t)wholeT >= d->splineCoefficientsCache.size())
+        return false;  // Return false bc out of range.
+
+    auto& coefficients = d->splineCoefficientsCache[(size_t)wholeT];
+    vec4 tInputs = {
+        1.0f,
+        remainderT,
+        remainderT * remainderT,
+        remainderT * remainderT * remainderT
+    };
+
+    outPosition[0] = glm_vec4_dot(tInputs, coefficients.coefficientsX);
+    outPosition[1] = glm_vec4_dot(tInputs, coefficients.coefficientsY);
+    outPosition[2] = glm_vec4_dot(tInputs, coefficients.coefficientsZ);
+    return true;
+}
+
 void drawDEBUGCurveVisualization(GondolaSystem_XData* d)
 {
     for (size_t i = 1; i < d->DEBUGCurveVisualization.splineLinePts.size(); i++)
@@ -218,9 +241,47 @@ void drawDEBUGCurveVisualization(GondolaSystem_XData* d)
         );
 }
 
+void spawnSimulation(GondolaSystem_XData* d, void* modelOwner, const std::string& guid, float_t spawnT)
+{
+    GondolaSystem_XData::Simulation newSimulation;
+    newSimulation.positionT = spawnT;
+    d->rom->registerRenderObjects({
+            {
+                .model = d->rom->getModel("BuilderObj_GondolaNetworkFutsuu", modelOwner, [](){}),
+                .renderLayer = RenderLayer::VISIBLE,
+                .attachedEntityGuid = guid,
+            }
+        },
+        { &newSimulation.renderObj }
+    );
+    d->simulations.push_back(newSimulation);
+}
+
+void updateSimulation(GondolaSystem_XData* d, size_t simIdx, const float_t& physicsDeltaTime)
+{
+    GondolaSystem_XData::Simulation& ioSimulation = d->simulations[simIdx];
+    ioSimulation.positionT += physicsDeltaTime;
+    if (!calculatePositionOnCurveFromT(d, ioSimulation.positionT, ioSimulation.calculatedPositionWorld))
+    {
+        // Remove simulation if out of range.
+        d->rom->unregisterRenderObjects({ ioSimulation.renderObj });
+        d->simulations.erase(d->simulations.begin() + simIdx);
+    }
+}
+
 void GondolaSystem::physicsUpdate(const float_t& physicsDeltaTime)
 {
     drawDEBUGCurveVisualization(_data);
+
+    // Spawn simulations.
+    _data->simSpawnTimer++;
+    if (_data->simSpawnTimer % 100 == 0)
+        spawnSimulation(_data, this, getGUID(), 0.0f);
+
+    // Update simulations.
+    // @TODO: there should be some kind of timeslicing for this, then update the timestamp of the new calculated point, and in `lateUpdate()` interpolate between the two generated points.
+    for (int64_t i = _data->simulations.size() - 1; i >= 0; i--)  // Reverse iteration so that delete can happen.
+        updateSimulation(_data, i, physicsDeltaTime);
 
     if (!_data->timeslicing.checkTimeslice())
         return;  // Exit bc not timesliced position.
@@ -280,22 +341,8 @@ void GondolaSystem::physicsUpdate(const float_t& physicsDeltaTime)
         float_t stride = 1.0f / (cpTotalDist / _data->controlPoints.size());  // Take avg. distance and get the reciprocal to get the stride.
         for (float_t t = 0.0f; t < (float_t)_data->splineCoefficientsCache.size(); t += stride)
         {
-            float_t wholeT, remainderT;
-            remainderT = std::modf(t, &wholeT);
-
-            auto& coefficients = _data->splineCoefficientsCache[(size_t)wholeT];
-            vec4 ts = {
-                1.0f,
-                remainderT,
-                remainderT * remainderT,
-                remainderT * remainderT * remainderT
-            };
-
-            vec3s point = {
-                glm_vec4_dot(ts, coefficients.coefficientsX),
-                glm_vec4_dot(ts, coefficients.coefficientsY),
-                glm_vec4_dot(ts, coefficients.coefficientsZ)
-            };
+            vec3s point;
+            calculatePositionOnCurveFromT(_data, t, point.raw);
             _data->DEBUGCurveVisualization.curveLinePts.push_back(point);
         }
 
@@ -315,7 +362,7 @@ void GondolaSystem::physicsUpdate(const float_t& physicsDeltaTime)
     {
         auto& simulation = _data->simulations[i];
 
-        float_t currentDistance2 = glm_vec3_distance2(simulation.position, *globalState::playerPositionRef);
+        float_t currentDistance2 = glm_vec3_distance2(simulation.calculatedPositionWorld, *globalState::playerPositionRef);
         if (currentDistance2 < _data->priorityRange * _data->priorityRange &&
             currentDistance2 < closestDistInRangeSqr)
         {
@@ -347,7 +394,7 @@ void GondolaSystem::lateUpdate(const float_t& deltaTime)
     for (auto& sim : _data->simulations)
     {
         glm_mat4_identity(sim.renderObj->transformMatrix);
-        glm_translate(sim.renderObj->transformMatrix, sim.position);
+        glm_translate(sim.renderObj->transformMatrix, sim.calculatedPositionWorld);
     }
 }
 
