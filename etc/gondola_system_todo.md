@@ -51,3 +51,4 @@
     - [ ] Next in line gondola decelerates with `smoothDamp` function.
 
 - [ ] EMERGENCY DETOUR
+    - [ ] Get voxel fields to create their own meshes instead of using each voxel as their own render object.
