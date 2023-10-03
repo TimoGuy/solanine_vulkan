@@ -376,7 +376,15 @@ void GondolaSystem::reportMoved(mat4* matrixMoved)
     // Whole system control point.
     if (matrixMoved == &_data->controlRenderObj->transformMatrix)
     {
+        vec3 delta;
+        glm_vec3_sub(pos, _data->position, delta);
         glm_vec3_copy(pos, _data->position);
+
+        // Move all control points to new position.
+        for (auto& cp : _data->controlPoints)
+            glm_vec3_add(cp.position, delta, cp.position);
+        _data->triggerBakeSplineCache = true;
+
         return;
     }
 
