@@ -33,7 +33,9 @@ struct VoxelField_XData
     struct EditorState
     {
         bool editing = false;
-        bool isEditAnAppend = false;
+        enum class EditType {
+            APPEND, REMOVE, CHANGE_TO_SLOPE
+        } editType;
         ivec3 flatAxis = { 0, 0, 0 };
         ivec3 editStartPosition = { 0, 0, 0 };
         ivec3 editEndPosition = { 0, 0, 0 };
@@ -300,8 +302,17 @@ bool calculatePositionOnVoxelPlane(VulkanEngine* engine, physengine::VoxelFieldP
 
 bool setVoxelDataAtPositionNonDestructive(physengine::VoxelFieldPhysicsData* vfpd, ivec3 position, uint8_t data)
 {
-    if (physengine::getVoxelDataAtPosition(*vfpd, position[0], position[1], position[2]) != 0)
-        return false;  // The space is already occupied. Don't fill in this position.
+    if (physengine::getVoxelDataAtPosition(*vfpd, position[0], position[1], position[2]) == data)
+        return false;  // The space is already occupied by data want to set. Don't fill in this position.
+
+    physengine::setVoxelDataAtPosition(*vfpd, position[0], position[1], position[2], data);
+    return true;
+}
+
+bool editVoxelDataAtPositionNoAdd(physengine::VoxelFieldPhysicsData* vfpd, ivec3 position, uint8_t data)
+{
+    if (physengine::getVoxelDataAtPosition(*vfpd, position[0], position[1], position[2]) == 0)
+        return false;  // The space is empty. Don't add anything in this position.
 
     physengine::setVoxelDataAtPosition(*vfpd, position[0], position[1], position[2], data);
     return true;
@@ -375,7 +386,7 @@ void VoxelField::physicsUpdate(const float_t& physicsDeltaTime)
 {
     if (_data->isPicked)  // @NOTE: this picked checking system, bc physicsupdate() runs outside of the render thread, could easily get out of sync, but as long as the render thread is >40fps it should be fine.
     {
-        static bool prevCorXPressed = false;
+        static bool prevCorXorVPressed = false;
 
         if (_data->editorState.editing)
         {
@@ -387,7 +398,7 @@ void VoxelField::physicsUpdate(const float_t& physicsDeltaTime)
                 // Exit editing with no changes
                 _data->editorState.editing = false;
             }
-            else if (input::keyEnterPressed || (!prevCorXPressed && (input::keyCPressed || input::keyXPressed)))
+            else if (input::keyEnterPressed || (!prevCorXorVPressed && (input::keyCPressed || input::keyXPressed || input::keyVPressed)))
             {
                 // Exit editing, saving changes
                 bool rebuildRenderObjs = false;
@@ -405,7 +416,8 @@ void VoxelField::physicsUpdate(const float_t& physicsDeltaTime)
                     );
                     std::cout << "ENDING EDITING, saving changes at { " << _data->editorState.editEndPosition[0] << ", " << _data->editorState.editEndPosition[1] << ", " << _data->editorState.editEndPosition[2] << " }" << std::endl;
 
-                    if (_data->editorState.isEditAnAppend)
+                    if (_data->editorState.editType == VoxelField_XData::EditorState::EditType::APPEND ||
+                        _data->editorState.editType == VoxelField_XData::EditorState::EditType::CHANGE_TO_SLOPE)
                     {
                         // @NOTE: only append at spots that are empty
                         if (glm_ivec3_distance2(_data->editorState.editStartPosition, _data->editorState.editEndPosition) == 0)
@@ -427,6 +439,50 @@ void VoxelField::physicsUpdate(const float_t& physicsDeltaTime)
                         // Insert the resized offset into renderobject offsets.
                         glm_translate(_data->vfpd->transform, vec3{ (float_t)offset[0], (float_t)offset[1], (float_t)offset[2] });
 
+                        // Find which voxel type (for only slopes).
+                        uint8_t slopeSpaceId = 2;
+                        if (_data->editorState.editType == VoxelField_XData::EditorState::EditType::CHANGE_TO_SLOPE)
+                        {
+                            float_t maxCardinalDirDot = -1.0f;
+                            mat3 rotation;
+                            glm_mat4_pick3(_data->vfpd->interpolTransform, rotation);
+
+                            vec3 north = {  0.0f, 0.0f,  1.0f };
+                            vec3 east  = {  1.0f, 0.0f,  0.0f };
+                            vec3 south = {  0.0f, 0.0f, -1.0f };
+                            vec3 west  = { -1.0f, 0.0f, 0.0f };
+                            glm_mat3_mulv(rotation, north, north);
+                            glm_mat3_mulv(rotation, east, east);
+                            glm_mat3_mulv(rotation, south, south);
+                            glm_mat3_mulv(rotation, west, west);
+
+                            vec3 normCamFD;
+                            glm_vec3_normalize_to(_data->engine->_camera->sceneCamera.facingDirection, normCamFD);
+
+                            // Find which direction is closest.
+                            float_t dot;
+                            if ((dot = glm_vec3_dot(normCamFD, north)) > maxCardinalDirDot)
+                            {
+                                maxCardinalDirDot = dot;
+                                slopeSpaceId = 2;
+                            }
+                            if ((dot = glm_vec3_dot(normCamFD, east)) > maxCardinalDirDot)
+                            {
+                                maxCardinalDirDot = dot;
+                                slopeSpaceId = 3;
+                            }
+                            if ((dot = glm_vec3_dot(normCamFD, south)) > maxCardinalDirDot)
+                            {
+                                maxCardinalDirDot = dot;
+                                slopeSpaceId = 4;
+                            }
+                            if ((dot = glm_vec3_dot(normCamFD, west)) > maxCardinalDirDot)
+                            {
+                                maxCardinalDirDot = dot;
+                                slopeSpaceId = 5;
+                            }
+                        }
+
                         // Create new voxels (for every spot that's empty) in range.
                         int32_t x, y, z;
                         for (x = _data->editorState.editStartPosition[0]; ; x = physutil::moveTowards(x, _data->editorState.editEndPosition[0], 1))
@@ -435,8 +491,16 @@ void VoxelField::physicsUpdate(const float_t& physicsDeltaTime)
                             {
                                 for (z = _data->editorState.editStartPosition[2]; ; z = physutil::moveTowards(z, _data->editorState.editEndPosition[2], 1))
                                 {
-                                    if (setVoxelDataAtPositionNonDestructive(_data->vfpd, ivec3{ x, y, z }, 1))
-                                        rebuildRenderObjs = true;
+                                    if (_data->editorState.editType == VoxelField_XData::EditorState::EditType::APPEND)
+                                    {
+                                        if (setVoxelDataAtPositionNonDestructive(_data->vfpd, ivec3{ x, y, z }, 1))
+                                            rebuildRenderObjs = true;
+                                    }
+                                    else if (_data->editorState.editType == VoxelField_XData::EditorState::EditType::CHANGE_TO_SLOPE)
+                                    {
+                                        if (editVoxelDataAtPositionNoAdd(_data->vfpd, ivec3{ x, y, z }, slopeSpaceId))
+                                            rebuildRenderObjs = true;
+                                    }
                                     if (z == _data->editorState.editEndPosition[2]) break;
                                 }
                                 if (y == _data->editorState.editEndPosition[1]) break;
@@ -444,7 +508,7 @@ void VoxelField::physicsUpdate(const float_t& physicsDeltaTime)
                             if (x == _data->editorState.editEndPosition[0]) break;
                         }
                     }
-                    else
+                    else if (_data->editorState.editType == VoxelField_XData::EditorState::EditType::REMOVE)
                     {
                         // Delete all voxels in range.
                         int32_t x, y, z;
@@ -483,31 +547,32 @@ void VoxelField::physicsUpdate(const float_t& physicsDeltaTime)
                 }
             }
         }
-        else if (!prevCorXPressed)
+        else if (!prevCorXorVPressed &&
+            (input::keyCPressed || input::keyXPressed || input::keyVPressed) &&
+            raycastMouseToVoxel(_data->engine, _data->vfpd, _data->editorState.editStartPosition, _data->editorState.flatAxis))
         {
+            // Enter editing mode
+            _data->editorState.editing = true;
+            std::string editTypeStr = "";
             if (input::keyCPressed)
             {
-                if (raycastMouseToVoxel(_data->engine, _data->vfpd, _data->editorState.editStartPosition, _data->editorState.flatAxis))
-                {
-                    // Enter append mode
-                    _data->editorState.editing = true;
-                    _data->editorState.isEditAnAppend = true;
-                    std::cout << "STARTING EDITING (APPEND) at { " << _data->editorState.editStartPosition[0] << ", " << _data->editorState.editStartPosition[1] << ", " << _data->editorState.editStartPosition[2] << " } with axis { " << _data->editorState.flatAxis[0] << ", " << _data->editorState.flatAxis[1] << ", " << _data->editorState.flatAxis[2] << " }" << std::endl;
-                }
+                _data->editorState.editType = VoxelField_XData::EditorState::EditType::APPEND;
+                editTypeStr = "APPEND";
             }
             else if (input::keyXPressed)
             {
-                if (raycastMouseToVoxel(_data->engine, _data->vfpd, _data->editorState.editStartPosition, _data->editorState.flatAxis))
-                {
-                    // Enter remove mode
-                    _data->editorState.editing = true;
-                    _data->editorState.isEditAnAppend = false;
-                    std::cout << "STARTING EDITING (REMOVE) at { " << _data->editorState.editStartPosition[0] << ", " << _data->editorState.editStartPosition[1] << ", " << _data->editorState.editStartPosition[2] << " } with axis { " << _data->editorState.flatAxis[0] << ", " << _data->editorState.flatAxis[1] << ", " << _data->editorState.flatAxis[2] << " }" << std::endl;
-                }
+                _data->editorState.editType = VoxelField_XData::EditorState::EditType::REMOVE;
+                editTypeStr = "REMOVE";
             }
+            else if (input::keyVPressed)
+            {
+                _data->editorState.editType = VoxelField_XData::EditorState::EditType::CHANGE_TO_SLOPE;
+                editTypeStr = "CHANGE_TO_SLOPE";
+            }
+            std::cout << "STARTING EDITING (" << editTypeStr << ") at { " << _data->editorState.editStartPosition[0] << ", " << _data->editorState.editStartPosition[1] << ", " << _data->editorState.editStartPosition[2] << " } with axis { " << _data->editorState.flatAxis[0] << ", " << _data->editorState.flatAxis[1] << ", " << _data->editorState.flatAxis[2] << " }" << std::endl;
         }
 
-        prevCorXPressed = input::keyCPressed || input::keyXPressed;
+        prevCorXorVPressed = input::keyCPressed || input::keyXPressed || input::keyVPressed;
         _data->isPicked = false;
     }
 }

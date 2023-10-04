@@ -876,76 +876,163 @@ namespace physengine
                 continue;
             
             // Start greedy search.
-            size_t encX = 1,  // Encapsulation sizes. Multiply it all together to get the count of encapsulation.
-                encY = 1,
-                encZ = 1;
-            for (size_t x = i + 1; x < vfpd.sizeX; x++)
+            if (vfpd.voxelData[idx] == 1)
             {
-                // Test whether next position is viable.
-                size_t idx = x * vfpd.sizeY * vfpd.sizeZ + j * vfpd.sizeZ + k;
-                bool viable = (vfpd.voxelData[idx] != 0 && !processed[idx]);
-                if (!viable)
-                    break;  // Exit if not viable.
-                
-                encX++; // March forward.
-            }
-            for (size_t y = j + 1; y < vfpd.sizeY; y++)
-            {
-                // Test whether next row of positions are viable.
-                bool viable = true;
-                for (size_t x = i; x < i + encX; x++)
+                // Filled space search.
+                size_t encX = 1,  // Encapsulation sizes. Multiply it all together to get the count of encapsulation.
+                    encY = 1,
+                    encZ = 1;
+                for (size_t x = i + 1; x < vfpd.sizeX; x++)
                 {
-                    size_t idx = x * vfpd.sizeY * vfpd.sizeZ + y * vfpd.sizeZ + k;
-                    viable &= (vfpd.voxelData[idx] != 0 && !processed[idx]);
+                    // Test whether next position is viable.
+                    size_t idx = x * vfpd.sizeY * vfpd.sizeZ + j * vfpd.sizeZ + k;
+                    bool viable = (vfpd.voxelData[idx] == 1 && !processed[idx]);
                     if (!viable)
-                        break;
+                        break;  // Exit if not viable.
+                    
+                    encX++; // March forward.
+                }
+                for (size_t y = j + 1; y < vfpd.sizeY; y++)
+                {
+                    // Test whether next row of positions are viable.
+                    bool viable = true;
+                    for (size_t x = i; x < i + encX; x++)
+                    {
+                        size_t idx = x * vfpd.sizeY * vfpd.sizeZ + y * vfpd.sizeZ + k;
+                        viable &= (vfpd.voxelData[idx] == 1 && !processed[idx]);
+                        if (!viable)
+                            break;
+                    }
+
+                    if (!viable)
+                        break;  // Exit if not viable.
+                    
+                    encY++; // March forward.
+                }
+                for (size_t z = k + 1; z < vfpd.sizeZ; z++)
+                {
+                    // Test whether next sheet of positions are viable.
+                    bool viable = true;
+                    for (size_t x = i; x < i + encX; x++)
+                    for (size_t y = j; y < j + encY; y++)
+                    {
+                        size_t idx = x * vfpd.sizeY * vfpd.sizeZ + y * vfpd.sizeZ + z;
+                        viable &= (vfpd.voxelData[idx] == 1 && !processed[idx]);
+                        if (!viable)
+                            break;
+                    }
+
+                    if (!viable)
+                        break;  // Exit if not viable.
+                    
+                    encZ++; // March forward.
                 }
 
-                if (!viable)
-                    break;  // Exit if not viable.
-                
-                encY++; // March forward.
-            }
-            for (size_t z = k + 1; z < vfpd.sizeZ; z++)
-            {
-                // Test whether next sheet of positions are viable.
-                bool viable = true;
-                for (size_t x = i; x < i + encX; x++)
-                for (size_t y = j; y < j + encY; y++)
+                // Mark all claimed as processed.
+                for (size_t x = 0; x < encX; x++)
+                for (size_t y = 0; y < encY; y++)
+                for (size_t z = 0; z < encZ; z++)
                 {
-                    size_t idx = x * vfpd.sizeY * vfpd.sizeZ + y * vfpd.sizeZ + z;
-                    viable &= (vfpd.voxelData[idx] != 0 && !processed[idx]);
-                    if (!viable)
-                        break;
+                    size_t idx = (x + i) * vfpd.sizeY * vfpd.sizeZ + (y + j) * vfpd.sizeZ + (z + k);
+                    processed[idx] = true;
                 }
 
-                if (!viable)
-                    break;  // Exit if not viable.
-                
-                encZ++; // March forward.
-            }
+                // Create shape.
+                Vec3 extent((float_t)encX * 0.5f, (float_t)encY * 0.5f, (float_t)encZ * 0.5f);
+                Vec3 origin((float_t)i + extent.GetX(), (float_t)j + extent.GetY(), (float_t)k + extent.GetZ());
+                Quat rotation = Quat::sIdentity();
+                compoundShape->AddShape(origin, rotation, new BoxShape(extent));
 
-            // Mark all claimed as processed.
-            for (size_t x = 0; x < encX; x++)
-            for (size_t y = 0; y < encY; y++)
-            for (size_t z = 0; z < encZ; z++)
+                // Add shape props to `outShapes`.
+                VoxelFieldCollisionShape vfcs = {};
+                glm_vec3_copy(vec3{ origin.GetX(), origin.GetY(), origin.GetZ() }, vfcs.origin);
+                glm_quat_copy(versor{ rotation.GetX(), rotation.GetY(), rotation.GetZ(), rotation.GetW() }, vfcs.rotation);
+                glm_vec3_copy(vec3{ extent.GetX(), extent.GetY(), extent.GetZ() }, vfcs.extent);
+                outShapes.push_back(vfcs);
+            }
+            else if (vfpd.voxelData[idx] >= 2)
             {
-                size_t idx = (x + i) * vfpd.sizeY * vfpd.sizeZ + (y + j) * vfpd.sizeZ + (z + k);
-                processed[idx] = true;
+                uint8_t myType = vfpd.voxelData[idx];
+                bool even = (myType == 2 || myType == 4);
+
+                // Slope space search.
+                size_t length = 1;   // Amount slope takes to go down 1 level.
+                size_t width = 1;    // # spaces wide the same slope pattern goes.
+                size_t repeats = 1;  // # times this pattern repeats downward.
+
+                // Get length dimension.
+                for (size_t l = (even ? k : i) + 1; l < (even ? vfpd.sizeZ : vfpd.sizeX); l++)
+                {
+                    // Test whether next position is viable.
+                    size_t idx;
+                    if (even)
+                        idx = l * vfpd.sizeY * vfpd.sizeZ + j * vfpd.sizeZ + k;
+                    else
+                        idx = i * vfpd.sizeY * vfpd.sizeZ + j * vfpd.sizeZ + l;
+
+                    bool viable = (vfpd.voxelData[idx] == myType && !processed[idx]);
+                    if (!viable)
+                        break;  // Exit if not viable.
+                    
+                    length++; // March forward.
+                }
+
+                // Get width dimension.
+                for (size_t w = (even ? i : k) + 1; w < (even ? vfpd.sizeX : vfpd.sizeZ); w++)
+                {
+                    // Test whether next row of positions are viable.
+                    bool viable = true;
+                    for (size_t l = (even ? k : i); l < (even ? k : i) + length; l++)
+                    {
+                        size_t idx;
+                        if (even)
+                            idx = l * vfpd.sizeY * vfpd.sizeZ + j * vfpd.sizeZ + w;
+                        else
+                            idx = w * vfpd.sizeY * vfpd.sizeZ + j * vfpd.sizeZ + l;
+
+                        viable &= (vfpd.voxelData[idx] == myType && !processed[idx]);
+                        if (!viable)
+                            break;
+                    }
+
+                    if (!viable)
+                        break;  // Exit if not viable.
+                    
+                    width++; // March forward.
+                }
+
+                // @TODO: get repeats.
+
+                // Create shape.
+                float_t realLength = std::sqrtf(1.0f + (float_t)length * (float_t)length);
+                float_t angle = 90.0f - std::asinf(1.0f / realLength);
+                float_t realHeight = std::sinf(angle);
+
+                Vec3 normal;
+                if (myType == 2)
+                    normal = { 0.0f, 1.0f, -realLength };
+                else if (myType == 3)
+                    normal = { -realLength, 1.0f, 0.0f };
+                else if (myType == 4)
+                    normal = { 0.0f, 1.0f,  realLength };
+                else if (myType == 5)
+                    normal = {  realLength, 1.0f, 0.0f };
+                Quat rotation = Quat::sFromTo(Vec3{ 0.0f, 1.0f, 0.0f }, normal);
+                
+                Vec3 extent((float_t)(even ? width : realLength) * 0.5f, (float_t)realHeight * 0.5f, (float_t)(even ? realLength : width) * 0.5f);
+
+                Vec3 origin = Vec3{ (float_t)i, (float_t)j, (float_t)k } + rotation * extent;
+
+                compoundShape->AddShape(origin, rotation, new BoxShape(extent));
+
+                // Add shape props to `outShapes`.
+                // @COPYPASTA
+                VoxelFieldCollisionShape vfcs = {};
+                glm_vec3_copy(vec3{ origin.GetX(), origin.GetY(), origin.GetZ() }, vfcs.origin);
+                glm_quat_copy(versor{ rotation.GetX(), rotation.GetY(), rotation.GetZ(), rotation.GetW() }, vfcs.rotation);
+                glm_vec3_copy(vec3{ extent.GetX(), extent.GetY(), extent.GetZ() }, vfcs.extent);
+                outShapes.push_back(vfcs);
             }
-
-            // Create shape.
-            Vec3 extent((float_t)encX * 0.5f, (float_t)encY * 0.5f, (float_t)encZ * 0.5f);
-            Vec3 origin((float_t)i + extent.GetX(), (float_t)j + extent.GetY(), (float_t)k + extent.GetZ());
-            Quat rotation = Quat::sIdentity();
-            compoundShape->AddShape(origin, rotation, new BoxShape(extent));
-
-            // Add shape props to `outShapes`.
-            VoxelFieldCollisionShape vfcs = {};
-            glm_vec3_copy(vec3{ origin.GetX(), origin.GetY(), origin.GetZ() }, vfcs.origin);
-            glm_quat_copy(versor{ rotation.GetX(), rotation.GetY(), rotation.GetZ(), rotation.GetW() }, vfcs.rotation);
-            glm_vec3_copy(vec3{ extent.GetX(), extent.GetY(), extent.GetZ() }, vfcs.extent);
-            outShapes.push_back(vfcs);
         }
 
         if (compoundShape->mSubShapes.size() == 0)
@@ -959,7 +1046,7 @@ namespace physengine
         versor rotV;
         glm_mat4_quat(rot, rotV);
 
-        // @TODO: kinematic is set here bc the weighted island mechanic will come later.
+        // DYNAMIC is set so that voxel field can move around with the influence of other physics objects.
         vfpd.bodyId = bodyInterface.CreateBody(BodyCreationSettings(compoundShape, RVec3(pos[0], pos[1], pos[2]), Quat(rotV[0], rotV[1], rotV[2], rotV[3]), EMotionType::Dynamic, Layers::MOVING))->GetID();
         bodyInterface.SetGravityFactor(vfpd.bodyId, 0.0f);
         bodyInterface.AddBody(vfpd.bodyId, EActivation::DontActivate);

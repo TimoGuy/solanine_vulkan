@@ -41,18 +41,22 @@ namespace physengine
         // Currently implemented:
         //        0: empty space
         //        1: filled space
+        //        2: slope space (uphill North)
+        //        3: slope space (uphill East)
+        //        4: slope space (uphill South)
+        //        5: slope space (uphill West)
         //
         // For the future:
-        //        2: half-height space (bottom)
-        //        3: half-height space (top)
-        //        4: 4-step stair space (South 0.0 height, North 0.5 height)
-        //        5: 4-step stair space (South 0.5 height, North 1.0 height)
-        //        6: 4-step stair space (North 0.0 height, South 0.5 height)
-        //        7: 4-step stair space (North 0.5 height, South 1.0 height)
-        //        8: 4-step stair space (East  0.0 height, West  0.5 height)
-        //        9: 4-step stair space (East  0.5 height, West  1.0 height)
-        //       10: 4-step stair space (West  0.0 height, East  0.5 height)
-        //       11: 4-step stair space (West  0.5 height, East  1.0 height)
+        //        half-height space (bottom)
+        //        half-height space (top)
+        //        4-step stair space (South 0.0 height, North 0.5 height)
+        //        4-step stair space (South 0.5 height, North 1.0 height)
+        //        4-step stair space (North 0.0 height, South 0.5 height)
+        //        4-step stair space (North 0.5 height, South 1.0 height)
+        //        4-step stair space (East  0.0 height, West  0.5 height)
+        //        4-step stair space (East  0.5 height, West  1.0 height)
+        //        4-step stair space (West  0.0 height, East  0.5 height)
+        //        4-step stair space (West  0.5 height, East  1.0 height)
         //
         size_t sizeX, sizeY, sizeZ;
         uint8_t* voxelData;
