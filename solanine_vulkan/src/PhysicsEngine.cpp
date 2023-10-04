@@ -1003,6 +1003,14 @@ namespace physengine
 
                 // @TODO: get repeats.
 
+                // Mark all claimed as processed.
+                for (size_t x = 0; x < (even ? width : length); x++)
+                for (size_t z = 0; z < (even ? length : width); z++)
+                {
+                    size_t idx = (x + i) * vfpd.sizeY * vfpd.sizeZ + j * vfpd.sizeZ + (z + k);
+                    processed[idx] = true;
+                }
+
                 // Create shape.
                 float_t realLength = std::sqrtf(1.0f + (float_t)length * (float_t)length);
                 float_t angle = 90.0f - std::asinf(1.0f / realLength);
