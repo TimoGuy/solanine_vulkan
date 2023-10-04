@@ -966,9 +966,9 @@ namespace physengine
                     // Test whether next position is viable.
                     size_t idx;
                     if (even)
-                        idx = l * vfpd.sizeY * vfpd.sizeZ + j * vfpd.sizeZ + k;
-                    else
                         idx = i * vfpd.sizeY * vfpd.sizeZ + j * vfpd.sizeZ + l;
+                    else
+                        idx = l * vfpd.sizeY * vfpd.sizeZ + j * vfpd.sizeZ + k;
 
                     bool viable = (vfpd.voxelData[idx] == myType && !processed[idx]);
                     if (!viable)
@@ -986,9 +986,9 @@ namespace physengine
                     {
                         size_t idx;
                         if (even)
-                            idx = l * vfpd.sizeY * vfpd.sizeZ + j * vfpd.sizeZ + w;
-                        else
                             idx = w * vfpd.sizeY * vfpd.sizeZ + j * vfpd.sizeZ + l;
+                        else
+                            idx = l * vfpd.sizeY * vfpd.sizeZ + j * vfpd.sizeZ + w;
 
                         viable &= (vfpd.voxelData[idx] == myType && !processed[idx]);
                         if (!viable)
@@ -1013,23 +1013,25 @@ namespace physengine
 
                 // Create shape.
                 float_t realLength = std::sqrtf(1.0f + (float_t)length * (float_t)length);
-                float_t angle = 90.0f - std::asinf(1.0f / realLength);
-                float_t realHeight = std::sinf(angle);
+                float_t angle      = std::asinf(1.0f / realLength);
+                float_t realHeight = std::sinf(90.0f - angle);
 
-                Vec3 normal;
+                Quat rotation;
                 if (myType == 2)
-                    normal = { 0.0f, 1.0f, -realLength };
+                    rotation = Quat::sEulerAngles(Vec3(-angle, 0.0f, 0.0f));
                 else if (myType == 3)
-                    normal = { -realLength, 1.0f, 0.0f };
+                    rotation = Quat::sEulerAngles(Vec3(0.0f, 0.0f, angle));
                 else if (myType == 4)
-                    normal = { 0.0f, 1.0f,  realLength };
+                    rotation = Quat::sEulerAngles(Vec3(angle, 0.0f, 0.0f));
                 else if (myType == 5)
-                    normal = {  realLength, 1.0f, 0.0f };
-                Quat rotation = Quat::sFromTo(Vec3{ 0.0f, 1.0f, 0.0f }, normal);
+                    rotation = Quat::sEulerAngles(Vec3(0.0f, 0.0f, -angle));
+                else
+                    std::cerr << "[COOKING VOXEL SHAPES]" << std::endl
+                        << "WARNING: voxel type " << myType << " was not recognized." << std::endl;
                 
                 Vec3 extent((float_t)(even ? width : realLength) * 0.5f, (float_t)realHeight * 0.5f, (float_t)(even ? realLength : width) * 0.5f);
 
-                Vec3 origin = Vec3{ (float_t)i, (float_t)j, (float_t)k } + rotation * extent;
+                Vec3 origin = Vec3{ (float_t)i, (float_t)j, (float_t)k } + rotation * (extent + Vec3(0.0f, -realHeight, 0.0f));
 
                 compoundShape->AddShape(origin, rotation, new BoxShape(extent));
 

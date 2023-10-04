@@ -353,7 +353,7 @@ void drawSquareForVoxel(mat4 vfpdTransform, vec3 pos, vec3 normal)
         physengine::drawDebugVisLine(vertices[i], vertices[(i + 1) % vertices.size()]);
 }
 
-void drawVoxelEditingVisualization(VoxelField_XData* d)
+bool drawVoxelEditingVisualization(VoxelField_XData* d)
 {
     // Get start and end positions.
     vec3 normal = { (float_t)d->editorState.flatAxis[0], (float_t)d->editorState.flatAxis[1], (float_t)d->editorState.flatAxis[2] };
@@ -365,6 +365,7 @@ void drawVoxelEditingVisualization(VoxelField_XData* d)
 
     // Iterate and draw all squares.
     int32_t x, y, z;
+    size_t iterations = 0;
     for (x = (int32_t)floor(pt1[0]); ; x = physutil::moveTowards(x, (int32_t)floor(pt2[0]), 1))
     {
         for (y = (int32_t)floor(pt1[1]); ; y = physutil::moveTowards(y, (int32_t)floor(pt2[1]), 1))
@@ -374,12 +375,15 @@ void drawVoxelEditingVisualization(VoxelField_XData* d)
                 vec3 drawPos = { x + 0.5f, y + 0.5f, z + 0.5f };
                 glm_vec3_muladds(normal, 0.5f, drawPos);
                 drawSquareForVoxel(d->vfpd->transform, drawPos, normal);
+                if (iterations++ > 10000)
+                    return false;  // Return bc there definitely is a problem.
                 if (z == (int32_t)floor(pt2[2])) break;
             }
             if (y == (int32_t)floor(pt2[1])) break;
         }
         if (x == (int32_t)floor(pt2[0])) break;
     }
+    return true;
 }
 
 void VoxelField::physicsUpdate(const float_t& physicsDeltaTime)
@@ -419,8 +423,8 @@ void VoxelField::physicsUpdate(const float_t& physicsDeltaTime)
                     if (_data->editorState.editType == VoxelField_XData::EditorState::EditType::APPEND ||
                         _data->editorState.editType == VoxelField_XData::EditorState::EditType::CHANGE_TO_SLOPE)
                     {
-                        // @NOTE: only append at spots that are empty
-                        if (glm_ivec3_distance2(_data->editorState.editStartPosition, _data->editorState.editEndPosition) == 0)
+                        if (_data->editorState.editType == VoxelField_XData::EditorState::EditType::APPEND &&
+                            glm_ivec3_distance2(_data->editorState.editStartPosition, _data->editorState.editEndPosition) == 0)
                         {
                             // Insert one sticking out
                             glm_ivec3_add(_data->editorState.editStartPosition, _data->editorState.flatAxis, _data->editorState.editStartPosition);
