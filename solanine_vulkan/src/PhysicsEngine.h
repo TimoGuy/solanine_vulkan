@@ -62,6 +62,13 @@ namespace physengine
         JPH::BodyID bodyId;
     };
 
+    struct VoxelFieldCollisionShape
+    {
+        vec3   origin;
+        versor rotation;
+        vec3   extent;
+    };
+
     VoxelFieldPhysicsData* createVoxelField(const std::string& entityGuid, mat4 transform, const size_t& sizeX, const size_t& sizeY, const size_t& sizeZ, uint8_t* voxelData);
     bool destroyVoxelField(VoxelFieldPhysicsData* vfpd);
     uint8_t getVoxelDataAtPosition(const VoxelFieldPhysicsData& vfpd, const int32_t& x, const int32_t& y, const int32_t& z);
@@ -69,7 +76,7 @@ namespace physengine
     void expandVoxelFieldBounds(VoxelFieldPhysicsData& vfpd, ivec3 boundsMin, ivec3 boundsMax, ivec3& outOffset);
     void shrinkVoxelFieldBoundsAuto(VoxelFieldPhysicsData& vfpd, ivec3& outOffset);
     void asdfalskdjflkasdhflkahsdlgkh(VoxelFieldPhysicsData& vfpd); // @NOCHECKIN
-    void cookVoxelDataIntoShape(VoxelFieldPhysicsData& vfpd, const std::string& entityGuid);
+    void cookVoxelDataIntoShape(VoxelFieldPhysicsData& vfpd, const std::string& entityGuid, std::vector<VoxelFieldCollisionShape>& outShapes);
     void setVoxelFieldBodyTransform(VoxelFieldPhysicsData& vfpd, vec3 newPosition, versor newRotation);
 
     struct CapsulePhysicsData

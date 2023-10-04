@@ -23,7 +23,7 @@ struct VoxelField_XData
     RenderObjectManager* rom;
     vkglTF::Model* voxelModel;
     std::vector<RenderObject*> voxelRenderObjs;
-    std::vector<vec3s> voxelOffsets;  // @NOCHECKIN
+    std::vector<mat4s> voxelRenderObjLocalTransforms;
 
     size_t lightgridId = 0;  // If 0, then that means there is no light grid created.
 
@@ -43,8 +43,8 @@ struct VoxelField_XData
 };
 
 inline void buildDefaultVoxelData(VoxelField_XData& data, const std::string& myGuid);
-inline void assembleVoxelRenderObjects(VoxelField_XData& data, const std::string& attachedEntityGuid, std::vector<ivec3s> dirtyPositions);
-inline void deleteVoxelRenderObjects(VoxelField_XData& data, std::vector<ivec3s> dirtyPositions);
+inline void assembleVoxelRenderObjects(VoxelField_XData& data, const std::string& attachedEntityGuid, std::vector<physengine::VoxelFieldCollisionShape>& inCollisionShapes);
+inline void deleteVoxelRenderObjects(VoxelField_XData& data);
 void triggerLoadLightingIfExists(VoxelField_XData& d, const std::string& guid);
 
 
@@ -68,15 +68,16 @@ VoxelField::VoxelField(VulkanEngine* engine, EntityManager* em, RenderObjectMana
         buildDefaultVoxelData(*_data, getGUID());
 
     _data->voxelModel = _data->rom->getModel("DevBoxWood", this, [](){});
-    assembleVoxelRenderObjects(*_data, getGUID(), {});
-    physengine::cookVoxelDataIntoShape(*_data->vfpd, getGUID());
+    std::vector<physengine::VoxelFieldCollisionShape> shapes;
+    physengine::cookVoxelDataIntoShape(*_data->vfpd, getGUID(), shapes);
+    assembleVoxelRenderObjects(*_data, getGUID(), shapes);
     triggerLoadLightingIfExists(*_data, getGUID());
 }
 
 VoxelField::~VoxelField()
 {
     delete _data->editorState.editingVoxelRenderObjsMutex;
-    deleteVoxelRenderObjects(*_data, {});
+    deleteVoxelRenderObjects(*_data);
     physengine::destroyVoxelField(_data->vfpd);
     delete _data;
 }
@@ -392,7 +393,7 @@ void VoxelField::physicsUpdate(const float_t& physicsDeltaTime)
             else if (input::keyEnterPressed || (!prevCorXPressed && (input::keyCPressed || input::keyXPressed)))
             {
                 // Exit editing, saving changes
-                std::vector<ivec3s> dirtyPositions;
+                bool rebuildRenderObjs = false;
                 vec3 projectedPosition;
                 if (calculatePositionOnVoxelPlane(
                     _data->engine,
@@ -427,8 +428,7 @@ void VoxelField::physicsUpdate(const float_t& physicsDeltaTime)
                         glm_ivec3_add(_data->editorState.editEndPosition, offset, _data->editorState.editEndPosition);
 
                         // Insert the resized offset into renderobject offsets.
-                        for (size_t i = 0; i < _data->voxelOffsets.size(); i++)
-                            glm_vec3_add(_data->voxelOffsets[i].raw, vec3{ (float_t)offset[0], (float_t)offset[1], (float_t)offset[2] }, _data->voxelOffsets[i].raw);
+                        glm_translate(_data->vfpd->transform, vec3{ (float_t)offset[0], (float_t)offset[1], (float_t)offset[2] });
 
                         // Create new voxels (for every spot that's empty) in range.
                         int32_t x, y, z;
@@ -439,7 +439,7 @@ void VoxelField::physicsUpdate(const float_t& physicsDeltaTime)
                                 for (z = _data->editorState.editStartPosition[2]; ; z = physutil::moveTowards(z, _data->editorState.editEndPosition[2], 1))
                                 {
                                     if (setVoxelDataAtPositionNonDestructive(_data->vfpd, ivec3{ x, y, z }, 1))
-                                        dirtyPositions.push_back(ivec3s{ x, y, z });
+                                        rebuildRenderObjs = true;
                                     if (z == _data->editorState.editEndPosition[2]) break;
                                 }
                                 if (y == _data->editorState.editEndPosition[1]) break;
@@ -458,7 +458,7 @@ void VoxelField::physicsUpdate(const float_t& physicsDeltaTime)
                                 for (z = _data->editorState.editStartPosition[2]; ; z = physutil::moveTowards(z, _data->editorState.editEndPosition[2], 1))
                                 {
                                     physengine::setVoxelDataAtPosition(*_data->vfpd, x, y, z, 0);
-                                    dirtyPositions.push_back(ivec3s{ x, y, z });
+                                    rebuildRenderObjs = true;
                                     if (z == _data->editorState.editEndPosition[2]) break;
                                 }
                                 if (y == _data->editorState.editEndPosition[1]) break;
@@ -472,16 +472,16 @@ void VoxelField::physicsUpdate(const float_t& physicsDeltaTime)
 
                         // Insert the resized offset into renderobject offsets.
                         // @COPYPASTA
-                        for (size_t i = 0; i < _data->voxelOffsets.size(); i++)
-                            glm_vec3_add(_data->voxelOffsets[i].raw, vec3{ (float_t)offset[0], (float_t)offset[1], (float_t)offset[2] }, _data->voxelOffsets[i].raw);
+                        glm_translate(_data->vfpd->transform, vec3{ (float_t)offset[0], (float_t)offset[1], (float_t)offset[2] });
                     }
                 }
                 _data->editorState.editing = false;
 
-                if (!dirtyPositions.empty())
+                if (rebuildRenderObjs)
                 {
-                    assembleVoxelRenderObjects(*_data, getGUID(), dirtyPositions);
-                    physengine::cookVoxelDataIntoShape(*_data->vfpd, getGUID());
+                    std::vector<physengine::VoxelFieldCollisionShape> shapes;
+                    physengine::cookVoxelDataIntoShape(*_data->vfpd, getGUID(), shapes);
+                    assembleVoxelRenderObjects(*_data, getGUID(), shapes);
                     _data->isLightingDirty = true;
                 }
             }
@@ -543,10 +543,7 @@ void VoxelField::lateUpdate(const float_t& deltaTime)
         std::lock_guard<std::mutex> lg(*_data->editorState.editingVoxelRenderObjsMutex);
 
         for (size_t i = 0; i < _data->voxelRenderObjs.size(); i++)
-        {
-            glm_mat4_copy(_data->vfpd->interpolTransform, _data->voxelRenderObjs[i]->transformMatrix);
-            glm_translate(_data->voxelRenderObjs[i]->transformMatrix, _data->voxelOffsets[i].raw);
-        }
+            glm_mat4_mul(_data->vfpd->interpolTransform, _data->voxelRenderObjLocalTransforms[i].raw, _data->voxelRenderObjs[i]->transformMatrix);
     }
 }
 
@@ -643,6 +640,8 @@ void VoxelField::load(DataSerialized& ds)
 
 void VoxelField::reportMoved(mat4* matrixMoved)
 {
+#define HIDING_THIS 0
+#if HIDING_THIS
     // Search for which block was moved
     size_t i = 0;
     for (; i < _data->voxelRenderObjs.size(); i++)
@@ -670,6 +669,7 @@ void VoxelField::reportMoved(mat4* matrixMoved)
         glm_mat4_copy(_data->vfpd->transform, _data->voxelRenderObjs[i2]->transformMatrix);
         glm_translate(_data->voxelRenderObjs[i2]->transformMatrix, _data->voxelOffsets[i2].raw);
     }
+#endif
 }
 
 bool isOutsideLightGrid(physengine::VoxelFieldPhysicsData* vfpd, ivec3 position)
@@ -1173,66 +1173,38 @@ inline void buildDefaultVoxelData(VoxelField_XData& data, const std::string& myG
     data.vfpd = physengine::createVoxelField(myGuid, identity, sizeX, sizeY, sizeZ, vd);
 }
 
-inline void assembleVoxelRenderObjects(VoxelField_XData& data, const std::string& attachedEntityGuid, std::vector<ivec3s> dirtyPositions)
+inline void assembleVoxelRenderObjects(VoxelField_XData& data, const std::string& attachedEntityGuid, std::vector<physengine::VoxelFieldCollisionShape>& inCollisionShapes)
 {
     std::lock_guard<std::mutex> lg(*data.editorState.editingVoxelRenderObjsMutex);
 
-    deleteVoxelRenderObjects(data, dirtyPositions);
+    deleteVoxelRenderObjects(data);
 
-    // Check for if voxel is filled and not surrounded
+    // Iterate thru each shape, adding it.
     std::vector<RenderObject> inROs;
     std::vector<RenderObject**> outRORefs;
-    size_t startRenderObjectIndex = data.voxelRenderObjs.size();  // Set offset so only create new render objects for new renderobjects created in this round (in case there are already existing ones).
-    for (int32_t i = 0; i < data.vfpd->sizeX; i++)
-    for (int32_t j = 0; j < data.vfpd->sizeY; j++)
-    for (int32_t k = 0; k < data.vfpd->sizeZ; k++)
+    for (auto& shape : inCollisionShapes)
     {
-        if (physengine::getVoxelDataAtPosition(*data.vfpd, i, j, k))
-        {
-            // Check if surrounded. If not, add a renderobject for this voxel
-            if (!physengine::getVoxelDataAtPosition(*data.vfpd, i + 1, j, k) ||
-                !physengine::getVoxelDataAtPosition(*data.vfpd, i - 1, j, k) ||
-                !physengine::getVoxelDataAtPosition(*data.vfpd, i, j + 1, k) ||
-                !physengine::getVoxelDataAtPosition(*data.vfpd, i, j - 1, k) ||
-                !physengine::getVoxelDataAtPosition(*data.vfpd, i, j, k + 1) ||
-                !physengine::getVoxelDataAtPosition(*data.vfpd, i, j, k - 1))
-            {
-                if (!dirtyPositions.empty())
-                {
-                    // Check to see if voxel to add is within dirtypositions.
-                    bool withinRange = false;
-                    for (ivec3s& dp : dirtyPositions)  // @COPYPASTA
-                    {
-                        ivec3 diff;
-                        glm_ivec3_sub(ivec3{ i, j, k }, dp.raw, diff);
-                        glm_ivec3_abs(diff, diff);
-                        int32_t distance = diff[0] + diff[1] + diff[2];  // Manhattan distance.
-                        if (distance <= 1)
-                        {
-                            withinRange = true;
-                            break;
-                        }
-                    }
-                    if (!withinRange)
-                        continue;  // Skip evaluating this voxel bc the render object should already exist here.
-                }
+        RenderObject newRO = {
+            .model = data.voxelModel,
+            .renderLayer = RenderLayer::BUILDER,
+            .attachedEntityGuid = attachedEntityGuid,
+        };
 
-                vec3s ijk_0_5 = { i + 0.5f, j + 0.5f, k + 0.5f };
-                RenderObject newRO = {
-                    .model = data.voxelModel,
-                    .renderLayer = RenderLayer::BUILDER,
-                    .attachedEntityGuid = attachedEntityGuid,
-                };
-                glm_mat4_copy(data.vfpd->transform, newRO.transformMatrix);
-                glm_translate(newRO.transformMatrix, ijk_0_5.raw);
+        mat4s localTransform;
+        glm_mat4_identity(localTransform.raw);
+        glm_translate(localTransform.raw, shape.origin);
+        glm_quat_rotate(localTransform.raw, shape.rotation, localTransform.raw);
+        vec3 extent2;
+        glm_vec3_scale(shape.extent, 2.0f, extent2);
+        glm_scale(localTransform.raw, extent2);
+        data.voxelRenderObjLocalTransforms.push_back(localTransform);
 
-                inROs.push_back(newRO);
-                data.voxelRenderObjs.push_back(nullptr);
-                data.voxelOffsets.push_back(ijk_0_5);  // @NOCHECKIN: error with adding vec3's
-            }
-        }
+        glm_mat4_mul(data.vfpd->transform, localTransform.raw, newRO.transformMatrix);
+        inROs.push_back(newRO);
     }
-    for (size_t i = startRenderObjectIndex; i < data.voxelRenderObjs.size(); i++)
+
+    data.voxelRenderObjs.resize(inROs.size(), nullptr);
+    for (size_t i = 0; i < data.voxelRenderObjs.size(); i++)
         outRORefs.push_back(&data.voxelRenderObjs[i]);
     data.rom->registerRenderObjects(inROs, outRORefs);
 
@@ -1242,36 +1214,10 @@ inline void assembleVoxelRenderObjects(VoxelField_XData& data, const std::string
             inst.voxelFieldLightingGridID = data.lightgridId;
 }
 
-inline void deleteVoxelRenderObjects(VoxelField_XData& data, std::vector<ivec3s> dirtyPositions)
+inline void deleteVoxelRenderObjects(VoxelField_XData& data)
 {
-    if (dirtyPositions.empty())
-    {
-        // Clear all.
-        data.rom->unregisterRenderObjects(data.voxelRenderObjs);
-        data.voxelRenderObjs.clear();
-        data.voxelOffsets.clear();
-        return;
-    }
-
-    // Clear only dirtypositions.
-    std::vector<RenderObject*> rosToDelete;
-    for (int32_t i = data.voxelRenderObjs.size() - 1; i >= 0; i--)
-    {
-        ivec3 offsetAsInt = { floor(data.voxelOffsets[i].x), floor(data.voxelOffsets[i].y), floor(data.voxelOffsets[i].z) };
-        for (ivec3s& dp : dirtyPositions)
-        {
-            ivec3 diff;
-            glm_ivec3_sub(offsetAsInt, dp.raw, diff);
-            glm_ivec3_abs(diff, diff);
-            int32_t distance = diff[0] + diff[1] + diff[2];  // Manhattan distance.
-            if (distance <= 1)
-            {
-                rosToDelete.push_back(data.voxelRenderObjs[i]);
-                data.voxelRenderObjs.erase(data.voxelRenderObjs.begin() + i);
-                data.voxelOffsets.erase(data.voxelOffsets.begin() + i);
-                break;
-            }
-        }
-    }
-    data.rom->unregisterRenderObjects(rosToDelete);
+    // Clear all.
+    data.rom->unregisterRenderObjects(data.voxelRenderObjs);
+    data.voxelRenderObjs.clear();
+    data.voxelRenderObjLocalTransforms.clear();
 }

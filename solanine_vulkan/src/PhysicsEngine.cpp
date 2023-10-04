@@ -855,7 +855,7 @@ namespace physengine
 		std::cout << "Position = (" << position.GetX() << ", " << position.GetY() << ", " << position.GetZ() << "), Velocity = (" << velocity.GetX() << ", " << velocity.GetY() << ", " << velocity.GetZ() << ")" << std::endl;
     }
 
-    void cookVoxelDataIntoShape(VoxelFieldPhysicsData& vfpd, const std::string& entityGuid)
+    void cookVoxelDataIntoShape(VoxelFieldPhysicsData& vfpd, const std::string& entityGuid, std::vector<VoxelFieldCollisionShape>& outShapes)
     {
         BodyInterface& bodyInterface = physicsSystem->GetBodyInterface();
 
@@ -945,7 +945,15 @@ namespace physengine
             // Create shape.
             Vec3 extent((float_t)encX * 0.5f, (float_t)encY * 0.5f, (float_t)encZ * 0.5f);
             Vec3 origin((float_t)i + extent.GetX(), (float_t)j + extent.GetY(), (float_t)k + extent.GetZ());
-            compoundShape->AddShape(origin, Quat::sIdentity(), new BoxShape(extent));
+            Quat rotation = Quat::sIdentity();
+            compoundShape->AddShape(origin, rotation, new BoxShape(extent));
+
+            // Add shape props to `outShapes`.
+            VoxelFieldCollisionShape vfcs = {};
+            glm_vec3_copy(vec3{ origin.GetX(), origin.GetY(), origin.GetZ() }, vfcs.origin);
+            glm_quat_copy(versor{ rotation.GetX(), rotation.GetY(), rotation.GetZ(), rotation.GetW() }, vfcs.rotation);
+            glm_vec3_copy(vec3{ extent.GetX(), extent.GetY(), extent.GetZ() }, vfcs.extent);
+            outShapes.push_back(vfcs);
         }
 
         if (compoundShape->mSubShapes.size() == 0)
