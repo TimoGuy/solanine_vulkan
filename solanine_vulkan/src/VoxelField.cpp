@@ -375,9 +375,6 @@ void VoxelField::physicsUpdate(const float_t& physicsDeltaTime)
 {
     if (_data->isPicked)  // @NOTE: this picked checking system, bc physicsupdate() runs outside of the render thread, could easily get out of sync, but as long as the render thread is >40fps it should be fine.
     {
-        // @DEBUG: @NOCHECKIN: print out the current position and velocity.
-        physengine::asdfalskdjflkasdhflkahsdlgkh(*_data->vfpd);
-
         static bool prevCorXPressed = false;
 
         if (_data->editorState.editing)

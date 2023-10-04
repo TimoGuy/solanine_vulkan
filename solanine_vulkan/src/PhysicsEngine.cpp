@@ -847,14 +847,6 @@ namespace physengine
         std::cout << "Shurnk to { " << vfpd.sizeX << ", " << vfpd.sizeY << ", " << vfpd.sizeZ << " }" << std::endl;
     }
 
-    void asdfalskdjflkasdhflkahsdlgkh(VoxelFieldPhysicsData& vfpd)
-    {
-        BodyInterface& bodyInterface = physicsSystem->GetBodyInterface();
-        RVec3 position = bodyInterface.GetCenterOfMassPosition(vfpd.bodyId);
-		Vec3 velocity = bodyInterface.GetLinearVelocity(vfpd.bodyId);
-		std::cout << "Position = (" << position.GetX() << ", " << position.GetY() << ", " << position.GetZ() << "), Velocity = (" << velocity.GetX() << ", " << velocity.GetY() << ", " << velocity.GetZ() << ")" << std::endl;
-    }
-
     void cookVoxelDataIntoShape(VoxelFieldPhysicsData& vfpd, const std::string& entityGuid, std::vector<VoxelFieldCollisionShape>& outShapes)
     {
         BodyInterface& bodyInterface = physicsSystem->GetBodyInterface();
