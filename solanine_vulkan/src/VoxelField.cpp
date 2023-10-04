@@ -637,18 +637,15 @@ void VoxelField::load(DataSerialized& ds)
 
 void VoxelField::reportMoved(mat4* matrixMoved)
 {
-#define HIDING_THIS 0
-#if HIDING_THIS
-    // Search for which block was moved
+    // Search for which block was moved.
     size_t i = 0;
     for (; i < _data->voxelRenderObjs.size(); i++)
         if (matrixMoved == &_data->voxelRenderObjs[i]->transformMatrix)
             break;
     
-    glm_mat4_copy(*matrixMoved, _data->vfpd->transform);
-    vec3 negVoxelOffsets;
-    glm_vec3_negate_to(_data->voxelOffsets[i].raw, negVoxelOffsets);
-    glm_translate(_data->vfpd->transform, negVoxelOffsets);
+    mat4 inverseLocalTransform;
+    glm_mat4_inv(_data->voxelRenderObjLocalTransforms[i].raw, inverseLocalTransform);
+    glm_mat4_mul(*matrixMoved, inverseLocalTransform, _data->vfpd->transform);
 
     vec4 pos;
     mat4 rot;
@@ -657,16 +654,6 @@ void VoxelField::reportMoved(mat4* matrixMoved)
     versor rotV;
     glm_mat4_quat(rot, rotV);
     physengine::setVoxelFieldBodyTransform(*_data->vfpd, pos, rotV);
-
-    // Move all blocks according to the transform
-    for (size_t i2 = 0; i2 < _data->voxelOffsets.size(); i2++)
-    {
-        if (i2 == i)
-            continue;
-        glm_mat4_copy(_data->vfpd->transform, _data->voxelRenderObjs[i2]->transformMatrix);
-        glm_translate(_data->voxelRenderObjs[i2]->transformMatrix, _data->voxelOffsets[i2].raw);
-    }
-#endif
 }
 
 bool isOutsideLightGrid(physengine::VoxelFieldPhysicsData* vfpd, ivec3 position)
