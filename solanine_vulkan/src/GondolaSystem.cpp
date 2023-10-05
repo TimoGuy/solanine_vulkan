@@ -112,7 +112,7 @@ struct GondolaSystem_XData
         AssignedControlPoint secondaryBackwardCP;
         AssignedControlPoint auxiliaryForwardCP;
         AssignedControlPoint auxiliaryBackwardCP;
-        RenderObject* renderObj;
+        RenderObject* renderObj = nullptr;
     };
     std::vector<Station> stations;
 
@@ -124,7 +124,7 @@ struct GondolaSystem_XData
     } detailedStation;
 };
 
-void destructAndResetCollisions(GondolaSystem_XData* d, EntityManager* em)
+void destructAndResetGondolaCollisions(GondolaSystem_XData* d, EntityManager* em)
 {
     for (auto& collision : d->detailedGondola.collisions)
         em->destroyOwnedEntity((Entity*)collision);
@@ -189,10 +189,17 @@ void moveCollisionBodies(GondolaSystem_XData* d, bool staticMove, float_t physic
 void readyGondolaInteraction(GondolaSystem_XData* d, EntityManager* em, const GondolaSystem_XData::Simulation& simulation, size_t desiredSimulationIdx)
 {
     // Clear and rebuild
-    destructAndResetCollisions(d, em);
+    destructAndResetGondolaCollisions(d, em);
     buildCollisions(d, d->engineRef, d->detailedGondola.collisions, d->gondolaNetworkType);
     d->detailedGondola.prevClosestSimulation = desiredSimulationIdx;  // Mark cache as completed.
     moveCollisionBodies(d, true, 0.0f);
+}
+
+void destructAndResetStationCollision(GondolaSystem_XData* d, EntityManager* em)
+{
+    em->destroyOwnedEntity((Entity*)d->detailedStation.collision);
+    d->detailedStation.collision = nullptr;
+    d->detailedStation.prevClosestStation = (size_t)-1;
 }
 
 GondolaSystem::GondolaSystem(EntityManager* em, RenderObjectManager* rom, VulkanEngine* engineRef, DataSerialized* ds) : Entity(em, ds), _data(new GondolaSystem_XData())
@@ -254,12 +261,11 @@ GondolaSystem::~GondolaSystem()
             renderObjsToUnregister.push_back(ro);
     _data->rom->unregisterRenderObjects(renderObjsToUnregister);
 
-    destructAndResetCollisions(_data, _em);
+    destructAndResetGondolaCollisions(_data, _em);
 
     if (_data->detailedStation.collision != nullptr)
     {
-        _em->destroyOwnedEntity((Entity*)_data->detailedStation.collision);
-        _data->detailedStation.collision = nullptr;
+        destructAndResetStationCollision(_data, _em);
     }
 
     delete _data;
@@ -434,7 +440,7 @@ void updateSimulation(GondolaSystem_XData* d, EntityManager* em, size_t simIdx, 
             // Remove simulation if out of range.
             // @NOTE: @INCOMPLETE: this shouldn't happen. At the beginning there should be X number of gondolas spawned and then they all go in a uniform loop.
             if (d->detailedGondola.prevClosestSimulation == simIdx)
-                destructAndResetCollisions(d, em);
+                destructAndResetGondolaCollisions(d, em);
             d->rom->unregisterRenderObjects(ioSimulation.renderObjs);
             d->simulations.erase(d->simulations.begin() + simIdx);
             d->detailedGondola.prevClosestSimulation = (size_t)-1;  // Invalidate detailedGondola collision cache.
@@ -779,7 +785,7 @@ void executeXAction(GondolaSystem_XData* d, mat4* matrixToMove)
     d->triggerBakeSplineCache = true;
 }
 
-void executeVAction(GondolaSystem_XData* d, mat4* matrixToMove)
+void executeVAction(GondolaSystem_XData* d, EntityManager* em, mat4* matrixToMove)
 {
     size_t controlPointIdx = whichControlPointFromMatrix(d, matrixToMove);
     if (controlPointIdx == (size_t)-1)
@@ -804,7 +810,51 @@ void executeVAction(GondolaSystem_XData* d, mat4* matrixToMove)
         newStation.auxiliaryBackwardCP.cpIdx = controlPointIdx - 2;
 
     // Check if any of the control points are already taken. If so, overwrite other station.
-    // @TODO: @NOCHECKIN
+    struct ReservedCP
+    {
+        size_t cpIdx;
+        size_t stationIdx;
+    };
+    std::vector<ReservedCP> reservedCPs;
+    for (int64_t i = d->stations.size() - 1; i >= 0; i--)
+    {
+        auto& station = d->stations[i];
+        if (d->stations[i].anchorCP.cpIdx == newStation.anchorCP.cpIdx)
+        {
+            // Found self. That means wants to remove the station from here.
+            if (d->stations[i].renderObj != nullptr)
+                d->rom->unregisterRenderObjects({ d->stations[i].renderObj });
+            d->stations.erase(d->stations.begin() + i);
+            if (d->detailedStation.collision != nullptr)
+                destructAndResetStationCollision(d, em);
+            return;  // Action done. Don't finish adding the new station in. Exit.
+        }
+        reservedCPs.push_back({ station.anchorCP.cpIdx, (size_t)i });
+        reservedCPs.push_back({ station.secondaryForwardCP.cpIdx, (size_t)i });
+        reservedCPs.push_back({ station.secondaryBackwardCP.cpIdx, (size_t)i });
+        if (station.auxiliaryForwardCP.cpIdx != (size_t)-1)
+            reservedCPs.push_back({ station.auxiliaryForwardCP.cpIdx, (size_t)i });
+        if (station.auxiliaryBackwardCP.cpIdx != (size_t)-1)
+            reservedCPs.push_back({ station.auxiliaryBackwardCP.cpIdx, (size_t)i });
+    }
+    std::vector<size_t> deletedStationIdxs;
+    for (auto& reservedCP : reservedCPs)
+    {
+        if (std::find(deletedStationIdxs.begin(), deletedStationIdxs.end(), reservedCP.stationIdx) != deletedStationIdxs.end())
+            continue;
+
+        if (newStation.anchorCP.cpIdx == reservedCP.cpIdx ||
+            newStation.secondaryForwardCP.cpIdx == reservedCP.cpIdx ||
+            newStation.secondaryBackwardCP.cpIdx == reservedCP.cpIdx ||
+            newStation.auxiliaryForwardCP.cpIdx == reservedCP.cpIdx ||
+            newStation.auxiliaryBackwardCP.cpIdx == reservedCP.cpIdx)
+        {
+            d->stations.erase(d->stations.begin() + reservedCP.stationIdx);
+            if (d->detailedStation.collision != nullptr)
+                destructAndResetStationCollision(d, em);
+            deletedStationIdxs.push_back(reservedCP.stationIdx);
+        }
+    }
 
     // Line up the control points to the anchor point.
     vec3 localOffsetDelta = { 0.0f, 0.0f, LENGTH_STATION_LOCAL_NETWORK * 0.5f };
@@ -899,7 +949,7 @@ void GondolaSystem::renderImGui()
         executeXAction(_data, _engine->getMatrixToMove());
     prevXHeld = input::keyXPressed;
     if (input::keyVPressed && !prevVHeld)
-        executeVAction(_data, _engine->getMatrixToMove());
+        executeVAction(_data, _em, _engine->getMatrixToMove());
     prevVHeld = input::keyVPressed;
 
     // Imgui.
