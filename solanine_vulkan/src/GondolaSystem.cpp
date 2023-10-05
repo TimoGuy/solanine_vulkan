@@ -301,29 +301,46 @@ bool searchForRightTOnCurve(GondolaSystem_XData* d, float_t& ioT, vec3 anchorPos
 {
     float_t targetDistance2 = targetDistance * targetDistance;
 
-    float_t searchStride = targetDistance;
+    float_t searchStride = 0.5f;
     float_t searchDirection = startingSearchDirection;
     float_t searchPosDistWS2 = std::numeric_limits<float_t>::max();
+    float_t maxT = (float_t)d->splineCoefficientsCache.size() - 0.000001f;
 
-    while (searchStride > 0.1f && searchPosDistWS2 > 0.001f)  // This should be around 8 tries.
+    while (std::abs(targetDistance2 - searchPosDistWS2) > 0.1f)  // This should be around 8 tries... maybe.
     {
         ioT += searchStride * searchDirection;
+        
+        bool maybeWantingToGoFurtherIntoUndefined = false;
+        if (ioT < 0.0f)
+        {
+            ioT = 0.0f;
+            maybeWantingToGoFurtherIntoUndefined = true;
+        }
+        if (ioT > maxT)
+        {
+            ioT = maxT;
+            maybeWantingToGoFurtherIntoUndefined = true;
+        }
 
         vec3 searchPosition;
-        if (!calculatePositionOnCurveFromT(d, ioT, searchPosition))
-            return false;  // The search bugged out, exit.
+        calculatePositionOnCurveFromT(d, ioT, searchPosition);
+
         searchPosDistWS2 = glm_vec3_distance2(anchorPos, searchPosition);
 
         if (searchPosDistWS2 > targetDistance2)
         {
             if (searchDirection < 0.0f)
                 searchStride *= 0.5f;  // Cut stride in half since crossed the target pos.
+            else if (maybeWantingToGoFurtherIntoUndefined)
+                return false;  // Doesn't want to turn around after dipping into undefined zone. Exit.
             searchDirection = 1.0f;
         }
         else
         {
             if (searchDirection > 0.0f)
                 searchStride *= 0.5f;  // Cut stride in half since crossed the target pos.
+            else if (maybeWantingToGoFurtherIntoUndefined)
+                return false;  // Doesn't want to turn around after dipping into undefined zone. Exit.
             searchDirection = -1.0f;
         }
     }

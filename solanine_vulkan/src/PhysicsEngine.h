@@ -19,6 +19,8 @@ class VulkanEngine;
 
 namespace physengine
 {
+    extern bool isInitialized;
+
 #ifdef _DEVELOP
     void initDebugVisDescriptors(VulkanEngine* engine);
     void initDebugVisPipelines(VkRenderPass mainRenderPass, VkViewport& screenspaceViewport, VkRect2D& screenspaceScissor, DeletionQueue& deletionQueue);

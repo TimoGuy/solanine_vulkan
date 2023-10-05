@@ -50,6 +50,8 @@ using namespace JPH::literals;
 
 namespace physengine
 {
+    bool isInitialized = false;
+
     //
     // Physics engine works
     //
@@ -605,6 +607,8 @@ namespace physengine
 
         physicsSystem->OptimizeBroadPhase();
 
+        isInitialized = true;  // Initialization finished.
+
         //
         // Run Physics Simulation until no more.
         //
@@ -628,7 +632,7 @@ namespace physengine
             //         proportionate to the timescale.  -Timo 2023/06/10
             tick();
             entityManager->INTERNALphysicsUpdate(physicsDeltaTime);  // @NOTE: if timescale changes, then the system just waits longer/shorter.
-            physicsSystem->Update(physicsDeltaTime, 1, 1, &tempAllocator, &jobSystem);  // @NOCHECKIN
+            physicsSystem->Update(physicsDeltaTime, 1, 1, &tempAllocator, &jobSystem);
             tock();
 
 #ifdef _DEVELOP

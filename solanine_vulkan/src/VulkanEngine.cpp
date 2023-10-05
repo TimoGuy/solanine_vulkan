@@ -97,6 +97,8 @@ void VulkanEngine::init()
 	physengine::start(_entityManager);
 	globalState::initGlobalState(_camera->sceneCamera);
 
+	while (!physengine::isInitialized);  // Spin lock so that new scene doesn't get loaded before physics are finished initializing.
+
 	SDL_ShowWindow(_window);
 
 	_isInitialized = true;
