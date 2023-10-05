@@ -1284,3 +1284,10 @@ void VoxelField::moveBodyKinematic(vec3 newPosition, versor newRotation, const f
 {
     physengine::moveVoxelFieldBodyKinematic(*_data->vfpd, newPosition, newRotation, physicsDeltaTime);
 }
+
+void VoxelField::getSize(vec3& outSize)
+{
+    outSize[0] = (float_t)_data->vfpd->sizeX;
+    outSize[1] = (float_t)_data->vfpd->sizeY;
+    outSize[2] = (float_t)_data->vfpd->sizeZ;
+}

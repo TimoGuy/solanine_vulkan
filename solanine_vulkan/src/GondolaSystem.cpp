@@ -58,7 +58,7 @@ struct GondolaSystem_XData
 
         bool checkTimeslice()
         {
-            return (tickCount++ % total == position); 
+            return (tickCount++ % total == position);
         }
     } timeslicing;
 
@@ -410,7 +410,15 @@ void updateSimulation(GondolaSystem_XData* d, EntityManager* em, size_t simIdx, 
 
         // Update physics objects.
         if (d->detailedGondola.prevClosestSimulation == simIdx)
-            d->detailedGondola.collisions[i]->moveBodyKinematic(cart.calcCurrentROPos, cart.calcCurrentRORot, physicsDeltaTime);
+        {
+            vec3 extent;
+            d->detailedGondola.collisions[i]->getSize(extent);
+            glm_vec3_scale(extent, -0.5f, extent);
+            glm_mat4_mulv3(rotation, extent, 0.0f, extent);
+            vec3 kinematicPos;
+            glm_vec3_add(cart.calcCurrentROPos, extent, kinematicPos);
+            d->detailedGondola.collisions[i]->moveBodyKinematic(kinematicPos, cart.calcCurrentRORot, physicsDeltaTime);
+        }
     }
 }
 
