@@ -6,10 +6,16 @@
 #include "PhysicsEngine.h"
 #include "HotswapResources.h"
 #include "SceneManagement.h"
+#include "InputManager.h"
 #include "GlobalState.h"
+#include "DataSerialization.h"
 #include "VoxelField.h"
+#include "VulkanEngine.h"
 #include "imgui/imgui.h"
 
+
+VulkanEngine* GondolaSystem::_engine = nullptr;
+std::mutex useControlPointsMutex;
 
 struct GondolaSystem_XData
 {
@@ -37,18 +43,16 @@ struct GondolaSystem_XData
         std::vector<vec3s> splineLinePts;
         std::vector<vec3s> curveLinePts;
     } DEBUGCurveVisualization;
-    bool                             triggerBakeSplineCache = true;  // Do bake right at initialization.
+    bool triggerBakeSplineCache = true;  // Do bake right at initialization.
 
     enum class GondolaNetworkType
     {
-        NONE = 0,
         FUTSUU,
         JUNKYUU,
         KAISOKU,
         TOKKYUU,
     };
-    //GondolaNetworkType gondolaNetworkType = GondolaNetworkType::NONE;
-    GondolaNetworkType gondolaNetworkType = GondolaNetworkType::FUTSUU;  // @NOCHECKIN
+    GondolaNetworkType gondolaNetworkType = GondolaNetworkType::FUTSUU;
 
     struct TimeSlicing  // @NOTE: @TODO: as more things use timeslicing (if needed (ah but this one needs it I believe)), bring this out into a global counter.
     {
@@ -101,11 +105,6 @@ void buildCollisions(GondolaSystem_XData* d, VulkanEngine* engineRef, std::vecto
     std::vector<Entity*> ents;
     switch (networkType)
     {
-        case GondolaSystem_XData::GondolaNetworkType::NONE:
-            std::cerr << "[BUILD COLLISIONS]" << std::endl
-                << "WARNING: Gondola network type was set to NONE, so no collision object prefab was spawned." << std::endl;
-            return;
-            
         case GondolaSystem_XData::GondolaNetworkType::FUTSUU:
             scene::loadPrefab("gondola_collision_futsuu.hunk", engineRef, ents);  // Supposed to contain all the cars for collision (even though there are repeats in the collision data).
             break;
@@ -161,6 +160,7 @@ GondolaSystem::GondolaSystem(EntityManager* em, RenderObjectManager* rom, Vulkan
     if (ds)
         load(*ds);
 
+    // Control Obj render obj.
     _data->rom->registerRenderObjects({
             {
                 .model = _data->rom->getModel("BuilderObj_GondolaControlObject", this, [](){}),
@@ -175,22 +175,25 @@ GondolaSystem::GondolaSystem(EntityManager* em, RenderObjectManager* rom, Vulkan
     // Initialize some control points.
     if (_data->controlPoints.empty())
     {
-        std::vector<RenderObject> inROs;
-        inROs.resize(4, {
-            .model = _data->rom->getModel("BuilderObj_BezierHandle", this, [](){}),
-            .renderLayer = RenderLayer::BUILDER,
-            .attachedEntityGuid = getGUID(),
-        });
-        std::vector<RenderObject**> outROs;
         _data->controlPoints.resize(4, {});
         for (size_t i = 0; i < _data->controlPoints.size(); i++)
         {
             auto& cp = _data->controlPoints[i];
             glm_vec3_add(_data->position, vec3{ 0.0f, -5.0f, (float_t)i }, cp.position);
-            outROs.push_back(&cp.renderObj);
         }
-        _data->rom->registerRenderObjects(inROs, outROs);
     }
+
+    // Load in control point render objs.
+    std::vector<RenderObject> inROs;
+    std::vector<RenderObject**> outROs;
+    inROs.resize(_data->controlPoints.size(), {
+        .model = _data->rom->getModel("BuilderObj_BezierHandle", this, [](){}),
+        .renderLayer = RenderLayer::BUILDER,
+        .attachedEntityGuid = getGUID(),
+    });
+    for (auto& cp : _data->controlPoints)
+        outROs.push_back(&cp.renderObj);
+    _data->rom->registerRenderObjects(inROs, outROs);
 }
 
 GondolaSystem::~GondolaSystem()
@@ -440,6 +443,8 @@ void GondolaSystem::physicsUpdate(const float_t& physicsDeltaTime)
     // Rebake curve visualization.
     if (_data->triggerBakeSplineCache)
     {
+        std::lock_guard<std::mutex> lg(useControlPointsMutex);
+
         // Calculate coefficient cache.
         _data->splineCoefficientsCache.clear();
         for (size_t i = 0; i < _data->controlPoints.size() - 1; i++)
@@ -556,16 +561,47 @@ void GondolaSystem::lateUpdate(const float_t& deltaTime)
 void GondolaSystem::dump(DataSerializer& ds)
 {
     Entity::dump(ds);
+    ds.dumpVec3(_data->position);
+
+    float_t networkTypeF = (float_t)(int32_t)_data->gondolaNetworkType;
+    ds.dumpFloat(networkTypeF);
+
+    float_t numControlPtsF = (float_t)_data->controlPoints.size();
+    ds.dumpFloat(numControlPtsF);
+    for (auto& cp : _data->controlPoints)
+        ds.dumpVec3(cp.position);
 }
 
 void GondolaSystem::load(DataSerialized& ds)
 {
     Entity::load(ds);
+    ds.loadVec3(_data->position);
+
+    float_t networkTypeF;
+    ds.loadFloat(networkTypeF);
+    _data->gondolaNetworkType = GondolaSystem_XData::GondolaNetworkType((int32_t)networkTypeF);
+
+    float_t numControlPtsF;
+    ds.loadFloat(numControlPtsF);
+    _data->controlPoints.resize((size_t)numControlPtsF, {});
+    for (size_t i = 0; i < (size_t)numControlPtsF; i++)
+        ds.loadVec3(_data->controlPoints[i].position);
 }
 
 bool GondolaSystem::processMessage(DataSerialized& message)
 {
     return false;
+}
+
+size_t whichControlPointFromMatrix(GondolaSystem_XData* d, mat4* matrixToMove)
+{
+    for (size_t i = 0; i < d->controlPoints.size(); i++)
+    {
+        auto& cp = d->controlPoints[i];
+        if (matrixToMove == &cp.renderObj->transformMatrix)
+            return i;
+    }
+    return (size_t)-1;
 }
 
 void GondolaSystem::reportMoved(mat4* matrixMoved)
@@ -591,21 +627,98 @@ void GondolaSystem::reportMoved(mat4* matrixMoved)
     }
 
     // Check to see if spline control point.
-    for (auto& cp : _data->controlPoints)
+    size_t controlPointIdx = whichControlPointFromMatrix(_data, matrixMoved);
+    if (controlPointIdx != (size_t)-1)
     {
-        if (matrixMoved == &cp.renderObj->transformMatrix)
-        {
-            glm_vec3_copy(pos, cp.position);
-            _data->triggerBakeSplineCache = true;
-            return;
-        }
+        glm_vec3_copy(pos, _data->controlPoints[controlPointIdx].position);
+        _data->triggerBakeSplineCache = true;
     }
 
     // Ignore movements to simulations.
 }
 
+void executeCAction(GondolaSystem_XData* d, GondolaSystem* _this, const std::string& myGuid, mat4* matrixToMove)
+{
+    size_t controlPointIdx = whichControlPointFromMatrix(d, matrixToMove);
+    if (controlPointIdx == (size_t)-1)
+        return;
+
+    bool backwards = input::keyShiftPressed;
+    float_t directionMultiplier = 1.0f;
+    if (backwards)
+        directionMultiplier = -1.0f;
+
+    std::lock_guard<std::mutex> lg(useControlPointsMutex);
+
+    // Create new control point.
+    GondolaSystem_XData::ControlPoint newControlPoint = {};
+    vec3 otherPos;
+    if (controlPointIdx == 0 && backwards)
+    {
+        vec3 delta;
+        glm_vec3_sub(d->controlPoints[controlPointIdx].position, d->controlPoints[controlPointIdx + 1].position, delta);
+        glm_vec3_scale(delta, 0.5f, delta);
+        glm_vec3_add(d->controlPoints[controlPointIdx].position, delta, otherPos);
+    }
+    else if (controlPointIdx == d->controlPoints.size() -1 && !backwards)
+    {
+        vec3 delta;
+        glm_vec3_sub(d->controlPoints[controlPointIdx].position, d->controlPoints[controlPointIdx - 1].position, delta);
+        glm_vec3_scale(delta, 0.5f, delta);
+        glm_vec3_add(d->controlPoints[controlPointIdx].position, delta, otherPos);
+    }
+    else
+        glm_vec3_copy(d->controlPoints[controlPointIdx + (backwards ? -1 : 1)].position, otherPos);
+
+    glm_vec3_add(
+        d->controlPoints[controlPointIdx].position,
+        otherPos,
+        newControlPoint.position
+    );
+    glm_vec3_scale(newControlPoint.position, 0.5f, newControlPoint.position);
+
+    d->rom->registerRenderObjects({
+            {
+                .model = d->rom->getModel("BuilderObj_BezierHandle", _this, [](){}),
+                .renderLayer = RenderLayer::BUILDER,
+                .attachedEntityGuid = myGuid,
+            }
+        },
+        { &newControlPoint.renderObj }
+    );
+
+    d->controlPoints.insert(d->controlPoints.begin() + controlPointIdx + (backwards ? 0 : 1), newControlPoint);
+    d->triggerBakeSplineCache = true;
+}
+
+void executeXAction(GondolaSystem_XData* d, mat4* matrixToMove)
+{
+    size_t controlPointIdx = whichControlPointFromMatrix(d, matrixToMove);
+    if (controlPointIdx == (size_t)-1)
+        return;
+
+    std::lock_guard<std::mutex> lg(useControlPointsMutex);
+
+    d->rom->unregisterRenderObjects({ d->controlPoints[controlPointIdx].renderObj });
+
+    d->controlPoints.erase(d->controlPoints.begin() + controlPointIdx);
+    d->triggerBakeSplineCache = true;
+}
+
 void GondolaSystem::renderImGui()
 {
+    // Process keyboard actions.
+    ImGui::Text("C: add a control point ahead (hold shift for behind).\nX: delete selected control point.");
+    static bool prevCHeld = false;
+    static bool prevXHeld = false;
+    if (input::keyCPressed && !prevCHeld)
+        executeCAction(_data, this, getGUID(), _engine->getMatrixToMove());
+    prevCHeld = input::keyCPressed;
+    if (input::keyXPressed && !prevXHeld)
+        executeXAction(_data, _engine->getMatrixToMove());
+    prevXHeld = input::keyXPressed;
+
+    // Imgui.
     if (ImGui::Button("Spawn Simulation"))
         spawnSimulation(_data, this, getGUID(), 0.0f);
 }

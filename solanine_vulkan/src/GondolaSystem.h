@@ -13,6 +13,8 @@ public:
     static const std::string TYPE_NAME;
     std::string getTypeName() { return TYPE_NAME; };
 
+    static VulkanEngine* _engine;
+
     GondolaSystem(EntityManager* em, RenderObjectManager* rom, VulkanEngine* engineRef, DataSerialized* ds);
     ~GondolaSystem();
 
@@ -26,6 +28,7 @@ public:
 
     void reportMoved(mat4* matrixMoved);
     void renderImGui();
+
 
 private:
     GondolaSystem_XData* _data;

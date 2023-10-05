@@ -23,6 +23,7 @@
 #include "Debug.h"
 #include "HotswapResources.h"
 #include "GlobalState.h"
+#include "GondolaSystem.h"
 #include "imgui/imgui.h"
 #include "imgui/imgui_stdlib.h"
 #include "imgui/imgui_impl_sdl.h"
@@ -96,6 +97,7 @@ void VulkanEngine::init()
 	AudioEngine::getInstance().initialize();
 	physengine::start(_entityManager);
 	globalState::initGlobalState(_camera->sceneCamera);
+	GondolaSystem::_engine = this;
 
 	while (!physengine::isInitialized);  // Spin lock so that new scene doesn't get loaded before physics are finished initializing.
 
