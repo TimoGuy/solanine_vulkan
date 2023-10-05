@@ -169,7 +169,9 @@ namespace scene
         if (!newObjectType.empty())
         {
             auto dsCooked = ds.getSerializedData();
-            success &= (spinupNewObject(newObjectType, engine, &dsCooked) != nullptr);
+            Entity* newEntity = spinupNewObject(newObjectType, engine, &dsCooked);
+            outEntityPtrs.push_back(newEntity);
+            success &= (newEntity != nullptr);
         }
 
         return success;

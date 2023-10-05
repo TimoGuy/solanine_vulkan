@@ -1076,6 +1076,18 @@ namespace physengine
         physicsSystem->GetBodyInterface().SetPositionAndRotation(vfpd.bodyId, newPositionReal, newRotationJolt, EActivation::DontActivate);
     }
 
+    void moveVoxelFieldBodyKinematic(VoxelFieldPhysicsData& vfpd, vec3 newPosition, versor newRotation, const float_t& physicsDeltaTime)
+    {
+        RVec3 newPositionReal(newPosition[0], newPosition[1], newPosition[2]);
+        Quat newRotationJolt(newRotation[0], newRotation[1], newRotation[2], newRotation[3]);
+        physicsSystem->GetBodyInterface().MoveKinematic(vfpd.bodyId, newPositionReal, newRotationJolt, physicsDeltaTime);
+    }
+
+    void setVoxelFieldBodyKinematic(VoxelFieldPhysicsData& vfpd, bool isKinematic)
+    {
+        physicsSystem->GetBodyInterface().SetMotionType(vfpd.bodyId, (isKinematic ? EMotionType::Kinematic : EMotionType::Dynamic), EActivation::DontActivate);
+    }
+
     //
     // Capsule pool
     //

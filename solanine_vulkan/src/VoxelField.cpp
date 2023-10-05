@@ -1274,3 +1274,13 @@ inline void deleteVoxelRenderObjects(VoxelField_XData& data)
     data.voxelRenderObjs.clear();
     data.voxelRenderObjLocalTransforms.clear();
 }
+
+void VoxelField::setBodyKinematic(bool isKinematic)
+{
+    physengine::setVoxelFieldBodyKinematic(*_data->vfpd, isKinematic);
+}
+
+void VoxelField::moveBodyKinematic(vec3 newPosition, versor newRotation, const float_t& physicsDeltaTime)
+{
+    physengine::moveVoxelFieldBodyKinematic(*_data->vfpd, newPosition, newRotation, physicsDeltaTime);
+}

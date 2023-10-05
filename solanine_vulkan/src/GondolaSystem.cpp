@@ -47,7 +47,8 @@ struct GondolaSystem_XData
         KAISOKU,
         TOKKYUU,
     };
-    GondolaNetworkType gondolaNetworkType = GondolaNetworkType::NONE;
+    //GondolaNetworkType gondolaNetworkType = GondolaNetworkType::NONE;
+    GondolaNetworkType gondolaNetworkType = GondolaNetworkType::FUTSUU;  // @NOCHECKIN
 
     struct TimeSlicing  // @NOTE: @TODO: as more things use timeslicing (if needed (ah but this one needs it I believe)), bring this out into a global counter.
     {
@@ -88,7 +89,7 @@ struct GondolaSystem_XData
     struct DetailedGondola
     {
         bool active = false;
-        float_t priorityRange = 200.0f;
+        float_t priorityRange = 20000000.0f;
         size_t prevClosestSimulation = (size_t)-1;
         std::vector<VoxelField*> collisions;  // Collision objects for the most nearby train to the player character.
     } detailedGondola;
@@ -101,6 +102,8 @@ void buildCollisions(GondolaSystem_XData* d, VulkanEngine* engineRef, std::vecto
     switch (networkType)
     {
         case GondolaSystem_XData::GondolaNetworkType::NONE:
+            std::cerr << "[BUILD COLLISIONS]" << std::endl
+                << "WARNING: Gondola network type was set to NONE, so no collision object prefab was spawned." << std::endl;
             return;
             
         case GondolaSystem_XData::GondolaNetworkType::FUTSUU:
@@ -125,7 +128,10 @@ void buildCollisions(GondolaSystem_XData* d, VulkanEngine* engineRef, std::vecto
     {
         VoxelField* entAsVF;
         if (entAsVF = dynamic_cast<VoxelField*>(ent))
+        {
+            entAsVF->setBodyKinematic(true);  // Since they'll be essentially glued from the track, no use having them be dynamic.
             outCollisions.push_back(entAsVF);
+        }
     }
 }
 
@@ -348,7 +354,7 @@ bool searchForRightTOnCurve(GondolaSystem_XData* d, float_t& ioT, vec3 anchorPos
     return true;
 }
 
-void updateSimulation(GondolaSystem_XData* d, size_t simIdx, const float_t& physicsDeltaTime)
+void updateSimulation(GondolaSystem_XData* d, EntityManager* em, size_t simIdx, const float_t& physicsDeltaTime)
 {
     GondolaSystem_XData::Simulation& ioSimulation = d->simulations[simIdx];
     ioSimulation.positionT += physicsDeltaTime;
@@ -371,6 +377,8 @@ void updateSimulation(GondolaSystem_XData* d, size_t simIdx, const float_t& phys
         {
             // Remove simulation if out of range.
             // @NOTE: @INCOMPLETE: this shouldn't happen. At the beginning there should be X number of gondolas spawned and then they all go in a uniform loop.
+            if (d->detailedGondola.prevClosestSimulation == simIdx)
+                destructAndResetCollisions(d, em);
             d->rom->unregisterRenderObjects(ioSimulation.renderObjs);
             d->simulations.erase(d->simulations.begin() + simIdx);
             d->detailedGondola.prevClosestSimulation = (size_t)-1;  // Invalidate detailedGondola collision cache.
@@ -391,14 +399,18 @@ void updateSimulation(GondolaSystem_XData* d, size_t simIdx, const float_t& phys
 
         vec3 delta;
         glm_vec3_sub(cart.bogiePosition1, cart.bogiePosition2, delta);
-        float_t yRot = std::atan2f(delta[0], delta[2]);
+        float_t yRot = std::atan2f(delta[0], delta[2]) + M_PI;
         
         float_t xzDist = glm_vec2_norm(vec2{ delta[0], delta[2] });
-        float_t xRot = std::atan2f(xzDist, delta[1]);
+        float_t xRot = std::atan2f(delta[1], xzDist);
 
         mat4 rotation;
         glm_euler_zyx(vec3{ xRot, yRot, 0.0f }, rotation);
         glm_mat4_quat(rotation, cart.calcCurrentRORot);
+
+        // Update physics objects.
+        if (d->detailedGondola.prevClosestSimulation == simIdx)
+            d->detailedGondola.collisions[i]->moveBodyKinematic(cart.calcCurrentROPos, cart.calcCurrentRORot, physicsDeltaTime);
     }
 }
 
@@ -412,7 +424,7 @@ void GondolaSystem::physicsUpdate(const float_t& physicsDeltaTime)
     //         In order to accomplish this, having a global timer is important. Then that way each timesliced gondola won't have to guess the timing and then it gets off.
     //         Just pass in the global timer value instead of `physicsDeltaTime`.  @TODO
     for (int64_t i = _data->simulations.size() - 1; i >= 0; i--)  // Reverse iteration so that delete can happen.
-        updateSimulation(_data, i, physicsDeltaTime);
+        updateSimulation(_data, _em, i, physicsDeltaTime);
 
     if (!_data->timeslicing.checkTimeslice())
         return;  // Exit bc not timesliced position.

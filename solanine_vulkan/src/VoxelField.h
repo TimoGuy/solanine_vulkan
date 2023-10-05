@@ -26,6 +26,9 @@ public:
     void reportMoved(mat4* matrixMoved);
     void renderImGui();
 
+    void setBodyKinematic(bool isKinematic);
+    void moveBodyKinematic(vec3 newPosition, versor newRotation, const float_t& physicsDeltaTime);
+
 private:
     VoxelField_XData* _data;
 };
