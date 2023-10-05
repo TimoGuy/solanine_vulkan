@@ -15,7 +15,6 @@ struct GondolaSystem_XData
     VulkanEngine*              engineRef;
     RenderObjectManager*       rom;
     RenderObject*              controlRenderObj;
-    std::vector<VoxelField*>   collisions;  // Collision objects for the most nearby train to the player character.
 
     vec3                       position = GLM_VEC3_ZERO_INIT;
     struct ControlPoint
@@ -48,9 +47,6 @@ struct GondolaSystem_XData
         TOKKYUU,
     };
     GondolaNetworkType gondolaNetworkType = GondolaNetworkType::NONE;
-    bool               gondolaCollisionActive = false;
-    bool               playerCharWithinRange = false;
-    float_t            priorityRange = 200.0f;
 
     struct TimeSlicing  // @NOTE: @TODO: as more things use timeslicing (if needed (ah but this one needs it I believe)), bring this out into a global counter.
     {
@@ -66,12 +62,37 @@ struct GondolaSystem_XData
 
     struct Simulation
     {
-        float_t            positionT;
-        RenderObject*      renderObj;
-        vec3               calculatedPositionWorld;
+        float_t                    positionT;
+        vec3                       calculatedPositionWorld;
+        std::vector<RenderObject*> renderObjs;  // @NOTE: For LODs, switch out the assigned model, not unregister/register new RenderObjects.  -Timo 2020/10/04
+        struct GondolaCart
+        {
+            float_t length;  // Length of the cabin (excluding the connector halls)
+            float_t frontMargin;  // Length of front connector hall
+            float_t rearMargin;  // Length of rear connector hall
+            float_t bogiePadding;  // Length from where the cabin starts (for bogie #1) and from where the cabin ends (for bogie #2) to put the bogies
+
+            vec3 bogiePosition1;
+            vec3 bogiePosition2;
+
+            // Calculated values:
+            vec3   calcCurrentROPos;
+            versor calcCurrentRORot;
+            vec3   calcPrevROPos;
+            versor calcPrevRORot;
+        };
+        std::vector<GondolaCart> carts;  // Essentially metadata for the collision objects.
     };
     std::vector<Simulation> simulations;
-    size_t simSpawnTimer = 0;
+    size_t simSpawnTimer = 0;  // @DEBUG: for just testing.
+
+    struct DetailedGondola
+    {
+        bool active = false;
+        float_t priorityRange = 200.0f;
+        size_t prevClosestSimulation = (size_t)-1;
+        std::vector<VoxelField*> collisions;  // Collision objects for the most nearby train to the player character.
+    } detailedGondola;
 };
 
 void buildCollisions(GondolaSystem_XData* d, VulkanEngine* engineRef, std::vector<VoxelField*>& outCollisions, GondolaSystem_XData::GondolaNetworkType networkType)
@@ -111,20 +132,16 @@ void buildCollisions(GondolaSystem_XData* d, VulkanEngine* engineRef, std::vecto
 
 void destructAndResetCollisions(GondolaSystem_XData* d, EntityManager* em)
 {
-    for (auto& collision : d->collisions)
+    for (auto& collision : d->detailedGondola.collisions)
         em->destroyOwnedEntity((Entity*)collision);
-    d->collisions.clear();
+    d->detailedGondola.collisions.clear();
 }
 
 void readyGondolaInteraction(GondolaSystem_XData* d, EntityManager* em, const GondolaSystem_XData::Simulation& simulation)
 {
-    // @TODO: This is how I want this to work. Have a timer that runs if player is out of range. if the time runs past 5 seconds, unload collision. As soon as player gets into range, load in collision for the nearest simulation.
-    //        Use the `gondolaCollisionActive` flag.
-    return;
-
     // Clear and rebuild
     destructAndResetCollisions(d, em);
-    // buildCollisions(d, d->engineRef, d->collisions, d->gondolaNetworkType);  @TODO: @FIXME: @NOCHECKIN
+    buildCollisions(d, d->engineRef, d->detailedGondola.collisions, d->gondolaNetworkType);
 }
 
 GondolaSystem::GondolaSystem(EntityManager* em, RenderObjectManager* rom, VulkanEngine* engineRef, DataSerialized* ds) : Entity(em, ds), _data(new GondolaSystem_XData())
@@ -178,7 +195,8 @@ GondolaSystem::~GondolaSystem()
     std::vector<RenderObject*> renderObjsToUnregister;
     renderObjsToUnregister.push_back(_data->controlRenderObj);
     for (auto& sim : _data->simulations)
-        renderObjsToUnregister.push_back(sim.renderObj);
+        for (auto& ro : sim.renderObjs)
+            renderObjsToUnregister.push_back(ro);
     _data->rom->unregisterRenderObjects(renderObjsToUnregister);
 
     destructAndResetCollisions(_data, _em);
@@ -244,29 +262,126 @@ void drawDEBUGCurveVisualization(GondolaSystem_XData* d)
 
 void spawnSimulation(GondolaSystem_XData* d, void* modelOwner, const std::string& guid, float_t spawnT)
 {
+    // Register cart render objects.
+    constexpr size_t NUM_CARTS_LOCAL_NETWORK = 4;
+    constexpr float_t LENGTH_LOCAL_NETWORK = 26.0f;
+    constexpr float_t MARGIN_LOCAL_NETWORK = 1.0f;
+
     GondolaSystem_XData::Simulation newSimulation;
     newSimulation.positionT = spawnT;
-    d->rom->registerRenderObjects({
-            {
-                .model = d->rom->getModel("BuilderObj_GondolaNetworkFutsuu", modelOwner, [](){}),
-                .renderLayer = RenderLayer::VISIBLE,
-                .attachedEntityGuid = guid,
-            }
-        },
-        { &newSimulation.renderObj }
-    );
+    newSimulation.renderObjs.resize(NUM_CARTS_LOCAL_NETWORK, nullptr);
+
+    std::vector<RenderObject> inROs;
+    std::vector<RenderObject**> outROs;
+    for (size_t i = 0; i < NUM_CARTS_LOCAL_NETWORK; i++)
+    {
+        // Setup render object registration.
+        inROs.push_back({
+            .model = d->rom->getModel("BuilderObj_GondolaNetworkFutsuu", modelOwner, [](){}),
+            .renderLayer = RenderLayer::VISIBLE,
+            .attachedEntityGuid = guid,
+        });
+        outROs.push_back(&newSimulation.renderObjs[i]);
+
+        // Insert cart metadata.
+        float_t frontMargin = (i == 0 ? 0.0f : MARGIN_LOCAL_NETWORK);
+        float_t rearMargin = (i == NUM_CARTS_LOCAL_NETWORK - 1 ? 0.0f : MARGIN_LOCAL_NETWORK);
+        GondolaSystem_XData::Simulation::GondolaCart newCart = {
+            .length = LENGTH_LOCAL_NETWORK,
+            .frontMargin = frontMargin,
+            .rearMargin = rearMargin,
+            .bogiePadding = LENGTH_LOCAL_NETWORK / 6.5f,  // This is the measured proportion on the Japanese trains on Yamanote-sen.
+        };
+        newSimulation.carts.push_back(newCart);
+    }
+    d->rom->registerRenderObjects(inROs, outROs);
     d->simulations.push_back(newSimulation);
+}
+
+void searchForRightTOnCurve(GondolaSystem_XData* d, float_t& ioT, vec3 anchorPos, float_t targetDistance, float_t startingSearchDirection)
+{
+    float_t targetDistance2 = targetDistance * targetDistance;
+
+    float_t searchStride = targetDistance;
+    float_t searchDirection = startingSearchDirection;
+    float_t searchPosDistWS2 = std::numeric_limits<float_t>::max();
+
+    while (searchStride > 0.1f && searchPosDistWS2 > 0.001f)  // This should be around 8 tries.
+    {
+        ioT += searchStride * searchDirection;
+
+        vec3 searchPosition;
+        calculatePositionOnCurveFromT(d, ioT, searchPosition);
+        searchPosDistWS2 = glm_vec3_distance2(anchorPos, searchPosition);
+
+        if (searchPosDistWS2 > targetDistance2)
+        {
+            if (searchDirection < 0.0f)
+                searchStride *= 0.5f;  // Cut stride in half since crossed the target pos.
+            searchDirection = 1.0f;
+        }
+        else
+        {
+            if (searchDirection > 0.0f)
+                searchStride *= 0.5f;  // Cut stride in half since crossed the target pos.
+            searchDirection = -1.0f;
+        }
+    }
 }
 
 void updateSimulation(GondolaSystem_XData* d, size_t simIdx, const float_t& physicsDeltaTime)
 {
     GondolaSystem_XData::Simulation& ioSimulation = d->simulations[simIdx];
     ioSimulation.positionT += physicsDeltaTime;
+
+    // Position each render object position based off the position of the bogies.
+    float_t currentPosT = ioSimulation.positionT;
+    for (size_t i = 0; i < ioSimulation.carts.size(); i++)
+    {
+        auto& cart = ioSimulation.carts[i];
+
+        // Move to first bogie position.
+        if (i > 0)
+        {
+            auto& prevCart = ioSimulation.carts[i - 1];
+            float_t distanceToNext = prevCart.bogiePadding + prevCart.rearMargin + cart.frontMargin + cart.bogiePadding;
+            searchForRightTOnCurve(d, currentPosT, prevCart.bogiePosition2, distanceToNext, -1.0f);
+        }
+
+        calculatePositionOnCurveFromT(d, currentPosT, cart.bogiePosition1);
+
+        // Move to second bogie position.
+        float_t distanceToSecond = cart.length - 2.0f * cart.bogiePadding;
+        searchForRightTOnCurve(d, currentPosT, cart.bogiePosition1, distanceToSecond, -1.0f);
+
+        calculatePositionOnCurveFromT(d, currentPosT, cart.bogiePosition2);
+
+        // Create new transform.
+        glm_vec3_copy(cart.calcCurrentROPos, cart.calcPrevROPos);
+        glm_quat_copy(cart.calcCurrentRORot, cart.calcPrevRORot);
+
+        glm_vec3_add(cart.bogiePosition1, cart.bogiePosition2, cart.calcCurrentROPos);
+        glm_vec3_scale(cart.calcCurrentROPos, 0.5f, cart.calcCurrentROPos);
+
+        vec3 delta;
+        glm_vec3_sub(cart.bogiePosition1, cart.bogiePosition2, delta);
+        float_t yRot = std::atan2f(delta[0], delta[2]);
+        
+        float_t xzDist = glm_vec2_norm(vec2{ delta[0], delta[2] });
+        float_t xRot = std::atan2f(xzDist, delta[1]);
+
+        mat4 rotation;
+        glm_euler_zyx(vec3{ xRot, yRot, 0.0f }, rotation);
+        glm_mat4_quat(rotation, cart.calcCurrentRORot);
+    }
+
+    // Remove simulation if out of range.
     if (!calculatePositionOnCurveFromT(d, ioSimulation.positionT, ioSimulation.calculatedPositionWorld))
     {
-        // Remove simulation if out of range.
-        d->rom->unregisterRenderObjects({ ioSimulation.renderObj });
+        // @NOTE: @INCOMPLETE: this shouldn't happen. At the beginning there should be X number of gondolas spawned and then they all go in a uniform loop.
+        d->rom->unregisterRenderObjects(ioSimulation.renderObjs);
         d->simulations.erase(d->simulations.begin() + simIdx);
+        d->detailedGondola.prevClosestSimulation = (size_t)-1;  // Invalidate detailedGondola collision cache.
     }
 }
 
@@ -276,11 +391,14 @@ void GondolaSystem::physicsUpdate(const float_t& physicsDeltaTime)
 
     // Spawn simulations.
     _data->simSpawnTimer++;
-    if (_data->simSpawnTimer % 100 == 0)
+    if (_data->simSpawnTimer % 400 == 0)
         spawnSimulation(_data, this, getGUID(), 0.0f);
 
     // Update simulations.
     // @TODO: there should be some kind of timeslicing for this, then update the timestamp of the new calculated point, and in `lateUpdate()` interpolate between the two generated points.
+    // @REPLY: and then for the closest iterating one, there should be `updateSimulation` running every frame, since this affects the collisions too.
+    //         In order to accomplish this, having a global timer is important. Then that way each timesliced gondola won't have to guess the timing and then it gets off.
+    //         Just pass in the global timer value instead of `physicsDeltaTime`.  @TODO
     for (int64_t i = _data->simulations.size() - 1; i >= 0; i--)  // Reverse iteration so that delete can happen.
         updateSimulation(_data, i, physicsDeltaTime);
 
@@ -352,10 +470,7 @@ void GondolaSystem::physicsUpdate(const float_t& physicsDeltaTime)
 
     // Check whether player position is within any priority ranges.
     if (globalState::playerPositionRef == nullptr)
-    {
-        _data->playerCharWithinRange = false;
-        return;
-    }
+        return;  // No position reference was found. Exit.
     
     float_t closestDistInRangeSqr = std::numeric_limits<float_t>::max();
     size_t  closestDistSimulationIdx = (size_t)-1;
@@ -364,7 +479,7 @@ void GondolaSystem::physicsUpdate(const float_t& physicsDeltaTime)
         auto& simulation = _data->simulations[i];
 
         float_t currentDistance2 = glm_vec3_distance2(simulation.calculatedPositionWorld, *globalState::playerPositionRef);
-        if (currentDistance2 < _data->priorityRange * _data->priorityRange &&
+        if (currentDistance2 < _data->detailedGondola.priorityRange * _data->detailedGondola.priorityRange &&
             currentDistance2 < closestDistInRangeSqr)
         {
             closestDistInRangeSqr = currentDistance2;
@@ -374,7 +489,11 @@ void GondolaSystem::physicsUpdate(const float_t& physicsDeltaTime)
     if (closestDistSimulationIdx == (size_t)-1)
         return;  // No position in range was found. Exit.
 
+    if (_data->detailedGondola.prevClosestSimulation == closestDistSimulationIdx)
+        return;  // Already created. No need to recreate. Exit.
+
     readyGondolaInteraction(_data, _em, _data->simulations[closestDistSimulationIdx]);
+    _data->detailedGondola.prevClosestSimulation = closestDistSimulationIdx;  // Mark cache as completed.
 }
 
 void GondolaSystem::update(const float_t& deltaTime)
