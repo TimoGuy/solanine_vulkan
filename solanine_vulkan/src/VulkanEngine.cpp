@@ -5683,8 +5683,7 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 			for (auto& path : listOfPrefabs)
 				if (ImGui::Button(("Open \"" + path + "\"").c_str()))
 				{
-					std::vector<Entity*> _;
-					scene::loadPrefab(path, this, _);
+					scene::loadPrefabNonOwned(path, this);
 					ImGui::CloseCurrentPopup();
 				}
 			ImGui::EndPopup();

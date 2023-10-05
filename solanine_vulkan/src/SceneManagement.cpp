@@ -99,7 +99,7 @@ namespace scene
         return prefabs;
     }
 
-    bool loadSerializationFull(const std::string& fullFname, VulkanEngine* engine, std::vector<Entity*>& outEntityPtrs)
+    bool loadSerializationFull(const std::string& fullFname, VulkanEngine* engine, bool ownEntities, std::vector<Entity*>& outEntityPtrs)
     {
         bool success = true;
 
@@ -135,6 +135,7 @@ namespace scene
                 {
                     auto dsCooked = ds.getSerializedData();
                     Entity* newEntity = spinupNewObject(newObjectType, engine, &dsCooked);
+                    newEntity->_isOwned = ownEntities;
                     outEntityPtrs.push_back(newEntity);
                     success &= (newEntity != nullptr);
                 }
@@ -179,13 +180,19 @@ namespace scene
 
     bool loadPrefab(const std::string& name, VulkanEngine* engine, std::vector<Entity*>& outEntityPtrs)
     {
-        return loadSerializationFull(PREFAB_DIRECTORY_PATH + name, engine, outEntityPtrs);
+        return loadSerializationFull(PREFAB_DIRECTORY_PATH + name, engine, true, outEntityPtrs);
+    }
+
+    bool loadPrefabNonOwned(const std::string& name, VulkanEngine* engine)
+    {
+        std::vector<Entity*> _;
+        return loadSerializationFull(PREFAB_DIRECTORY_PATH + name, engine, false, _);
     }
     
     bool loadScene(const std::string& name, VulkanEngine* engine)
     {
         std::vector<Entity*> _;
-        bool ret = loadSerializationFull(SCENE_DIRECTORY_PATH + name, engine, _);
+        bool ret = loadSerializationFull(SCENE_DIRECTORY_PATH + name, engine, false, _);
 
         globalState::savedActiveScene = name;
 
@@ -219,6 +226,9 @@ namespace scene
 
         for (auto ent : entities)
         {
+            if (ent->_isOwned)
+                continue;  // Don't save owned entities.
+
             DataSerializer ds;
             ent->dump(ds);
 

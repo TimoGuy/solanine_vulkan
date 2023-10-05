@@ -17,6 +17,8 @@
 VulkanEngine* GondolaSystem::_engine = nullptr;
 std::mutex useControlPointsMutex;
 
+constexpr float_t LENGTH_STATION_LOCAL_NETWORK = 110.0f;
+
 struct GondolaSystem_XData
 {
     VulkanEngine*              engineRef;
@@ -97,6 +99,29 @@ struct GondolaSystem_XData
         size_t prevClosestSimulation = (size_t)-1;
         std::vector<VoxelField*> collisions;  // Collision objects for the most nearby train to the player character.
     } detailedGondola;
+
+    struct Station
+    {
+        struct AssignedControlPoint
+        {
+            size_t cpIdx = (size_t)-1;
+            vec3   localOffset = GLM_VEC3_ZERO_INIT;
+        };
+        AssignedControlPoint anchorCP;
+        AssignedControlPoint secondaryForwardCP;
+        AssignedControlPoint secondaryBackwardCP;
+        AssignedControlPoint auxiliaryForwardCP;
+        AssignedControlPoint auxiliaryBackwardCP;
+        RenderObject* renderObj;
+    };
+    std::vector<Station> stations;
+
+    struct DetailedStation
+    {
+        float_t priorityRange = 5000.0f;
+        size_t  prevClosestStation = (size_t)-1;
+        VoxelField* collision = nullptr;  // Only support 1 type of station (FOR NOW), so don't load out the collision when exiting the priorityRange.  -Timo 2023/10/05
+    } detailedStation;
 };
 
 void destructAndResetCollisions(GondolaSystem_XData* d, EntityManager* em)
@@ -230,6 +255,12 @@ GondolaSystem::~GondolaSystem()
     _data->rom->unregisterRenderObjects(renderObjsToUnregister);
 
     destructAndResetCollisions(_data, _em);
+
+    if (_data->detailedStation.collision != nullptr)
+    {
+        _em->destroyOwnedEntity((Entity*)_data->detailedStation.collision);
+        _data->detailedStation.collision = nullptr;
+    }
 
     delete _data;
 }
@@ -608,6 +639,8 @@ bool GondolaSystem::processMessage(DataSerialized& message)
 
 size_t whichControlPointFromMatrix(GondolaSystem_XData* d, mat4* matrixToMove)
 {
+    std::lock_guard<std::mutex> lg(useControlPointsMutex);
+
     for (size_t i = 0; i < d->controlPoints.size(); i++)
     {
         auto& cp = d->controlPoints[i];
@@ -718,18 +751,125 @@ void executeXAction(GondolaSystem_XData* d, mat4* matrixToMove)
     d->triggerBakeSplineCache = true;
 }
 
+void executeVAction(GondolaSystem_XData* d, mat4* matrixToMove)
+{
+    size_t controlPointIdx = whichControlPointFromMatrix(d, matrixToMove);
+    if (controlPointIdx == (size_t)-1)
+        return;
+
+    std::lock_guard<std::mutex> lg(useControlPointsMutex);
+
+    if (controlPointIdx >= d->controlPoints.size() - 1)
+        return;  // Too far to the end.
+    if (controlPointIdx <= 0)
+        return;  // Too far to the beginning.
+
+    // Check to see if control point has enough room
+    // (need 5 if middle, 4 if on one of the ends, bc ghost point will act as the 5th point).
+    GondolaSystem_XData::Station newStation = {};
+    newStation.anchorCP.cpIdx = controlPointIdx;
+    newStation.secondaryForwardCP.cpIdx = controlPointIdx + 1;
+    newStation.secondaryBackwardCP.cpIdx = controlPointIdx - 1;
+    if (controlPointIdx < d->controlPoints.size() - 2)
+        newStation.auxiliaryForwardCP.cpIdx = controlPointIdx + 2;
+    if (controlPointIdx > 1)
+        newStation.auxiliaryBackwardCP.cpIdx = controlPointIdx - 2;
+
+    // Check if any of the control points are already taken. If so, overwrite other station.
+    // @TODO: @NOCHECKIN
+
+    // Calc the station direction using the secondary points.
+    vec3 delta;
+    glm_vec3_sub(
+        d->controlPoints[newStation.secondaryForwardCP.cpIdx].position,
+        d->controlPoints[newStation.secondaryBackwardCP.cpIdx].position,
+        delta
+    );
+    glm_vec3_scale_as(delta, LENGTH_STATION_LOCAL_NETWORK * 0.5f, delta);
+
+    // Line up the control points to the anchor point.
+    glm_vec3_add(
+        newStation.anchorCP.localOffset,
+        delta,
+        newStation.secondaryForwardCP.localOffset
+    );
+    glm_vec3_sub(
+        newStation.anchorCP.localOffset,
+        delta,
+        newStation.secondaryBackwardCP.localOffset
+    );
+
+    // Line up the aux points too.
+    if (newStation.auxiliaryForwardCP.cpIdx != (size_t)-1)
+        glm_vec3_add(
+            newStation.secondaryForwardCP.localOffset,
+            delta,
+            newStation.auxiliaryForwardCP.localOffset
+        );
+    if (newStation.auxiliaryBackwardCP.cpIdx != (size_t)-1)
+        glm_vec3_sub(
+            newStation.secondaryBackwardCP.localOffset,
+            delta,
+            newStation.auxiliaryBackwardCP.localOffset
+        );
+
+    d->triggerBakeSplineCache = true;
+
+    d->stations.push_back(newStation);
+
+    // Add station collision if not existing yet.
+    if (d->detailedStation.collision == nullptr)
+    {
+        std::vector<Entity*> ents;
+        scene::loadPrefab("gondola_collision_station.hunk", d->engineRef, ents);
+        for (auto& ent : ents)
+        {
+            VoxelField* entAsVF;
+            if (entAsVF = dynamic_cast<VoxelField*>(ent))
+            {
+                // Just nab the first voxelfield and then dip.
+                d->detailedStation.collision = entAsVF;
+                break;
+            }
+        }
+    }
+
+    // Move the station transform to there.
+    // @NOTE: this should only be executed when setting the collision to the station position, or creating a new station collision.
+    float_t yRot = std::atan2f(delta[0], delta[2]) + M_PI;
+    float_t xzDist = glm_vec2_norm(vec2{ delta[0], delta[2] });
+    float_t xRot = std::atan2f(delta[1], xzDist);
+    mat4 rotation;
+    glm_euler_zyx(vec3{ xRot, yRot, 0.0f }, rotation);
+    versor rotationV;
+    glm_mat4_quat(rotation, rotationV);
+
+    vec3 extent;
+    d->detailedStation.collision->getSize(extent);
+    glm_vec3_scale(extent, -0.5f, extent);
+    glm_mat4_mulv3(rotation, extent, 0.0f, extent);
+    vec3 newPos;
+    glm_vec3_add(d->controlPoints[newStation.anchorCP.cpIdx].position, extent, newPos);
+
+    d->detailedStation.collision->moveBody(newPos, rotationV, true, 0.0f);
+}
+
 void GondolaSystem::renderImGui()
 {
     // Process keyboard actions.
-    ImGui::Text("C: add a control point ahead (hold shift for behind).\nX: delete selected control point.");
+    ImGui::Text("C: add a control point ahead (hold shift for behind).\nX: delete selected control point.\nV: assign/unassign station at control point.");
     static bool prevCHeld = false;
     static bool prevXHeld = false;
+    static bool prevVHeld = false;
     if (input::keyCPressed && !prevCHeld)
         executeCAction(_data, this, getGUID(), _engine->getMatrixToMove());
     prevCHeld = input::keyCPressed;
     if (input::keyXPressed && !prevXHeld)
         executeXAction(_data, _engine->getMatrixToMove());
     prevXHeld = input::keyXPressed;
+    if (input::keyVPressed && !prevVHeld)
+        executeVAction(_data, _engine->getMatrixToMove());
+    prevVHeld = input::keyVPressed;
 
     // Imgui.
     if (ImGui::Button("Spawn Simulation"))

@@ -25,6 +25,8 @@ public:
     virtual void reportMoved(mat4* matrixMoved) { }
     virtual void renderImGui() { }
 
+    bool _isOwned = false;  // This gets set during the creation.
+
     // @NOTE: you need to manually enable these!
     bool _enablePhysicsUpdate = false,
          _enableUpdate        = false,
