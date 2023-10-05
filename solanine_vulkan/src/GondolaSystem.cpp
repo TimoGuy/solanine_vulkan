@@ -8,6 +8,7 @@
 #include "SceneManagement.h"
 #include "GlobalState.h"
 #include "VoxelField.h"
+#include "imgui/imgui.h"
 
 
 struct GondolaSystem_XData
@@ -63,7 +64,6 @@ struct GondolaSystem_XData
     struct Simulation
     {
         float_t                    positionT;
-        vec3                       calculatedPositionWorld;
         std::vector<RenderObject*> renderObjs;  // @NOTE: For LODs, switch out the assigned model, not unregister/register new RenderObjects.  -Timo 2020/10/04
         struct GondolaCart
         {
@@ -84,7 +84,6 @@ struct GondolaSystem_XData
         std::vector<GondolaCart> carts;  // Essentially metadata for the collision objects.
     };
     std::vector<Simulation> simulations;
-    size_t simSpawnTimer = 0;  // @DEBUG: for just testing.
 
     struct DetailedGondola
     {
@@ -298,7 +297,7 @@ void spawnSimulation(GondolaSystem_XData* d, void* modelOwner, const std::string
     d->simulations.push_back(newSimulation);
 }
 
-void searchForRightTOnCurve(GondolaSystem_XData* d, float_t& ioT, vec3 anchorPos, float_t targetDistance, float_t startingSearchDirection)
+bool searchForRightTOnCurve(GondolaSystem_XData* d, float_t& ioT, vec3 anchorPos, float_t targetDistance, float_t startingSearchDirection)
 {
     float_t targetDistance2 = targetDistance * targetDistance;
 
@@ -311,7 +310,8 @@ void searchForRightTOnCurve(GondolaSystem_XData* d, float_t& ioT, vec3 anchorPos
         ioT += searchStride * searchDirection;
 
         vec3 searchPosition;
-        calculatePositionOnCurveFromT(d, ioT, searchPosition);
+        if (!calculatePositionOnCurveFromT(d, ioT, searchPosition))
+            return false;  // The search bugged out, exit.
         searchPosDistWS2 = glm_vec3_distance2(anchorPos, searchPosition);
 
         if (searchPosDistWS2 > targetDistance2)
@@ -327,6 +327,8 @@ void searchForRightTOnCurve(GondolaSystem_XData* d, float_t& ioT, vec3 anchorPos
             searchDirection = -1.0f;
         }
     }
+
+    return true;
 }
 
 void updateSimulation(GondolaSystem_XData* d, size_t simIdx, const float_t& physicsDeltaTime)
@@ -348,7 +350,14 @@ void updateSimulation(GondolaSystem_XData* d, size_t simIdx, const float_t& phys
             searchForRightTOnCurve(d, currentPosT, prevCart.bogiePosition2, distanceToNext, -1.0f);
         }
 
-        calculatePositionOnCurveFromT(d, currentPosT, cart.bogiePosition1);
+        if (!calculatePositionOnCurveFromT(d, currentPosT, cart.bogiePosition1))
+        {
+            // Remove simulation if out of range.
+            // @NOTE: @INCOMPLETE: this shouldn't happen. At the beginning there should be X number of gondolas spawned and then they all go in a uniform loop.
+            d->rom->unregisterRenderObjects(ioSimulation.renderObjs);
+            d->simulations.erase(d->simulations.begin() + simIdx);
+            d->detailedGondola.prevClosestSimulation = (size_t)-1;  // Invalidate detailedGondola collision cache.
+        }
 
         // Move to second bogie position.
         float_t distanceToSecond = cart.length - 2.0f * cart.bogiePadding;
@@ -374,25 +383,11 @@ void updateSimulation(GondolaSystem_XData* d, size_t simIdx, const float_t& phys
         glm_euler_zyx(vec3{ xRot, yRot, 0.0f }, rotation);
         glm_mat4_quat(rotation, cart.calcCurrentRORot);
     }
-
-    // Remove simulation if out of range.
-    if (!calculatePositionOnCurveFromT(d, ioSimulation.positionT, ioSimulation.calculatedPositionWorld))
-    {
-        // @NOTE: @INCOMPLETE: this shouldn't happen. At the beginning there should be X number of gondolas spawned and then they all go in a uniform loop.
-        d->rom->unregisterRenderObjects(ioSimulation.renderObjs);
-        d->simulations.erase(d->simulations.begin() + simIdx);
-        d->detailedGondola.prevClosestSimulation = (size_t)-1;  // Invalidate detailedGondola collision cache.
-    }
 }
 
 void GondolaSystem::physicsUpdate(const float_t& physicsDeltaTime)
 {
     drawDEBUGCurveVisualization(_data);
-
-    // Spawn simulations.
-    _data->simSpawnTimer++;
-    if (_data->simSpawnTimer % 400 == 0)
-        spawnSimulation(_data, this, getGUID(), 0.0f);
 
     // Update simulations.
     // @TODO: there should be some kind of timeslicing for this, then update the timestamp of the new calculated point, and in `lateUpdate()` interpolate between the two generated points.
@@ -478,7 +473,7 @@ void GondolaSystem::physicsUpdate(const float_t& physicsDeltaTime)
     {
         auto& simulation = _data->simulations[i];
 
-        float_t currentDistance2 = glm_vec3_distance2(simulation.calculatedPositionWorld, *globalState::playerPositionRef);
+        float_t currentDistance2 = glm_vec3_distance2(simulation.carts[0].calcCurrentROPos, *globalState::playerPositionRef);
         if (currentDistance2 < _data->detailedGondola.priorityRange * _data->detailedGondola.priorityRange &&
             currentDistance2 < closestDistInRangeSqr)
         {
@@ -512,10 +507,13 @@ void GondolaSystem::lateUpdate(const float_t& deltaTime)
     }
 
     for (auto& sim : _data->simulations)
-    {
-        glm_mat4_identity(sim.renderObj->transformMatrix);
-        glm_translate(sim.renderObj->transformMatrix, sim.calculatedPositionWorld);
-    }
+        for (size_t i = 0; i < sim.renderObjs.size(); i++)
+        {
+            auto& ro = sim.renderObjs[i];
+            glm_mat4_identity(ro->transformMatrix);
+            glm_translate(ro->transformMatrix, sim.carts[i].calcCurrentROPos);
+            glm_quat_rotate(ro->transformMatrix, sim.carts[i].calcCurrentRORot, ro->transformMatrix);
+        }
 }
 
 void GondolaSystem::dump(DataSerializer& ds)
@@ -571,4 +569,6 @@ void GondolaSystem::reportMoved(mat4* matrixMoved)
 
 void GondolaSystem::renderImGui()
 {
+    if (ImGui::Button("Spawn Simulation"))
+        spawnSimulation(_data, this, getGUID(), 0.0f);
 }
