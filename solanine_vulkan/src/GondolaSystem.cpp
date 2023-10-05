@@ -89,7 +89,7 @@ struct GondolaSystem_XData
     struct DetailedGondola
     {
         bool active = false;
-        float_t priorityRange = 20000000.0f;
+        float_t priorityRange = 500.0f;  // This should be enough to support up to 16 cart long gondolas.
         size_t prevClosestSimulation = (size_t)-1;
         std::vector<VoxelField*> collisions;  // Collision objects for the most nearby train to the player character.
     } detailedGondola;
