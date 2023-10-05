@@ -331,8 +331,8 @@ void spawnSimulation(GondolaSystem_XData* d, void* modelOwner, const std::string
 {
     // Register cart render objects.
     constexpr size_t NUM_CARTS_LOCAL_NETWORK = 4;
-    constexpr float_t LENGTH_LOCAL_NETWORK = 26.0f;
-    constexpr float_t MARGIN_LOCAL_NETWORK = 1.0f;
+    constexpr float_t LENGTH_CART_LOCAL_NETWORK = 26.0f;
+    constexpr float_t MARGIN_CART_LOCAL_NETWORK = 1.0f;
 
     GondolaSystem_XData::Simulation newSimulation;
     newSimulation.positionT = spawnT;
@@ -351,13 +351,13 @@ void spawnSimulation(GondolaSystem_XData* d, void* modelOwner, const std::string
         outROs.push_back(&newSimulation.renderObjs[i]);
 
         // Insert cart metadata.
-        float_t frontMargin = (i == 0 ? 0.0f : MARGIN_LOCAL_NETWORK);
-        float_t rearMargin = (i == NUM_CARTS_LOCAL_NETWORK - 1 ? 0.0f : MARGIN_LOCAL_NETWORK);
+        float_t frontMargin = (i == 0 ? 0.0f : MARGIN_CART_LOCAL_NETWORK);
+        float_t rearMargin = (i == NUM_CARTS_LOCAL_NETWORK - 1 ? 0.0f : MARGIN_CART_LOCAL_NETWORK);
         GondolaSystem_XData::Simulation::GondolaCart newCart = {
-            .length = LENGTH_LOCAL_NETWORK,
+            .length = LENGTH_CART_LOCAL_NETWORK,
             .frontMargin = frontMargin,
             .rearMargin = rearMargin,
-            .bogiePadding = LENGTH_LOCAL_NETWORK / 6.5f,  // This is the measured proportion on the Japanese trains on Yamanote-sen.
+            .bogiePadding = LENGTH_CART_LOCAL_NETWORK / 6.5f,  // This is the measured proportion on the Japanese trains on Yamanote-sen.
         };
         newSimulation.carts.push_back(newCart);
     }

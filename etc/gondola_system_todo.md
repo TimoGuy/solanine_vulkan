@@ -47,16 +47,22 @@
               t^2( 3*P0 - 6*P1 + 3*P2) +
               t^3(-1*P0 + 3*P1 - 3*P2 + P3) +
             > Ahhhh, except I forgot to include the 1/6.
-    - [ ] Add station button. Uses 4 nodes, where they indicate the beginning and end of the straight track.
-        - [ ] Put middle 2 nodes at the ends of the station, then 2 more off the ends (this guarantees that if all 4 are in line, the middle 2 in the rendered B-spline will be perfectly in line).
+    - [x] Add station button. Uses 4 nodes, where they indicate the beginning and end of the straight track.
+        - [x] Put middle 2 nodes at the ends of the station, then 2 more off the ends (this guarantees that if all 4 are in line, the middle 2 in the rendered B-spline will be perfectly in line).
             > Or could have it be 5 nodes, so that the middle one is for sure the middle one.
-    - [ ] Update the ~~4~~ 5 control points whenever the station itself moves.
-        - [ ] This is for (a possible game element) manipulating the positions of the stations' planets.
+    - [x] Update the ~~4~~ 5 control points whenever the station itself moves.
+        - [x] This is for (a possible game element) manipulating the positions of the stations' planets.
     - [ ] At the last station, gondola turns around and goes different direction.
+        - [ ] ~~Change driving to come from middle instead of from front.~~
+        - [ ] Keep track of rearmost `t` and then assign it to the now front `t` and then toggle train reverse mode
+        - [ ] Take the `t` of the station node, and then add `LENGTH_CART_LOCAL_NETWORK * NUM_CARTS_LOCAL_NETWORK / LENGTH_STATION_LOCAL_NETWORK` as the `t` offset (in whatever direction you're going).
+        - [ ] Slow down to a stop.
+        - [ ] Wait 5 seconds before starting to accelerate out of the station.
     - [ ] Make train line double lined.
-    - [ ] Make track changer.
-        - [ ] Make trains change their tracks to run on the left side of the rail.
-        > I think a way you could do it is by creating two versions of the path, and every other simulation uses the different versions. One version starts and lands in the west side of the end stations, and one version starts and lands in the east side of the end stations.
+        - [ ] Take neighboring two nodes and get their deltaposition and that should be the tangent. Cross it with vector.up and you should get the offset direction of the control points.
+        - [ ] Make track changer.
+            - [ ] Make trains change their tracks to run on the left side of the rail.
+            > I think a way you could do it is by creating two versions of the path, and every other simulation uses the different versions. One version starts and lands in the west side of the end stations, and one version starts and lands in the east side of the end stations.
     - [ ] Copy design of station from Unity Concept Prototype (have station that merely displays how many meters away the next gondola is)
     - [ ] Every gondola always stops at every station.
 
