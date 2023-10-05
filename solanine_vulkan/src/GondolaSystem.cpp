@@ -470,6 +470,31 @@ void updateSimulation(GondolaSystem_XData* d, EntityManager* em, size_t simIdx, 
     moveCollisionBodies(d, false, physicsDeltaTime);
 }
 
+void updateStation(GondolaSystem_XData* d)
+{
+    auto& station = d->stations[d->detailedStation.prevClosestStation];
+    mat4 transform;
+    d->detailedStation.collision->getTransform(transform);
+
+    // if (glm_mat4_similar(d->detailedStation.prevCollisionTransform, transform))  // @INCOMPLETE: there's no way to tell if the new transform is similar to the old one.
+    //     return;
+
+    vec3 extent;
+    d->detailedStation.collision->getSize(extent);
+    glm_vec3_scale(extent, 0.5f, extent);
+    glm_translate(transform, extent);
+
+    glm_mat4_mulv3(transform, station.anchorCP.localOffset, 1.0f, d->controlPoints[station.anchorCP.cpIdx].position);
+    glm_mat4_mulv3(transform, station.secondaryForwardCP.localOffset, 1.0f, d->controlPoints[station.secondaryForwardCP.cpIdx].position);
+    glm_mat4_mulv3(transform, station.secondaryBackwardCP.localOffset, 1.0f, d->controlPoints[station.secondaryBackwardCP.cpIdx].position);
+    if (station.auxiliaryForwardCP.cpIdx != (size_t)-1)
+        glm_mat4_mulv3(transform, station.auxiliaryForwardCP.localOffset, 1.0f, d->controlPoints[station.auxiliaryForwardCP.cpIdx].position);
+    if (station.auxiliaryBackwardCP.cpIdx != (size_t)-1)
+        glm_mat4_mulv3(transform, station.auxiliaryBackwardCP.localOffset, 1.0f, d->controlPoints[station.auxiliaryBackwardCP.cpIdx].position);
+    
+    d->triggerBakeSplineCache = true;  // Assumption is that the station moved.
+}
+
 void GondolaSystem::physicsUpdate(const float_t& physicsDeltaTime)
 {
     drawDEBUGCurveVisualization(_data);
@@ -481,6 +506,9 @@ void GondolaSystem::physicsUpdate(const float_t& physicsDeltaTime)
     //         Just pass in the global timer value instead of `physicsDeltaTime`.  @TODO
     for (int64_t i = _data->simulations.size() - 1; i >= 0; i--)  // Reverse iteration so that delete can happen.
         updateSimulation(_data, _em, i, physicsDeltaTime);
+
+    if (_data->detailedStation.collision != nullptr)
+        updateStation(_data);
 
     if (!_data->timeslicing.checkTimeslice())
         return;  // Exit bc not timesliced position.
@@ -778,24 +806,16 @@ void executeVAction(GondolaSystem_XData* d, mat4* matrixToMove)
     // Check if any of the control points are already taken. If so, overwrite other station.
     // @TODO: @NOCHECKIN
 
-    // Calc the station direction using the secondary points.
-    vec3 delta;
-    glm_vec3_sub(
-        d->controlPoints[newStation.secondaryForwardCP.cpIdx].position,
-        d->controlPoints[newStation.secondaryBackwardCP.cpIdx].position,
-        delta
-    );
-    glm_vec3_scale_as(delta, LENGTH_STATION_LOCAL_NETWORK * 0.5f, delta);
-
     // Line up the control points to the anchor point.
+    vec3 localOffsetDelta = { 0.0f, 0.0f, LENGTH_STATION_LOCAL_NETWORK * 0.5f };
     glm_vec3_add(
         newStation.anchorCP.localOffset,
-        delta,
+        localOffsetDelta,
         newStation.secondaryForwardCP.localOffset
     );
     glm_vec3_sub(
         newStation.anchorCP.localOffset,
-        delta,
+        localOffsetDelta,
         newStation.secondaryBackwardCP.localOffset
     );
 
@@ -803,13 +823,13 @@ void executeVAction(GondolaSystem_XData* d, mat4* matrixToMove)
     if (newStation.auxiliaryForwardCP.cpIdx != (size_t)-1)
         glm_vec3_add(
             newStation.secondaryForwardCP.localOffset,
-            delta,
+            localOffsetDelta,
             newStation.auxiliaryForwardCP.localOffset
         );
     if (newStation.auxiliaryBackwardCP.cpIdx != (size_t)-1)
         glm_vec3_sub(
             newStation.secondaryBackwardCP.localOffset,
-            delta,
+            localOffsetDelta,
             newStation.auxiliaryBackwardCP.localOffset
         );
 
@@ -834,6 +854,15 @@ void executeVAction(GondolaSystem_XData* d, mat4* matrixToMove)
         }
     }
 
+    // Calc the station direction using the secondary points.
+    vec3 delta;
+    glm_vec3_sub(
+        d->controlPoints[newStation.secondaryForwardCP.cpIdx].position,
+        d->controlPoints[newStation.secondaryBackwardCP.cpIdx].position,
+        delta
+    );
+    glm_vec3_scale_as(delta, LENGTH_STATION_LOCAL_NETWORK * 0.5f, delta);
+
     // Move the station transform to there.
     // @NOTE: this should only be executed when setting the collision to the station position, or creating a new station collision.
     float_t yRot = std::atan2f(delta[0], delta[2]) + M_PI;
@@ -852,6 +881,8 @@ void executeVAction(GondolaSystem_XData* d, mat4* matrixToMove)
     glm_vec3_add(d->controlPoints[newStation.anchorCP.cpIdx].position, extent, newPos);
 
     d->detailedStation.collision->moveBody(newPos, rotationV, true, 0.0f);
+    d->detailedStation.prevClosestStation = d->stations.size() - 1;  // Get most recent pushed back station.
+    // glm_mat4_zero(d->detailedStation.prevCollisionTransform);  // Invalidate prev collision cache.  // @INCOMPLETE: there's no way to tell if the new transform is similar to the old one.
 }
 
 void GondolaSystem::renderImGui()

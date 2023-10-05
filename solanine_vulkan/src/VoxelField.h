@@ -29,6 +29,7 @@ public:
     void setBodyKinematic(bool isKinematic);
     void moveBody(vec3 newPosition, versor newRotation, bool immediate, float_t physicsDeltaTime);
     void getSize(vec3& outSize);
+    void getTransform(mat4& outTransform);
 
 private:
     VoxelField_XData* _data;

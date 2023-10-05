@@ -1294,3 +1294,8 @@ void VoxelField::getSize(vec3& outSize)
     outSize[1] = (float_t)_data->vfpd->sizeY;
     outSize[2] = (float_t)_data->vfpd->sizeZ;
 }
+
+void VoxelField::getTransform(mat4& outTransform)
+{
+    glm_mat4_copy(_data->vfpd->transform, outTransform);
+}
