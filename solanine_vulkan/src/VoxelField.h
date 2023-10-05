@@ -27,7 +27,7 @@ public:
     void renderImGui();
 
     void setBodyKinematic(bool isKinematic);
-    void moveBodyKinematic(vec3 newPosition, versor newRotation, const float_t& physicsDeltaTime);
+    void moveBody(vec3 newPosition, versor newRotation, bool immediate, float_t physicsDeltaTime);
     void getSize(vec3& outSize);
 
 private:

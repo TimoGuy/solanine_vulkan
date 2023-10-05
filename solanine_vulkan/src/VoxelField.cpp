@@ -1280,9 +1280,12 @@ void VoxelField::setBodyKinematic(bool isKinematic)
     physengine::setVoxelFieldBodyKinematic(*_data->vfpd, isKinematic);
 }
 
-void VoxelField::moveBodyKinematic(vec3 newPosition, versor newRotation, const float_t& physicsDeltaTime)
+void VoxelField::moveBody(vec3 newPosition, versor newRotation, bool immediate, float_t physicsDeltaTime)
 {
-    physengine::moveVoxelFieldBodyKinematic(*_data->vfpd, newPosition, newRotation, physicsDeltaTime);
+    if (immediate)
+        physengine::setVoxelFieldBodyTransform(*_data->vfpd, newPosition, newRotation);
+    else
+        physengine::moveVoxelFieldBodyKinematic(*_data->vfpd, newPosition, newRotation, physicsDeltaTime);
 }
 
 void VoxelField::getSize(vec3& outSize)

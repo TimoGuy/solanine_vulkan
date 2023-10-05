@@ -99,6 +99,13 @@ struct GondolaSystem_XData
     } detailedGondola;
 };
 
+void destructAndResetCollisions(GondolaSystem_XData* d, EntityManager* em)
+{
+    for (auto& collision : d->detailedGondola.collisions)
+        em->destroyOwnedEntity((Entity*)collision);
+    d->detailedGondola.collisions.clear();
+}
+
 void buildCollisions(GondolaSystem_XData* d, VulkanEngine* engineRef, std::vector<VoxelField*>& outCollisions, GondolaSystem_XData::GondolaNetworkType networkType)
 {
     // Load prefab from file.
@@ -134,18 +141,33 @@ void buildCollisions(GondolaSystem_XData* d, VulkanEngine* engineRef, std::vecto
     }
 }
 
-void destructAndResetCollisions(GondolaSystem_XData* d, EntityManager* em)
+void moveCollisionBodies(GondolaSystem_XData* d, bool staticMove, float_t physicsDeltaTime)  // If `staticMove==false`, then will be kinematic move.
 {
-    for (auto& collision : d->detailedGondola.collisions)
-        em->destroyOwnedEntity((Entity*)collision);
-    d->detailedGondola.collisions.clear();
+    for (size_t i = 0; i < d->detailedGondola.collisions.size(); i++)
+    {
+        auto& collision = d->detailedGondola.collisions[i];
+        auto& cart = d->simulations[d->detailedGondola.prevClosestSimulation].carts[i];
+
+        vec3 extent;
+        collision->getSize(extent);
+        glm_vec3_scale(extent, -0.5f, extent);
+        mat3 rotation;
+        glm_quat_mat3(cart.calcCurrentRORot, rotation);
+        glm_mat3_mulv(rotation, extent, extent);
+        vec3 newPos;
+        glm_vec3_add(cart.calcCurrentROPos, extent, newPos);
+
+        collision->moveBody(newPos, cart.calcCurrentRORot, staticMove, physicsDeltaTime);
+    }
 }
 
-void readyGondolaInteraction(GondolaSystem_XData* d, EntityManager* em, const GondolaSystem_XData::Simulation& simulation)
+void readyGondolaInteraction(GondolaSystem_XData* d, EntityManager* em, const GondolaSystem_XData::Simulation& simulation, size_t desiredSimulationIdx)
 {
     // Clear and rebuild
     destructAndResetCollisions(d, em);
     buildCollisions(d, d->engineRef, d->detailedGondola.collisions, d->gondolaNetworkType);
+    d->detailedGondola.prevClosestSimulation = desiredSimulationIdx;  // Mark cache as completed.
+    moveCollisionBodies(d, true, 0.0f);
 }
 
 GondolaSystem::GondolaSystem(EntityManager* em, RenderObjectManager* rom, VulkanEngine* engineRef, DataSerialized* ds) : Entity(em, ds), _data(new GondolaSystem_XData())
@@ -411,18 +433,10 @@ void updateSimulation(GondolaSystem_XData* d, EntityManager* em, size_t simIdx, 
         glm_euler_zyx(vec3{ xRot, yRot, 0.0f }, rotation);
         glm_mat4_quat(rotation, cart.calcCurrentRORot);
 
-        // Update physics objects.
-        if (d->detailedGondola.prevClosestSimulation == simIdx)
-        {
-            vec3 extent;
-            d->detailedGondola.collisions[i]->getSize(extent);
-            glm_vec3_scale(extent, -0.5f, extent);
-            glm_mat4_mulv3(rotation, extent, 0.0f, extent);
-            vec3 kinematicPos;
-            glm_vec3_add(cart.calcCurrentROPos, extent, kinematicPos);
-            d->detailedGondola.collisions[i]->moveBodyKinematic(kinematicPos, cart.calcCurrentRORot, physicsDeltaTime);
-        }
     }
+
+    // Update physics objects.
+    moveCollisionBodies(d, false, physicsDeltaTime);
 }
 
 void GondolaSystem::physicsUpdate(const float_t& physicsDeltaTime)
@@ -529,8 +543,7 @@ void GondolaSystem::physicsUpdate(const float_t& physicsDeltaTime)
     if (_data->detailedGondola.prevClosestSimulation == closestDistSimulationIdx)
         return;  // Already created. No need to recreate. Exit.
 
-    readyGondolaInteraction(_data, _em, _data->simulations[closestDistSimulationIdx]);
-    _data->detailedGondola.prevClosestSimulation = closestDistSimulationIdx;  // Mark cache as completed.
+    readyGondolaInteraction(_data, _em, _data->simulations[closestDistSimulationIdx], closestDistSimulationIdx);
 }
 
 void GondolaSystem::update(const float_t& deltaTime)
