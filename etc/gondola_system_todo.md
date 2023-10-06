@@ -69,12 +69,13 @@
                 - [x] Would at least need to know what the whole simulation cycle time is so that that can be moduloed
     - [x] BUG: when adding a new station, it flips around the orientation of the forward and backwards control points, forcing me to have to turn it around 180 degrees every time.
     - [ ] BUG: fix the bugs where control points get added and then stations's assigned control points get off.
+        - [ ] Watch out for if a simulation didn't have an aux position, and now it does with adding another control point.
+            > I think the best way to accomplish all this is to only update anchor points, then for every simulation, re-get the secondary and auxiliary positions.
+            > Second this!!!!!!!
         - [ ] Go thru every station on every "Add control point" and "Remove control point"
             - [ ] If adding control point, just take the control point insertion point and add 1 to all stations whose anchor (specifically) is after the insertion point.
                 > NOTE: so a control point that gets added within the bounds of a station will just get sucked in, which should be fine.
             - [ ] If removing control point and any points belong to station, just delete the station to make it easier.
-        - [ ] Watch out for if a simulation didn't have an aux position, and now it does with adding another control point.
-            > I think the best way to accomplish all this is to only update anchor points, then for every simulation, re-get the secondary and auxiliary positions.
     - [ ] Make train line double lined.
         - [ ] Take neighboring two nodes and get their deltaposition and that should be the tangent. Cross it with vector.up and you should get the offset direction of the control points.
         - [ ] Make track changer.
