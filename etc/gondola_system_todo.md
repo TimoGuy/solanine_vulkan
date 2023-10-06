@@ -54,17 +54,20 @@
         - [x] This is for (a possible game element) manipulating the positions of the stations' planets.
     - [ ] At the last station, gondola turns around and goes different direction.
         - [ ] ~~Change driving to come from middle instead of from front.~~
-        - [ ] Keep track of rearmost `t` and then assign it to the now front `t` and then toggle train reverse mode
-        - [ ] Take the `t` of the station node, and then add `LENGTH_CART_LOCAL_NETWORK * NUM_CARTS_LOCAL_NETWORK / LENGTH_STATION_LOCAL_NETWORK` as the `t` offset (in whatever direction you're going).
-        - [ ] Slow down to a stop.
-        - [ ] Wait 5 seconds before starting to accelerate out of the station.
-        - [ ] Keep track of how long the whole simulation time is.
+        - [x] Keep track of rearmost `t` and then assign it to the now front `t` and then toggle train reverse mode
+        - [x] Take the `t` of the station node, and then add `LENGTH_CART_LOCAL_NETWORK * NUM_CARTS_LOCAL_NETWORK / LENGTH_STATION_LOCAL_NETWORK` as the `t` offset (in whatever direction you're going).
+        - [x] Slow down to a stop.
+            - [x] BUG: it's not working once it gets out the first station.
+        - [ ] Process turning around to go into reverse mode.
+            - CAN'T FIGURE THIS OUT!!!
+        - [x] Wait 5 seconds before starting to accelerate out of the station.
+        - [x] Keep track of how long the whole simulation time is.
             - 1 for every `t`
             - 5 for every station.
             - idk how much for every slow down into the station.
             - [x] Figure out a way to take a global timer, offset it with the offset factor of each train, and then calculate the `t` value that that results in.
                 - [x] Would at least need to know what the whole simulation cycle time is so that that can be moduloed
-            - [ ] BUG: it's not working once it gets out the first station.
+    - [ ] BUG: when adding a new station, it flips around the orientation of the forward and backwards control points, forcing me to have to turn it around 180 degrees every time.
     - [ ] BUG: fix the bugs where control points get added and then simulation's control points gets off.
         - [ ] Go thru on every "Add control point" and "Remove control point"
         - [ ] Watch out for if a simulation didn't have an aux position, and now it does with adding another control point.

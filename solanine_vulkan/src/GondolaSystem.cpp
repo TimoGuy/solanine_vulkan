@@ -202,15 +202,17 @@ void getTFromSimulationTime(GondolaSystem_XData* d, float_t time, float_t& outT,
     float_t tDistFromEndOfStationToBeginningOfGondola = (LENGTH_STATION_LOCAL_NETWORK - getTotalGondolaLength()) * 0.5f / LENGTH_STATION_LOCAL_NETWORK * LENGTH_STATION_T_SPACE;
     float_t tLengthOfGondolaUpToLeadingBogie = (getTotalGondolaLength() - LENGTH_BOGIE_PADDING_LOCAL_NETWORK) / LENGTH_STATION_LOCAL_NETWORK * LENGTH_STATION_T_SPACE;
 
-    outT = tDistFromEndOfStationToBeginningOfGondola + tLengthOfGondolaUpToLeadingBogie;  // Start where the first bogie would be placed.
-    if (time >= totalSimLength * 0.5f)
+    if (time < totalSimLength * 0.5f)
     {
-        outT = (float_t)d->controlPoints.size() - 0.000001f - outT;
+        outT = tDistFromEndOfStationToBeginningOfGondola + tLengthOfGondolaUpToLeadingBogie;  // Start where the first bogie would be placed.
+        reverseRoute = false;
+    }
+    else
+    {
+        outT = (float_t)d->controlPoints.size() - 0.000001f - (tDistFromEndOfStationToBeginningOfGondola + tLengthOfGondolaUpToLeadingBogie);
         reverseRoute = true;
         time -= totalSimLength * 0.5f;
     }
-    else
-        reverseRoute = false;
     
     // Step thru simulation.
     enum class SimulationStage { TRAVEL, LEAVE_STATION, ARRIVE_INTO_STATION }
@@ -225,21 +227,21 @@ void getTFromSimulationTime(GondolaSystem_XData* d, float_t time, float_t& outT,
                 float_t nextT = getNextStationArriveStartT(d, outT, reverseRoute);
                 if (nextT < 0.0f)
                 {
-                    // No new station is found.
-                    std::cerr << "HEYO THERES NO MORE STATION!!!!";
+                    // No new station is found, just go to the end.
+                    nextT = (reverseRoute ? 0.0f : (float_t)d->controlPoints.size() - 0.000001f);
                 }
 
-                float_t maxAbleToMove = (nextT - outT) - ENTER_LEAVE_STATION_TIME;
+                float_t maxAbleToMove = (nextT - outT) * (reverseRoute ? -1.0f : 1.0f) - 1.0f;  // `- 1.0f` is for the space in T-space the simulation moves before it arrives in the station.
                 if (time < maxAbleToMove)
                 {
                     // Move for the whole time.
-                    outT += time;
+                    outT += time * (reverseRoute ? -1.0f : 1.0f);
                     time = 0.0f;
                 }
                 else
                 {
                     // Move just the max, then switch to `ARRIVE_INTO_STATION`.
-                    outT += maxAbleToMove;
+                    outT += maxAbleToMove * (reverseRoute ? -1.0f : 1.0f);
                     time -= maxAbleToMove;
                     currentSimulationStage = SimulationStage::ARRIVE_INTO_STATION;
                 }
@@ -248,9 +250,9 @@ void getTFromSimulationTime(GondolaSystem_XData* d, float_t time, float_t& outT,
             case SimulationStage::LEAVE_STATION:
             {
                 if (time >= ENTER_LEAVE_STATION_TIME)
-                    outT += 1.0f;
+                    outT += 1.0f * (reverseRoute ? -1.0f : 1.0f);
                 else
-                    outT += std::powf(time / ENTER_LEAVE_STATION_TIME, ENTER_LEAVE_STATION_TIME);
+                    outT += std::powf(time / ENTER_LEAVE_STATION_TIME, ENTER_LEAVE_STATION_TIME) * (reverseRoute ? -1.0f : 1.0f);
                 time -= ENTER_LEAVE_STATION_TIME;
                 currentSimulationStage = SimulationStage::TRAVEL;
             } break;
@@ -258,9 +260,9 @@ void getTFromSimulationTime(GondolaSystem_XData* d, float_t time, float_t& outT,
             case SimulationStage::ARRIVE_INTO_STATION:
             {
                 if (time >= ENTER_LEAVE_STATION_TIME)
-                    outT += 1.0f;
+                    outT += 1.0f * (reverseRoute ? -1.0f : 1.0f);
                 else
-                    outT += std::powf((time - ENTER_LEAVE_STATION_TIME) / ENTER_LEAVE_STATION_TIME + 1.0f, ENTER_LEAVE_STATION_TIME);  // https://www.desmos.com/calculator/8r16nz38wb
+                    outT += (-std::powf((-time + ENTER_LEAVE_STATION_TIME) / ENTER_LEAVE_STATION_TIME, ENTER_LEAVE_STATION_TIME) + 1.0f) * (reverseRoute ? -1.0f : 1.0f);  // https://www.desmos.com/calculator/8r16nz38wb
                 time -= ENTER_LEAVE_STATION_TIME;
                 time -= WAIT_AT_STATION_TIME;  // Wait at the station.
                 currentSimulationStage = SimulationStage::LEAVE_STATION;
@@ -565,27 +567,30 @@ void updateSimulation(GondolaSystem_XData* d, EntityManager* em, size_t simIdx, 
     float_t currentPosT;
     bool reverseRoute;
     getTFromSimulationTime(d, d->gondolaSimulationGlobalTimer + ioSimulation.offsetT, currentPosT, reverseRoute);
-    for (size_t i = 0; i < ioSimulation.carts.size(); i++)
+
+    bool first = true;
+    for (size_t rawI = 0; rawI < ioSimulation.carts.size(); rawI++)
     {
+        size_t i = (reverseRoute ? ioSimulation.carts.size() - 1 - rawI : rawI);
         auto& cart = ioSimulation.carts[i];
 
         // Move to first bogie position.
-        if (i > 0)
+        if (!first)
         {
-            auto& prevCart = ioSimulation.carts[i - 1];
+            auto& prevCart = ioSimulation.carts[reverseRoute ? i + 1 : i - 1];
             float_t distanceToNext = prevCart.bogiePadding + prevCart.rearMargin + cart.frontMargin + cart.bogiePadding;
             searchForRightTOnCurve(d, currentPosT, prevCart.bogiePosition2, distanceToNext, -1.0f);
         }
 
         if (!calculatePositionOnCurveFromT(d, currentPosT, cart.bogiePosition1))
         {
-            // Remove simulation if out of range.
-            // @NOTE: @INCOMPLETE: this shouldn't happen. At the beginning there should be X number of gondolas spawned and then they all go in a uniform loop.
-            if (d->detailedGondola.prevClosestSimulation == simIdx)
-                destructAndResetGondolaCollisions(d, em);
-            d->rom->unregisterRenderObjects(ioSimulation.renderObjs);
-            d->simulations.erase(d->simulations.begin() + simIdx);
-            d->detailedGondola.prevClosestSimulation = (size_t)-1;  // Invalidate detailedGondola collision cache.
+            // // Remove simulation if out of range.
+            // // @NOTE: @INCOMPLETE: this shouldn't happen. At the beginning there should be X number of gondolas spawned and then they all go in a uniform loop.
+            // if (d->detailedGondola.prevClosestSimulation == simIdx)
+            //     destructAndResetGondolaCollisions(d, em);
+            // d->rom->unregisterRenderObjects(ioSimulation.renderObjs);
+            // d->simulations.erase(d->simulations.begin() + simIdx);
+            // d->detailedGondola.prevClosestSimulation = (size_t)-1;  // Invalidate detailedGondola collision cache.
         }
 
         // Move to second bogie position.
@@ -602,7 +607,10 @@ void updateSimulation(GondolaSystem_XData* d, EntityManager* em, size_t simIdx, 
         glm_vec3_scale(cart.calcCurrentROPos, 0.5f, cart.calcCurrentROPos);
 
         vec3 delta;
-        glm_vec3_sub(cart.bogiePosition1, cart.bogiePosition2, delta);
+        if (reverseRoute)
+            glm_vec3_sub(cart.bogiePosition2, cart.bogiePosition1, delta);
+        else
+            glm_vec3_sub(cart.bogiePosition1, cart.bogiePosition2, delta);
         float_t yRot = std::atan2f(delta[0], delta[2]) + M_PI;
         
         float_t xzDist = glm_vec2_norm(vec2{ delta[0], delta[2] });
@@ -612,6 +620,7 @@ void updateSimulation(GondolaSystem_XData* d, EntityManager* em, size_t simIdx, 
         glm_euler_zyx(vec3{ xRot, yRot, 0.0f }, rotation);
         glm_mat4_quat(rotation, cart.calcCurrentRORot);
 
+        first = false;
     }
 
     // Update physics objects.
