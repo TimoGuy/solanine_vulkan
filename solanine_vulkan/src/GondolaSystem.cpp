@@ -18,6 +18,12 @@ VulkanEngine* GondolaSystem::_engine = nullptr;
 std::mutex useControlPointsMutex;
 
 constexpr float_t LENGTH_STATION_LOCAL_NETWORK = 110.0f;
+constexpr float_t LENGTH_STATION_T_SPACE = 2.0f;  // Station spans 3 control points, so 2.0f in T-space.
+
+constexpr size_t NUM_CARTS_LOCAL_NETWORK = 4;
+constexpr float_t LENGTH_CART_LOCAL_NETWORK = 26.0f;
+constexpr float_t MARGIN_CART_LOCAL_NETWORK = 1.0f;
+constexpr float_t LENGTH_BOGIE_PADDING_LOCAL_NETWORK = LENGTH_CART_LOCAL_NETWORK / 6.5f;  // This is the measured proportion on the Japanese trains on Yamanote-sen.
 
 struct GondolaSystem_XData
 {
@@ -55,6 +61,7 @@ struct GondolaSystem_XData
         TOKKYUU,
     };
     GondolaNetworkType gondolaNetworkType = GondolaNetworkType::FUTSUU;
+    float_t gondolaSimulationGlobalTimer = 0.0f;
 
     struct TimeSlicing  // @NOTE: @TODO: as more things use timeslicing (if needed (ah but this one needs it I believe)), bring this out into a global counter.
     {
@@ -70,7 +77,7 @@ struct GondolaSystem_XData
 
     struct Simulation
     {
-        float_t                    positionT;
+        float_t                    offsetT;
         std::vector<RenderObject*> renderObjs;  // @NOTE: For LODs, switch out the assigned model, not unregister/register new RenderObjects.  -Timo 2020/10/04
         struct GondolaCart
         {
@@ -123,6 +130,144 @@ struct GondolaSystem_XData
         VoxelField* collision = nullptr;  // Only support 1 type of station (FOR NOW), so don't load out the collision when exiting the priorityRange.  -Timo 2023/10/05
     } detailedStation;
 };
+
+constexpr float_t ENTER_LEAVE_STATION_TIME = 3.0f;  // https://www.desmos.com/calculator/emqtb8qoby
+constexpr float_t WAIT_AT_STATION_TIME = 5.0f;
+
+float_t getTotalSimulationLength(GondolaSystem_XData* d)
+{
+    float_t numLines = (float_t)d->controlPoints.size() - 1.0f;
+    float_t excludedSpace = LENGTH_STATION_T_SPACE;  // This adds up to the station length (padding before the train plus the train length up to the leading bogie in the beginning, then at the end from the leading bogie to the very end of the spline, so this ends up just being the length of the station itself, aka 2.0f).  -Timo 2023/10/06
+    float_t total =
+        numLines - excludedSpace +
+        (float_t)(d->stations.size() - 1) * (
+            (ENTER_LEAVE_STATION_TIME - 1.0f) * 2.0f +
+            WAIT_AT_STATION_TIME
+        ) - 0.000001f;
+    return total * 2.0f;  // The `*2` at the end is bc the simulation has the pong of the ping-ponging.
+}
+
+float_t getTotalGondolaLength()
+{
+    return LENGTH_CART_LOCAL_NETWORK * NUM_CARTS_LOCAL_NETWORK +
+        MARGIN_CART_LOCAL_NETWORK * (NUM_CARTS_LOCAL_NETWORK * 2.0f - 2.0f);  // The `- 2.0f` is for the margin not for the front and back of the end carts.
+}
+
+float_t getNextStationArriveStartT(GondolaSystem_XData* d, float_t t, bool reverseRoute)
+{
+    float_t tTargetStationArrivalOffset =
+        (getTotalGondolaLength() * 0.5f - LENGTH_BOGIE_PADDING_LOCAL_NETWORK) / LENGTH_STATION_LOCAL_NETWORK * LENGTH_STATION_T_SPACE;
+
+    float_t nextTTarget = -1.0f;
+    float_t lowestDiff = std::numeric_limits<float_t>::max();
+
+    int64_t i = (reverseRoute ? d->stations.size() - 1 : 0.0f);
+    for (;;)
+    {
+        float_t tTarget = (float_t)d->stations[i].anchorCP.cpIdx + tTargetStationArrivalOffset * (reverseRoute ? -1.0f : 1.0f);
+        float_t diff = (tTarget - t) * (reverseRoute ? -1.0f : 1.0f);
+        if (diff > 0.0f && diff < lowestDiff)
+        {
+            nextTTarget = tTarget;
+            lowestDiff = diff;
+        }
+
+        // Increment.
+        if (reverseRoute)
+        {
+            i--;
+            if (i < 0)
+                break;
+        }
+        else
+        {
+            i++;
+            if (i >= d->stations.size())
+                break;
+        }
+    }
+
+    return nextTTarget;
+}
+
+void getTFromSimulationTime(GondolaSystem_XData* d, float_t time, float_t& outT, bool& reverseRoute)
+{
+    float_t totalSimLength = getTotalSimulationLength(d);
+    while (time < 0.0f)
+        time += totalSimLength;
+    while (time >= totalSimLength)
+        time -= totalSimLength;
+
+    // Chop up simulation into pieces and see what occurred.
+    float_t tDistFromEndOfStationToBeginningOfGondola = (LENGTH_STATION_LOCAL_NETWORK - getTotalGondolaLength()) * 0.5f / LENGTH_STATION_LOCAL_NETWORK * LENGTH_STATION_T_SPACE;
+    float_t tLengthOfGondolaUpToLeadingBogie = (getTotalGondolaLength() - LENGTH_BOGIE_PADDING_LOCAL_NETWORK) / LENGTH_STATION_LOCAL_NETWORK * LENGTH_STATION_T_SPACE;
+
+    outT = tDistFromEndOfStationToBeginningOfGondola + tLengthOfGondolaUpToLeadingBogie;  // Start where the first bogie would be placed.
+    if (time >= totalSimLength * 0.5f)
+    {
+        outT = (float_t)d->controlPoints.size() - 0.000001f - outT;
+        reverseRoute = true;
+        time -= totalSimLength * 0.5f;
+    }
+    else
+        reverseRoute = false;
+    
+    // Step thru simulation.
+    enum class SimulationStage { TRAVEL, LEAVE_STATION, ARRIVE_INTO_STATION }
+        currentSimulationStage = SimulationStage::LEAVE_STATION;
+    while (time > 0.0f)
+    {
+        switch (currentSimulationStage)
+        {
+            case SimulationStage::TRAVEL:
+            {
+                // Check if can move for the whole time.
+                float_t nextT = getNextStationArriveStartT(d, outT, reverseRoute);
+                if (nextT < 0.0f)
+                {
+                    // No new station is found.
+                    std::cerr << "HEYO THERES NO MORE STATION!!!!";
+                }
+
+                float_t maxAbleToMove = (nextT - outT) - ENTER_LEAVE_STATION_TIME;
+                if (time < maxAbleToMove)
+                {
+                    // Move for the whole time.
+                    outT += time;
+                    time = 0.0f;
+                }
+                else
+                {
+                    // Move just the max, then switch to `ARRIVE_INTO_STATION`.
+                    outT += maxAbleToMove;
+                    time -= maxAbleToMove;
+                    currentSimulationStage = SimulationStage::ARRIVE_INTO_STATION;
+                }
+            } break;
+
+            case SimulationStage::LEAVE_STATION:
+            {
+                if (time >= ENTER_LEAVE_STATION_TIME)
+                    outT += 1.0f;
+                else
+                    outT += std::powf(time / ENTER_LEAVE_STATION_TIME, ENTER_LEAVE_STATION_TIME);
+                time -= ENTER_LEAVE_STATION_TIME;
+                currentSimulationStage = SimulationStage::TRAVEL;
+            } break;
+
+            case SimulationStage::ARRIVE_INTO_STATION:
+            {
+                if (time >= ENTER_LEAVE_STATION_TIME)
+                    outT += 1.0f;
+                else
+                    outT += std::powf((time - ENTER_LEAVE_STATION_TIME) / ENTER_LEAVE_STATION_TIME + 1.0f, ENTER_LEAVE_STATION_TIME);  // https://www.desmos.com/calculator/8r16nz38wb
+                time -= ENTER_LEAVE_STATION_TIME;
+                time -= WAIT_AT_STATION_TIME;  // Wait at the station.
+                currentSimulationStage = SimulationStage::LEAVE_STATION;
+            } break;
+        }
+    }
+}
 
 void destructAndResetGondolaCollisions(GondolaSystem_XData* d, EntityManager* em)
 {
@@ -327,15 +472,11 @@ void drawDEBUGCurveVisualization(GondolaSystem_XData* d)
         );
 }
 
-void spawnSimulation(GondolaSystem_XData* d, void* modelOwner, const std::string& guid, float_t spawnT)
+void spawnSimulation(GondolaSystem_XData* d, void* modelOwner, const std::string& guid, float_t offsetT)
 {
     // Register cart render objects.
-    constexpr size_t NUM_CARTS_LOCAL_NETWORK = 4;
-    constexpr float_t LENGTH_CART_LOCAL_NETWORK = 26.0f;
-    constexpr float_t MARGIN_CART_LOCAL_NETWORK = 1.0f;
-
     GondolaSystem_XData::Simulation newSimulation;
-    newSimulation.positionT = spawnT;
+    newSimulation.offsetT = offsetT;
     newSimulation.renderObjs.resize(NUM_CARTS_LOCAL_NETWORK, nullptr);
 
     std::vector<RenderObject> inROs;
@@ -357,7 +498,7 @@ void spawnSimulation(GondolaSystem_XData* d, void* modelOwner, const std::string
             .length = LENGTH_CART_LOCAL_NETWORK,
             .frontMargin = frontMargin,
             .rearMargin = rearMargin,
-            .bogiePadding = LENGTH_CART_LOCAL_NETWORK / 6.5f,  // This is the measured proportion on the Japanese trains on Yamanote-sen.
+            .bogiePadding = LENGTH_BOGIE_PADDING_LOCAL_NETWORK,
         };
         newSimulation.carts.push_back(newCart);
     }
@@ -416,13 +557,14 @@ bool searchForRightTOnCurve(GondolaSystem_XData* d, float_t& ioT, vec3 anchorPos
     return true;
 }
 
-void updateSimulation(GondolaSystem_XData* d, EntityManager* em, size_t simIdx, const float_t& physicsDeltaTime)
+void updateSimulation(GondolaSystem_XData* d, EntityManager* em, size_t simIdx, const float& physicsDeltaTime)
 {
     GondolaSystem_XData::Simulation& ioSimulation = d->simulations[simIdx];
-    ioSimulation.positionT += physicsDeltaTime;
 
     // Position each render object position based off the position of the bogies.
-    float_t currentPosT = ioSimulation.positionT;
+    float_t currentPosT;
+    bool reverseRoute;
+    getTFromSimulationTime(d, d->gondolaSimulationGlobalTimer + ioSimulation.offsetT, currentPosT, reverseRoute);
     for (size_t i = 0; i < ioSimulation.carts.size(); i++)
     {
         auto& cart = ioSimulation.carts[i];
@@ -510,6 +652,7 @@ void GondolaSystem::physicsUpdate(const float_t& physicsDeltaTime)
     // @REPLY: and then for the closest iterating one, there should be `updateSimulation` running every frame, since this affects the collisions too.
     //         In order to accomplish this, having a global timer is important. Then that way each timesliced gondola won't have to guess the timing and then it gets off.
     //         Just pass in the global timer value instead of `physicsDeltaTime`.  @TODO
+    _data->gondolaSimulationGlobalTimer += physicsDeltaTime;
     for (int64_t i = _data->simulations.size() - 1; i >= 0; i--)  // Reverse iteration so that delete can happen.
         updateSimulation(_data, _em, i, physicsDeltaTime);
 
@@ -634,6 +777,14 @@ void GondolaSystem::lateUpdate(const float_t& deltaTime)
             glm_translate(ro->transformMatrix, sim.carts[i].calcCurrentROPos);
             glm_quat_rotate(ro->transformMatrix, sim.carts[i].calcCurrentRORot, ro->transformMatrix);
         }
+    
+    if (_data->detailedStation.prevClosestStation != (size_t)-1)
+    {
+        mat4 physicsInterpolTransform;
+        _data->detailedStation.collision->getTransform(physicsInterpolTransform);
+        mat4& renderObjTransform = _data->stations[_data->detailedStation.prevClosestStation].renderObj->transformMatrix;
+        glm_mat4_copy(physicsInterpolTransform, renderObjTransform);
+    }
 }
 
 void GondolaSystem::dump(DataSerializer& ds)
@@ -785,7 +936,7 @@ void executeXAction(GondolaSystem_XData* d, mat4* matrixToMove)
     d->triggerBakeSplineCache = true;
 }
 
-void executeVAction(GondolaSystem_XData* d, EntityManager* em, mat4* matrixToMove)
+void executeVAction(GondolaSystem_XData* d, EntityManager* em, GondolaSystem* _this, const std::string& myGuid, mat4* matrixToMove)
 {
     size_t controlPointIdx = whichControlPointFromMatrix(d, matrixToMove);
     if (controlPointIdx == (size_t)-1)
@@ -822,6 +973,7 @@ void executeVAction(GondolaSystem_XData* d, EntityManager* em, mat4* matrixToMov
         if (d->stations[i].anchorCP.cpIdx == newStation.anchorCP.cpIdx)
         {
             // Found self. That means wants to remove the station from here.
+            // @COPYPASTA
             if (d->stations[i].renderObj != nullptr)
                 d->rom->unregisterRenderObjects({ d->stations[i].renderObj });
             d->stations.erase(d->stations.begin() + i);
@@ -849,6 +1001,9 @@ void executeVAction(GondolaSystem_XData* d, EntityManager* em, mat4* matrixToMov
             newStation.auxiliaryForwardCP.cpIdx == reservedCP.cpIdx ||
             newStation.auxiliaryBackwardCP.cpIdx == reservedCP.cpIdx)
         {
+            // @COPYPASTA
+            if (d->stations[reservedCP.stationIdx].renderObj != nullptr)
+                d->rom->unregisterRenderObjects({ d->stations[reservedCP.stationIdx].renderObj });
             d->stations.erase(d->stations.begin() + reservedCP.stationIdx);
             if (d->detailedStation.collision != nullptr)
                 destructAndResetStationCollision(d, em);
@@ -933,6 +1088,22 @@ void executeVAction(GondolaSystem_XData* d, EntityManager* em, mat4* matrixToMov
     d->detailedStation.collision->moveBody(newPos, rotationV, true, 0.0f);
     d->detailedStation.prevClosestStation = d->stations.size() - 1;  // Get most recent pushed back station.
     // glm_mat4_zero(d->detailedStation.prevCollisionTransform);  // Invalidate prev collision cache.  // @INCOMPLETE: there's no way to tell if the new transform is similar to the old one.
+
+    d->rom->registerRenderObjects({
+            {
+                .model = d->rom->getModel("BuilderObj_GondolaStation", _this, [](){}),
+                .renderLayer = RenderLayer::BUILDER,
+                .attachedEntityGuid = myGuid,
+            }
+        },
+        { &d->stations.back().renderObj }
+    );
+
+    // Set initial transform for station renderObj.
+    auto& station = d->stations.back();
+    glm_mat4_identity(station.renderObj->transformMatrix);
+    glm_translate(station.renderObj->transformMatrix, newPos);
+    glm_quat_rotate(station.renderObj->transformMatrix, rotationV, station.renderObj->transformMatrix);
 }
 
 void GondolaSystem::renderImGui()
@@ -949,10 +1120,10 @@ void GondolaSystem::renderImGui()
         executeXAction(_data, _engine->getMatrixToMove());
     prevXHeld = input::keyXPressed;
     if (input::keyVPressed && !prevVHeld)
-        executeVAction(_data, _em, _engine->getMatrixToMove());
+        executeVAction(_data, _em, this, getGUID(), _engine->getMatrixToMove());
     prevVHeld = input::keyVPressed;
 
     // Imgui.
     if (ImGui::Button("Spawn Simulation"))
-        spawnSimulation(_data, this, getGUID(), 0.0f);
+        spawnSimulation(_data, this, getGUID(), -_data->gondolaSimulationGlobalTimer);
 }

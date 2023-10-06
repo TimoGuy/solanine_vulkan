@@ -62,8 +62,13 @@
             - 1 for every `t`
             - 5 for every station.
             - idk how much for every slow down into the station.
-            - [ ] Figure out a way to take a global timer, offset it with the offset factor of each train, and then calculate the `t` value that that results in.
-                - [ ] Would at least need to know what the whole simulation cycle time is so that that can be moduloed
+            - [x] Figure out a way to take a global timer, offset it with the offset factor of each train, and then calculate the `t` value that that results in.
+                - [x] Would at least need to know what the whole simulation cycle time is so that that can be moduloed
+            - [ ] BUG: it's not working once it gets out the first station.
+    - [ ] BUG: fix the bugs where control points get added and then simulation's control points gets off.
+        - [ ] Go thru on every "Add control point" and "Remove control point"
+        - [ ] Watch out for if a simulation didn't have an aux position, and now it does with adding another control point.
+            > I think the best way to accomplish all this is to only update anchor points, then for every simulation, re-get the secondary and auxiliary positions.
     - [ ] Make train line double lined.
         - [ ] Take neighboring two nodes and get their deltaposition and that should be the tangent. Cross it with vector.up and you should get the offset direction of the control points.
         - [ ] Make track changer.
