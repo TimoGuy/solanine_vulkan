@@ -58,6 +58,12 @@
         - [ ] Take the `t` of the station node, and then add `LENGTH_CART_LOCAL_NETWORK * NUM_CARTS_LOCAL_NETWORK / LENGTH_STATION_LOCAL_NETWORK` as the `t` offset (in whatever direction you're going).
         - [ ] Slow down to a stop.
         - [ ] Wait 5 seconds before starting to accelerate out of the station.
+        - [ ] Keep track of how long the whole simulation time is.
+            - 1 for every `t`
+            - 5 for every station.
+            - idk how much for every slow down into the station.
+            - [ ] Figure out a way to take a global timer, offset it with the offset factor of each train, and then calculate the `t` value that that results in.
+                - [ ] Would at least need to know what the whole simulation cycle time is so that that can be moduloed
     - [ ] Make train line double lined.
         - [ ] Take neighboring two nodes and get their deltaposition and that should be the tangent. Cross it with vector.up and you should get the offset direction of the control points.
         - [ ] Make track changer.
