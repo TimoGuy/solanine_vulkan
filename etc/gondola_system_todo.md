@@ -67,7 +67,7 @@
             - idk how much for every slow down into the station.
             - [x] Figure out a way to take a global timer, offset it with the offset factor of each train, and then calculate the `t` value that that results in.
                 - [x] Would at least need to know what the whole simulation cycle time is so that that can be moduloed
-    - [ ] BUG: when adding a new station, it flips around the orientation of the forward and backwards control points, forcing me to have to turn it around 180 degrees every time.
+    - [x] BUG: when adding a new station, it flips around the orientation of the forward and backwards control points, forcing me to have to turn it around 180 degrees every time.
     - [ ] BUG: fix the bugs where control points get added and then simulation's control points gets off.
         - [ ] Go thru on every "Add control point" and "Remove control point"
         - [ ] Watch out for if a simulation didn't have an aux position, and now it does with adding another control point.

@@ -1021,7 +1021,7 @@ void executeVAction(GondolaSystem_XData* d, EntityManager* em, GondolaSystem* _t
     }
 
     // Line up the control points to the anchor point.
-    vec3 localOffsetDelta = { 0.0f, 0.0f, LENGTH_STATION_LOCAL_NETWORK * 0.5f };
+    vec3 localOffsetDelta = { 0.0f, 0.0f, -LENGTH_STATION_LOCAL_NETWORK * 0.5f };
     glm_vec3_add(
         newStation.anchorCP.localOffset,
         localOffsetDelta,
