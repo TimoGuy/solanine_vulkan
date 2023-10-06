@@ -209,7 +209,7 @@ void getTFromSimulationTime(GondolaSystem_XData* d, float_t time, float_t& outT,
     }
     else
     {
-        outT = (float_t)d->controlPoints.size() - 0.000001f - (tDistFromEndOfStationToBeginningOfGondola + tLengthOfGondolaUpToLeadingBogie);
+        outT = (float_t)d->controlPoints.size() - 1.000001f - (tDistFromEndOfStationToBeginningOfGondola + tLengthOfGondolaUpToLeadingBogie);
         reverseRoute = true;
         time -= totalSimLength * 0.5f;
     }
@@ -228,7 +228,7 @@ void getTFromSimulationTime(GondolaSystem_XData* d, float_t time, float_t& outT,
                 if (nextT < 0.0f)
                 {
                     // No new station is found, just go to the end.
-                    nextT = (reverseRoute ? 0.0f : (float_t)d->controlPoints.size() - 0.000001f);
+                    nextT = (reverseRoute ? 0.0f : (float_t)d->controlPoints.size() - 1.000001f);
                 }
 
                 float_t maxAbleToMove = (nextT - outT) * (reverseRoute ? -1.0f : 1.0f) - 1.0f;  // `- 1.0f` is for the space in T-space the simulation moves before it arrives in the station.
@@ -508,12 +508,12 @@ void spawnSimulation(GondolaSystem_XData* d, void* modelOwner, const std::string
     d->simulations.push_back(newSimulation);
 }
 
-bool searchForRightTOnCurve(GondolaSystem_XData* d, float_t& ioT, vec3 anchorPos, float_t targetDistance, float_t startingSearchDirection)
+bool searchForRightTOnCurve(GondolaSystem_XData* d, float_t& ioT, vec3 anchorPos, float_t targetDistance, bool reverseRoute)
 {
     float_t targetDistance2 = targetDistance * targetDistance;
 
     float_t searchStride = 0.5f;
-    float_t searchDirection = startingSearchDirection;
+    float_t searchDirection = (reverseRoute ? 1.0f : -1.0f);
     float_t searchPosDistWS2 = std::numeric_limits<float_t>::max();
     float_t maxT = (float_t)d->splineCoefficientsCache.size() - 0.000001f;
 
@@ -540,19 +540,19 @@ bool searchForRightTOnCurve(GondolaSystem_XData* d, float_t& ioT, vec3 anchorPos
 
         if (searchPosDistWS2 > targetDistance2)
         {
-            if (searchDirection < 0.0f)
+            if (searchDirection * (reverseRoute ? -1.0f : 1.0f) < 0.0f)
                 searchStride *= 0.5f;  // Cut stride in half since crossed the target pos.
             else if (maybeWantingToGoFurtherIntoUndefined)
                 return false;  // Doesn't want to turn around after dipping into undefined zone. Exit.
-            searchDirection = 1.0f;
+            searchDirection = (reverseRoute ? -1.0f : 1.0f);
         }
         else
         {
-            if (searchDirection > 0.0f)
+            if (searchDirection * (reverseRoute ? -1.0f : 1.0f) > 0.0f)
                 searchStride *= 0.5f;  // Cut stride in half since crossed the target pos.
             else if (maybeWantingToGoFurtherIntoUndefined)
                 return false;  // Doesn't want to turn around after dipping into undefined zone. Exit.
-            searchDirection = -1.0f;
+            searchDirection = (reverseRoute ? 1.0f : -1.0f);
         }
     }
 
@@ -579,7 +579,7 @@ void updateSimulation(GondolaSystem_XData* d, EntityManager* em, size_t simIdx, 
         {
             auto& prevCart = ioSimulation.carts[reverseRoute ? i + 1 : i - 1];
             float_t distanceToNext = prevCart.bogiePadding + prevCart.rearMargin + cart.frontMargin + cart.bogiePadding;
-            searchForRightTOnCurve(d, currentPosT, prevCart.bogiePosition2, distanceToNext, -1.0f);
+            searchForRightTOnCurve(d, currentPosT, prevCart.bogiePosition2, distanceToNext, reverseRoute);
         }
 
         if (!calculatePositionOnCurveFromT(d, currentPosT, cart.bogiePosition1))
@@ -595,7 +595,7 @@ void updateSimulation(GondolaSystem_XData* d, EntityManager* em, size_t simIdx, 
 
         // Move to second bogie position.
         float_t distanceToSecond = cart.length - 2.0f * cart.bogiePadding;
-        searchForRightTOnCurve(d, currentPosT, cart.bogiePosition1, distanceToSecond, -1.0f);
+        searchForRightTOnCurve(d, currentPosT, cart.bogiePosition1, distanceToSecond, reverseRoute);
 
         calculatePositionOnCurveFromT(d, currentPosT, cart.bogiePosition2);
 

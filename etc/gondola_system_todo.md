@@ -52,13 +52,13 @@
             > Or could have it be 5 nodes, so that the middle one is for sure the middle one.
     - [x] Update the ~~4~~ 5 control points whenever the station itself moves.
         - [x] This is for (a possible game element) manipulating the positions of the stations' planets.
-    - [ ] At the last station, gondola turns around and goes different direction.
+    - [x] At the last station, gondola turns around and goes different direction.
         - [ ] ~~Change driving to come from middle instead of from front.~~
         - [x] Keep track of rearmost `t` and then assign it to the now front `t` and then toggle train reverse mode
         - [x] Take the `t` of the station node, and then add `LENGTH_CART_LOCAL_NETWORK * NUM_CARTS_LOCAL_NETWORK / LENGTH_STATION_LOCAL_NETWORK` as the `t` offset (in whatever direction you're going).
         - [x] Slow down to a stop.
             - [x] BUG: it's not working once it gets out the first station.
-        - [ ] Process turning around to go into reverse mode.
+        - [x] Process turning around to go into reverse mode.
             - CAN'T FIGURE THIS OUT!!!
         - [x] Wait 5 seconds before starting to accelerate out of the station.
         - [x] Keep track of how long the whole simulation time is.
