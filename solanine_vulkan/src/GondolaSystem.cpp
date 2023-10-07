@@ -652,9 +652,12 @@ void updateStation(GondolaSystem_XData* d)
     d->triggerBakeSplineCache = true;  // Assumption is that the station moved.
 }
 
+bool showCurvePaths = true;
+
 void GondolaSystem::physicsUpdate(const float_t& physicsDeltaTime)
 {
-    drawDEBUGCurveVisualization(_data);
+    if (showCurvePaths)
+        drawDEBUGCurveVisualization(_data);
 
     // Update simulations.
     // @TODO: there should be some kind of timeslicing for this, then update the timestamp of the new calculated point, and in `lateUpdate()` interpolate between the two generated points.
@@ -665,7 +668,8 @@ void GondolaSystem::physicsUpdate(const float_t& physicsDeltaTime)
     for (int64_t i = _data->simulations.size() - 1; i >= 0; i--)  // Reverse iteration so that delete can happen.
         updateSimulation(_data, _em, i, physicsDeltaTime);
 
-    if (_data->detailedStation.collision != nullptr)
+    if (_data->detailedStation.collision != nullptr &&
+        _data->detailedStation.prevClosestStation != (size_t)-1)
         updateStation(_data);
 
     if (!_data->timeslicing.checkTimeslice())
@@ -877,6 +881,20 @@ void GondolaSystem::reportMoved(mat4* matrixMoved)
     // Ignore movements to simulations.
 }
 
+void calculateStationSecAuxCPIndices(GondolaSystem_XData* d)
+{
+    for (auto& station : d->stations)
+    {
+        size_t acp = station.anchorCP.cpIdx;
+        station.secondaryForwardCP.cpIdx = acp + 1;
+        station.secondaryBackwardCP.cpIdx = acp - 1;
+        if (acp < d->controlPoints.size() - 2)
+            station.auxiliaryForwardCP.cpIdx = acp + 2;
+        if (acp > 1)
+            station.auxiliaryBackwardCP.cpIdx = acp - 2;
+    }
+}
+
 void executeCAction(GondolaSystem_XData* d, GondolaSystem* _this, const std::string& myGuid, mat4* matrixToMove)
 {
     size_t controlPointIdx = whichControlPointFromMatrix(d, matrixToMove);
@@ -928,10 +946,39 @@ void executeCAction(GondolaSystem_XData* d, GondolaSystem* _this, const std::str
     );
 
     d->controlPoints.insert(d->controlPoints.begin() + controlPointIdx + (backwards ? 0 : 1), newControlPoint);
+
+    // Shift all indices of control points
+    for (auto& station : d->stations)
+        if (station.anchorCP.cpIdx >= controlPointIdx + (backwards ? 0 : 1))
+            station.anchorCP.cpIdx++;
+    calculateStationSecAuxCPIndices(d);
+
     d->triggerBakeSplineCache = true;
 }
 
-void executeXAction(GondolaSystem_XData* d, mat4* matrixToMove)
+struct ReservedCP
+{
+    size_t cpIdx;
+    size_t stationIdx;
+};
+std::vector<ReservedCP> getReservedControlPoints(GondolaSystem_XData* d)
+{
+    std::vector<ReservedCP> reservedCPs;
+    for (int64_t i = d->stations.size() - 1; i >= 0; i--)  // Add in control points so that the station indices are descending so that deletions will not have to have an index recalculation.
+    {
+        auto& station = d->stations[i];
+        reservedCPs.push_back({ station.anchorCP.cpIdx, (size_t)i });
+        reservedCPs.push_back({ station.secondaryForwardCP.cpIdx, (size_t)i });
+        reservedCPs.push_back({ station.secondaryBackwardCP.cpIdx, (size_t)i });
+        if (station.auxiliaryForwardCP.cpIdx != (size_t)-1)
+            reservedCPs.push_back({ station.auxiliaryForwardCP.cpIdx, (size_t)i });
+        if (station.auxiliaryBackwardCP.cpIdx != (size_t)-1)
+            reservedCPs.push_back({ station.auxiliaryBackwardCP.cpIdx, (size_t)i });
+    }
+    return reservedCPs;
+}
+
+void executeXAction(GondolaSystem_XData* d, EntityManager* em, mat4* matrixToMove)
 {
     size_t controlPointIdx = whichControlPointFromMatrix(d, matrixToMove);
     if (controlPointIdx == (size_t)-1)
@@ -939,9 +986,30 @@ void executeXAction(GondolaSystem_XData* d, mat4* matrixToMove)
 
     std::lock_guard<std::mutex> lg(useControlPointsMutex);
 
-    d->rom->unregisterRenderObjects({ d->controlPoints[controlPointIdx].renderObj });
+    // Delete any stations that use the control point that's getting deleted.
+    std::vector<ReservedCP> reservedCPs = getReservedControlPoints(d);
+    for (auto& rcp : reservedCPs)
+        if (rcp.cpIdx == controlPointIdx)
+        {
+            // @COPYPASTA
+            if (d->stations[rcp.stationIdx].renderObj != nullptr)
+                d->rom->unregisterRenderObjects({ d->stations[rcp.stationIdx].renderObj });
+            d->stations.erase(d->stations.begin() + rcp.stationIdx);
+            if (d->detailedStation.collision != nullptr)
+                destructAndResetStationCollision(d, em);
+            break;  // Assume that none of the station control points are overlapping, so that means just the one needs to be deleted.
+        }
 
+    // Delete the control point.
+    d->rom->unregisterRenderObjects({ d->controlPoints[controlPointIdx].renderObj });
     d->controlPoints.erase(d->controlPoints.begin() + controlPointIdx);
+    
+    // Shift all indices of control points
+    for (auto& station : d->stations)
+        if (station.anchorCP.cpIdx > controlPointIdx)
+            station.anchorCP.cpIdx--;
+    calculateStationSecAuxCPIndices(d);
+
     d->triggerBakeSplineCache = true;
 }
 
@@ -958,30 +1026,11 @@ void executeVAction(GondolaSystem_XData* d, EntityManager* em, GondolaSystem* _t
     if (controlPointIdx <= 0)
         return;  // Too far to the beginning.
 
-    // Check to see if control point has enough room
-    // (need 5 if middle, 4 if on one of the ends, bc ghost point will act as the 5th point).
-    GondolaSystem_XData::Station newStation = {};
-    newStation.anchorCP.cpIdx = controlPointIdx;
-    newStation.secondaryForwardCP.cpIdx = controlPointIdx + 1;
-    newStation.secondaryBackwardCP.cpIdx = controlPointIdx - 1;
-    if (controlPointIdx < d->controlPoints.size() - 2)
-        newStation.auxiliaryForwardCP.cpIdx = controlPointIdx + 2;
-    if (controlPointIdx > 1)
-        newStation.auxiliaryBackwardCP.cpIdx = controlPointIdx - 2;
-
-    // Check if any of the control points are already taken. If so, overwrite other station.
-    struct ReservedCP
-    {
-        size_t cpIdx;
-        size_t stationIdx;
-    };
-    std::vector<ReservedCP> reservedCPs;
-    for (int64_t i = d->stations.size() - 1; i >= 0; i--)
-    {
-        auto& station = d->stations[i];
-        if (d->stations[i].anchorCP.cpIdx == newStation.anchorCP.cpIdx)
+    // Check to see if selected cp is already anchor of another station.
+    // If so, then this action is taken as wanting to remove the station.
+    for (size_t i = 0; i < d->stations.size(); i++)
+        if (d->stations[i].anchorCP.cpIdx == controlPointIdx)
         {
-            // Found self. That means wants to remove the station from here.
             // @COPYPASTA
             if (d->stations[i].renderObj != nullptr)
                 d->rom->unregisterRenderObjects({ d->stations[i].renderObj });
@@ -990,14 +1039,14 @@ void executeVAction(GondolaSystem_XData* d, EntityManager* em, GondolaSystem* _t
                 destructAndResetStationCollision(d, em);
             return;  // Action done. Don't finish adding the new station in. Exit.
         }
-        reservedCPs.push_back({ station.anchorCP.cpIdx, (size_t)i });
-        reservedCPs.push_back({ station.secondaryForwardCP.cpIdx, (size_t)i });
-        reservedCPs.push_back({ station.secondaryBackwardCP.cpIdx, (size_t)i });
-        if (station.auxiliaryForwardCP.cpIdx != (size_t)-1)
-            reservedCPs.push_back({ station.auxiliaryForwardCP.cpIdx, (size_t)i });
-        if (station.auxiliaryBackwardCP.cpIdx != (size_t)-1)
-            reservedCPs.push_back({ station.auxiliaryBackwardCP.cpIdx, (size_t)i });
-    }
+
+    // Simply assign the control point idx for the anchor and
+    // `calculateStationSecAuxCPIndices()` will take care of the rest.
+    GondolaSystem_XData::Station newStation = {};
+    newStation.anchorCP.cpIdx = controlPointIdx;
+
+    // Check if any of the control points are already taken. If so, overwrite other station.
+    std::vector<ReservedCP> reservedCPs = getReservedControlPoints(d);
     std::vector<size_t> deletedStationIdxs;
     for (auto& reservedCP : reservedCPs)
     {
@@ -1034,22 +1083,24 @@ void executeVAction(GondolaSystem_XData* d, EntityManager* em, GondolaSystem* _t
     );
 
     // Line up the aux points too.
-    if (newStation.auxiliaryForwardCP.cpIdx != (size_t)-1)
-        glm_vec3_add(
-            newStation.secondaryForwardCP.localOffset,
-            localOffsetDelta,
-            newStation.auxiliaryForwardCP.localOffset
-        );
-    if (newStation.auxiliaryBackwardCP.cpIdx != (size_t)-1)
-        glm_vec3_sub(
-            newStation.secondaryBackwardCP.localOffset,
-            localOffsetDelta,
-            newStation.auxiliaryBackwardCP.localOffset
-        );
-
-    d->triggerBakeSplineCache = true;
+    // @NOTE: this is just in case, since this data doesn't get processed
+    //        unless the aux idx's must be a valid number, and as control
+    //        points get inserted, these points could become valid!
+    glm_vec3_add(
+        newStation.secondaryForwardCP.localOffset,
+        localOffsetDelta,
+        newStation.auxiliaryForwardCP.localOffset
+    );
+    glm_vec3_sub(
+        newStation.secondaryBackwardCP.localOffset,
+        localOffsetDelta,
+        newStation.auxiliaryBackwardCP.localOffset
+    );
 
     d->stations.push_back(newStation);
+    calculateStationSecAuxCPIndices(d);
+
+    d->triggerBakeSplineCache = true;
 
     // Add station collision if not existing yet.
     if (d->detailedStation.collision == nullptr)
@@ -1069,10 +1120,11 @@ void executeVAction(GondolaSystem_XData* d, EntityManager* em, GondolaSystem* _t
     }
 
     // Calc the station direction using the secondary points.
+    auto& station = d->stations.back();
     vec3 delta;
     glm_vec3_sub(
-        d->controlPoints[newStation.secondaryForwardCP.cpIdx].position,
-        d->controlPoints[newStation.secondaryBackwardCP.cpIdx].position,
+        d->controlPoints[station.secondaryForwardCP.cpIdx].position,
+        d->controlPoints[station.secondaryBackwardCP.cpIdx].position,
         delta
     );
     glm_vec3_scale_as(delta, LENGTH_STATION_LOCAL_NETWORK * 0.5f, delta);
@@ -1092,7 +1144,7 @@ void executeVAction(GondolaSystem_XData* d, EntityManager* em, GondolaSystem* _t
     glm_vec3_scale(extent, -0.5f, extent);
     glm_mat4_mulv3(rotation, extent, 0.0f, extent);
     vec3 newPos;
-    glm_vec3_add(d->controlPoints[newStation.anchorCP.cpIdx].position, extent, newPos);
+    glm_vec3_add(d->controlPoints[station.anchorCP.cpIdx].position, extent, newPos);
 
     d->detailedStation.collision->moveBody(newPos, rotationV, true, 0.0f);
     d->detailedStation.prevClosestStation = d->stations.size() - 1;  // Get most recent pushed back station.
@@ -1105,11 +1157,10 @@ void executeVAction(GondolaSystem_XData* d, EntityManager* em, GondolaSystem* _t
                 .attachedEntityGuid = myGuid,
             }
         },
-        { &d->stations.back().renderObj }
+        { &station.renderObj }
     );
 
     // Set initial transform for station renderObj.
-    auto& station = d->stations.back();
     glm_mat4_identity(station.renderObj->transformMatrix);
     glm_translate(station.renderObj->transformMatrix, newPos);
     glm_quat_rotate(station.renderObj->transformMatrix, rotationV, station.renderObj->transformMatrix);
@@ -1126,13 +1177,14 @@ void GondolaSystem::renderImGui()
         executeCAction(_data, this, getGUID(), _engine->getMatrixToMove());
     prevCHeld = input::keyCPressed;
     if (input::keyXPressed && !prevXHeld)
-        executeXAction(_data, _engine->getMatrixToMove());
+        executeXAction(_data, _em, _engine->getMatrixToMove());
     prevXHeld = input::keyXPressed;
     if (input::keyVPressed && !prevVHeld)
         executeVAction(_data, _em, this, getGUID(), _engine->getMatrixToMove());
     prevVHeld = input::keyVPressed;
 
     // Imgui.
+    ImGui::Checkbox("Show Curve Paths", &showCurvePaths);
     if (ImGui::Button("Spawn Simulation"))
         spawnSimulation(_data, this, getGUID(), -_data->gondolaSimulationGlobalTimer);
 }
