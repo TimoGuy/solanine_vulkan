@@ -79,7 +79,7 @@
     - [x] Make stations saveable and loadable.
     - [x] Allow control points to be moved by moving the anchor control point renderobj too.
     - [x] Load in render objects upon being loaded.
-    - [ ] Load collision into the closest station instead of where the most recent station was created.
+    - [x] Load collision into the closest station to player instead of where the most recent station was created.
     - [ ] Make train line double lined.
         - [ ] Take neighboring two nodes and get their deltaposition and that should be the tangent. Cross it with vector.up and you should get the offset direction of the control points.
         - [ ] Make track changer.

@@ -353,6 +353,56 @@ void destructAndResetStationCollision(GondolaSystem_XData* d, EntityManager* em)
     d->detailedStation.prevClosestStation = (size_t)-1;
 }
 
+void readyStationInteraction(GondolaSystem_XData* d, GondolaSystem_XData::Station& station, size_t stationIdx)
+{
+    // Add station collision if not existing yet.
+    if (d->detailedStation.collision == nullptr)
+    {
+        std::vector<Entity*> ents;
+        scene::loadPrefab("gondola_collision_station.hunk", d->engineRef, ents);
+        for (auto& ent : ents)
+        {
+            VoxelField* entAsVF;
+            if (entAsVF = dynamic_cast<VoxelField*>(ent))
+            {
+                // Just nab the first voxelfield and then dip.
+                d->detailedStation.collision = entAsVF;
+                break;
+            }
+        }
+    }
+
+    // Calc the station direction using the secondary points.
+    vec3 delta;
+    glm_vec3_sub(
+        d->controlPoints[station.secondaryForwardCPIdx].position,
+        d->controlPoints[station.secondaryBackwardCPIdx].position,
+        delta
+    );
+    glm_vec3_scale_as(delta, LENGTH_STATION_LOCAL_NETWORK * 0.5f, delta);
+
+    // Move the station transform to there.
+    // @NOTE: this should only be executed when setting the collision to the station position, or creating a new station collision.
+    float_t yRot = std::atan2f(delta[0], delta[2]) + M_PI;
+    float_t xzDist = glm_vec2_norm(vec2{ delta[0], delta[2] });
+    float_t xRot = std::atan2f(delta[1], xzDist);
+    mat4 rotation;
+    glm_euler_zyx(vec3{ xRot, yRot, 0.0f }, rotation);
+    versor rotationV;
+    glm_mat4_quat(rotation, rotationV);
+
+    vec3 extent;
+    d->detailedStation.collision->getSize(extent);
+    glm_vec3_scale(extent, -0.5f, extent);
+    glm_mat4_mulv3(rotation, extent, 0.0f, extent);
+    vec3 newPos;
+    glm_vec3_add(d->controlPoints[station.anchorCPIdx].position, extent, newPos);
+
+    d->detailedStation.collision->moveBody(newPos, rotationV, true, 0.0f);
+    d->detailedStation.prevClosestStation = stationIdx;
+    // glm_mat4_zero(d->detailedStation.prevCollisionTransform);  // Invalidate prev collision cache.  // @INCOMPLETE: there's no way to tell if the new transform is similar to the old one.
+}
+
 void loadAllMissingStationRenderObjs(GondolaSystem_XData* d, GondolaSystem* _this, const std::string& myGuid)
 {
     for (auto& station : d->stations)
@@ -813,27 +863,47 @@ void GondolaSystem::physicsUpdate(const float_t& physicsDeltaTime)
     if (globalState::playerPositionRef == nullptr)
         return;  // No position reference was found. Exit.
     
-    float_t closestDistInRangeSqr = std::numeric_limits<float_t>::max();
-    size_t  closestDistSimulationIdx = (size_t)-1;
-    for (size_t i = 0; i < _data->simulations.size(); i++)
+    // Update gondola simulation collision.
     {
-        auto& simulation = _data->simulations[i];
-
-        float_t currentDistance2 = glm_vec3_distance2(simulation.carts[0].calcCurrentROPos, *globalState::playerPositionRef);
-        if (currentDistance2 < _data->detailedGondola.priorityRange * _data->detailedGondola.priorityRange &&
-            currentDistance2 < closestDistInRangeSqr)
+        float_t closestDistInRangeSqr = std::numeric_limits<float_t>::max();
+        size_t  closestDistSimulationIdx = (size_t)-1;
+        for (size_t i = 0; i < _data->simulations.size(); i++)
         {
-            closestDistInRangeSqr = currentDistance2;
-            closestDistSimulationIdx = i;
+            auto& simulation = _data->simulations[i];
+
+            float_t currentDistance2 = glm_vec3_distance2(simulation.carts[0].calcCurrentROPos, *globalState::playerPositionRef);
+            if (currentDistance2 < _data->detailedGondola.priorityRange * _data->detailedGondola.priorityRange &&
+                currentDistance2 < closestDistInRangeSqr)
+            {
+                closestDistInRangeSqr = currentDistance2;
+                closestDistSimulationIdx = i;
+            }
         }
+        if (closestDistSimulationIdx != (size_t)-1 &&
+            _data->detailedGondola.prevClosestSimulation != closestDistSimulationIdx)
+            readyGondolaInteraction(_data, _em, _data->simulations[closestDistSimulationIdx], closestDistSimulationIdx);
     }
-    if (closestDistSimulationIdx == (size_t)-1)
-        return;  // No position in range was found. Exit.
 
-    if (_data->detailedGondola.prevClosestSimulation == closestDistSimulationIdx)
-        return;  // Already created. No need to recreate. Exit.
+    // Update station collision.
+    {
+        float_t closestDistInRangeSqr = std::numeric_limits<float_t>::max();
+        size_t  closestDistStationIdx = (size_t)-1;
+        for (size_t i = 0; i < _data->stations.size(); i++)
+        {
+            auto& station = _data->stations[i];
 
-    readyGondolaInteraction(_data, _em, _data->simulations[closestDistSimulationIdx], closestDistSimulationIdx);
+            float_t currentDistance2 = glm_vec3_distance2(_data->controlPoints[station.anchorCPIdx].position, *globalState::playerPositionRef);
+            if (currentDistance2 < _data->detailedStation.priorityRange * _data->detailedStation.priorityRange &&
+                currentDistance2 < closestDistInRangeSqr)
+            {
+                closestDistInRangeSqr = currentDistance2;
+                closestDistStationIdx = i;
+            }
+        }
+        if (closestDistStationIdx != (size_t)-1 &&
+            _data->detailedStation.prevClosestStation != closestDistStationIdx)
+            readyStationInteraction(_data, _data->stations[closestDistStationIdx], closestDistStationIdx);
+    }
 }
 
 void GondolaSystem::update(const float_t& deltaTime)
@@ -955,6 +1025,12 @@ void GondolaSystem::reportMoved(mat4* matrixMoved)
         for (auto& cp : _data->controlPoints)
             glm_vec3_add(cp.position, delta, cp.position);
         _data->triggerBakeSplineCache = true;
+
+        // Move all station render objs.
+        mat4 translation = GLM_MAT4_IDENTITY_INIT;
+        glm_translate(translation, delta);
+        for (auto& station : _data->stations)
+            glm_mat4_mul(translation, station.renderObj->transformMatrix, station.renderObj->transformMatrix);
 
         return;
     }
@@ -1178,58 +1254,9 @@ void executeVAction(GondolaSystem_XData* d, EntityManager* em, GondolaSystem* _t
 
     d->stations.push_back(newStation);
     calculateStationSecAuxCPIndices(d);
+    loadAllMissingStationRenderObjs(d, _this, myGuid);
 
     d->triggerBakeSplineCache = true;
-
-    // Add station collision if not existing yet.
-    if (d->detailedStation.collision == nullptr)
-    {
-        std::vector<Entity*> ents;
-        scene::loadPrefab("gondola_collision_station.hunk", d->engineRef, ents);
-        for (auto& ent : ents)
-        {
-            VoxelField* entAsVF;
-            if (entAsVF = dynamic_cast<VoxelField*>(ent))
-            {
-                // Just nab the first voxelfield and then dip.
-                d->detailedStation.collision = entAsVF;
-                break;
-            }
-        }
-    }
-
-    // Calc the station direction using the secondary points.
-    auto& station = d->stations.back();
-    vec3 delta;
-    glm_vec3_sub(
-        d->controlPoints[station.secondaryForwardCPIdx].position,
-        d->controlPoints[station.secondaryBackwardCPIdx].position,
-        delta
-    );
-    glm_vec3_scale_as(delta, LENGTH_STATION_LOCAL_NETWORK * 0.5f, delta);
-
-    // Move the station transform to there.
-    // @NOTE: this should only be executed when setting the collision to the station position, or creating a new station collision.
-    float_t yRot = std::atan2f(delta[0], delta[2]) + M_PI;
-    float_t xzDist = glm_vec2_norm(vec2{ delta[0], delta[2] });
-    float_t xRot = std::atan2f(delta[1], xzDist);
-    mat4 rotation;
-    glm_euler_zyx(vec3{ xRot, yRot, 0.0f }, rotation);
-    versor rotationV;
-    glm_mat4_quat(rotation, rotationV);
-
-    vec3 extent;
-    d->detailedStation.collision->getSize(extent);
-    glm_vec3_scale(extent, -0.5f, extent);
-    glm_mat4_mulv3(rotation, extent, 0.0f, extent);
-    vec3 newPos;
-    glm_vec3_add(d->controlPoints[station.anchorCPIdx].position, extent, newPos);
-
-    d->detailedStation.collision->moveBody(newPos, rotationV, true, 0.0f);
-    d->detailedStation.prevClosestStation = d->stations.size() - 1;  // Get most recent pushed back station.
-    // glm_mat4_zero(d->detailedStation.prevCollisionTransform);  // Invalidate prev collision cache.  // @INCOMPLETE: there's no way to tell if the new transform is similar to the old one.
-
-    loadAllMissingStationRenderObjs(d, _this, myGuid);
 }
 
 void GondolaSystem::renderImGui()
