@@ -76,8 +76,10 @@
             - [x] If adding control point, just take the control point insertion point and add 1 to all stations whose anchor (specifically) is after the insertion point.
                 > NOTE: so a control point that gets added within the bounds of a station will just get sucked in, which should be fine.
             - [x] If removing control point and any points belong to station, just delete the station to make it easier.
-    - [ ] Make stations saveable and loadable.
-    - [ ] Allow control points to be moved by moving the anchor control point renderobj too.
+    - [x] Make stations saveable and loadable.
+    - [x] Allow control points to be moved by moving the anchor control point renderobj too.
+    - [x] Load in render objects upon being loaded.
+    - [ ] Load collision into the closest station instead of where the most recent station was created.
     - [ ] Make train line double lined.
         - [ ] Take neighboring two nodes and get their deltaposition and that should be the tangent. Cross it with vector.up and you should get the offset direction of the control points.
         - [ ] Make track changer.
