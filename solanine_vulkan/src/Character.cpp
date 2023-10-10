@@ -3100,5 +3100,11 @@ void Character::reportPhysicsContact(const JPH::Body& otherBody, const JPH::Cont
     mpa.attachmentPositionLocal = otherBody.GetWorldTransform().Inversed() * mpa.attachmentPositionWorld;
     mpa.attachmentYAxisAngularVelocity = otherBody.GetAngularVelocity().GetY();
 
+    if (_data->characterType == CHARACTER_TYPE_PLAYER)
+    {
+    // ioSettings->mCombinedFriction = 1000.0f;
+        std::cout << "RORONOA\t" << (int32_t)mpa.attachmentStage << std::endl;
+    }
+
     mpa.attachmentIsStale = false;
 }

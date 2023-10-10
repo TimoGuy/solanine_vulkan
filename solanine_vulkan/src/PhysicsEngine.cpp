@@ -1132,7 +1132,7 @@ namespace physengine
             // @NOTE: this was in the past 0.0f, but after introducing the slightest slope, the character starts sliding down.
             //        This gives everything a bit of a tacky feel, but I feel like that makes the physics for the characters
             //        feel real (gives character lol). Plus, the characters can hold up to a rotating moving platform.  -Timo 2023/09/30
-            settings->mFriction = 0.5f;
+            settings->mFriction = 0.0f;
 
             settings->mSupportingVolume = Plane(Vec3::sAxisY(), -(0.5f * height));
             cpd.character = new JPH::Character(settings, RVec3(position[0], position[1], position[2]), Quat::sIdentity(), (int64_t)UserDataMeaning::IS_CHARACTER, physicsSystem);
