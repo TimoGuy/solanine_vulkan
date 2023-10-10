@@ -631,7 +631,7 @@ bool searchForRightTOnCurve(GondolaSystem_XData* d, float_t& ioT, vec3 anchorPos
     float_t searchPosDistWS2 = std::numeric_limits<float_t>::max();
     float_t maxT = (float_t)d->splineCoefficientsCache.size() - 0.000001f;
 
-    while (std::abs(targetDistance2 - searchPosDistWS2) > 0.1f)  // This should be around 8 tries... maybe.
+    while (std::abs(targetDistance2 - searchPosDistWS2) > 0.1f)  // Idk how much to do this to reduce jitter.
     {
         ioT += searchStride * searchDirection;
         
