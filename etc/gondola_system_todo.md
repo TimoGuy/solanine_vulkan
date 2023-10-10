@@ -82,12 +82,14 @@
     - [x] Load collision into the closest station to player instead of where the most recent station was created.
     - [x] Every gondola always stops at every station.
     - [ ] Make train line double lined.
-        - [ ] Take neighboring two nodes and get their deltaposition and that should be the tangent. Cross it with vector.up and you should get the offset direction of the control points.
+        - [x] Take neighboring two nodes and get their deltaposition and that should be the tangent. Cross it with vector.up and you should get the offset direction of the control points.
+            > It's not perfect but it's a pretty fair double track algo.
         - [ ] Make track changer.
             - [ ] Make trains change their tracks to run on the left side of the rail.
             > I think a way you could do it is by creating two versions of the path, and every other simulation uses the different versions. One version starts and lands in the west side of the end stations, and one version starts and lands in the east side of the end stations.
             > In `calculatePositionOnCurveFromT` this is the only thing you need to change. Add a new arg that's like `tracktype` where the choices are `FORWARDS_TRACK_A`, `BACKWARDS_TRACK_A`, `FORWARDS_TRACK_B`, `BACKWARDS_TRACK_B`, which if something is a backwards track will include the left side track running backwards, and depending on the A/B, the train lands in the A side of the station or the B side with the switch tracks.
     - [ ] Switch to virtual character controller with a regular character capsule keyframed with the virtual character controller.
+        - [ ] This should solve all the inconsistencies with moving platform stuff.
     - [ ] Copy design of station from Unity Concept Prototype (have station that merely displays how many meters away the next gondola is)
 
 - [x] EMERGENCY DETOUR

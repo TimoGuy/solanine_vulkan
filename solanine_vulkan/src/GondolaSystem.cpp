@@ -35,9 +35,12 @@ struct GondolaSystem_XData
     struct ControlPoint
     {
         vec3          position;
+        vec3          right;
         RenderObject* renderObj;
     };
     std::vector<ControlPoint>  controlPoints;
+    float_t                    lineYoff = 0.5f;  // Add this to the y of the rendered lines.
+    float_t                    lineSeparation = 9.5f;  // Multiply `.right` by this.
 
     struct BSplineCoefficients
     {
@@ -45,11 +48,25 @@ struct GondolaSystem_XData
         vec4 coefficientsY;
         vec4 coefficientsZ;
     };
-    std::vector<BSplineCoefficients> splineCoefficientsCache;
+    struct FABCoefficients  // FAB=Forward and Backward
+    {
+        BSplineCoefficients forwardCoefs;
+        BSplineCoefficients backwardCoefs;
+        FABCoefficients*    altFABCoefs = nullptr;  // From `altSplineCoefficientsCache`
+    };
+    std::vector<FABCoefficients> splineCoefficientsCache;
+    struct AlternativeSpline
+    {
+        size_t 
+    } altSplineCoefficientsCache;
     struct DEBUGCurveVisualization
     {
-        std::vector<vec3s> splineLinePts;
-        std::vector<vec3s> curveLinePts;
+        struct PointSet
+        {
+            std::vector<vec3s> pts;
+        };
+        PointSet splineLinePts;
+        std::vector<PointSet> curveLinePts;
     } DEBUGCurveVisualization;
     bool triggerBakeSplineCache = true;  // Do bake right at initialization.
 
@@ -77,6 +94,7 @@ struct GondolaSystem_XData
 
     struct Simulation
     {
+        uint8_t                    trackVersion = 0;
         float_t                    offsetT;
         std::vector<RenderObject*> renderObjs;  // @NOTE: For LODs, switch out the assigned model, not unregister/register new RenderObjects.  -Timo 2020/10/04
         struct GondolaCart
@@ -98,6 +116,7 @@ struct GondolaSystem_XData
         std::vector<GondolaCart> carts;  // Essentially metadata for the collision objects.
     };
     std::vector<Simulation> simulations;
+    uint8_t numTrackVersions = 2;
 
     struct DetailedGondola
     {
@@ -548,7 +567,7 @@ void calculateSplineCoefficients(vec3 p0, vec3 p1, vec3 p2, vec3 p3, GondolaSyst
     calculateSplineCoefficient(p0[2], p1[2], p2[2], p3[2], outBSC.coefficientsZ);
 }
 
-bool calculatePositionOnCurveFromT(GondolaSystem_XData* d, float_t t, vec3& outPosition)
+bool calculatePositionOnCurveFromT(GondolaSystem_XData* d, float_t t, vec3& outPosition, bool reverseRoute, uint8_t trackVersion)
 {
     float_t wholeT, remainderT;
     remainderT = std::modf(t, &wholeT);
@@ -566,24 +585,25 @@ bool calculatePositionOnCurveFromT(GondolaSystem_XData* d, float_t t, vec3& outP
         remainderT * remainderT * remainderT
     };
 
-    outPosition[0] = glm_vec4_dot(tInputs, coefficients.coefficientsX);
-    outPosition[1] = glm_vec4_dot(tInputs, coefficients.coefficientsY);
-    outPosition[2] = glm_vec4_dot(tInputs, coefficients.coefficientsZ);
+    outPosition[0] = glm_vec4_dot(tInputs, (reverseRoute ? coefficients.backwardCoefs.coefficientsX : coefficients.forwardCoefs.coefficientsX));
+    outPosition[1] = glm_vec4_dot(tInputs, (reverseRoute ? coefficients.backwardCoefs.coefficientsY : coefficients.forwardCoefs.coefficientsY));
+    outPosition[2] = glm_vec4_dot(tInputs, (reverseRoute ? coefficients.backwardCoefs.coefficientsZ : coefficients.forwardCoefs.coefficientsZ));
     return true;
 }
 
 void drawDEBUGCurveVisualization(GondolaSystem_XData* d)
 {
-    for (size_t i = 1; i < d->DEBUGCurveVisualization.splineLinePts.size(); i++)
+    for (size_t i = 1; i < d->DEBUGCurveVisualization.splineLinePts.pts.size(); i++)
         physengine::drawDebugVisLine(
-            d->DEBUGCurveVisualization.splineLinePts[i - 1].raw,
-            d->DEBUGCurveVisualization.splineLinePts[i].raw,
+            d->DEBUGCurveVisualization.splineLinePts.pts[i - 1].raw,
+            d->DEBUGCurveVisualization.splineLinePts.pts[i].raw,
             physengine::DebugVisLineType::KIKKOARMY
         );
-    for (size_t i = 1; i < d->DEBUGCurveVisualization.curveLinePts.size(); i++)
+    for (auto& pointSet : d->DEBUGCurveVisualization.curveLinePts)
+    for (size_t i = 1; i < pointSet.pts.size(); i++)
         physengine::drawDebugVisLine(
-            d->DEBUGCurveVisualization.curveLinePts[i - 1].raw,
-            d->DEBUGCurveVisualization.curveLinePts[i].raw,
+            pointSet.pts[i - 1].raw,
+            pointSet.pts[i].raw,
             physengine::DebugVisLineType::PURPTEAL
         );
 }
@@ -622,7 +642,7 @@ void spawnSimulation(GondolaSystem_XData* d, void* modelOwner, const std::string
     d->simulations.push_back(newSimulation);
 }
 
-bool searchForRightTOnCurve(GondolaSystem_XData* d, float_t& ioT, vec3 anchorPos, float_t targetDistance, bool reverseRoute)
+bool searchForRightTOnCurve(GondolaSystem_XData* d, float_t& ioT, vec3 anchorPos, float_t targetDistance, bool reverseRoute, uint8_t trackVersion)
 {
     float_t targetDistance2 = targetDistance * targetDistance;
 
@@ -648,7 +668,7 @@ bool searchForRightTOnCurve(GondolaSystem_XData* d, float_t& ioT, vec3 anchorPos
         }
 
         vec3 searchPosition;
-        calculatePositionOnCurveFromT(d, ioT, searchPosition);
+        calculatePositionOnCurveFromT(d, ioT, searchPosition, reverseRoute, trackVersion);
 
         searchPosDistWS2 = glm_vec3_distance2(anchorPos, searchPosition);
 
@@ -693,10 +713,10 @@ void updateSimulation(GondolaSystem_XData* d, EntityManager* em, size_t simIdx, 
         {
             auto& prevCart = ioSimulation.carts[reverseRoute ? i + 1 : i - 1];
             float_t distanceToNext = prevCart.bogiePadding + prevCart.rearMargin + cart.frontMargin + cart.bogiePadding;
-            searchForRightTOnCurve(d, currentPosT, prevCart.bogiePosition2, distanceToNext, reverseRoute);
+            searchForRightTOnCurve(d, currentPosT, prevCart.bogiePosition2, distanceToNext, reverseRoute, ioSimulation.trackVersion);
         }
 
-        if (!calculatePositionOnCurveFromT(d, currentPosT, cart.bogiePosition1))
+        if (!calculatePositionOnCurveFromT(d, currentPosT, cart.bogiePosition1, reverseRoute, ioSimulation.trackVersion))
         {
             // // Remove simulation if out of range.
             // // @NOTE: @INCOMPLETE: this shouldn't happen. At the beginning there should be X number of gondolas spawned and then they all go in a uniform loop.
@@ -709,9 +729,9 @@ void updateSimulation(GondolaSystem_XData* d, EntityManager* em, size_t simIdx, 
 
         // Move to second bogie position.
         float_t distanceToSecond = cart.length - 2.0f * cart.bogiePadding;
-        searchForRightTOnCurve(d, currentPosT, cart.bogiePosition1, distanceToSecond, reverseRoute);
+        searchForRightTOnCurve(d, currentPosT, cart.bogiePosition1, distanceToSecond, reverseRoute, ioSimulation.trackVersion);
 
-        calculatePositionOnCurveFromT(d, currentPosT, cart.bogiePosition2);
+        calculatePositionOnCurveFromT(d, currentPosT, cart.bogiePosition2, reverseRoute, ioSimulation.trackVersion);
 
         // Create new transform.
         glm_vec3_copy(cart.calcCurrentROPos, cart.calcPrevROPos);
@@ -799,13 +819,36 @@ void GondolaSystem::physicsUpdate(const float_t& physicsDeltaTime)
     {
         std::lock_guard<std::mutex> lg(useControlPointsMutex);
 
+        // Calculate control point rights.
+        for (size_t i = 0; i < _data->controlPoints.size(); i++)
+        {
+            vec3 delta;
+            if (i == 0)
+                glm_vec3_sub(_data->controlPoints[i].position, _data->controlPoints[i + 1].position, delta);
+            else if (i == _data->controlPoints.size() - 1)
+                glm_vec3_sub(_data->controlPoints[i - 1].position, _data->controlPoints[i].position, delta);
+            else
+            {
+                vec3 d0, d1;
+                glm_vec3_sub(_data->controlPoints[i - 1].position, _data->controlPoints[i].position, d0);
+                glm_vec3_sub(_data->controlPoints[i].position, _data->controlPoints[i + 1].position, d1);
+                glm_vec3_normalize(d0);
+                glm_vec3_normalize(d1);
+                glm_vec3_add(d0, d1, delta);
+            }
+            glm_vec3_crossn(delta, vec3{ 0.0f, 1.0f, 0.0f }, _data->controlPoints[i].right);
+        }
+
         // Calculate coefficient cache.
         _data->splineCoefficientsCache.clear();
         for (size_t i = 0; i < _data->controlPoints.size() - 1; i++)
         {
             vec3 p0, p1, p2, p3;
+            vec3 r0, r1, r2, r3;
             glm_vec3_copy(_data->controlPoints[i].position, p1);
+            glm_vec3_copy(_data->controlPoints[i].right, r1);
             glm_vec3_copy(_data->controlPoints[i + 1].position, p2);
+            glm_vec3_copy(_data->controlPoints[i + 1].right, r2);
 
             if (i == 0)
             {
@@ -813,9 +856,13 @@ void GondolaSystem::physicsUpdate(const float_t& physicsDeltaTime)
                 vec3 inter;
                 glm_vec3_sub(p1, p2, inter);
                 glm_vec3_add(inter, p1, p0);
+                glm_vec3_copy(r1, r0);
             }
             else
+            {
                 glm_vec3_copy(_data->controlPoints[i - 1].position, p0);
+                glm_vec3_copy(_data->controlPoints[i - 1].right, r0);
+            }
 
             if (i == _data->controlPoints.size() - 2)
             {
@@ -823,22 +870,47 @@ void GondolaSystem::physicsUpdate(const float_t& physicsDeltaTime)
                 vec3 inter;
                 glm_vec3_sub(p2, p1, inter);
                 glm_vec3_add(inter, p2, p3);
+                glm_vec3_copy(r2, r3);
             }
             else
+            {
                 glm_vec3_copy(_data->controlPoints[i + 2].position, p3);
+                glm_vec3_copy(_data->controlPoints[i + 2].right, r3);
+            }
 
-            GondolaSystem_XData::BSplineCoefficients newBSplineCoefficient;
-            calculateSplineCoefficients(p0, p1, p2, p3, newBSplineCoefficient);
-            _data->splineCoefficientsCache.push_back(newBSplineCoefficient);
+            vec3 offset = { 0.0f, _data->lineYoff, 0.0f };
+            glm_vec3_add(p0, offset, p0);
+            glm_vec3_add(p1, offset, p1);
+            glm_vec3_add(p2, offset, p2);
+            glm_vec3_add(p3, offset, p3);
+
+            GondolaSystem_XData::FABCoefficients newFABCoefficients;
+            float_t scales[2] = { -_data->lineSeparation, _data->lineSeparation };
+            for (size_t si = 0; si < 2; si++)
+            {
+                float_t scale = scales[si];
+                vec3 fp0, fp1, fp2, fp3;
+                vec3 fr0, fr1, fr2, fr3;
+                glm_vec3_scale(r0, scale, fr0);
+                glm_vec3_add(p0, fr0, fp0);
+                glm_vec3_scale(r1, scale, fr1);
+                glm_vec3_add(p1, fr1, fp1);
+                glm_vec3_scale(r2, scale, fr2);
+                glm_vec3_add(p2, fr2, fp2);
+                glm_vec3_scale(r3, scale, fr3);
+                glm_vec3_add(p3, fr3, fp3);
+                calculateSplineCoefficients(fp0, fp1, fp2, fp3, (si == 0 ? newFABCoefficients.backwardCoefs : newFABCoefficients.forwardCoefs));
+            }
+            _data->splineCoefficientsCache.push_back(newFABCoefficients);
         }
 
         // @DEBUG: calculate the visualization for the spline and curve lines.
-        _data->DEBUGCurveVisualization.splineLinePts.clear();
+        _data->DEBUGCurveVisualization.splineLinePts.pts.clear();
         for (auto& cp : _data->controlPoints)
         {
             vec3s point;
             glm_vec3_copy(cp.position, point.raw);
-            _data->DEBUGCurveVisualization.splineLinePts.push_back(point);
+            _data->DEBUGCurveVisualization.splineLinePts.pts.push_back(point);
         }
         
         // Get total distance between all control points.
@@ -849,11 +921,20 @@ void GondolaSystem::physicsUpdate(const float_t& physicsDeltaTime)
         // Step over curve.
         _data->DEBUGCurveVisualization.curveLinePts.clear();
         float_t stride = 1.0f / (cpTotalDist / _data->controlPoints.size());  // Take avg. distance and get the reciprocal to get the stride.
-        for (float_t t = 0.0f; t < (float_t)_data->splineCoefficientsCache.size(); t += stride)
+        for (uint8_t reverseRouteCounter = 0; reverseRouteCounter < 2; reverseRouteCounter++)
         {
-            vec3s point;
-            calculatePositionOnCurveFromT(_data, t, point.raw);
-            _data->DEBUGCurveVisualization.curveLinePts.push_back(point);
+            bool reverseRoute = (bool)reverseRouteCounter;
+            for (uint8_t trackVersion = 0; trackVersion < _data->numTrackVersions; trackVersion++)
+            {
+                GondolaSystem_XData::DEBUGCurveVisualization::PointSet pointSet;
+                for (float_t t = 0.0f; t < (float_t)_data->splineCoefficientsCache.size(); t += stride)
+                {
+                    vec3s point;
+                    calculatePositionOnCurveFromT(_data, t, point.raw, reverseRoute, trackVersion);
+                    pointSet.pts.push_back(point);
+                }
+                _data->DEBUGCurveVisualization.curveLinePts.push_back(pointSet);
+            }
         }
 
         _data->triggerBakeSplineCache = false;
