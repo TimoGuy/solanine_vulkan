@@ -35,7 +35,6 @@ struct GondolaSystem_XData
     struct ControlPoint
     {
         vec3          position;
-        vec3          right;
         RenderObject* renderObj;
     };
     std::vector<ControlPoint>  controlPoints;
@@ -50,15 +49,17 @@ struct GondolaSystem_XData
     };
     struct FABCoefficients  // FAB=Forward and Backward
     {
-        BSplineCoefficients forwardCoefs;
-        BSplineCoefficients backwardCoefs;
-        FABCoefficients*    altFABCoefs = nullptr;  // From `altSplineCoefficientsCache`
+        BSplineCoefficients rightSideCoefs;
+        BSplineCoefficients leftSideCoefs;
     };
     std::vector<FABCoefficients> splineCoefficientsCache;
-    struct AlternativeSpline
+    struct TransitionalSpline
     {
-        size_t 
-    } altSplineCoefficientsCache;
+        size_t cpIdxFrom;
+        size_t cpIdxTo;
+        std::vector<FABCoefficients> transCoefficientsCache;
+    };
+    std::vector<TransitionalSpline> transSplines;
     struct DEBUGCurveVisualization
     {
         struct PointSet
@@ -94,7 +95,6 @@ struct GondolaSystem_XData
 
     struct Simulation
     {
-        uint8_t                    trackVersion = 0;
         float_t                    offsetT;
         std::vector<RenderObject*> renderObjs;  // @NOTE: For LODs, switch out the assigned model, not unregister/register new RenderObjects.  -Timo 2020/10/04
         struct GondolaCart
@@ -567,6 +567,20 @@ void calculateSplineCoefficients(vec3 p0, vec3 p1, vec3 p2, vec3 p3, GondolaSyst
     calculateSplineCoefficient(p0[2], p1[2], p2[2], p3[2], outBSC.coefficientsZ);
 }
 
+void getPositionFromTAndCoefficients(GondolaSystem_XData::BSplineCoefficients& bsc, float_t t, vec3& outPosition)
+{
+    vec4 tInputs = {
+        1.0f,
+        t,
+        t * t,
+        t * t * t
+    };
+
+    outPosition[0] = glm_vec4_dot(tInputs, bsc.coefficientsX);
+    outPosition[1] = glm_vec4_dot(tInputs, bsc.coefficientsY);
+    outPosition[2] = glm_vec4_dot(tInputs, bsc.coefficientsZ);
+}
+
 bool calculatePositionOnCurveFromT(GondolaSystem_XData* d, float_t t, vec3& outPosition, bool reverseRoute, uint8_t trackVersion)
 {
     float_t wholeT, remainderT;
@@ -578,16 +592,25 @@ bool calculatePositionOnCurveFromT(GondolaSystem_XData* d, float_t t, vec3& outP
 
     auto& coefficients = d->splineCoefficientsCache[(size_t)wholeT];
 
-    vec4 tInputs = {
-        1.0f,
-        remainderT,
-        remainderT * remainderT,
-        remainderT * remainderT * remainderT
-    };
+    bool useTransitionTrack = (reverseRoute == (bool)trackVersion);    // See canary pad. Lol.  -Timo 2023/10/10
+    GondolaSystem_XData::BSplineCoefficients* coefs = nullptr;
+    if (d->transSplines.empty() ||  // @NOTE: Assume there can only be 2 end stations.
+        (d->transSplines[0].cpIdxTo <= (size_t)wholeT && (size_t)wholeT < d->transSplines[1].cpIdxFrom))                           // Within normal functioning part of rail.
+        coefs = (reverseRoute ? &coefficients.leftSideCoefs : &coefficients.rightSideCoefs);
+    else if (useTransitionTrack && d->transSplines[0].cpIdxFrom <= (size_t)wholeT && (size_t)wholeT < d->transSplines[0].cpIdxTo)  // Within transition boundary of 1st end station.
+    {
+        auto& tcc = d->transSplines[0].transCoefficientsCache[(size_t)wholeT - d->transSplines[0].cpIdxFrom];
+        coefs = (reverseRoute ? &tcc.rightSideCoefs : &tcc.leftSideCoefs);
+    }
+    else if (useTransitionTrack && d->transSplines[1].cpIdxFrom <= (size_t)wholeT && (size_t)wholeT < d->transSplines[1].cpIdxTo)  // Within transition boundary of 2nd end station.
+    {
+        auto& tcc = d->transSplines[1].transCoefficientsCache[(size_t)wholeT - d->transSplines[1].cpIdxFrom];
+        coefs = (reverseRoute ? &tcc.leftSideCoefs : &tcc.rightSideCoefs);
+    }
+    else                                                                                                                           // Within end stations.
+        coefs = (trackVersion == 0 ? &coefficients.leftSideCoefs : &coefficients.rightSideCoefs);
 
-    outPosition[0] = glm_vec4_dot(tInputs, (reverseRoute ? coefficients.backwardCoefs.coefficientsX : coefficients.forwardCoefs.coefficientsX));
-    outPosition[1] = glm_vec4_dot(tInputs, (reverseRoute ? coefficients.backwardCoefs.coefficientsY : coefficients.forwardCoefs.coefficientsY));
-    outPosition[2] = glm_vec4_dot(tInputs, (reverseRoute ? coefficients.backwardCoefs.coefficientsZ : coefficients.forwardCoefs.coefficientsZ));
+    getPositionFromTAndCoefficients(*coefs, remainderT, outPosition);
     return true;
 }
 
@@ -696,6 +719,7 @@ bool searchForRightTOnCurve(GondolaSystem_XData* d, float_t& ioT, vec3 anchorPos
 void updateSimulation(GondolaSystem_XData* d, EntityManager* em, size_t simIdx, const float& physicsDeltaTime)
 {
     GondolaSystem_XData::Simulation& ioSimulation = d->simulations[simIdx];
+    uint8_t trackVersion = (simIdx + 1) % d->numTrackVersions;
 
     // Position each render object position based off the position of the bogies.
     float_t currentPosT;
@@ -713,10 +737,10 @@ void updateSimulation(GondolaSystem_XData* d, EntityManager* em, size_t simIdx, 
         {
             auto& prevCart = ioSimulation.carts[reverseRoute ? i + 1 : i - 1];
             float_t distanceToNext = prevCart.bogiePadding + prevCart.rearMargin + cart.frontMargin + cart.bogiePadding;
-            searchForRightTOnCurve(d, currentPosT, prevCart.bogiePosition2, distanceToNext, reverseRoute, ioSimulation.trackVersion);
+            searchForRightTOnCurve(d, currentPosT, prevCart.bogiePosition2, distanceToNext, reverseRoute, trackVersion);
         }
 
-        if (!calculatePositionOnCurveFromT(d, currentPosT, cart.bogiePosition1, reverseRoute, ioSimulation.trackVersion))
+        if (!calculatePositionOnCurveFromT(d, currentPosT, cart.bogiePosition1, reverseRoute, trackVersion))
         {
             // // Remove simulation if out of range.
             // // @NOTE: @INCOMPLETE: this shouldn't happen. At the beginning there should be X number of gondolas spawned and then they all go in a uniform loop.
@@ -729,9 +753,9 @@ void updateSimulation(GondolaSystem_XData* d, EntityManager* em, size_t simIdx, 
 
         // Move to second bogie position.
         float_t distanceToSecond = cart.length - 2.0f * cart.bogiePadding;
-        searchForRightTOnCurve(d, currentPosT, cart.bogiePosition1, distanceToSecond, reverseRoute, ioSimulation.trackVersion);
+        searchForRightTOnCurve(d, currentPosT, cart.bogiePosition1, distanceToSecond, reverseRoute, trackVersion);
 
-        calculatePositionOnCurveFromT(d, currentPosT, cart.bogiePosition2, reverseRoute, ioSimulation.trackVersion);
+        calculatePositionOnCurveFromT(d, currentPosT, cart.bogiePosition2, reverseRoute, trackVersion);
 
         // Create new transform.
         glm_vec3_copy(cart.calcCurrentROPos, cart.calcPrevROPos);
@@ -819,36 +843,42 @@ void GondolaSystem::physicsUpdate(const float_t& physicsDeltaTime)
     {
         std::lock_guard<std::mutex> lg(useControlPointsMutex);
 
-        // Calculate control point rights.
-        for (size_t i = 0; i < _data->controlPoints.size(); i++)
+        // Create transitional splines (if end stations exist).
+        _data->transSplines.clear();
+        uint8_t numEndStations = 0;
+        size_t endStationAnchorIdxs[2];
+        for (auto& station : _data->stations)
         {
-            vec3 delta;
-            if (i == 0)
-                glm_vec3_sub(_data->controlPoints[i].position, _data->controlPoints[i + 1].position, delta);
-            else if (i == _data->controlPoints.size() - 1)
-                glm_vec3_sub(_data->controlPoints[i - 1].position, _data->controlPoints[i].position, delta);
-            else
-            {
-                vec3 d0, d1;
-                glm_vec3_sub(_data->controlPoints[i - 1].position, _data->controlPoints[i].position, d0);
-                glm_vec3_sub(_data->controlPoints[i].position, _data->controlPoints[i + 1].position, d1);
-                glm_vec3_normalize(d0);
-                glm_vec3_normalize(d1);
-                glm_vec3_add(d0, d1, delta);
-            }
-            glm_vec3_crossn(delta, vec3{ 0.0f, 1.0f, 0.0f }, _data->controlPoints[i].right);
+            if (station.anchorCPIdx == 1 ||
+                station.anchorCPIdx == _data->controlPoints.size() - 2)
+                endStationAnchorIdxs[numEndStations++] = station.anchorCPIdx;
+        }
+        if (numEndStations == 2)
+        {
+            // Create transitional splines.
+            _data->transSplines.resize(2, {});
+
+            _data->transSplines[0].cpIdxFrom = endStationAnchorIdxs[0] + 1;
+            _data->transSplines[0].cpIdxTo = endStationAnchorIdxs[0] + 4;
+            _data->transSplines[1].cpIdxFrom = endStationAnchorIdxs[1] - 4;
+            _data->transSplines[1].cpIdxTo = endStationAnchorIdxs[1] - 1;
         }
 
         // Calculate coefficient cache.
         _data->splineCoefficientsCache.clear();
+
+        std::vector<vec3s> rights;
+        rights.resize(_data->controlPoints.size());
+
+        for (uint8_t calcType = 0; calcType < 2; calcType++)  // 0: calc rights  1: calc coefficients
         for (size_t i = 0; i < _data->controlPoints.size() - 1; i++)
         {
             vec3 p0, p1, p2, p3;
             vec3 r0, r1, r2, r3;
             glm_vec3_copy(_data->controlPoints[i].position, p1);
-            glm_vec3_copy(_data->controlPoints[i].right, r1);
+            glm_vec3_copy(rights[i].raw, r1);
             glm_vec3_copy(_data->controlPoints[i + 1].position, p2);
-            glm_vec3_copy(_data->controlPoints[i + 1].right, r2);
+            glm_vec3_copy(rights[i + 1].raw, r2);
 
             if (i == 0)
             {
@@ -861,7 +891,7 @@ void GondolaSystem::physicsUpdate(const float_t& physicsDeltaTime)
             else
             {
                 glm_vec3_copy(_data->controlPoints[i - 1].position, p0);
-                glm_vec3_copy(_data->controlPoints[i - 1].right, r0);
+                glm_vec3_copy(rights[i - 1].raw, r0);
             }
 
             if (i == _data->controlPoints.size() - 2)
@@ -875,7 +905,7 @@ void GondolaSystem::physicsUpdate(const float_t& physicsDeltaTime)
             else
             {
                 glm_vec3_copy(_data->controlPoints[i + 2].position, p3);
-                glm_vec3_copy(_data->controlPoints[i + 2].right, r3);
+                glm_vec3_copy(rights[i + 2].raw, r3);
             }
 
             vec3 offset = { 0.0f, _data->lineYoff, 0.0f };
@@ -884,24 +914,89 @@ void GondolaSystem::physicsUpdate(const float_t& physicsDeltaTime)
             glm_vec3_add(p2, offset, p2);
             glm_vec3_add(p3, offset, p3);
 
-            GondolaSystem_XData::FABCoefficients newFABCoefficients;
-            float_t scales[2] = { -_data->lineSeparation, _data->lineSeparation };
-            for (size_t si = 0; si < 2; si++)
+            if (calcType == 0)
             {
-                float_t scale = scales[si];
-                vec3 fp0, fp1, fp2, fp3;
-                vec3 fr0, fr1, fr2, fr3;
-                glm_vec3_scale(r0, scale, fr0);
-                glm_vec3_add(p0, fr0, fp0);
-                glm_vec3_scale(r1, scale, fr1);
-                glm_vec3_add(p1, fr1, fp1);
-                glm_vec3_scale(r2, scale, fr2);
-                glm_vec3_add(p2, fr2, fp2);
-                glm_vec3_scale(r3, scale, fr3);
-                glm_vec3_add(p3, fr3, fp3);
-                calculateSplineCoefficients(fp0, fp1, fp2, fp3, (si == 0 ? newFABCoefficients.backwardCoefs : newFABCoefficients.forwardCoefs));
+                // Calc rights.
+                GondolaSystem_XData::BSplineCoefficients tempCoeffs;
+                calculateSplineCoefficients(p0, p1, p2, p3, tempCoeffs);
+                if (i == 0)
+                {
+                    // Get first right.
+                    vec3 pos0, pos0000001;
+                    getPositionFromTAndCoefficients(tempCoeffs, 0.0f, pos0);
+                    getPositionFromTAndCoefficients(tempCoeffs, 0.000001f, pos0000001);
+
+                    vec3 delta;
+                    glm_vec3_sub(pos0, pos0000001, delta);
+                    glm_vec3_crossn(delta, vec3{ 0.0f, 1.0f, 0.0f }, rights[i].raw);
+                }
+
+                // Get current right.
+                vec3 pos0999999, pos1;
+                getPositionFromTAndCoefficients(tempCoeffs, 0.999999f, pos0999999);
+                getPositionFromTAndCoefficients(tempCoeffs, 1.0f, pos1);
+
+                vec3 delta;
+                glm_vec3_sub(pos0999999, pos1, delta);
+                glm_vec3_crossn(delta, vec3{ 0.0f, 1.0f, 0.0f }, rights[i + 1].raw);
             }
-            _data->splineCoefficientsCache.push_back(newFABCoefficients);
+            if (calcType == 1)
+            {
+                // Calc coefficients.
+                GondolaSystem_XData::FABCoefficients newFABCoefficients;
+
+                for (auto& ts : _data->transSplines)
+                    ts.transCoefficientsCache.resize(ts.cpIdxTo - ts.cpIdxFrom);
+
+                float_t scales[2] = { -_data->lineSeparation, _data->lineSeparation };
+                for (size_t si = 0; si < 2; si++)
+                {
+                    float_t scale = scales[si];
+                    vec3 fp0, fp1, fp2, fp3;
+                    vec3 fr0, fr1, fr2, fr3;
+                    glm_vec3_scale(r0, scale, fr0);
+                    glm_vec3_add(p0, fr0, fp0);
+                    glm_vec3_scale(r1, scale, fr1);
+                    glm_vec3_add(p1, fr1, fp1);
+                    glm_vec3_scale(r2, scale, fr2);
+                    glm_vec3_add(p2, fr2, fp2);
+                    glm_vec3_scale(r3, scale, fr3);
+                    glm_vec3_add(p3, fr3, fp3);
+                    calculateSplineCoefficients(fp0, fp1, fp2, fp3, (si == 0 ? newFABCoefficients.leftSideCoefs : newFABCoefficients.rightSideCoefs));
+
+                    // Calc transitional spline coefficients (if applicable).
+                    for (auto& ts : _data->transSplines)
+                    {
+                        if (ts.cpIdxFrom <= i && ts.cpIdxTo - 1 >= i)
+                        {
+                            // Flip some control points to opposite side.
+                            size_t diff = i - ts.cpIdxFrom;
+                            if (diff >= 0)
+                            {
+                                glm_vec3_scale(r3, -scale, fr3);
+                                glm_vec3_add(p3, fr3, fp3);
+                            }
+                            if (diff >= 1)
+                            {
+                                glm_vec3_scale(r2, -scale, fr2);
+                                glm_vec3_add(p2, fr2, fp2);
+                            }
+                            if (diff >= 2)
+                            {
+                                glm_vec3_scale(r1, -scale, fr1);
+                                glm_vec3_add(p1, fr1, fp1);
+                            }
+                            if (diff >= 3)  // @NOTE: this block would likely not be executed, but just in case.
+                            {
+                                glm_vec3_scale(r0, -scale, fr0);
+                                glm_vec3_add(p0, fr0, fp0);
+                            }
+                            calculateSplineCoefficients(fp0, fp1, fp2, fp3, (si == 0 ? ts.transCoefficientsCache[diff].leftSideCoefs : ts.transCoefficientsCache[diff].rightSideCoefs));
+                        }
+                    }
+                }
+                _data->splineCoefficientsCache.push_back(newFABCoefficients);
+            }
         }
 
         // @DEBUG: calculate the visualization for the spline and curve lines.
@@ -920,7 +1015,7 @@ void GondolaSystem::physicsUpdate(const float_t& physicsDeltaTime)
 
         // Step over curve.
         _data->DEBUGCurveVisualization.curveLinePts.clear();
-        float_t stride = 1.0f / (cpTotalDist / _data->controlPoints.size());  // Take avg. distance and get the reciprocal to get the stride.
+        float_t stride = 1.0f / (cpTotalDist / _data->controlPoints.size()) * 2.0f;  // Take avg. distance and get the reciprocal to get the stride (mult by 2).
         for (uint8_t reverseRouteCounter = 0; reverseRouteCounter < 2; reverseRouteCounter++)
         {
             bool reverseRoute = (bool)reverseRouteCounter;
