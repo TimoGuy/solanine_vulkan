@@ -53,6 +53,16 @@ struct ColorPushConstBlock
 	vec4 color;
 };
 
+struct UIQuadSettingsConstBlock
+{
+	vec4 tint;
+	float_t useNineSlicing;
+	float_t nineSlicingBoundX1;
+	float_t nineSlicingBoundX2;
+	float_t nineSlicingBoundY1;
+	float_t nineSlicingBoundY2;
+};
+
 struct GPUCoCParams
 {
 	float_t cameraZNear;

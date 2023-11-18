@@ -183,6 +183,7 @@ copy $(SolutionDir)libs\cglm\cglm.dll $(OutDirfullPath)cglm.dll</Command>
     <ClInclude Include="src\InputManager.h" />
     <ClInclude Include="src\Character.h" />
     <ClInclude Include="src\Settings.h" />
+    <ClInclude Include="src\UIQuad.h" />
     <ClInclude Include="src\Textbox.h" />
     <ClInclude Include="src\TextMesh.h" />
     <ClInclude Include="src\VkBootstrap.h" />
@@ -192,6 +193,7 @@ copy $(SolutionDir)libs\cglm\cglm.dll $(OutDirfullPath)cglm.dll</Command>
     <ClInclude Include="src\VkPipelineBuilderUtil.h" />
     <ClInclude Include="src\VkTextures.h" />
     <ClInclude Include="src\VulkanEngine.h" />
+    <ClInclude Include="src\RandomNumberGenerator.h" />
     <ClInclude Include="src\StringHelper.h" />
     <ClInclude Include="src\PhysUtil.h" />
     <ClInclude Include="src\VoxelField.h" />
@@ -234,6 +236,7 @@ copy $(SolutionDir)libs\cglm\cglm.dll $(OutDirfullPath)cglm.dll</Command>
     <ClCompile Include="src\ReplaySystem.cpp" />
     <ClCompile Include="src\ScannableItem.cpp" />
     <ClCompile Include="src\SceneManagement.cpp" />
+    <ClCompile Include="src\UIQuad.cpp" />
     <ClCompile Include="src\Textbox.cpp" />
     <ClCompile Include="src\TextMesh.cpp" />
     <ClCompile Include="src\VkBootstrap.cpp" />
@@ -242,6 +245,7 @@ copy $(SolutionDir)libs\cglm\cglm.dll $(OutDirfullPath)cglm.dll</Command>
     <ClCompile Include="src\VkPipelineBuilderUtil.cpp" />
     <ClCompile Include="src\VkTextures.cpp" />
     <ClCompile Include="src\VulkanEngine.cpp" />
+    <ClCompile Include="src\RandomNumberGenerator.cpp" />
     <ClCompile Include="src\PhysUtil.cpp" />
     <ClCompile Include="src\VoxelField.cpp" />
     <ClCompile Include="src\PhysicsEngine.cpp" />
