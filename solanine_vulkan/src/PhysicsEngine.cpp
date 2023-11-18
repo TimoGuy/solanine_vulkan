@@ -860,6 +860,7 @@ namespace physengine
         {
             bodyInterface.RemoveBody(vfpd.bodyId);
             bodyInterface.DestroyBody(vfpd.bodyId);
+            vfpd.bodyId = BodyID();
         }
 
         // Create shape for each voxel.
@@ -882,6 +883,8 @@ namespace physengine
             // Start greedy search.
             if (vfpd.voxelData[idx] == 1)
             {
+                uint8_t myType = vfpd.voxelData[idx];
+
                 // Filled space search.
                 size_t encX = 1,  // Encapsulation sizes. Multiply it all together to get the count of encapsulation.
                     encY = 1,
@@ -890,7 +893,7 @@ namespace physengine
                 {
                     // Test whether next position is viable.
                     size_t idx = x * vfpd.sizeY * vfpd.sizeZ + j * vfpd.sizeZ + k;
-                    bool viable = (vfpd.voxelData[idx] == 1 && !processed[idx]);
+                    bool viable = (vfpd.voxelData[idx] == myType && !processed[idx]);
                     if (!viable)
                         break;  // Exit if not viable.
                     
@@ -903,7 +906,7 @@ namespace physengine
                     for (size_t x = i; x < i + encX; x++)
                     {
                         size_t idx = x * vfpd.sizeY * vfpd.sizeZ + y * vfpd.sizeZ + k;
-                        viable &= (vfpd.voxelData[idx] == 1 && !processed[idx]);
+                        viable &= (vfpd.voxelData[idx] == myType && !processed[idx]);
                         if (!viable)
                             break;
                     }
@@ -921,7 +924,7 @@ namespace physengine
                     for (size_t y = j; y < j + encY; y++)
                     {
                         size_t idx = x * vfpd.sizeY * vfpd.sizeZ + y * vfpd.sizeZ + z;
-                        viable &= (vfpd.voxelData[idx] == 1 && !processed[idx]);
+                        viable &= (vfpd.voxelData[idx] == myType && !processed[idx]);
                         if (!viable)
                             break;
                     }
@@ -1020,22 +1023,29 @@ namespace physengine
                 float_t angle      = std::asinf(1.0f / realLength);
                 float_t realHeight = std::sinf(90.0f - angle);
 
+                float_t yoff = 0.0f;
                 Quat rotation;
                 if (myType == 2)
                     rotation = Quat::sEulerAngles(Vec3(-angle, 0.0f, 0.0f));
                 else if (myType == 3)
                     rotation = Quat::sEulerAngles(Vec3(0.0f, 0.0f, angle));
                 else if (myType == 4)
+                {
                     rotation = Quat::sEulerAngles(Vec3(angle, 0.0f, 0.0f));
+                    yoff = 1.0f;
+                }
                 else if (myType == 5)
+                {
                     rotation = Quat::sEulerAngles(Vec3(0.0f, 0.0f, -angle));
+                    yoff = 1.0f;
+                }
                 else
                     std::cerr << "[COOKING VOXEL SHAPES]" << std::endl
                         << "WARNING: voxel type " << myType << " was not recognized." << std::endl;
                 
                 Vec3 extent((float_t)(even ? width : realLength) * 0.5f, (float_t)realHeight * 0.5f, (float_t)(even ? realLength : width) * 0.5f);
 
-                Vec3 origin = Vec3{ (float_t)i, (float_t)j, (float_t)k } + rotation * (extent + Vec3(0.0f, -realHeight, 0.0f));
+                Vec3 origin = Vec3{ (float_t)i, (float_t)j + yoff, (float_t)k } + rotation * (extent + Vec3(0.0f, -realHeight, 0.0f));
 
                 compoundShape->AddShape(origin, rotation, new BoxShape(extent));
 

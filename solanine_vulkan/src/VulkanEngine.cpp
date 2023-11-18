@@ -55,6 +55,8 @@ void VulkanEngine::init()
 	//
 	SDL_Init(SDL_INIT_VIDEO);
 	SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN);
+	if (_windowFullscreen)
+		window_flags = (SDL_WindowFlags)(window_flags | SDL_WINDOW_FULLSCREEN_DESKTOP);
 
 	_window = SDL_CreateWindow(
 		("Solanine Prealpha - Vulkan" + buildNumber).c_str(),
@@ -152,6 +154,13 @@ void VulkanEngine::run()
 
 
 		perfs[1] = SDL_GetPerformanceCounter();
+		// Toggle fullscreen.
+		if (input::onKeyF11Press)
+		{
+			_windowFullscreen = !_windowFullscreen;
+			SDL_SetWindowFullscreen(_window, _windowFullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
+		}
+
 		// Update time multiplier
 		if (input::onKeyLSBPress || input::onKeyRSBPress)
 		{
@@ -1064,6 +1073,49 @@ void ppDepthOfField(
 	);
 }
 
+void ppCombinePostprocesses(
+	VkCommandBuffer cmd,
+	VkRenderPass postprocessRenderPass, VkFramebuffer postprocessFramebuffer, Material& postprocessMaterial, VkExtent2D& windowExtent, VkDescriptorSet currentFrameGlobalDescriptor, bool applyTonemap, bool applyImGui)
+{
+	// Combine all postprocessing
+	GPUPostProcessParams CoCParams = {
+		.applyTonemap = applyTonemap,
+	};
+
+	VkClearValue clearValue;
+	clearValue.color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
+
+	VkRenderPassBeginInfo renderpassInfo = {
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+		.pNext = nullptr,
+
+		.renderPass = postprocessRenderPass,
+		.framebuffer = postprocessFramebuffer,
+		.renderArea = {
+			.offset = VkOffset2D{ 0, 0 },
+			.extent = windowExtent,
+		},
+
+		.clearValueCount = 1,
+		.pClearValues = &clearValue,
+	};
+
+	// Begin renderpass
+	vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, postprocessMaterial.pipeline);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, postprocessMaterial.pipelineLayout, 0, 1, &currentFrameGlobalDescriptor, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, postprocessMaterial.pipelineLayout, 1, 1, &postprocessMaterial.textureSet, 0, nullptr);
+	vkCmdPushConstants(cmd, postprocessMaterial.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(GPUPostProcessParams), &CoCParams);
+	vkCmdDraw(cmd, 3, 1, 0, 0);
+
+	if (applyImGui)
+		ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
+
+	// End renderpass
+	vkCmdEndRenderPass(cmd);
+}
+
 void VulkanEngine::renderPostprocessRenderpass(const FrameData& currentFrame, VkCommandBuffer cmd, uint32_t swapchainImageIndex)
 {
 	// Generate postprocessing.
@@ -1141,39 +1193,134 @@ void VulkanEngine::renderPostprocessRenderpass(const FrameData& currentFrame, Vk
 		floodfillParams
 	);
 
-	// Combine all postprocessing
-	VkClearValue clearValue;
-	clearValue.color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
+	// Blit result to snapshot image.
+	if (_blitToSnapshotImageFlag)
+	{
+		// Combine postprocesses without tonemapping.
+		ppCombinePostprocesses(
+			cmd,
+			_postprocessRenderPass,
+			_swapchainFramebuffers[swapchainImageIndex],
+			*getMaterial("postprocessMaterial"),
+			_windowExtent,
+			currentFrame.globalDescriptor,
+			false,
+			false
+		);
 
-	VkRenderPassBeginInfo renderpassInfo = {
-		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-		.pNext = nullptr,
+		// Do blitting process.
+		VkImageMemoryBarrier imageBarrier = {
+			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+			.subresourceRange = {
+				.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+				.baseMipLevel   = 0,
+				.levelCount     = 1,
+				.baseArrayLayer = 0,
+				.layerCount     = 1,
+			},
+		};
 
-		.renderPass = _postprocessRenderPass,
-		.framebuffer = _swapchainFramebuffers[swapchainImageIndex],		// @NOTE: Framebuffer of the index the swapchain gave
-		.renderArea = {
-			.offset = VkOffset2D{ 0, 0 },
-			.extent = _windowExtent,
-		},
+		// Convert KHR image to transfer src.
+		imageBarrier.image = _swapchainImages[swapchainImageIndex];
+		imageBarrier.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+		imageBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+		imageBarrier.srcAccessMask = VK_ACCESS_NONE;
+		imageBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+		vkCmdPipelineBarrier(cmd,
+			VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+			0, nullptr,
+			0, nullptr,
+			1, &imageBarrier
+		);
 
-		.clearValueCount = 1,
-		.pClearValues = &clearValue,
-	};
+		// Convert snapshot image to transfer dst.
+		imageBarrier.image = _snapshotImage.image._image;
+		imageBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		imageBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		imageBarrier.srcAccessMask = VK_ACCESS_NONE;
+		imageBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		vkCmdPipelineBarrier(cmd,
+			VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+			0, nullptr,
+			0, nullptr,
+			1, &imageBarrier
+		);
 
-	// Begin renderpass
-	vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
+		// Blit.
+		VkImageBlit blitRegion = {
+			.srcSubresource = {
+				.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+				.mipLevel       = 0,
+				.baseArrayLayer = 0,
+				.layerCount     = 1,
+			},
+			.srcOffsets = {
+				{ 0, 0, 0 },
+				{ (int32_t)_windowExtent.width, (int32_t)_windowExtent.height, 1 },
+			},
+			.dstSubresource = {
+				.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+				.mipLevel       = 0,
+				.baseArrayLayer = 0,
+				.layerCount     = 1,
+			},
+			.dstOffsets = {
+				{ 0, 0, 0 },
+				{
+					(int32_t)_windowExtent.width,
+					(int32_t)_windowExtent.height,
+					1
+				},
+			},
+		};
+		vkCmdBlitImage(cmd,
+			_swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+			_snapshotImage.image._image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			1, &blitRegion,
+			VK_FILTER_NEAREST
+		);
 
-	Material& postprocessMaterial = *getMaterial("postprocessMaterial");
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, postprocessMaterial.pipeline);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, postprocessMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, postprocessMaterial.pipelineLayout, 1, 1, &postprocessMaterial.textureSet, 0, nullptr);
-	vkCmdPushConstants(cmd, postprocessMaterial.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(GPUCoCParams), &CoCParams);
-	vkCmdDraw(cmd, 3, 1, 0, 0);
+		// Convert KHR image back to KHR present src.
+		imageBarrier.image = _swapchainImages[swapchainImageIndex];
+		imageBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+		imageBarrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+		imageBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+		imageBarrier.dstAccessMask = VK_ACCESS_NONE;
+		vkCmdPipelineBarrier(cmd,
+			VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+			0, nullptr,
+			0, nullptr,
+			1, &imageBarrier
+		);
 
-	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
+		// Convert snapshot image to shader read only.
+		imageBarrier.image = _snapshotImage.image._image;
+		imageBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		imageBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		imageBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		imageBarrier.dstAccessMask = VK_ACCESS_NONE;
+		vkCmdPipelineBarrier(cmd,
+			VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+			0, nullptr,
+			0, nullptr,
+			1, &imageBarrier
+		);
 
-	// End renderpass
-	vkCmdEndRenderPass(cmd);
+		// Finish.
+		_blitToSnapshotImageFlag = false;
+	}
+
+	// Finish postprocess stack.
+	ppCombinePostprocesses(
+		cmd,
+		_postprocessRenderPass,
+		_swapchainFramebuffers[swapchainImageIndex],
+		*getMaterial("postprocessMaterial"),
+		_windowExtent,
+		currentFrame.globalDescriptor,
+		true,
+		true
+	);
 }
 
 void VulkanEngine::render()
@@ -3781,6 +3928,34 @@ void VulkanEngine::initPipelines()
 	);
 	attachPipelineToMaterial(meshPipeline, meshPipelineLayout, "pbrMaterial");
 
+	// Snapshot image pipeline
+	VkPipeline snapshotImagePipeline;
+	VkPipelineLayout snapshotImagePipelineLayout;
+	vkutil::pipelinebuilder::build(
+		{},
+		{ _singleTextureSetLayout },
+		{
+			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/genbrdflut.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/snapshotImage.frag.spv" },
+		},
+		{},  // No triangles are actually streamed in
+		{},
+		vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+		screenspaceViewport,
+		screenspaceScissor,
+		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE),
+		{ vkinit::colorBlendAttachmentState() },
+		vkinit::multisamplingStateCreateInfo(),
+		vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_ALWAYS),
+		{},
+		_mainRenderPass,
+		1,
+		snapshotImagePipeline,
+		snapshotImagePipelineLayout,
+		_swapchainDependentDeletionQueue
+	);
+	attachPipelineToMaterial(snapshotImagePipeline, snapshotImagePipelineLayout, "snapshotImageMaterial");
+
 	// Skybox pipeline
 	VkPipeline skyboxPipeline;
 	VkPipelineLayout skyboxPipelineLayout;
@@ -3955,7 +4130,7 @@ void VulkanEngine::initPipelines()
 			VkPushConstantRange{
 				.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
 				.offset = 0,
-				.size = sizeof(GPUCoCParams)
+				.size = sizeof(GPUPostProcessParams)
 			}
 		},
 		{ _globalSetLayout, _postprocessSetLayout },

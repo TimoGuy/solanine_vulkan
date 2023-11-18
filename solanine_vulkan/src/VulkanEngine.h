@@ -74,6 +74,14 @@ struct GPUGatherDOFParams
 	float_t oneOverArbitraryResExtentY;
 };
 
+struct GPUPostProcessParams
+{
+	bool applyTonemap;
+	bool pad0;
+	bool pad1;
+	bool pad2;  // Vulkan spec requires multiple of 4 bytes for push constants.
+};
+
 struct FrameData
 {
 	VkSemaphore presentSemaphore, renderSemaphore;
@@ -121,6 +129,7 @@ public:
 	VkExtent2D _windowExtent{ 1920, 1080 };
 	// VkExtent2D _windowExtent{ 1280, 720 };
 	struct SDL_Window* _window{ nullptr };
+	bool _windowFullscreen = true;
 	bool _isWindowMinimized = false;    // @NOTE: if we don't handle window minimization correctly, we can get the VK_ERROR_DEVICE_LOST(-4) error
 	bool _recreateSwapchain = false;
 
@@ -170,6 +179,13 @@ public:
 	Texture        _depthImage;
 	VkFormat       _depthFormat;
 
+	//
+	// Texture for taking a snapshot of the rendered game screen
+	// (to warp for screen transitions, pause menus, etc.)
+	//
+	Texture       _snapshotImage;
+	bool          _blitToSnapshotImageFlag = false;
+	bool          _skyboxIsSnapshotImage = false;
 
 	//
 	// UI Renderpass

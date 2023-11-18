@@ -5,14 +5,13 @@ layout (location = 0) in vec2 inUV;
 layout (location = 0) out vec4 outColor;
 
 
-layout (push_constant) uniform CoCParams
+layout (push_constant) uniform PostProcessParams
 {
-	float cameraZNear;
-	float cameraZFar;
-	float focusDepth;
-	float focusExtent;
-	float blurExtent;
-} cocParams;
+	bool applyTonemap;
+	bool pad0;
+	bool pad1;
+	bool pad2;
+} postProcessParams;
 
 layout (set = 0, binding = 1) uniform UBOParams
 {
@@ -85,7 +84,7 @@ void main()
 	vec4 dofNearColorAndCoC = texture(dofNearImage, inUV);
 	rawColor.rgb = mix(rawColor.rgb, dofNearColorAndCoC.rgb, dofNearColorAndCoC.a);
 
-	// @DEBUG: See DOF ranges.
+	// // @DEBUG: See DOF ranges.
 	// if (dofNearColorAndCoC.a > 0.0)
 	// 	rawColor.r = 1.0;
 	// if (dofFarColorAndCoC.a > 0.0)
@@ -99,11 +98,19 @@ void main()
 		textureLod(bloomImage, inUV, 4.0);
 	rawColor = mix(rawColor, combinedBloom, /*0.04*/0.0);  // @NOTE: for now turn off bloom since I think it should be after DOF (which in the render pipeline in `VulkanEngine` it's before DOF), but it's here!
 
-	vec3 color = SRGBtoLINEAR(tonemap(rawColor)).rgb;
+	vec3 color;
+	if (postProcessParams.applyTonemap)
+		color = SRGBtoLINEAR(tonemap(rawColor)).rgb;
+	else
+		color = rawColor.rgb;
 	vec4 uiColor = texture(uiImage, inUV);
 
 	outColor = vec4(
 		mix(color, uiColor.rgb, uiColor.a),
 		1.0
 	);
+
+	// // @DEBUG: see crosshairs for center of screen.
+	// if (abs(inUV.x - 0.5) < 0.001 || abs(inUV.y - 0.5) < 0.001)
+	// 	outColor.rgb = -outColor.rgb;
 }

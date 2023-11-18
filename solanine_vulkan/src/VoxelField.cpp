@@ -160,8 +160,13 @@ void triggerLoadLightingIfExists(VoxelField_XData& d, const std::string& guid)
 void calculateObjectSpaceCameraLinecastPoints(VulkanEngine* engine, physengine::VoxelFieldPhysicsData* vfpd, vec3& outLinecastPt1, vec3& outLinecastPt2)
 {
 	vec3 linecastPt1, linecastPt2;
-    glm_vec3_copy(engine->_camera->sceneCamera.gpuCameraData.cameraPosition, linecastPt1);
     ImGuiIO& io = ImGui::GetIO();
+    glm_unproject(
+        vec3{ io.MousePos.x, io.MousePos.y, 0.0f },
+        engine->_camera->sceneCamera.gpuCameraData.projectionView,
+        vec4{ 0, 0, (float_t)engine->_windowExtent.width, (float_t)engine->_windowExtent.height },
+        linecastPt1
+    );
     glm_unproject(
         vec3{ io.MousePos.x, io.MousePos.y, 1.0f },
         engine->_camera->sceneCamera.gpuCameraData.projectionView,
@@ -194,6 +199,7 @@ bool intersectAABB(vec3 rayOrigin, vec3 rayDirection, vec3 aabbMin, vec3 aabbMax
     glm_vec3_maxv(tMin, tMax, t2);
 
     float_t tNear = glm_vec3_max(t1);
+    tNear = std::max(0.0f, tNear);  // For preventing intersects happening behind ray origin.
     float_t tFar = glm_vec3_min(t2);
 
     if (tNear > tFar)  // No intersection.
@@ -440,13 +446,12 @@ void VoxelField::physicsUpdate(const float_t& physicsDeltaTime)
                         glm_ivec3_add(_data->editorState.editStartPosition, offset, _data->editorState.editStartPosition);  // Change the edit positions to account for the offset.
                         glm_ivec3_add(_data->editorState.editEndPosition, offset, _data->editorState.editEndPosition);
 
-                        // Insert the resized offset into renderobject offsets.
-                        glm_translate(_data->vfpd->transform, vec3{ (float_t)offset[0], (float_t)offset[1], (float_t)offset[2] });
-
                         // Find which voxel type (for only slopes).
-                        uint8_t slopeSpaceId = 2;
+                        uint8_t slopeSpaceId;
                         if (_data->editorState.editType == VoxelField_XData::EditorState::EditType::CHANGE_TO_SLOPE)
                         {
+                            slopeSpaceId = 2;
+
                             float_t maxCardinalDirDot = -1.0f;
                             mat3 rotation;
                             glm_mat4_pick3(_data->vfpd->interpolTransform, rotation);
