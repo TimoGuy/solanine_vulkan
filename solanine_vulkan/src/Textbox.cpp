@@ -197,7 +197,7 @@ namespace textbox
         if (myText == nullptr)
             return;
 
-        if (input::renderInputSet.UIConfirm.onAction)
+        if (input::renderInputSet().UIConfirm.onAction)
         {
             // Make selection for query
             if (answeringQuery)
@@ -255,9 +255,9 @@ namespace textbox
         }
 
         // Cycle thru query selections
-        if (input::renderInputSet.UIGoUp.onAction)
+        if (input::renderInputSet().UIGoUp.onAction)
             answeringQuerySelection = (answeringQuerySelection + numQuerySelections - 1) % numQuerySelections;
-        if (input::renderInputSet.UIGoDown.onAction)
+        if (input::renderInputSet().UIGoDown.onAction)
             answeringQuerySelection = (answeringQuerySelection + 1) % numQuerySelections;
     }
     

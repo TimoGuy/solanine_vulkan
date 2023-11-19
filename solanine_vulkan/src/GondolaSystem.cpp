@@ -1260,7 +1260,7 @@ void executeCAction(GondolaSystem_XData* d, GondolaSystem* _this, const std::str
     if (controlPointIdx == (size_t)-1)
         return;
 
-    bool backwards = input::editorInputSet.backwardsModifier.holding;
+    bool backwards = input::editorInputSet().backwardsModifier.holding;
     float_t directionMultiplier = 1.0f;
     if (backwards)
         directionMultiplier = -1.0f;
@@ -1443,11 +1443,11 @@ void GondolaSystem::renderImGui()
         "X: delete selected control point.\n"
         "V: assign/unassign station at control point."
     );
-    if (input::editorInputSet.actionC.onAction)
+    if (input::editorInputSet().actionC.onAction)
         executeCAction(_data, this, getGUID(), _engine->getMatrixToMove());
-    if (input::editorInputSet.actionX.onAction)
+    if (input::editorInputSet().actionX.onAction)
         executeXAction(_data, _em, _engine->getMatrixToMove());
-    if (input::editorInputSet.actionV.onAction)
+    if (input::editorInputSet().actionV.onAction)
         executeVAction(_data, _em, this, getGUID(), _engine->getMatrixToMove());
 
     // Imgui.

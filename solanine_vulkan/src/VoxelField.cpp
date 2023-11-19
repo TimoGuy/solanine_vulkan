@@ -401,15 +401,15 @@ void VoxelField::physicsUpdate(const float_t& physicsDeltaTime)
             drawVoxelEditingVisualization(_data);
 
             // Commit interaction.
-            if (input::editorInputSet.cancel.onAction)
+            if (input::editorInputSet().cancel.onAction)
             {
                 // Exit editing with no changes
                 _data->editorState.editing = false;
             }
-            else if (input::editorInputSet.submit.onAction ||
-                input::editorInputSet.actionC.onAction ||
-                input::editorInputSet.actionX.onAction ||
-                input::editorInputSet.actionV.onAction)
+            else if (input::editorInputSet().submit.onAction ||
+                input::editorInputSet().actionC.onAction ||
+                input::editorInputSet().actionX.onAction ||
+                input::editorInputSet().actionV.onAction)
             {
                 // Exit editing, saving changes
                 bool rebuildRenderObjs = false;
@@ -557,23 +557,23 @@ void VoxelField::physicsUpdate(const float_t& physicsDeltaTime)
                 }
             }
         }
-        else if ((input::editorInputSet.actionC.onAction || input::editorInputSet.actionX.onAction || input::editorInputSet.actionV.onAction) &&
+        else if ((input::editorInputSet().actionC.onAction || input::editorInputSet().actionX.onAction || input::editorInputSet().actionV.onAction) &&
             raycastMouseToVoxel(_data->engine, _data->vfpd, _data->editorState.editStartPosition, _data->editorState.flatAxis))
         {
             // Enter editing mode
             _data->editorState.editing = true;
             std::string editTypeStr = "";
-            if (input::editorInputSet.actionC.onAction)
+            if (input::editorInputSet().actionC.onAction)
             {
                 _data->editorState.editType = VoxelField_XData::EditorState::EditType::APPEND;
                 editTypeStr = "APPEND";
             }
-            else if (input::editorInputSet.actionX.onAction)
+            else if (input::editorInputSet().actionX.onAction)
             {
                 _data->editorState.editType = VoxelField_XData::EditorState::EditType::REMOVE;
                 editTypeStr = "REMOVE";
             }
-            else if (input::editorInputSet.actionV.onAction)
+            else if (input::editorInputSet().actionV.onAction)
             {
                 _data->editorState.editType = VoxelField_XData::EditorState::EditType::CHANGE_TO_SLOPE;
                 editTypeStr = "CHANGE_TO_SLOPE";

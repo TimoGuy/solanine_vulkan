@@ -608,6 +608,10 @@ namespace physengine
 
         physicsSystem->OptimizeBroadPhase();
 
+#ifdef _DEVELOP
+        input::registerEditorInputSetOnThisThread();
+#endif
+
         isInitialized = true;  // Initialization finished.
 
         //
@@ -633,7 +637,8 @@ namespace physengine
             //         if the timescale slows down, then the tick rate should also slow down
             //         proportionate to the timescale.  -Timo 2023/06/10
             tick();
-            input::simInputSet.update();
+            input::editorInputSet().update();
+            input::simInputSet().update();
             entityManager->INTERNALphysicsUpdate(physicsDeltaTime);  // @NOTE: if timescale changes, then the system just waits longer/shorter.
             physicsSystem->Update(physicsDeltaTime, 1, 1, &tempAllocator, &jobSystem);
             tock();

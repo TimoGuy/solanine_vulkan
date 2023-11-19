@@ -7,6 +7,15 @@
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_sdl.h"
 
+#ifdef _DEVELOP
+#include <map>
+#include <thread>
+#endif
+
+#ifdef _DEBUG
+#include <mutex>
+#endif
+
 namespace input
 {
 	struct KeyboardMouseInputState
@@ -229,7 +238,18 @@ namespace input
 		verticalFreeCamMovement.update(w);
 		fastCameraMovement.update(keyMouseState.lShift);
 	}
-	EditorInputSet editorInputSet = {};
+
+	std::map<std::thread::id, EditorInputSet> threadToEditorInputSet;
+
+	void registerEditorInputSetOnThisThread()
+	{
+		threadToEditorInputSet[std::this_thread::get_id()] = EditorInputSet{};
+	}
+
+	EditorInputSet& editorInputSet()
+	{
+		return threadToEditorInputSet[std::this_thread::get_id()];
+	}
 
 	void RenderThreadInputSet::update(float_t deltaTime)
 	{
@@ -248,7 +268,31 @@ namespace input
 		toggleTransformMenu.update(keyMouseState.f);
 		toggleFullscreen.update(keyMouseState.F11);
 	}
-	RenderThreadInputSet renderInputSet = {};
+	
+	RenderThreadInputSet& renderInputSet()
+	{
+		static RenderThreadInputSet instance = {};
+#ifdef _DEBUG
+		// Assert that the same thread is using this instance of input set.
+		static bool registeredInstance = false;
+		static std::mutex registerInstanceMutex;
+		static std::thread::id masterThreadId;
+		if (registeredInstance)
+		{
+			assert(std::this_thread::get_id() == masterThreadId);
+		}
+		else
+		{
+			std::lock_guard<std::mutex> lg(registerInstanceMutex);
+			if (!registeredInstance)  // Still need to check to prevent overwrite from another process that was waiting.
+			{
+				masterThreadId = std::this_thread::get_id();
+				registeredInstance = true;
+			}
+		}
+#endif
+		return instance;
+	}
 	
 	void SimulationThreadInputSet::update()
 	{
@@ -264,7 +308,31 @@ namespace input
 		focus.update(keyMouseState.lShift);
 		interact.update(keyMouseState.e);
 	}
-	SimulationThreadInputSet simInputSet = {};
+
+	SimulationThreadInputSet& simInputSet()
+	{
+		static SimulationThreadInputSet instance = {};
+#ifdef _DEBUG
+		// Assert that the same thread is using this instance of input set.
+		static bool registeredInstance = false;
+		static std::mutex registerInstanceMutex;
+		static std::thread::id masterThreadId;
+		if (registeredInstance)
+		{
+			assert(std::this_thread::get_id() == masterThreadId);
+		}
+		else
+		{
+			std::lock_guard<std::mutex> lg(registerInstanceMutex);
+			if (!registeredInstance)  // Still need to check to prevent overwrite from another process that was waiting.
+			{
+				masterThreadId = std::this_thread::get_id();
+				registeredInstance = true;
+			}
+		}
+#endif
+		return instance;
+	}
 }
 
 

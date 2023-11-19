@@ -1017,8 +1017,8 @@ void processInputForWaza(Character_XData* d, Character_XData::AttackWaza::WazaIn
     //             the only event needing to have priority in combo inputs.  -Timo 2023/09/17
     // @REPLY: I think that this new system is what is needed.  -Timo 2023/09/17
     // @REPLY: I think that the previous new system sucked and now I'm implementing a new system i like (have HWAC file take care of timing).  -Timo 2023/09/22
-    Character_XData::PressedState input_x = pressedStateSingle(input::simInputSet.attack.holding);
-    Character_XData::PressedState input_a = pressedStateSingle(input::simInputSet.jump.holding);
+    Character_XData::PressedState input_x = pressedStateSingle(input::simInputSet().attack.holding);
+    Character_XData::PressedState input_a = pressedStateSingle(input::simInputSet().jump.holding);
     Character_XData::PressedState input_xa = pressedStateCombo({ input_x, input_a });
 
     // Fill in all the waza inputs. (@NOTE: start with key combinations and check inputs that are highest priority first)
@@ -1642,8 +1642,8 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
 
         if (d->characterType == CHARACTER_TYPE_PLAYER)
         {
-            input[0] = input::simInputSet.flatPlaneMovement.axisX;
-            input[1] = input::simInputSet.flatPlaneMovement.axisY;
+            input[0] = input::simInputSet().flatPlaneMovement.axisX;
+            input[1] = input::simInputSet().flatPlaneMovement.axisY;
         }
 
         if (d->disableInput || d->knockbackMode > Character_XData::KnockbackStage::NONE)
@@ -2384,7 +2384,7 @@ void Character::update(const float_t& deltaTime)
             if (_data->prevIsGrounded && !textbox::isProcessingMessage())
             {
                 interactionUIText->excludeFromBulkRender = false;
-                if (!_data->disableInput && input::simInputSet.interact.onAction)
+                if (!_data->disableInput && input::simInputSet().interact.onAction)
                 {
                     DataSerializer ds;
                     ds.dumpString("msg_commit_interaction");
@@ -2411,14 +2411,14 @@ void Character::update(const float_t& deltaTime)
         // Poll keydown inputs.
         if (_data->knockbackMode == Character_XData::KnockbackStage::NONE)
         {
-            _data->inputFlagJump |= !_data->disableInput && input::simInputSet.jump.holding;  // @INCOMPLETE: @TODO: change these input flags to actually using the new input system.
-            _data->inputFlagAttack |= !_data->disableInput && input::simInputSet.attack.holding;
-            _data->inputFlagRelease |= !_data->disableInput && input::simInputSet.detach.holding;
+            _data->inputFlagJump |= !_data->disableInput && input::simInputSet().jump.holding;  // @INCOMPLETE: @TODO: change these input flags to actually using the new input system.
+            _data->inputFlagAttack |= !_data->disableInput && input::simInputSet().attack.holding;
+            _data->inputFlagRelease |= !_data->disableInput && input::simInputSet().detach.holding;
         }
 
         // Target an opponent.
         if (_data->knockbackMode == Character_XData::KnockbackStage::NONE &&
-            input::simInputSet.focus.holding)
+            input::simInputSet().focus.holding)
         {
             if (!_data->isTargetingOpponentObject)
             {

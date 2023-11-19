@@ -60,7 +60,8 @@ namespace input
 	};
 
 	// Input Sets.
-	struct EditorInputSet  // @NOTE: this is on the render thread.
+#ifdef _DEVELOP
+	struct EditorInputSet
 	{
 		OnAction            togglePlayEditMode;
 		OnAction            toggleEditorUI;
@@ -89,7 +90,9 @@ namespace input
 
 		void update();
 	};
-	extern EditorInputSet editorInputSet;
+	void registerEditorInputSetOnThisThread();
+	EditorInputSet& editorInputSet();
+#endif
 
 	struct RenderThreadInputSet
 	{
@@ -112,7 +115,7 @@ namespace input
 
 		void update(float_t deltaTime);
 	};
-	extern RenderThreadInputSet renderInputSet;
+	RenderThreadInputSet& renderInputSet();
 
 	struct SimulationThreadInputSet
 	{
@@ -125,7 +128,7 @@ namespace input
 
 		void update();
 	};
-	extern SimulationThreadInputSet simInputSet;
+	SimulationThreadInputSet& simInputSet();
 
 #if 0
 	extern bool
