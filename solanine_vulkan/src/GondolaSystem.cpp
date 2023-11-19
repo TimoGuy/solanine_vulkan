@@ -1260,7 +1260,7 @@ void executeCAction(GondolaSystem_XData* d, GondolaSystem* _this, const std::str
     if (controlPointIdx == (size_t)-1)
         return;
 
-    bool backwards = input::keyShiftPressed;
+    bool backwards = input::editorInputSet.backwardsModifier.holding;
     float_t directionMultiplier = 1.0f;
     if (backwards)
         directionMultiplier = -1.0f;
@@ -1443,18 +1443,12 @@ void GondolaSystem::renderImGui()
         "X: delete selected control point.\n"
         "V: assign/unassign station at control point."
     );
-    static bool prevCHeld = false;
-    static bool prevXHeld = false;
-    static bool prevVHeld = false;
-    if (input::keyCPressed && !prevCHeld)
+    if (input::editorInputSet.actionC.onAction)
         executeCAction(_data, this, getGUID(), _engine->getMatrixToMove());
-    prevCHeld = input::keyCPressed;
-    if (input::keyXPressed && !prevXHeld)
+    if (input::editorInputSet.actionX.onAction)
         executeXAction(_data, _em, _engine->getMatrixToMove());
-    prevXHeld = input::keyXPressed;
-    if (input::keyVPressed && !prevVHeld)
+    if (input::editorInputSet.actionV.onAction)
         executeVAction(_data, _em, this, getGUID(), _engine->getMatrixToMove());
-    prevVHeld = input::keyVPressed;
 
     // Imgui.
     ImGui::Checkbox("Show Curve Paths", &showCurvePaths);

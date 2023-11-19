@@ -197,7 +197,7 @@ namespace textbox
         if (myText == nullptr)
             return;
 
-        if (input::onKeyJumpPress)
+        if (input::renderInputSet.UIConfirm.onAction)
         {
             // Make selection for query
             if (answeringQuery)
@@ -255,15 +255,10 @@ namespace textbox
         }
 
         // Cycle thru query selections
-        static bool prevKeyUpPressed = false;
-        if (input::keyUpPressed && !prevKeyUpPressed && answeringQuery)
+        if (input::renderInputSet.UIGoUp.onAction)
             answeringQuerySelection = (answeringQuerySelection + numQuerySelections - 1) % numQuerySelections;
-        prevKeyUpPressed = input::keyUpPressed;
-
-        static bool prevKeyDownPressed = false;
-        if (input::keyDownPressed && !prevKeyDownPressed && answeringQuery)
+        if (input::renderInputSet.UIGoDown.onAction)
             answeringQuerySelection = (answeringQuerySelection + 1) % numQuerySelections;
-        prevKeyDownPressed = input::keyDownPressed;
     }
     
     bool isProcessingMessage()

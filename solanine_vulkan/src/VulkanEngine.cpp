@@ -147,31 +147,6 @@ void VulkanEngine::run()
 
 	while (isRunning)
 	{
-		perfs[0] = SDL_GetPerformanceCounter();
-		// Poll events from the window
-		input::processInput(&isRunning, &_isWindowMinimized);
-		perfs[0] = SDL_GetPerformanceCounter() - perfs[0];
-
-
-		perfs[1] = SDL_GetPerformanceCounter();
-		// Toggle fullscreen.
-		if (input::onKeyF11Press)
-		{
-			_windowFullscreen = !_windowFullscreen;
-			SDL_SetWindowFullscreen(_window, _windowFullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
-		}
-
-		// Update time multiplier
-		if (input::onKeyLSBPress || input::onKeyRSBPress)
-		{
-			globalState::timescale *= input::onKeyLSBPress ? 0.5f : 2.0f;
-			debug::pushDebugMessage({
-				.message = "Set timescale to " + std::to_string(globalState::timescale),
-			});
-		}
-		perfs[1] = SDL_GetPerformanceCounter() - perfs[1];
-
-
 		perfs[2] = SDL_GetPerformanceCounter();
 		// Update DeltaTime
 		uint64_t currentFrame = SDL_GetPerformanceCounter();
@@ -179,6 +154,47 @@ void VulkanEngine::run()
 		const float_t scaledDeltaTime = deltaTime * globalState::timescale;
 		lastFrame = currentFrame;
 		perfs[2] = SDL_GetPerformanceCounter() - perfs[2];
+
+
+		perfs[0] = SDL_GetPerformanceCounter();
+		// Poll events from the window
+		input::processInput(&isRunning, &_isWindowMinimized);
+		input::editorInputSet.update();
+		input::renderInputSet.update(deltaTime);
+		perfs[0] = SDL_GetPerformanceCounter() - perfs[0];
+
+
+		perfs[1] = SDL_GetPerformanceCounter();
+		// Toggle fullscreen.
+		if (input::renderInputSet.toggleFullscreen.onAction)
+		{
+			_windowFullscreen = !_windowFullscreen;
+			SDL_SetWindowFullscreen(_window, _windowFullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
+		}
+
+#ifdef _DEVELOP
+		// Update time multiplier
+		{
+			bool changedTimescale = false;
+			if (input::editorInputSet.halveTimescale.onAction)
+			{
+				globalState::timescale *= 0.5f;
+				changedTimescale = true;
+			}
+			if (input::editorInputSet.doubleTimescale.onAction)
+			{
+				globalState::timescale *= 2.0f;
+				changedTimescale = true;
+			}
+			if (changedTimescale)
+			{
+				debug::pushDebugMessage({
+					.message = "Set timescale to " + std::to_string(globalState::timescale),
+				});
+			}
+		}
+#endif
+		perfs[1] = SDL_GetPerformanceCounter() - perfs[1];
 
 
 		perfs[3] = SDL_GetPerformanceCounter();
@@ -276,7 +292,7 @@ void VulkanEngine::run()
 		//
 		// Calculate performance
 		//
-		if (input::keyCtrlPressed)
+		if (input::editorInputSet.snapModifier.holding)  // @DEBUG: @INCOMPLETE: Change to tracy profiler instead of this hodge podge.
 		{
 			uint64_t totalPerf = 0;
 			for (size_t i = 0; i < numPerfs; i++)
@@ -1414,7 +1430,7 @@ void VulkanEngine::render()
 	//
 	// Picking Render Pass (OPTIONAL AND SEPARATE)
 	//
-	if (input::onLMBPress &&
+	if (input::editorInputSet.pickObject.onAction &&
 		_camera->getCameraMode() == Camera::_cameraMode_freeCamMode &&
 		!_camera->freeCamMode.enabled &&
 		!ImGui::GetIO().WantCaptureMouse &&
@@ -6146,7 +6162,7 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 		{
 			// Duplicate
 			static bool canRunDuplicateProc = true;
-			if (ImGui::Button("Duplicate Selected Entity") || (allowKeyboardShortcuts && input::keyCtrlPressed && input::keyDPressed))
+			if (ImGui::Button("Duplicate Selected Entity") || (allowKeyboardShortcuts && input::editorInputSet.duplicateObject.onAction))
 			{
 				if (canRunDuplicateProc)
 				{
@@ -6169,7 +6185,7 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0.0f, 0.7f, 0.7f));
             ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0.0f, 0.8f, 0.8f));
 
-			if (ImGui::Button("Delete Selected Entity!") || (allowKeyboardShortcuts && input::keyDelPressed))
+			if (ImGui::Button("Delete Selected Entity!") || (allowKeyboardShortcuts && input::editorInputSet.deleteObject.onAction))
 			{
 				if (canRunDeleteProc)
 				{
@@ -6207,7 +6223,7 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 		static ImGuizmo::MODE manipulateMode           = ImGuizmo::MODE::WORLD;
 
 		vec3 snapValues(0.0f);
-		if (input::keyCtrlPressed)
+		if (input::editorInputSet.snapModifier.holding)
 			if (manipulateOperation == ImGuizmo::OPERATION::ROTATE)
 				snapValues[0] = snapValues[1] = snapValues[2] = 45.0f;
 			else
@@ -6304,7 +6320,7 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 			if (!hasMouseButtonDown && allowKeyboardShortcuts)
 			{
 				static bool qKeyLock = false;
-				if (input::keyQPressed)
+				if (input::editorInputSet.toggleTransformManipulationMode.onAction)
 				{
 					if (!qKeyLock)
 					{
@@ -6318,17 +6334,17 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 					qKeyLock = false;
 				}
 
-				if (input::keyWPressed)
+				if (input::editorInputSet.switchToTransformPosition.onAction)
 				{
 					operationIndex = 0;
 					forceRecalculation = true;
 				}
-				if (input::keyEPressed)
+				if (input::editorInputSet.switchToTransformRotation.onAction)
 				{
 					operationIndex = 1;
 					forceRecalculation = true;
 				}
-				if (input::keyRPressed)
+				if (input::editorInputSet.switchToTransformScale.onAction)
 				{
 					operationIndex = 2;
 					forceRecalculation = true;
@@ -6402,7 +6418,7 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 	// Scroll the left pane
 	//
 	if (io.MousePos.x <= maxWindowWidth)
-		windowOffsetY += input::mouseScrollDelta[1] * scrollSpeed;
+		windowOffsetY += input::renderInputSet.UIScrollDelta.axisY * scrollSpeed;
 }
 
 void VulkanEngine::renderImGui(float_t deltaTime)
@@ -6418,7 +6434,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 	ImGuizmo::SetRect(0, 0, io.DisplaySize.x, io.DisplaySize.y);
 
 	static bool showImguiRender = true;
-	if (input::onKeyF1Press)
+	if (input::editorInputSet.toggleEditorUI.onAction)
 		showImguiRender = !showImguiRender;
 
 	if (showImguiRender)

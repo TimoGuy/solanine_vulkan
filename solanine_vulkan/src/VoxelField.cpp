@@ -396,19 +396,20 @@ void VoxelField::physicsUpdate(const float_t& physicsDeltaTime)
 {
     if (_data->isPicked)  // @NOTE: this picked checking system, bc physicsupdate() runs outside of the render thread, could easily get out of sync, but as long as the render thread is >40fps it should be fine.
     {
-        static bool prevCorXorVPressed = false;
-
         if (_data->editorState.editing)
         {
             drawVoxelEditingVisualization(_data);
 
             // Commit interaction.
-            if (input::keyEscPressed)
+            if (input::editorInputSet.cancel.onAction)
             {
                 // Exit editing with no changes
                 _data->editorState.editing = false;
             }
-            else if (input::keyEnterPressed || (!prevCorXorVPressed && (input::keyCPressed || input::keyXPressed || input::keyVPressed)))
+            else if (input::editorInputSet.submit.onAction ||
+                input::editorInputSet.actionC.onAction ||
+                input::editorInputSet.actionX.onAction ||
+                input::editorInputSet.actionV.onAction)
             {
                 // Exit editing, saving changes
                 bool rebuildRenderObjs = false;
@@ -556,32 +557,29 @@ void VoxelField::physicsUpdate(const float_t& physicsDeltaTime)
                 }
             }
         }
-        else if (!prevCorXorVPressed &&
-            (input::keyCPressed || input::keyXPressed || input::keyVPressed) &&
+        else if ((input::editorInputSet.actionC.onAction || input::editorInputSet.actionX.onAction || input::editorInputSet.actionV.onAction) &&
             raycastMouseToVoxel(_data->engine, _data->vfpd, _data->editorState.editStartPosition, _data->editorState.flatAxis))
         {
             // Enter editing mode
             _data->editorState.editing = true;
             std::string editTypeStr = "";
-            if (input::keyCPressed)
+            if (input::editorInputSet.actionC.onAction)
             {
                 _data->editorState.editType = VoxelField_XData::EditorState::EditType::APPEND;
                 editTypeStr = "APPEND";
             }
-            else if (input::keyXPressed)
+            else if (input::editorInputSet.actionX.onAction)
             {
                 _data->editorState.editType = VoxelField_XData::EditorState::EditType::REMOVE;
                 editTypeStr = "REMOVE";
             }
-            else if (input::keyVPressed)
+            else if (input::editorInputSet.actionV.onAction)
             {
                 _data->editorState.editType = VoxelField_XData::EditorState::EditType::CHANGE_TO_SLOPE;
                 editTypeStr = "CHANGE_TO_SLOPE";
             }
             std::cout << "STARTING EDITING (" << editTypeStr << ") at { " << _data->editorState.editStartPosition[0] << ", " << _data->editorState.editStartPosition[1] << ", " << _data->editorState.editStartPosition[2] << " } with axis { " << _data->editorState.flatAxis[0] << ", " << _data->editorState.flatAxis[1] << ", " << _data->editorState.flatAxis[2] << " }" << std::endl;
         }
-
-        prevCorXorVPressed = input::keyCPressed || input::keyXPressed || input::keyVPressed;
         _data->isPicked = false;
     }
 }

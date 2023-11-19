@@ -192,7 +192,7 @@ void Camera::update(const float_t& deltaTime)
 			.message = "Changed to " + std::string(_cameraMode == 0 ? "game camera" : "free camera") + " mode",
 			});
 	}
-	else if (input::onKeyF10Press)  // @NOTE: we never want a state where _flagNextStepChangeCameraMode==true and onKeyF10Press==true are processed. Only one at a time so that there is a dedicated frame for ::ENTER and ::EXIT
+	else if (input::editorInputSet.togglePlayEditMode.onAction)  // @NOTE: we never want a state where _flagNextStepChangeCameraMode==true and onKeyF10Press==true are processed. Only one at a time so that there is a dedicated frame for ::ENTER and ::EXIT
 	{
 		_changeEvents[_cameraMode] = CameraModeChangeEvent::EXIT;
 		_flagNextStepChangeCameraMode = true;
@@ -524,7 +524,7 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 	//
 	// Manual rotation via mouse input
 	//
-	vec2 mouseDeltaFloatSwizzled = { input::mouseDelta[1], -input::mouseDelta[0] };
+	vec2 mouseDeltaFloatSwizzled = { input::renderInputSet.cameraDelta.axisY, -input::renderInputSet.cameraDelta.axisX };
 	if (allowInput && glm_vec3_norm2(mouseDeltaFloatSwizzled) > 0.000001f)
 	{
 		vec2 sensitivityRadians = {
@@ -616,9 +616,9 @@ void Camera::updateFreeCam(const float_t& deltaTime, CameraModeChangeEvent chang
 	if (_cameraMode != _cameraMode_freeCamMode)
 		return;
 
-	if (input::onRMBPress || input::onRMBRelease)
+	if (input::editorInputSet.freeCamMode.onAction || input::editorInputSet.freeCamMode.onRelease)
 	{
-		freeCamMode.enabled = (input::RMBPressed && _cameraMode == _cameraMode_freeCamMode);
+		freeCamMode.enabled = (input::editorInputSet.freeCamMode.holding && _cameraMode == _cameraMode_freeCamMode);
 		SDL_SetRelativeMouseMode(freeCamMode.enabled ? SDL_TRUE : SDL_FALSE);		// @NOTE: this causes cursor to disappear and not leave window boundaries (@BUG: Except for if you right click into the window?)
 					
 		if (freeCamMode.enabled)
@@ -634,19 +634,16 @@ void Camera::updateFreeCam(const float_t& deltaTime, CameraModeChangeEvent chang
 		return;
 
 	vec2 mousePositionDeltaCooked = {
-		input::mouseDelta[0] * freeCamMode.sensitivity,
-		input::mouseDelta[1] * freeCamMode.sensitivity,
+		input::renderInputSet.cameraDelta.axisX * freeCamMode.sensitivity,
+		input::renderInputSet.cameraDelta.axisY * freeCamMode.sensitivity,
 	};
 
-	vec2 inputToVelocity = GLM_VEC2_ZERO_INIT;
-	inputToVelocity[0] += input::keyLeftPressed ? -1.0f : 0.0f;
-	inputToVelocity[0] += input::keyRightPressed ? 1.0f : 0.0f;
-	inputToVelocity[1] += input::keyUpPressed ? 1.0f : 0.0f;
-	inputToVelocity[1] += input::keyDownPressed ? -1.0f : 0.0f;
+	vec2 inputToVelocity = {
+		input::editorInputSet.freeCamMovement.axisX,
+		input::editorInputSet.freeCamMovement.axisY,
+	};
 
-	float_t worldUpVelocity = 0.0f;
-	worldUpVelocity += input::keyWorldUpPressed ? 1.0f : 0.0f;
-	worldUpVelocity += input::keyWorldDownPressed ? -1.0f : 0.0f;
+	float_t worldUpVelocity = input::editorInputSet.verticalFreeCamMovement.axis;
 
 	if (glm_vec2_norm(mousePositionDeltaCooked) > 0.0f || glm_vec2_norm(inputToVelocity) > 0.0f || std::abs(worldUpVelocity) > 0.0f)
 	{
@@ -671,7 +668,7 @@ void Camera::updateFreeCam(const float_t& deltaTime, CameraModeChangeEvent chang
 		glm_mat4_mulv3(rotation, sceneCamera.facingDirection, 0.0f, sceneCamera.facingDirection);
 
 		// Update camera position with keyboard input
-		float_t speedMultiplier = input::keyShiftPressed ? 50.0f : 25.0f;
+		float_t speedMultiplier = input::editorInputSet.fastCameraMovement.holding ? 50.0f : 25.0f;
 		glm_vec2_scale(inputToVelocity, speedMultiplier * deltaTime, inputToVelocity);
 		worldUpVelocity *= speedMultiplier * deltaTime;
 
