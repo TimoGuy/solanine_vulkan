@@ -217,21 +217,18 @@ void VulkanEngine::run()
 		perfs[4] = SDL_GetPerformanceCounter();
 		// Update textbox
 		textbox::update(deltaTime);
-
-		// Update entities
-		_entityManager->update(scaledDeltaTime);
 		perfs[4] = SDL_GetPerformanceCounter() - perfs[4];
 
 
 		perfs[5] = SDL_GetPerformanceCounter();
-		// Update animators
+		// Update render objects.
+		physengine::recalcInterpolatedTransformsSet();
+		_roManager->updateSimTransforms();
 		_roManager->updateAnimators(scaledDeltaTime);
 		perfs[5] = SDL_GetPerformanceCounter() - perfs[5];
 
 
 		perfs[6] = SDL_GetPerformanceCounter();
-		// Late update (i.e. after animators are run)
-		_entityManager->lateUpdate(scaledDeltaTime);
 		perfs[6] = SDL_GetPerformanceCounter() - perfs[6];
 
 
@@ -246,7 +243,7 @@ void VulkanEngine::run()
 		_entityManager->INTERNALaddRemoveRequestedEntities();
 
 		// Add/Change/Remove text meshes
-		textmesh::INTERNALprocessChangeQueue();
+		// textmesh::INTERNALprocessChangeQueue();
 		perfs[8] = SDL_GetPerformanceCounter() - perfs[8];
 
 
@@ -5746,7 +5743,7 @@ void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& curr
 }
 
 #ifdef _DEVELOP
-void VulkanEngine::updateDebugStats(const float_t& deltaTime)
+void VulkanEngine::updateDebugStats(float_t deltaTime)
 {
 	_debugStats.currentFPS = (uint32_t)std::roundf(1.0f / deltaTime);
 	_debugStats.renderTimesMSHeadIndex = (size_t)std::fmodf((float_t)_debugStats.renderTimesMSHeadIndex + 1, (float_t)_debugStats.renderTimesMSCount);

@@ -400,7 +400,7 @@ namespace vkglTF
 		static VkDescriptorSet* getGlobalAnimatorNodeCollectionDescriptorSet(VulkanEngine* engine);  // For binding to represent a non-skinned mesh
 
 		void playAnimation(size_t maskIndex, uint32_t animationIndex, bool loop, float_t time = 0.0f);  // This is for direct control of the animation index
-		void update(const float_t& deltaTime);
+		void update(float_t deltaTime);
 
 		void runEvent(const std::string& eventName);  // @NOTE: this is really naive btw
 		void setState(const std::string& stateName, float_t time = 0.0f, bool forceImmediateUpdate = false);

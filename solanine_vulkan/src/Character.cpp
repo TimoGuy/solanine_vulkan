@@ -1141,7 +1141,7 @@ void processWazaInput(Character_XData* d, Character_XData::AttackWaza::WazaInput
     }
 }
 
-void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& physicsDeltaTime, const std::string& myGuid, NextWazaPtr& inoutNextWaza, bool& inoutTurnOnAura)
+void processWazaUpdate(Character_XData* d, EntityManager* em, float_t simDeltaTime, const std::string& myGuid, NextWazaPtr& inoutNextWaza, bool& inoutTurnOnAura)
 {
     //
     // Deplete stamina
@@ -1150,7 +1150,7 @@ void processWazaUpdate(Character_XData* d, EntityManager* em, const float_t& phy
         (d->currentWaza->staminaCostHoldTimeFrom < 0 || d->wazaTimer >= d->currentWaza->staminaCostHoldTimeFrom) &&
         (d->currentWaza->staminaCostHoldTimeTo < 0 || d->wazaTimer <= d->currentWaza->staminaCostHoldTimeTo))
     {
-        changeStamina(d, -d->currentWaza->staminaCostHold * physicsDeltaTime, true);
+        changeStamina(d, -d->currentWaza->staminaCostHold * simDeltaTime, true);
         inoutTurnOnAura = true;
     }
 
@@ -1392,9 +1392,7 @@ void setWazaToCurrent(Character_XData* d, Character_XData::AttackWaza* nextWaza)
 
 Character::Character(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSerialized* ds) : Entity(em, ds), _data(new Character_XData())
 {
-    Entity::_enablePhysicsUpdate = true;
-    Entity::_enableUpdate = true;
-    Entity::_enableLateUpdate = true;
+    Entity::_enableSimulationUpdate = true;
 
     _data->rom = rom;
     _data->camera = camera;
@@ -1404,6 +1402,38 @@ Character::Character(EntityManager* em, RenderObjectManager* rom, Camera* camera
 
     _data->staminaData.currentStamina = (float_t)_data->staminaData.maxStamina;
 
+    // Create physics character.
+    bool useCCD = (_data->characterType == CHARACTER_TYPE_PLAYER);
+    _data->cpd = physengine::createCharacter(getGUID(), _data->position, 0.375f, 1.25f, useCCD);  // Total height is 2, but r*2 is subtracted to get the capsule height (i.e. the line segment length that the capsule rides along)
+
+    if (_data->characterType == CHARACTER_TYPE_PLAYER)
+    {
+        _data->camera->mainCamMode.setMainCamTargetObject(_data->characterRenderObj);  // @NOTE: I believe that there should be some kind of main camera system that targets the player by default but when entering different volumes etc. the target changes depending.... essentially the system needs to be more built out imo
+
+        globalState::playerGUID = getGUID();
+        globalState::playerPositionRef = &_data->cpd->currentCOMPosition;
+
+        _data->uiMaterializeItem = textmesh::createAndRegisterTextMesh("defaultFont", textmesh::RIGHT, textmesh::BOTTOM, getUIMaterializeItemText(_data));
+        _data->uiMaterializeItem->isPositionScreenspace = true;
+        glm_vec3_copy(vec3{ 925.0f, -510.0f, 0.0f }, _data->uiMaterializeItem->renderPosition);
+        _data->uiMaterializeItem->scale = 25.0f;
+
+        _data->uiStamina = textmesh::createAndRegisterTextMesh("defaultFont", textmesh::LEFT, textmesh::MID, getStaminaText(_data));
+        _data->uiStamina->isPositionScreenspace = true;
+        glm_vec3_copy(vec3{ 25.0f, -135.0f, 0.0f }, _data->uiStamina->renderPosition);
+        _data->uiStamina->scale = 25.0f;
+
+        auto loadWazasLambda = [&]() {
+            _data->wazaSet.clear();
+            initWazaSetFromFile(_data->wazaSet, "res/waza/default_waza.hwac");
+            initWazaSetFromFile(_data->wazaSet, "res/waza/air_waza.hwac");
+        };
+        hotswapres::addReloadCallback("res/waza/default_waza.hwac", this, loadWazasLambda);
+        hotswapres::addReloadCallback("res/waza/air_waza.hwac", this, loadWazasLambda);
+        loadWazasLambda();
+    }
+
+    // Create render objects.
     _data->weaponAttachmentJointName = "Back Attachment";
     std::vector<vkglTF::Animator::AnimatorCallback> animatorCallbacks = {
         {
@@ -1536,10 +1566,12 @@ Character::Character(EntityManager* em, RenderObjectManager* rom, Camera* camera
     vkglTF::Model* characterModel = _data->rom->getModel("SlimeGirl", this, [](){});
     vkglTF::Model* handleModel = _data->rom->getModel("Handle", this, [](){});
     vkglTF::Model* weaponModel = _data->rom->getModel("WingWeapon", this, [](){});
+
     _data->rom->registerRenderObjects({
             {
                 .model = characterModel,
                 .animator = new vkglTF::Animator(characterModel, animatorCallbacks),
+                .simTransformId = _data->cpd->simTransformId,
                 .renderLayer = RenderLayer::VISIBLE,
                 .attachedEntityGuid = getGUID(),
             },
@@ -1557,6 +1589,10 @@ Character::Character(EntityManager* em, RenderObjectManager* rom, Camera* camera
         { &_data->characterRenderObj, &_data->handleRenderObj, &_data->weaponRenderObj }
     );
 
+    glm_mat4_identity(_data->characterRenderObj->simTransformOffset);
+    glm_translate(_data->characterRenderObj->simTransformOffset, vec3{ 0.0f, -physengine::getLengthOffsetToBase(*_data->cpd), 0.0f });
+    glm_scale(_data->characterRenderObj->simTransformOffset, vec3{ _data->modelSize, _data->modelSize, _data->modelSize });
+
     // @HARDCODED: there should be a sensing algorithm to know which lightgrid to assign itself to.
     for (auto& inst : _data->characterRenderObj->calculatedModelInstances)
         inst.voxelFieldLightingGridID = 1;
@@ -1564,36 +1600,6 @@ Character::Character(EntityManager* em, RenderObjectManager* rom, Camera* camera
         inst.voxelFieldLightingGridID = 1;
     for (auto& inst : _data->weaponRenderObj->calculatedModelInstances)
         inst.voxelFieldLightingGridID = 1;
-
-    bool useCCD = (_data->characterType == CHARACTER_TYPE_PLAYER);
-    _data->cpd = physengine::createCharacter(getGUID(), _data->position, 0.375f, 1.25f, useCCD);  // Total height is 2, but r*2 is subtracted to get the capsule height (i.e. the line segment length that the capsule rides along)
-
-    if (_data->characterType == CHARACTER_TYPE_PLAYER)
-    {
-        _data->camera->mainCamMode.setMainCamTargetObject(_data->characterRenderObj);  // @NOTE: I believe that there should be some kind of main camera system that targets the player by default but when entering different volumes etc. the target changes depending.... essentially the system needs to be more built out imo
-
-        globalState::playerGUID = getGUID();
-        globalState::playerPositionRef = &_data->cpd->currentCOMPosition;
-
-        _data->uiMaterializeItem = textmesh::createAndRegisterTextMesh("defaultFont", textmesh::RIGHT, textmesh::BOTTOM, getUIMaterializeItemText(_data));
-        _data->uiMaterializeItem->isPositionScreenspace = true;
-        glm_vec3_copy(vec3{ 925.0f, -510.0f, 0.0f }, _data->uiMaterializeItem->renderPosition);
-        _data->uiMaterializeItem->scale = 25.0f;
-
-        _data->uiStamina = textmesh::createAndRegisterTextMesh("defaultFont", textmesh::LEFT, textmesh::MID, getStaminaText(_data));
-        _data->uiStamina->isPositionScreenspace = true;
-        glm_vec3_copy(vec3{ 25.0f, -135.0f, 0.0f }, _data->uiStamina->renderPosition);
-        _data->uiStamina->scale = 25.0f;
-
-        auto loadWazasLambda = [&]() {
-            _data->wazaSet.clear();
-            initWazaSetFromFile(_data->wazaSet, "res/waza/default_waza.hwac");
-            initWazaSetFromFile(_data->wazaSet, "res/waza/air_waza.hwac");
-        };
-        hotswapres::addReloadCallback("res/waza/default_waza.hwac", this, loadWazasLambda);
-        hotswapres::addReloadCallback("res/waza/air_waza.hwac", this, loadWazasLambda);
-        loadWazasLambda();
-    }
 }
 
 Character::~Character()
@@ -1620,9 +1626,9 @@ Character::~Character()
     delete _data;
 }
 
-void updateWazaTimescale(const float_t& physicsDeltaTime, Character_XData* d)
+void updateWazaTimescale(float_t simDeltaTime, Character_XData* d)
 {
-    d->wazaHitTimescale = physutil::lerp(d->wazaHitTimescale, 1.0f, physicsDeltaTime * d->wazaHitTimescale * d->wazaHitTimescaleReturnToOneSpeed);
+    d->wazaHitTimescale = physutil::lerp(d->wazaHitTimescale, 1.0f, simDeltaTime * d->wazaHitTimescale * d->wazaHitTimescaleReturnToOneSpeed);
     if (d->wazaHitTimescale > 0.999f)
         d->wazaHitTimescale = 1.0f;
     globalState::timescale = d->wazaHitTimescale;
@@ -1638,7 +1644,7 @@ std::vector<GUIDWithVerb> interactionGUIDPriorityQueue;
 textmesh::TextMesh* interactionUIText;
 std::string currentText;
 
-void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, EntityManager* em, const std::string& myGuid)
+void defaultPhysicsUpdate(float_t simDeltaTime, Character_XData* d, EntityManager* em, const std::string& myGuid)
 {
     if (d->characterType == CHARACTER_TYPE_PLAYER)
     {
@@ -1662,7 +1668,7 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
         // Notification UI
         if (d->notification.showMessageTimer > 0.0f)
         {
-            d->notification.showMessageTimer -= physicsDeltaTime;
+            d->notification.showMessageTimer -= simDeltaTime;
             d->notification.message->excludeFromBulkRender = (d->notification.showMessageTimer <= 0.0f);
         }
 
@@ -1751,7 +1757,17 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
             float_t magnitude = glm_clamp_zo(glm_vec3_norm(d->worldSpaceInput));
             glm_vec3_scale_as(d->worldSpaceInput, magnitude, d->worldSpaceInput);
             if (d->prevIsGrounded)
+            {
                 d->facingDirection = atan2f(d->worldSpaceInput[0], d->worldSpaceInput[2]);
+
+                // Update facing direction with cosmetic simulation transform.
+                vec3 eulerAngles = { 0.0f, d->facingDirection, 0.0f };
+                mat4 rotation;
+                glm_euler_zyx(eulerAngles, rotation);
+                versor rotationV;
+                glm_mat4_quat(rotation, rotationV);
+                physengine::updateSimulationTransformRotation(d->cpd->simTransformId, rotationV);
+            }
             if (d->prevIsGrounded &&
                 (d->prevIsGrounded != d->prevPrevIsGrounded ||
                 isMoving != d->prevIsMoving))
@@ -1790,7 +1806,7 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
             processWazaInput(d, outWazaInputs, outNumWazaInputs, nextWaza);
         
         if (d->currentWaza != nullptr)
-            processWazaUpdate(d, em, physicsDeltaTime, myGuid, nextWaza, turnOnAura);
+            processWazaUpdate(d, em, simDeltaTime, myGuid, nextWaza, turnOnAura);
 
         if (nextWaza.set)
             setWazaToCurrent(d, nextWaza.nextWaza);
@@ -1821,7 +1837,7 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
     else if (d->auraTimer > 0.0f)
     {
         if (d->currentWaza == nullptr &&
-            (d->auraTimer -= physicsDeltaTime) <= 0.0f &&  // Only decrement aura timer if not doing a waza anymore (you can keep trying to do wazas and prolong the aura).
+            (d->auraTimer -= simDeltaTime) <= 0.0f &&  // Only decrement aura timer if not doing a waza anymore (you can keep trying to do wazas and prolong the aura).
             !d->auraSfxChannelIds.empty())
         {
             // Shut down aura sfx
@@ -1851,12 +1867,12 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
     // Update stamina gauge
     //
     if (d->staminaData.refillTimer > 0.0f)
-        d->staminaData.refillTimer -= physicsDeltaTime;
+        d->staminaData.refillTimer -= simDeltaTime;
     else if (d->staminaData.currentStamina < d->staminaData.maxStamina &&
         d->auraSfxChannelIds.empty())  // Don't refill stamina while aura is on!  -Timo 2023/09/26
     {
         d->staminaData.depletionOverflow = 0.0f;
-        changeStamina(d, d->staminaData.refillRate * physicsDeltaTime, false);
+        changeStamina(d, d->staminaData.refillRate * simDeltaTime, false);
     }
 
     if (d->characterType == CHARACTER_TYPE_PLAYER)
@@ -1865,7 +1881,7 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
         {
             d->uiStamina->excludeFromBulkRender = false;
             if ((int16_t)d->staminaData.currentStamina == d->staminaData.maxStamina)
-                d->staminaData.changedTimer -= physicsDeltaTime;
+                d->staminaData.changedTimer -= simDeltaTime;
         }
         else
             d->uiStamina->excludeFromBulkRender = true;
@@ -1879,7 +1895,7 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
 
     Character_XData::MovingPlatformAttachment& mpa = d->movingPlatformAttachment;
     if (mpa.attachmentStage >= Character_XData::MovingPlatformAttachment::AttachmentStage::RECURRING_ATTACHMENT)
-        glm_vec3_muladds(mpa.prevDeltaPosition, -1.0f / physicsDeltaTime, velocity);  // Subtract previous tick's attachment deltaposition.
+        glm_vec3_muladds(mpa.prevDeltaPosition, -1.0f / simDeltaTime, velocity);  // Subtract previous tick's attachment deltaposition.
 
     physengine::setGravityFactor(*d->cpd, d->currentWaza != nullptr ? d->currentWaza->gravityMultiplier : 1.0f);
 
@@ -1945,7 +1961,7 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
                 if (d->knockedbackTimer < 0.0f)
                     d->knockbackMode = Character_XData::KnockbackStage::RECOVERY;
                 else
-                    d->knockedbackTimer -= physicsDeltaTime;
+                    d->knockedbackTimer -= simDeltaTime;
             }
             if (d->knockbackMode == Character_XData::KnockbackStage::RECOVERY &&
                 d->prevIsGrounded &&
@@ -2072,7 +2088,7 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
     }
     if (mpa.attachmentStage >= Character_XData::MovingPlatformAttachment::AttachmentStage::FIRST_DELTA_ATTACHMENT)
     {
-        glm_vec3_muladds(mpa.nextDeltaPosition, 1.0f / physicsDeltaTime, velocity);  // Apply attachment delta position.
+        glm_vec3_muladds(mpa.nextDeltaPosition, 1.0f / simDeltaTime, velocity);  // Apply attachment delta position.
         glm_vec3_copy(mpa.nextDeltaPosition, mpa.prevDeltaPosition);
         mpa.attachmentIsStale = true;
     }
@@ -2097,7 +2113,7 @@ void calculateBladeStartEndFromHandAttachment(Character_XData* d, vec3& bladeSta
     glm_mat4_mulv3(attachmentJointMat, vec3{ 0.0f, d->attackWazaEditor.bladeDistanceStartEnd[1], 0.0f }, 1.0f, bladeEnd);
 }
 
-void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d)
+void attackWazaEditorPhysicsUpdate(float_t simDeltaTime, Character_XData* d)
 {
     if (d->attackWazaEditor.triggerRecalcWazaCache)
     {
@@ -2106,7 +2122,7 @@ void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Character_XD
         d->attackWazaEditor.minTick = 0;
         d->attackWazaEditor.maxTick = aw.duration >= 0 ? aw.duration : 100;  // @HARDCODE: if duration is infinite, just cap it at 100.  -Timo 2023/09/22
 
-        d->characterRenderObj->animator->setState(aw.animationState, d->attackWazaEditor.currentTick * physicsDeltaTime);
+        d->characterRenderObj->animator->setState(aw.animationState, d->attackWazaEditor.currentTick * simDeltaTime);
 
         d->attackWazaEditor.triggerRecalcWazaCache = false;
     }
@@ -2127,7 +2143,7 @@ void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Character_XD
         for (size_t i = 0; i < 100; i++)
         {
             vec3 deltaPosition;
-            glm_vec3_scale(launchVelocityCopy, physicsDeltaTime, deltaPosition);
+            glm_vec3_scale(launchVelocityCopy, simDeltaTime, deltaPosition);
             glm_vec3_add(currentPosition.raw, deltaPosition, currentPosition.raw);
             currentPosition.y = std::max(0.0f, currentPosition.y);
             d->attackWazaEditor.hitscanLaunchVelocitySimCache.push_back(currentPosition);
@@ -2164,7 +2180,7 @@ void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Character_XD
                     knockbackMode = Character_XData::KnockbackStage::RECOVERY;
                 }
                 else
-                    knockedbackTimer -= physicsDeltaTime;
+                    knockedbackTimer -= simDeltaTime;
             }
         }
 
@@ -2190,7 +2206,7 @@ void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Character_XD
                 }
 
             vec3 deltaPosition;
-            glm_vec3_scale(currentVelocity, physicsDeltaTime, deltaPosition);
+            glm_vec3_scale(currentVelocity, simDeltaTime, deltaPosition);
             glm_vec3_add(currentPosition.raw, deltaPosition, currentPosition.raw);
             currentPosition.y = std::max(0.0f, currentPosition.y);
             d->attackWazaEditor.selfVelocitySimCache.push_back(currentPosition);
@@ -2230,7 +2246,7 @@ void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Character_XD
         aw.hitscanNodes.clear();
         for (int16_t i = d->attackWazaEditor.bakeHitscanStartTick; i <= d->attackWazaEditor.bakeHitscanEndTick; i++)
         {
-            d->characterRenderObj->animator->setState(aw.animationState, i * physicsDeltaTime, true);
+            d->characterRenderObj->animator->setState(aw.animationState, i * simDeltaTime, true);
 
             Character_XData::AttackWaza::HitscanFlowNode hfn;
             calculateBladeStartEndFromHandAttachment(d, hfn.nodeEnd1, hfn.nodeEnd2);
@@ -2389,13 +2405,13 @@ void attackWazaEditorPhysicsUpdate(const float_t& physicsDeltaTime, Character_XD
     physengine::drawDebugVisLine(bladeStart, bladeEnd, physengine::DebugVisLineType::YUUJUUFUDAN);
 }
 
-void Character::physicsUpdate(const float_t& physicsDeltaTime)
+void Character::simulationUpdate(float_t simDeltaTime)
 {
     // @DEBUG: for level editor
     _data->disableInput = (_data->camera->freeCamMode.enabled || ImGui::GetIO().WantTextInput);
     
     if (_data->wazaHitTimescale < 1.0f)
-        updateWazaTimescale(physicsDeltaTime, _data);
+        updateWazaTimescale(simDeltaTime, _data);
 
     if (_data->characterType == CHARACTER_TYPE_PLAYER)
     {
@@ -2411,16 +2427,16 @@ void Character::physicsUpdate(const float_t& physicsDeltaTime)
 
     // Update invincibility frames timer.
     if (_data->iframesTimer > 0.0f)
-        _data->iframesTimer -= physicsDeltaTime;
+        _data->iframesTimer -= simDeltaTime;
 
     // Process physics updates depending on the mode.
     if (_data->attackWazaEditor.isEditingMode)
-        attackWazaEditorPhysicsUpdate(physicsDeltaTime, _data);
+        attackWazaEditorPhysicsUpdate(simDeltaTime, _data);
     else
-        defaultPhysicsUpdate(physicsDeltaTime, _data, _em, getGUID());
+        defaultPhysicsUpdate(simDeltaTime, _data, _em, getGUID());
 }
 
-void Character::update(const float_t& deltaTime)
+void Character::update(float_t deltaTime)
 {
     // @DEBUG: for level editor
     _data->disableInput = (_data->camera->freeCamMode.enabled || ImGui::GetIO().WantTextInput);
@@ -2430,7 +2446,7 @@ void Character::update(const float_t& deltaTime)
     _data->attackTwitchAngle = glm_lerp(_data->attackTwitchAngle, 0.0f, std::abs(_data->attackTwitchAngle) * _data->attackTwitchAngleReturnSpeed * 60.0f * deltaTime);
 }
 
-void Character::lateUpdate(const float_t& deltaTime)
+void Character::lateUpdate(float_t deltaTime)
 {
     if (_data->attackWazaEditor.isEditingMode)
         _data->facingDirection = 0.0f;  // @NOTE: this needs to be facing in the default facing direction so that the hitscan node positions are facing in the default direction when baked.

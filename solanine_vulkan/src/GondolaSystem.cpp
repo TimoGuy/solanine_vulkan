@@ -336,7 +336,7 @@ void buildCollisions(GondolaSystem_XData* d, VulkanEngine* engineRef, std::vecto
     }
 }
 
-void moveCollisionBodies(GondolaSystem_XData* d, bool staticMove, float_t physicsDeltaTime)  // If `staticMove==false`, then will be kinematic move.
+void moveCollisionBodies(GondolaSystem_XData* d, bool staticMove, float_t simDeltaTime)  // If `staticMove==false`, then will be kinematic move.
 {
     for (size_t i = 0; i < d->detailedGondola.collisions.size(); i++)
     {
@@ -352,7 +352,7 @@ void moveCollisionBodies(GondolaSystem_XData* d, bool staticMove, float_t physic
         vec3 newPos;
         glm_vec3_add(cart.calcCurrentROPos, extent, newPos);
 
-        collision->moveBody(newPos, cart.calcCurrentRORot, staticMove, physicsDeltaTime);
+        collision->moveBody(newPos, cart.calcCurrentRORot, staticMove, simDeltaTime);
     }
 }
 
@@ -475,9 +475,7 @@ void calculateStationSecAuxCPIndices(GondolaSystem_XData* d)
 
 GondolaSystem::GondolaSystem(EntityManager* em, RenderObjectManager* rom, VulkanEngine* engineRef, DataSerialized* ds) : Entity(em, ds), _data(new GondolaSystem_XData())
 {
-    Entity::_enablePhysicsUpdate = true;
-    Entity::_enableUpdate = true;
-    Entity::_enableLateUpdate = true;
+    Entity::_enableSimulationUpdate = true;
 
     _data->rom = rom;
     _data->engineRef = engineRef;
@@ -716,7 +714,7 @@ bool searchForRightTOnCurve(GondolaSystem_XData* d, float_t& ioT, vec3 anchorPos
     return true;
 }
 
-void updateSimulation(GondolaSystem_XData* d, EntityManager* em, size_t simIdx, const float& physicsDeltaTime)
+void updateSimulation(GondolaSystem_XData* d, EntityManager* em, size_t simIdx, const float& simDeltaTime)
 {
     GondolaSystem_XData::Simulation& ioSimulation = d->simulations[simIdx];
     uint8_t trackVersion = (simIdx + 1) % d->numTrackVersions;
@@ -782,7 +780,7 @@ void updateSimulation(GondolaSystem_XData* d, EntityManager* em, size_t simIdx, 
     }
 
     // Update physics objects.
-    moveCollisionBodies(d, false, physicsDeltaTime);
+    moveCollisionBodies(d, false, simDeltaTime);
 }
 
 void updateControlPointPositions(GondolaSystem_XData* d, GondolaSystem_XData::Station& ioStation, mat4 transform)
@@ -817,7 +815,7 @@ void updateStation(GondolaSystem_XData* d)
 
 bool showCurvePaths = true;
 
-void GondolaSystem::physicsUpdate(const float_t& physicsDeltaTime)
+void GondolaSystem::simulationUpdate(float_t simDeltaTime)
 {
     if (showCurvePaths)
         drawDEBUGCurveVisualization(_data);
@@ -826,10 +824,10 @@ void GondolaSystem::physicsUpdate(const float_t& physicsDeltaTime)
     // @TODO: there should be some kind of timeslicing for this, then update the timestamp of the new calculated point, and in `lateUpdate()` interpolate between the two generated points.
     // @REPLY: and then for the closest iterating one, there should be `updateSimulation` running every frame, since this affects the collisions too.
     //         In order to accomplish this, having a global timer is important. Then that way each timesliced gondola won't have to guess the timing and then it gets off.
-    //         Just pass in the global timer value instead of `physicsDeltaTime`.  @TODO
-    _data->gondolaSimulationGlobalTimer += physicsDeltaTime;
+    //         Just pass in the global timer value instead of `simDeltaTime`.  @TODO
+    _data->gondolaSimulationGlobalTimer += simDeltaTime;
     for (int64_t i = _data->simulations.size() - 1; i >= 0; i--)  // Reverse iteration so that delete can happen.
-        updateSimulation(_data, _em, i, physicsDeltaTime);
+        updateSimulation(_data, _em, i, simDeltaTime);
 
     if (_data->detailedStation.collision != nullptr &&
         _data->detailedStation.prevClosestStation != (size_t)-1)
@@ -1082,11 +1080,11 @@ void GondolaSystem::physicsUpdate(const float_t& physicsDeltaTime)
     }
 }
 
-void GondolaSystem::update(const float_t& deltaTime)
+void GondolaSystem::update(float_t deltaTime)
 {
 }
 
-void GondolaSystem::lateUpdate(const float_t& deltaTime)
+void GondolaSystem::lateUpdate(float_t deltaTime)
 {
     glm_mat4_identity(_data->controlRenderObj->transformMatrix);
     glm_translate(_data->controlRenderObj->transformMatrix, _data->position);

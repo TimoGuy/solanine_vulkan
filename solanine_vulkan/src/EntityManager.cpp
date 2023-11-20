@@ -14,7 +14,7 @@ EntityManager::~EntityManager()
 		delete _entities[i];
 }
 
-void EntityManager::INTERNALphysicsUpdate(const float_t& physicsDeltaTime)
+void EntityManager::INTERNALsimulationUpdate(float_t simDeltaTime)
 {
 	std::lock_guard<std::mutex> lg(_entityCollectionMutex);
 
@@ -22,34 +22,8 @@ void EntityManager::INTERNALphysicsUpdate(const float_t& physicsDeltaTime)
 	for (auto it = _entities.begin(); it != _entities.end(); it++)
 	{
 		Entity* ent = *it;
-		if (ent->_enablePhysicsUpdate)
-			ent->physicsUpdate(physicsDeltaTime);
-	}
-}
-
-void EntityManager::update(const float_t& deltaTime)
-{
-	// Interpolate all physics objects
-	physengine::setPhysicsObjectInterpolation(physengine::getPhysicsAlpha());
-
-	// @TODO: multithread this sucker!
-	for (auto it = _entities.begin(); it != _entities.end(); it++)
-	{
-		Entity* ent = *it;
-		if (ent->_enableUpdate)
-			ent->update(deltaTime);
-	}
-}
-
-void EntityManager::lateUpdate(const float_t& deltaTime)
-{
-	// @COPYPASTA
-	// @TODO: multithread this sucker!
-	for (auto it = _entities.begin(); it != _entities.end(); it++)
-	{
-		Entity* ent = *it;
-		if (ent->_enableLateUpdate)
-			ent->lateUpdate(deltaTime);
+		if (ent->_enableSimulationUpdate)
+			ent->simulationUpdate(simDeltaTime);
 	}
 }
 

@@ -52,9 +52,7 @@ void triggerLoadLightingIfExists(VoxelField_XData& d, const std::string& guid);
 
 VoxelField::VoxelField(VulkanEngine* engine, EntityManager* em, RenderObjectManager* rom, DataSerialized* ds) : Entity(em, ds), _data(new VoxelField_XData())
 {
-    Entity::_enablePhysicsUpdate = true;
-    Entity::_enableUpdate = true;
-    Entity::_enableLateUpdate = true;
+    Entity::_enableSimulationUpdate = true;
 
     _data->engine = engine;
     _data->rom = rom;
@@ -392,7 +390,7 @@ bool drawVoxelEditingVisualization(VoxelField_XData* d)
     return true;
 }
 
-void VoxelField::physicsUpdate(const float_t& physicsDeltaTime)
+void VoxelField::simulationUpdate(float_t simDeltaTime)
 {
     if (_data->isPicked)  // @NOTE: this picked checking system, bc physicsupdate() runs outside of the render thread, could easily get out of sync, but as long as the render thread is >40fps it should be fine.
     {
@@ -584,11 +582,11 @@ void VoxelField::physicsUpdate(const float_t& physicsDeltaTime)
     }
 }
 
-void VoxelField::update(const float_t& deltaTime)
+void VoxelField::update(float_t deltaTime)
 {
 }
 
-void VoxelField::lateUpdate(const float_t& deltaTime)
+void VoxelField::lateUpdate(float_t deltaTime)
 {
     // Update lightgrid transforms
     if (_data->lightgridId > 0)
@@ -1242,6 +1240,7 @@ inline void assembleVoxelRenderObjects(VoxelField_XData& data, const std::string
     {
         RenderObject newRO = {
             .model = data.voxelModel,
+            .simTransformId = data.vfpd->simTransformId,
             .renderLayer = RenderLayer::BUILDER,
             .attachedEntityGuid = attachedEntityGuid,
         };
@@ -1255,7 +1254,7 @@ inline void assembleVoxelRenderObjects(VoxelField_XData& data, const std::string
         glm_scale(localTransform.raw, extent2);
         data.voxelRenderObjLocalTransforms.push_back(localTransform);
 
-        glm_mat4_mul(data.vfpd->transform, localTransform.raw, newRO.transformMatrix);
+        glm_mat4_copy(localTransform.raw, newRO.simTransformOffset);
         inROs.push_back(newRO);
     }
 

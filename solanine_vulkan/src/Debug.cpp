@@ -13,7 +13,7 @@ void debug::pushDebugMessage(const DebugMessage& message)
 	_debugMessages.push_back(message);
 }
 
-void debug::renderImguiDebugMessages(const float_t& windowWidth, const float_t& deltaTime)
+void debug::renderImguiDebugMessages(const float_t& windowWidth, float_t deltaTime)
 {
     static float_t debugMessagesWindowWidth = 0.0f;
 	ImGui::SetNextWindowPos(ImVec2(windowWidth * 0.5f - debugMessagesWindowWidth * 0.5f, 0.0f), ImGuiCond_Always);

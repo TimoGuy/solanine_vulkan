@@ -56,8 +56,8 @@ namespace physengine
     //
     // Physics engine works
     //
-    constexpr float_t physicsDeltaTime = 0.025f;    // 40fps. This seemed to be the sweet spot. 25/30fps would be inconsistent for getting smaller platform jumps with the dash move. 50fps felt like too many physics calculations all at once. 40fps seems right, striking a balance.  -Timo 2023/01/26
-    constexpr float_t physicsDeltaTimeInMS = physicsDeltaTime * 1000.0f;
+    constexpr float_t simDeltaTime = 0.025f;    // 40fps. This seemed to be the sweet spot. 25/30fps would be inconsistent for getting smaller platform jumps with the dash move. 50fps felt like too many physics calculations all at once. 40fps seems right, striking a balance.  -Timo 2023/01/26
+    constexpr float_t physicsDeltaTimeInMS = simDeltaTime * 1000.0f;
     constexpr float_t oneOverPhysicsDeltaTimeInMS = 1.0f / physicsDeltaTimeInMS;
 
     constexpr float_t collisionTolerance = 0.05f;  // For physics characters.
@@ -76,6 +76,23 @@ namespace physengine
         NOTHING = 0,
         IS_CHARACTER,
     };
+
+    // Simulation transform.
+    struct SimulationTransform
+    {
+        vec3 position = GLM_VEC3_ZERO_INIT;
+        versor rotation = GLM_QUAT_IDENTITY_INIT;
+    };
+    struct SimulationInterpolationSet
+    {
+        SimulationTransform simTransforms[65536 * 2];
+    };
+    SimulationInterpolationSet* prevSimSet = nullptr;
+    SimulationInterpolationSet* currentSimSet = nullptr;
+    SimulationInterpolationSet* nextSimSet = nullptr;
+    SimulationInterpolationSet* calcInterpolatedSet = nullptr;
+    std::vector<size_t> registeredSimSetIndices;
+    std::mutex mutateSimSetPoolsMutex;
 
 #ifdef _DEVELOP
     struct DebugStats
@@ -356,6 +373,11 @@ namespace physengine
 
     void cleanup()
     {
+        delete prevSimSet;
+        delete currentSimSet;
+        delete nextSimSet;
+        delete calcInterpolatedSet;
+
         delete asyncRunner;
         delete physicsSystem;
 
@@ -371,13 +393,79 @@ namespace physengine
 #endif
     }
 
-    float_t getPhysicsAlpha()
+    size_t registerSimulationTransform()
     {
-        return (SDL_GetTicks64() - lastTick) * oneOverPhysicsDeltaTimeInMS * globalState::timescale;
+        std::lock_guard<std::mutex> lg(mutateSimSetPoolsMutex);
+
+        size_t proposedId;
+        for (proposedId = 0; proposedId < 65536 * 2; proposedId++)
+        {
+            bool collided = false;
+            for (auto& i : registeredSimSetIndices)
+                if (i == proposedId)
+                {
+                    collided = true;
+                    break;
+                }
+            
+            if (!collided)
+            {
+                // Register this one as a simulation transform.
+                glm_vec3_zero(prevSimSet->simTransforms[proposedId].position);
+                glm_vec3_zero(currentSimSet->simTransforms[proposedId].position);
+                glm_vec3_zero(nextSimSet->simTransforms[proposedId].position);
+                glm_vec3_zero(calcInterpolatedSet->simTransforms[proposedId].position);
+                glm_quat_identity(prevSimSet->simTransforms[proposedId].rotation);
+                glm_quat_identity(currentSimSet->simTransforms[proposedId].rotation);
+                glm_quat_identity(nextSimSet->simTransforms[proposedId].rotation);
+                glm_quat_identity(calcInterpolatedSet->simTransforms[proposedId].rotation);
+                registeredSimSetIndices.push_back(proposedId);
+                std::sort(registeredSimSetIndices.begin(), registeredSimSetIndices.end());
+                return proposedId;
+            }
+        }
+
+        std::cerr << "[REGISTER SIMULATION TRANSFORM]" << std::endl
+            << "ERROR: no more transforms available to register. The pool is full." << std::endl;
     }
 
-    void tick();
-    void tock();
+    void unregisterSimulationTransform(size_t id)
+    {
+        std::lock_guard<std::mutex> lg(mutateSimSetPoolsMutex);
+        
+        for (auto it = registeredSimSetIndices.begin(); it != registeredSimSetIndices.end(); it++)
+            if ((*it) == id)
+            {
+                registeredSimSetIndices.erase(it);
+                return;
+            }
+
+        std::cerr << "[UNREGISTER SIMULATION TRANSFORM]" << std::endl
+            << "WARNING: id " << id << " was not found in pool to delete. It did not exist." << std::endl;
+    }
+
+    void updateSimulationTransformPosition(size_t id, vec3 pos)
+    {
+        glm_vec3_copy(pos, nextSimSet->simTransforms[id].position);
+    }
+
+    void updateSimulationTransformRotation(size_t id, versor rot)
+    {
+        glm_quat_copy(rot, nextSimSet->simTransforms[id].rotation);
+    }
+
+    void getInterpSimulationTransformPosition(size_t id, vec3& outPos)
+    {
+        glm_vec3_copy(calcInterpolatedSet->simTransforms[id].position, outPos);
+    }
+
+    void getInterpSimulationTransformRotation(size_t id, versor& outRot)
+    {
+        glm_quat_copy(calcInterpolatedSet->simTransforms[id].rotation, outRot);
+    }
+
+    void transformSwap();
+    void copyResultTransforms();
 
     static void TraceImpl(const char* inFMT, ...)  // Callback for traces, connect this to your own trace function if you have one
     {
@@ -608,6 +696,11 @@ namespace physengine
 
         physicsSystem->OptimizeBroadPhase();
 
+        prevSimSet = new SimulationInterpolationSet;
+        currentSimSet = new SimulationInterpolationSet;
+        nextSimSet = new SimulationInterpolationSet;
+        calcInterpolatedSet = new SimulationInterpolationSet;
+
 #ifdef _DEVELOP
         input::registerEditorInputSetOnThisThread();
 #endif
@@ -636,12 +729,12 @@ namespace physengine
             // @REPLY: I thought that the system should just run in a constant 40fps. As in,
             //         if the timescale slows down, then the tick rate should also slow down
             //         proportionate to the timescale.  -Timo 2023/06/10
-            tick();
+            transformSwap();
             input::editorInputSet().update();
             input::simInputSet().update();
-            entityManager->INTERNALphysicsUpdate(physicsDeltaTime);  // @NOTE: if timescale changes, then the system just waits longer/shorter.
-            physicsSystem->Update(physicsDeltaTime, 1, 1, &tempAllocator, &jobSystem);
-            tock();
+            entityManager->INTERNALsimulationUpdate(simDeltaTime);  // @NOTE: if timescale changes, then the system just waits longer/shorter per loop.
+            physicsSystem->Update(simDeltaTime, 1, 1, &tempAllocator, &jobSystem);
+            copyResultTransforms();
 
 #ifdef _DEVELOP
             {
@@ -717,6 +810,7 @@ namespace physengine
             vfpd.sizeZ = sizeZ;
             vfpd.voxelData = voxelData;
             vfpd.bodyId = JPH::BodyID();
+            vfpd.simTransformId = registerSimulationTransform();
 
             return &vfpd;
         }
@@ -746,6 +840,7 @@ namespace physengine
                 BodyInterface& bodyInterface = physicsSystem->GetBodyInterface();
                 bodyInterface.RemoveBody(vfpd->bodyId);
                 bodyInterface.DestroyBody(vfpd->bodyId);
+                unregisterSimulationTransform(vfpd->simTransformId);
 
                 return true;
             }
@@ -1099,11 +1194,11 @@ namespace physengine
         bodyInterface.SetPositionAndRotation(vfpd.bodyId, newPositionReal, newRotationJolt, activation);
     }
 
-    void moveVoxelFieldBodyKinematic(VoxelFieldPhysicsData& vfpd, vec3 newPosition, versor newRotation, const float_t& physicsDeltaTime)
+    void moveVoxelFieldBodyKinematic(VoxelFieldPhysicsData& vfpd, vec3 newPosition, versor newRotation, float_t simDeltaTime)
     {
         RVec3 newPositionReal(newPosition[0], newPosition[1], newPosition[2]);
         Quat newRotationJolt(newRotation[0], newRotation[1], newRotation[2], newRotation[3]);
-        physicsSystem->GetBodyInterface().MoveKinematic(vfpd.bodyId, newPositionReal, newRotationJolt, physicsDeltaTime);
+        physicsSystem->GetBodyInterface().MoveKinematic(vfpd.bodyId, newPositionReal, newRotationJolt, simDeltaTime);
     }
 
     void setVoxelFieldBodyKinematic(VoxelFieldPhysicsData& vfpd, bool isKinematic)
@@ -1156,7 +1251,9 @@ namespace physengine
             cpd.character = new JPH::Character(settings, RVec3(position[0], position[1], position[2]), Quat::sIdentity(), (int64_t)UserDataMeaning::IS_CHARACTER, physicsSystem);
             if (enableCCD)
                 physicsSystem->GetBodyInterface().SetMotionQuality(cpd.character->GetBodyID(), EMotionQuality::LinearCast);
+
             cpd.character->AddToPhysicsSystem(EActivation::Activate);
+            cpd.simTransformId = registerSimulationTransform();
 
             // Add guid into references.
             bodyIdToEntityGuidMap[cpd.character->GetBodyID().GetIndex()] = entityGuid;
@@ -1187,6 +1284,7 @@ namespace physengine
 
                 // Remove and delete the physics capsule.
                 cpd->character->RemoveFromPhysicsSystem();
+                unregisterSimulationTransform(cpd->simTransformId);
 
                 return true;
             }
@@ -1246,24 +1344,19 @@ namespace physengine
     //
     // Tick
     //
-    void tick()
-    {
-        auto& bodyInterface = physicsSystem->GetBodyInterface();
+    std::mutex calcInterpolatedTransformsMutex;
 
-        // Set previous transform
-        for (size_t i = 0; i < numVFsCreated; i++)
-        {
-            VoxelFieldPhysicsData& vfpd = voxelFieldPool[voxelFieldIndices[i]];
-            glm_mat4_copy(vfpd.transform, vfpd.prevTransform);
-        }
-        for (size_t i = 0; i < numCapsCreated; i++)
-        {
-            CapsulePhysicsData& cpd = capsulePool[capsuleIndices[i]];
-            glm_vec3_copy(cpd.currentCOMPosition, cpd.prevCOMPosition);
-        }
+    void transformSwap()
+    {
+        std::lock_guard<std::mutex> lg(calcInterpolatedTransformsMutex);
+
+        SimulationInterpolationSet* temp = prevSimSet;
+        prevSimSet = currentSimSet;
+        currentSimSet = nextSimSet;
+        nextSimSet = temp;
     }
 
-    void tock()
+    void copyResultTransforms()
     {
         auto& bodyInterface = physicsSystem->GetBodyInterface();
 
@@ -1273,32 +1366,14 @@ namespace physengine
             VoxelFieldPhysicsData& vfpd = voxelFieldPool[voxelFieldIndices[i]];
             // vfpd.COMPositionDifferent = false;  // @TODO: implement this!
 
-            if (vfpd.bodyId.IsInvalid() || !bodyInterface.IsActive(vfpd.bodyId))
+            if (vfpd.bodyId.IsInvalid()/* || !bodyInterface.IsActive(vfpd.bodyId)*/)
                 continue;
 
-            RMat44 trans = bodyInterface.GetWorldTransform(vfpd.bodyId);
-            // Copy to cglm style.
-            Vec4 c0 = trans.GetColumn4(0);
-            Vec4 c1 = trans.GetColumn4(1);
-            Vec4 c2 = trans.GetColumn4(2);
-            Vec4 c3 = trans.GetColumn4(3);
-            vfpd.transform[0][0] = c0.GetX();
-            vfpd.transform[0][1] = c0.GetY();
-            vfpd.transform[0][2] = c0.GetZ();
-            vfpd.transform[0][3] = c0.GetW();
-            vfpd.transform[1][0] = c1.GetX();
-            vfpd.transform[1][1] = c1.GetY();
-            vfpd.transform[1][2] = c1.GetZ();
-            vfpd.transform[1][3] = c1.GetW();
-            vfpd.transform[2][0] = c2.GetX();
-            vfpd.transform[2][1] = c2.GetY();
-            vfpd.transform[2][2] = c2.GetZ();
-            vfpd.transform[2][3] = c2.GetW();
-            vfpd.transform[3][0] = c3.GetX();
-            vfpd.transform[3][1] = c3.GetY();
-            vfpd.transform[3][2] = c3.GetZ();
-            vfpd.transform[3][3] = c3.GetW();
-            //////////////////////
+            RVec3 pos;
+            Quat rot;
+            bodyInterface.GetPositionAndRotation(vfpd.bodyId, pos, rot);
+            updateSimulationTransformPosition(vfpd.simTransformId, vec3{ pos.GetX(), pos.GetY(), pos.GetZ() });
+            updateSimulationTransformRotation(vfpd.simTransformId, versor{ rot.GetX(), rot.GetY(), rot.GetZ(), rot.GetW() });
         }
         for (size_t i = 0; i < numCapsCreated; i++)
         {
@@ -1310,18 +1385,42 @@ namespace physengine
             
             cpd.character->PostSimulation(collisionTolerance);
 
-            // Copy to cglm style.
             RVec3 pos = cpd.character->GetCenterOfMassPosition();  // @NOTE: I thought that `GetPosition` would be quicker/lighter than `GetCenterOfMassPosition`, but getting the position negates the center of mass, thus causing an extra subtract operation.
-            cpd.currentCOMPosition[0] = pos.GetX();
-            cpd.currentCOMPosition[1] = pos.GetY();
-            cpd.currentCOMPosition[2] = pos.GetZ();
-            //////////////////////
+            updateSimulationTransformPosition(cpd.simTransformId, vec3{ pos.GetX(), pos.GetY(), pos.GetZ() });
+
             cpd.COMPositionDifferent = (glm_vec3_distance2(cpd.currentCOMPosition, cpd.prevCOMPosition) > 0.000001f);
         }
     }
 
-    void setPhysicsObjectInterpolation(const float_t& physicsAlpha)
+    inline float_t getPhysicsAlpha()
     {
+        return (SDL_GetTicks64() - lastTick) * oneOverPhysicsDeltaTimeInMS * globalState::timescale;
+    }
+
+    void recalcInterpolatedTransformsSet()
+    {
+        std::lock_guard<std::mutex> lg(calcInterpolatedTransformsMutex);
+
+        float_t physicsAlpha = getPhysicsAlpha();
+
+        for (size_t i = 0; i < registeredSimSetIndices.size(); i++)
+        {
+            size_t index = registeredSimSetIndices[i];
+            glm_vec3_lerp(
+                prevSimSet->simTransforms[index].position,
+                currentSimSet->simTransforms[index].position,
+                physicsAlpha,
+                calcInterpolatedSet->simTransforms[index].position
+            );
+            glm_quat_nlerp(
+                prevSimSet->simTransforms[index].rotation,
+                currentSimSet->simTransforms[index].rotation,
+                physicsAlpha,
+                calcInterpolatedSet->simTransforms[index].rotation
+            );
+        }
+
+#if 0
         //
         // Set interpolated transform
         //
@@ -1364,6 +1463,7 @@ namespace physengine
             else
                 glm_vec3_copy(cpd.currentCOMPosition, cpd.interpolCOMPosition);
         }
+#endif
     }
 
     void setWorldGravity(vec3 newGravity)
@@ -1481,32 +1581,32 @@ namespace physengine
             GPUVisInstancePushConst pc = {};
             switch (dvl.type)
             {
-                case PURPTEAL:
+                case DebugVisLineType::PURPTEAL:
                     glm_vec4_copy(vec4{ 0.75f, 0.0f, 1.0f, 1.0f }, pc.color1);
                     glm_vec4_copy(vec4{ 0.0f, 0.75f, 1.0f, 1.0f }, pc.color2);
                     break;
 
-                case AUDACITY:
+                case DebugVisLineType::AUDACITY:
                     glm_vec4_copy(vec4{ 0.0f, 0.1f, 0.5f, 1.0f }, pc.color1);
                     glm_vec4_copy(vec4{ 0.0f, 0.25f, 1.0f, 1.0f }, pc.color2);
                     break;
 
-                case SUCCESS:
+                case DebugVisLineType::SUCCESS:
                     glm_vec4_copy(vec4{ 0.1f, 0.1f, 0.1f, 1.0f }, pc.color1);
                     glm_vec4_copy(vec4{ 0.0f, 1.0f, 0.7f, 1.0f }, pc.color2);
                     break;
 
-                case VELOCITY:
+                case DebugVisLineType::VELOCITY:
                     glm_vec4_copy(vec4{ 0.75f, 0.2f, 0.1f, 1.0f }, pc.color1);
                     glm_vec4_copy(vec4{ 1.0f, 0.0f, 0.0f, 1.0f }, pc.color2);
                     break;
 
-                case KIKKOARMY:
+                case DebugVisLineType::KIKKOARMY:
                     glm_vec4_copy(vec4{ 0.0f, 0.0f, 0.0f, 1.0f }, pc.color1);
                     glm_vec4_copy(vec4{ 0.0f, 0.25f, 0.0f, 1.0f }, pc.color2);
                     break;
 
-                case YUUJUUFUDAN:
+                case DebugVisLineType::YUUJUUFUDAN:
                     glm_vec4_copy(vec4{ 0.69f, 0.69f, 0.69f, 1.0f }, pc.color1);
                     glm_vec4_copy(vec4{ 1.0f, 1.0f, 1.0f, 1.0f }, pc.color2);
                     break;

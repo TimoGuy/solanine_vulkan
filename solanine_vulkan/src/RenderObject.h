@@ -34,7 +34,9 @@ struct RenderObject
 {
 	vkglTF::Model* model       = nullptr;
 	vkglTF::Animator* animator = nullptr;
-	mat4 transformMatrix       = GLM_MAT4_IDENTITY_INIT;
+	mat4 transformMatrix       = GLM_MAT4_IDENTITY_INIT;  // Gets overwritten if `simTransformId` is set.
+	size_t simTransformId      = (size_t)-1;  // -1 means no attached id.
+	mat4 simTransformOffset    = GLM_MAT4_IDENTITY_INIT;
 	RenderLayer renderLayer    = RenderLayer::VISIBLE;
 	std::string attachedEntityGuid;  // @NOTE: this is just for @DEBUG purposes for the imgui property panel
 	std::vector<GPUInstancePointer> calculatedModelInstances;
@@ -62,9 +64,11 @@ private:
 
 	std::vector<bool*> _sendInstancePtrDataToGPU_refs;
 
+	std::vector<size_t> _renderObjectsWithSimTransformIdIndices;
 	std::vector<size_t> _renderObjectsWithAnimatorIndices;
-	void recalculateAnimatorIndices();
-	void updateAnimators(const float_t& deltaTime);
+	void recalculateSpecialCaseIndices();
+	void updateSimTransforms();
+	void updateAnimators(float_t deltaTime);
 
 	std::vector<size_t>                                   _renderObjectsIndices;
     std::array<bool,         RENDER_OBJECTS_MAX_CAPACITY> _renderObjectsIsRegistered;  // @NOTE: this will be filled with `false` on init  (https://stackoverflow.com/questions/67648693/safely-initializing-a-stdarray-of-bools)

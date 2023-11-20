@@ -16,9 +16,9 @@ public:
     ScannableItem(EntityManager* em, RenderObjectManager* rom, DataSerialized* ds);
     ~ScannableItem();
 
-    void physicsUpdate(const float_t& physicsDeltaTime);
-    void update(const float_t& deltaTime);
-    void lateUpdate(const float_t& deltaTime);
+    void simulationUpdate(float_t simDeltaTime) override;
+    void update(float_t deltaTime);
+    void lateUpdate(float_t deltaTime);
 
     void dump(DataSerializer& ds);
     void load(DataSerialized& ds);

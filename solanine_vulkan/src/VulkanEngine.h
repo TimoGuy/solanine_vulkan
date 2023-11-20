@@ -463,7 +463,7 @@ private:
 		float_t renderTimesMS[256 * 2];
 		float_t highestRenderTime = -1.0f;
 	} _debugStats;
-	void updateDebugStats(const float_t& deltaTime);
+	void updateDebugStats(float_t deltaTime);
 
 	//
 	// Moving matrices around

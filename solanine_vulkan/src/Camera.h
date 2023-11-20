@@ -135,7 +135,7 @@ struct Camera
 		_cameraMode_freeCamMode = 1;
 	inline uint32_t getCameraMode() { return _cameraMode; }
 
-	void update(const float_t& deltaTime);
+	void update(float_t deltaTime);
 
 private:
 	VulkanEngine* _engine;
@@ -145,6 +145,6 @@ private:
 	CameraModeChangeEvent _changeEvents[_numCameraModes];
 	bool _flagNextStepChangeCameraMode = false;
 
-	void updateMainCam(const float_t& deltaTime, CameraModeChangeEvent changeEvent);
-	void updateFreeCam(const float_t& deltaTime, CameraModeChangeEvent changeEvent);
+	void updateMainCam(float_t deltaTime, CameraModeChangeEvent changeEvent);
+	void updateFreeCam(float_t deltaTime, CameraModeChangeEvent changeEvent);
 };

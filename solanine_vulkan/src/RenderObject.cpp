@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include "VkglTFModel.h"
+#include "PhysicsEngine.h"
 
 
 bool RenderObjectManager::registerRenderObjects(std::vector<RenderObject> inRenderObjectDatas, std::vector<RenderObject**> outRenderObjectDatas)
@@ -72,7 +73,7 @@ bool RenderObjectManager::registerRenderObjects(std::vector<RenderObject> inRend
 		*sendFlag = true;
 
 	// Recalculate what indices animated render objects are at
-	recalculateAnimatorIndices();
+	recalculateSpecialCaseIndices();
 
 	return true;
 }
@@ -99,7 +100,7 @@ void RenderObjectManager::unregisterRenderObjects(std::vector<RenderObject*> obj
 					*sendFlag = true;
 
 				// Recalculate what indices animated render objects are at
-				recalculateAnimatorIndices();
+				recalculateSpecialCaseIndices();
 
 				found = true;
 				break;
@@ -186,19 +187,36 @@ RenderObjectManager::~RenderObjectManager()
 	delete[] _renderObjectLayersEnabled;
 }
 
-void RenderObjectManager::recalculateAnimatorIndices()
+void RenderObjectManager::recalculateSpecialCaseIndices()
 {
 	_renderObjectsWithAnimatorIndices.clear();
+	_renderObjectsWithSimTransformIdIndices.clear();
 	for (size_t poolIndex : _renderObjectsIndices)
 	{
-		if (_renderObjectPool[poolIndex].animator == nullptr)
-			continue;
-
-		_renderObjectsWithAnimatorIndices.push_back(poolIndex);
+		if (_renderObjectPool[poolIndex].animator != nullptr)
+			_renderObjectsWithAnimatorIndices.push_back(poolIndex);
+		if (_renderObjectPool[poolIndex].simTransformId != (size_t)-1)
+			_renderObjectsWithSimTransformIdIndices.push_back(poolIndex);
 	}
 }
 
-void RenderObjectManager::updateAnimators(const float_t& deltaTime)
+void RenderObjectManager::updateSimTransforms()
+{
+	for (size_t i : _renderObjectsWithSimTransformIdIndices)
+	{
+		vec3 pos;
+		versor rot;
+		physengine::getInterpSimulationTransformPosition(_renderObjectPool[i].simTransformId, pos);
+		physengine::getInterpSimulationTransformRotation(_renderObjectPool[i].simTransformId, rot);
+		mat4& transform = _renderObjectPool[i].transformMatrix;
+		glm_mat4_identity(transform);
+		glm_translate(transform, pos);
+		glm_quat_rotate(transform, rot, transform);
+		glm_mat4_mul(transform, _renderObjectPool[i].simTransformOffset, transform);
+	}
+}
+
+void RenderObjectManager::updateAnimators(float_t deltaTime)
 {
 	// @TODO: make this multithreaded....
 	for (size_t& i : _renderObjectsWithAnimatorIndices)

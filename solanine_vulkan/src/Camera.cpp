@@ -175,7 +175,7 @@ Camera::Camera(VulkanEngine* engine) : _engine(engine)
 	_changeEvents[_cameraMode] = CameraModeChangeEvent::ENTER;
 }
 
-void Camera::update(const float_t& deltaTime)
+void Camera::update(float_t deltaTime)
 {
     //
 	// Update camera modes
@@ -218,7 +218,7 @@ inline float_t deltaAngle(float_t fromRad, float_t toRad)
 }
 
 // @NOTE: https://github.com/Unity-Technologies/UnityCsReference/blob/0aa4923aa67e701940c22821c137c8d0184159b2/Runtime/Export/Math/Vector2.cs#L289
-inline void smoothDampVec2(vec2& inoutCurrent, vec2 target, vec2& inoutCurrentVelocity, float_t smoothTime, float_t maxSpeed, const float_t& deltaTime)
+inline void smoothDampVec2(vec2& inoutCurrent, vec2 target, vec2& inoutCurrentVelocity, float_t smoothTime, float_t maxSpeed, float_t deltaTime)
 {
 	// Based on Game Programming Gems 4 Chapter 1.10
 	smoothTime = std::max(0.000001f, smoothTime);
@@ -276,7 +276,7 @@ inline void smoothDampVec2(vec2& inoutCurrent, vec2 target, vec2& inoutCurrentVe
 }
 
 // @NOTE: https://github.com/Unity-Technologies/UnityCsReference/blob/0aa4923aa67e701940c22821c137c8d0184159b2/Runtime/Export/Math/Mathf.cs#L309
-inline float_t smoothDamp(float_t current, float_t target, float_t& inoutCurrentVelocity, float_t smoothTime, float_t maxSpeed, const float_t& deltaTime)
+inline float_t smoothDamp(float_t current, float_t target, float_t& inoutCurrentVelocity, float_t smoothTime, float_t maxSpeed, float_t deltaTime)
 {
 	// Based on Game Programming Gems 4 Chapter 1.10
 	smoothTime = std::max(0.000001f, smoothTime);
@@ -306,7 +306,7 @@ inline float_t smoothDamp(float_t current, float_t target, float_t& inoutCurrent
 	return output;
 }
 
-inline float_t smoothDampAngle(float_t current, float_t target, float_t& inoutCurrentVelocity, float_t smoothTime, float_t maxSpeed, const float_t& deltaTime)
+inline float_t smoothDampAngle(float_t current, float_t target, float_t& inoutCurrentVelocity, float_t smoothTime, float_t maxSpeed, float_t deltaTime)
 {
 	target = current + deltaAngle(current, target);
 	return smoothDamp(current, target, inoutCurrentVelocity, smoothTime, maxSpeed, deltaTime);
@@ -318,7 +318,7 @@ void clampXOrbitAngle(float_t& outXOrbitAngle)
 	outXOrbitAngle = glm_clamp(outXOrbitAngle, -ANGLE_LIMIT, ANGLE_LIMIT);
 }
 
-void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent changeEvent)
+void Camera::updateMainCam(float_t deltaTime, CameraModeChangeEvent changeEvent)
 {
 	bool allowInput = true;
 	if (changeEvent != CameraModeChangeEvent::NONE)
@@ -609,7 +609,7 @@ void Camera::updateMainCam(const float_t& deltaTime, CameraModeChangeEvent chang
 		);
 }
 
-void Camera::updateFreeCam(const float_t& deltaTime, CameraModeChangeEvent changeEvent)
+void Camera::updateFreeCam(float_t deltaTime, CameraModeChangeEvent changeEvent)
 {
 	if (changeEvent != CameraModeChangeEvent::NONE)
 		freeCamMode.enabled = false;

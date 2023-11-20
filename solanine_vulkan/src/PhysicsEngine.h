@@ -31,7 +31,12 @@ namespace physengine
     void haltAsyncRunner();
     void cleanup();
 
-    float_t getPhysicsAlpha();
+    size_t registerSimulationTransform();
+    void unregisterSimulationTransform(size_t id);
+    void updateSimulationTransformPosition(size_t id, vec3 pos);
+    void updateSimulationTransformRotation(size_t id, versor rot);
+    void getInterpSimulationTransformPosition(size_t id, vec3& outPos);
+    void getInterpSimulationTransformRotation(size_t id, versor& outRot);
 
     struct VoxelFieldPhysicsData
     {
@@ -66,6 +71,7 @@ namespace physengine
         mat4 prevTransform = GLM_MAT4_IDENTITY_INIT;
         mat4 interpolTransform = GLM_MAT4_IDENTITY_INIT;
         JPH::BodyID bodyId;
+        size_t simTransformId;
     };
 
     struct VoxelFieldCollisionShape
@@ -83,7 +89,7 @@ namespace physengine
     void shrinkVoxelFieldBoundsAuto(VoxelFieldPhysicsData& vfpd, ivec3& outOffset);
     void cookVoxelDataIntoShape(VoxelFieldPhysicsData& vfpd, const std::string& entityGuid, std::vector<VoxelFieldCollisionShape>& outShapes);
     void setVoxelFieldBodyTransform(VoxelFieldPhysicsData& vfpd, vec3 newPosition, versor newRotation);
-    void moveVoxelFieldBodyKinematic(VoxelFieldPhysicsData& vfpd, vec3 newPosition, versor newRotation, const float_t& physicsDeltaTime);
+    void moveVoxelFieldBodyKinematic(VoxelFieldPhysicsData& vfpd, vec3 newPosition, versor newRotation, float_t simDeltaTime);
     void setVoxelFieldBodyKinematic(VoxelFieldPhysicsData& vfpd, bool isKinematic);  // `false` is dynamic body.
 
     struct CapsulePhysicsData
@@ -92,11 +98,12 @@ namespace physengine
 
         float_t radius;
         float_t height;
-        JPH::Character* character = nullptr;
         vec3 currentCOMPosition = GLM_VEC3_ZERO_INIT;
         vec3 prevCOMPosition = GLM_VEC3_ZERO_INIT;
         vec3 interpolCOMPosition = GLM_VEC3_ZERO_INIT;
         bool COMPositionDifferent = false;
+        JPH::Character* character = nullptr;
+        size_t simTransformId;
     };
 
     CapsulePhysicsData* createCharacter(const std::string& entityGuid, vec3 position, const float_t& radius, const float_t& height, bool enableCCD);
@@ -105,28 +112,22 @@ namespace physengine
     CapsulePhysicsData* getCapsuleByIndex(size_t index);
     float_t getLengthOffsetToBase(const CapsulePhysicsData& cpd);
     void setCharacterPosition(CapsulePhysicsData& cpd, vec3 position);
+    void setCharacterCosmeticRotation(CapsulePhysicsData& cpd, versor rotation);  // @TODO: @NOCHECKIN: create this so that facing direction can get interpolated (this doesn't change the rotation of the actual physics object.)
     void moveCharacter(CapsulePhysicsData& cpd, vec3 velocity);
     void setGravityFactor(CapsulePhysicsData& cpd, float_t newGravityFactor);
     void getLinearVelocity(const CapsulePhysicsData& cpd, vec3& outVelocity);
     bool isGrounded(const CapsulePhysicsData& cpd);
     bool isSlopeTooSteepForCharacter(const CapsulePhysicsData& cpd, JPH::Vec3Arg normal);
 
-#if 0
-    void moveCapsuleAccountingForCollision(CapsulePhysicsData& cpd, vec3 deltaPosition, bool stickToGround, vec3& outNormal, float_t ccdDistance = 0.25f);  // @NOTE: `ccdDistance` is fine as long as it's below the capsule radius (or the radius of the voxels, whichever is smaller)
-#endif
-
-    void setPhysicsObjectInterpolation(const float_t& physicsAlpha);
+    void recalcInterpolatedTransformsSet();
 
     void setWorldGravity(vec3 newGravity);
     size_t getCollisionLayer(const std::string& layerName);
     bool raycast(vec3 origin, vec3 directionAndMagnitude, std::string& outHitGuid);
-#if 0
-    bool lineSegmentCast(vec3& pt1, vec3& pt2, size_t collisionLayer, bool getAllGuids, std::vector<std::string>& outHitGuid);
-#endif
 
 #ifdef _DEVELOP
-    enum DebugVisLineType { PURPTEAL, AUDACITY, SUCCESS, VELOCITY, KIKKOARMY, YUUJUUFUDAN };
-    void drawDebugVisLine(vec3 pt1, vec3 pt2, DebugVisLineType type = PURPTEAL);
+    enum class DebugVisLineType { PURPTEAL, AUDACITY, SUCCESS, VELOCITY, KIKKOARMY, YUUJUUFUDAN };
+    void drawDebugVisLine(vec3 pt1, vec3 pt2, DebugVisLineType type = DebugVisLineType::PURPTEAL);
 
     void renderImguiPerformanceStats();
     void renderDebugVisualization(VkCommandBuffer cmd);

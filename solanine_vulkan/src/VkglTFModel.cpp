@@ -2184,7 +2184,7 @@ namespace vkglTF
 		// @TODO: Do we need to hit updateAnimation()? This playAnimation() function will be run likely in the entity updates, so it's not like the update will be a frame late. I'm just gonna not worry about it  -Timo 2022/11/5
 	}
 
-	void Animator::update(const float_t& deltaTime)
+	void Animator::update(float_t deltaTime)
 	{
 		for (auto& mp : animStateMachineCopy.maskPlayers)
 		{

@@ -13,7 +13,7 @@ namespace JPH
 }
 
 
-class Character : public Entity
+class Character : public Entity  // @TODO: rename this `GameCharacter` or something like that. (I for some reason don't like the "game" word used)
 {
 public:
     static const std::string TYPE_NAME;
@@ -22,9 +22,9 @@ public:
     Character(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSerialized* ds);
     ~Character();
 
-    void physicsUpdate(const float_t& physicsDeltaTime);
-    void update(const float_t& deltaTime);
-    void lateUpdate(const float_t& deltaTime);
+    void simulationUpdate(float_t simDeltaTime) override;
+    void update(float_t deltaTime);
+    void lateUpdate(float_t deltaTime);
 
     void dump(DataSerializer& ds);
     void load(DataSerialized& ds);
