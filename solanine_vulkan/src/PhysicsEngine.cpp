@@ -87,6 +87,10 @@ namespace physengine
     {
         SimulationTransform simTransforms[65536 * 2];
     };
+    // @NOTE: The interpolated simulation position is calculated between `prevSimSet` and `currentSimSet` and is stored in `calcInterpolatedSet`.
+    //        New simulation transforms are written to `nextSimSet` as the calculations are formed. Once the "tick" or new frame has started,
+    //        `transformSwap()` pushes `nextSimSet` to `currentSimSet` which gets pushed to `prevSimSet`. And so, more writing can happen with
+    //        as little blocking the render thread as possible.  -Timo 2023/11/20
     SimulationInterpolationSet* prevSimSet = nullptr;
     SimulationInterpolationSet* currentSimSet = nullptr;
     SimulationInterpolationSet* nextSimSet = nullptr;
@@ -1341,9 +1345,6 @@ namespace physengine
         return cpd.character->IsSlopeTooSteep(normal);
     }
 
-    //
-    // Tick
-    //
     std::mutex calcInterpolatedTransformsMutex;
 
     void transformSwap()
@@ -1419,51 +1420,6 @@ namespace physengine
                 calcInterpolatedSet->simTransforms[index].rotation
             );
         }
-
-#if 0
-        //
-        // Set interpolated transform
-        //
-        for (size_t i = 0; i < numVFsCreated; i++)
-        {
-            VoxelFieldPhysicsData& vfpd = voxelFieldPool[voxelFieldIndices[i]];
-            if (vfpd.prevTransform != vfpd.transform)
-            {
-                vec4   prevPositionV4, positionV4;
-                vec3   prevPosition, position;
-                mat4   prevRotationM4, rotationM4;
-                versor prevRotation, rotation;
-                vec3   prevScale, scale;
-                glm_decompose(vfpd.prevTransform, prevPositionV4, prevRotationM4, prevScale);
-                glm_decompose(vfpd.transform, positionV4, rotationM4, scale);
-                glm_vec4_copy3(prevPositionV4, prevPosition);
-                glm_vec4_copy3(positionV4, position);
-                glm_mat4_quat(prevRotationM4, prevRotation);
-                glm_mat4_quat(rotationM4, rotation);
-
-                vec3 interpolPos;
-                glm_vec3_lerp(prevPosition, position, physicsAlpha, interpolPos);
-                versor interpolRot;
-                glm_quat_nlerp(prevRotation, rotation, physicsAlpha, interpolRot);
-                vec3 interpolSca;
-                glm_vec3_lerp(prevScale, scale, physicsAlpha, interpolSca);
-
-                mat4 transform = GLM_MAT4_IDENTITY_INIT;
-                glm_translate(transform, interpolPos);
-                glm_quat_rotate(transform, interpolRot, transform);
-                glm_scale(transform, interpolSca);
-                glm_mat4_copy(transform, vfpd.interpolTransform);
-            }
-        }
-        for (size_t i = 0; i < numCapsCreated; i++)
-        {
-            CapsulePhysicsData& cpd = capsulePool[capsuleIndices[i]];
-            if (cpd.COMPositionDifferent)
-                glm_vec3_lerp(cpd.prevCOMPosition, cpd.currentCOMPosition, physicsAlpha, cpd.interpolCOMPosition);
-            else
-                glm_vec3_copy(cpd.currentCOMPosition, cpd.interpolCOMPosition);
-        }
-#endif
     }
 
     void setWorldGravity(vec3 newGravity)

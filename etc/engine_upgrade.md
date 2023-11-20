@@ -18,4 +18,5 @@
 - [x] When all the physics objects' new transforms are calculated, insert them into a "next" queue.
 - [x] At the end of the delay, at the beginning of the physics loop, lock the physics transform data and swap pointers between the "prev", "current", and "next" so that only pointer swaps have to happen instead of actual data copying inside of the lock.
 - [x] At the beginning of every frame right before uploading the positions of the renderobjects' transforms an object interpolation step is put.
+    - [x] This, as well as where the simulation position pointers are getting swapped are where multithreaded locks are placed.
 
