@@ -1,0 +1,20 @@
+- [x] Editor inputs
+    - F1    Toggle play/edit mode (level-level if in level editor | world-level if in world editor | game-level if otherwise)
+    - F2    Toggle editor UI
+    - F3    Toggle rendering mode (shaded | simple | wireframe | unlit)
+    - F4    
+    - F5
+    - F6
+    - F7
+    - F8
+    - F9
+    - F10
+    - F11   Toggle fullscreen
+- [x] Input system that's action based not render thread based.
+    - [x] Add runtime check for whether the correct inputs are being used on the correct threads.
+- [ ] RenderObjects can either have their own simulation position that gets set or they get tied to a physics object with some offset.
+    - [ ] For physics objects that have multiple ties with an offset, don't let multiple objects tie themselves to the one physics object, rather put the subsequent objects as siblings so that multiple lerps and nlerps don't have to happen for the one physics object.
+- [ ] When all the physics objects' new transforms are calculated, insert them into a "next" queue.
+- [ ] At the end of the delay, at the beginning of the physics loop, lock the physics transform data and swap pointers between the "prev", "current", and "next" so that only pointer swaps have to happen instead of actual data copying inside of the lock.
+- [ ] At the beginning of every frame right before uploading the positions of the renderobjects' transforms an object interpolation step is put.
+
