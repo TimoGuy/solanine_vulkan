@@ -256,9 +256,6 @@ struct Character_XData
 #ifdef _DEVELOP
     bool    disableInput = false;  // @DEBUG for level editor
 #endif
-    bool    inputFlagJump = false;
-    bool    inputFlagAttack = false;
-    bool    inputFlagRelease = false;
     float_t attackTwitchAngle = 0.0f;
     float_t attackTwitchAngleReturnSpeed = 3.0f;
     bool    prevIsGrounded = false;
@@ -1631,8 +1628,85 @@ void updateWazaTimescale(const float_t& physicsDeltaTime, Character_XData* d)
     globalState::timescale = d->wazaHitTimescale;
 }
 
+// @TODO: @INCOMPLETE: will need to move the interaction logic into its own type of object, where you can update the interactor position and add/register interaction fields.
+// @COMMENT: hey, i think this should be attached to the player, not some global logic. Using the messaging system to add interaction guids makes sense to me.
+struct GUIDWithVerb
+{
+    std::string guid, actionVerb;
+};
+std::vector<GUIDWithVerb> interactionGUIDPriorityQueue;
+textmesh::TextMesh* interactionUIText;
+std::string currentText;
+
 void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, EntityManager* em, const std::string& myGuid)
 {
+    if (d->characterType == CHARACTER_TYPE_PLAYER)
+    {
+        // Handle 'E' action.
+        if (interactionUIText != nullptr &&
+            !interactionGUIDPriorityQueue.empty())
+            if (d->prevIsGrounded && !textbox::isProcessingMessage())
+            {
+                interactionUIText->excludeFromBulkRender = false;
+                if (!d->disableInput && input::simInputSet().interact.onAction)
+                {
+                    DataSerializer ds;
+                    ds.dumpString("msg_commit_interaction");
+                    DataSerialized dsd = ds.getSerializedData();
+                    em->sendMessage(interactionGUIDPriorityQueue.front().guid, dsd);
+                }
+            }
+            else
+                interactionUIText->excludeFromBulkRender = true;
+
+        // Notification UI
+        if (d->notification.showMessageTimer > 0.0f)
+        {
+            d->notification.showMessageTimer -= physicsDeltaTime;
+            d->notification.message->excludeFromBulkRender = (d->notification.showMessageTimer <= 0.0f);
+        }
+
+        if (!textbox::isProcessingMessage())
+        {
+            // Target an opponent.
+            if (d->knockbackMode == Character_XData::KnockbackStage::NONE &&
+                input::simInputSet().focus.holding)
+            {
+                if (!d->isTargetingOpponentObject)
+                {
+                    // Search for opponent to target.
+                    // @COPYPASTA
+                    physengine::CapsulePhysicsData* closestCPD = nullptr;
+                    float_t closestDistance = -1.0f;
+                    for (size_t i = 0; i < physengine::getNumCapsules(); i++)
+                    {
+                        physengine::CapsulePhysicsData* otherCPD = physengine::getCapsuleByIndex(i);
+                        if (otherCPD->entityGuid == myGuid)
+                            continue;  // Don't target self!
+
+                        float_t thisDistance = glm_vec3_distance2(d->cpd->currentCOMPosition, otherCPD->currentCOMPosition);
+                        if (closestDistance < 0.0 || thisDistance < closestDistance)
+                        {
+                            closestCPD = otherCPD;
+                            closestDistance = thisDistance;
+                        }
+                    }
+                    d->camera->mainCamMode.setOpponentCamTargetObject(closestCPD);
+                    d->isTargetingOpponentObject = true;
+                }
+            }
+            else
+            {
+                if (d->isTargetingOpponentObject)
+                {
+                    // Release targeting opponent.
+                    d->camera->mainCamMode.setOpponentCamTargetObject(nullptr);
+                    d->isTargetingOpponentObject = false;
+                }
+            }
+        }
+    }
+
     if (d->currentWaza == nullptr)
     {
         //
@@ -1693,7 +1767,6 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
     else
     {
         glm_vec3_zero(d->worldSpaceInput);  // Filter movement until the waza is finished.
-        d->inputFlagRelease = false;  // @NOTE: @TODO: Idk if this is appropriate or wanted behavior.
     }
 
     //
@@ -1721,11 +1794,6 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
 
         if (nextWaza.set)
             setWazaToCurrent(d, nextWaza.nextWaza);
-    }
-    if (wazaInputFocus)
-    {
-        d->inputFlagJump = false;
-        d->inputFlagAttack = false;
     }
 
     //
@@ -1769,16 +1837,14 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
     //
     // Process input flags
     //
-    if (d->inputFlagAttack)
+    if (!wazaInputFocus && input::simInputSet().attack.onAction)
     {
         processAttack(d);
-        d->inputFlagAttack = false;
     }
 
-    if (d->inputFlagRelease)
+    if (d->currentWaza != nullptr && input::simInputSet().detach.onAction)
     {
         processRelease(d);
-        d->inputFlagRelease = false;
     }
 
     //
@@ -1818,11 +1884,10 @@ void defaultPhysicsUpdate(const float_t& physicsDeltaTime, Character_XData* d, E
     physengine::setGravityFactor(*d->cpd, d->currentWaza != nullptr ? d->currentWaza->gravityMultiplier : 1.0f);
 
     d->prevPerformedJump = false;  // For animation state machine (differentiate goto_jump and goto_fall)
-    if (d->prevIsGrounded && d->inputFlagJump)
+    if (d->prevIsGrounded && !wazaInputFocus && input::simInputSet().jump.onAction)
     {
         velocity[1] = d->jumpHeight;
         d->prevIsGrounded = false;
-        d->inputFlagJump = false;
         d->prevPerformedJump = true;
         d->characterRenderObj->animator->setTrigger("goto_jump");
     }
@@ -2355,16 +2420,6 @@ void Character::physicsUpdate(const float_t& physicsDeltaTime)
         defaultPhysicsUpdate(physicsDeltaTime, _data, _em, getGUID());
 }
 
-// @TODO: @INCOMPLETE: will need to move the interaction logic into its own type of object, where you can update the interactor position and add/register interaction fields.
-// @COMMENT: hey, i think this should be attached to the player, not some global logic. Using the messaging system to add interaction guids makes sense to me.
-struct GUIDWithVerb
-{
-    std::string guid, actionVerb;
-};
-std::vector<GUIDWithVerb> interactionGUIDPriorityQueue;
-textmesh::TextMesh* interactionUIText;
-std::string currentText;
-
 void Character::update(const float_t& deltaTime)
 {
     // @DEBUG: for level editor
@@ -2373,86 +2428,6 @@ void Character::update(const float_t& deltaTime)
     // Update twitch angle.
     _data->characterRenderObj->animator->setTwitchAngle(_data->attackTwitchAngle);
     _data->attackTwitchAngle = glm_lerp(_data->attackTwitchAngle, 0.0f, std::abs(_data->attackTwitchAngle) * _data->attackTwitchAngleReturnSpeed * 60.0f * deltaTime);
-
-    if (_data->characterType == CHARACTER_TYPE_PLAYER)
-    {
-        //
-        // Handle 'E' action
-        //
-        if (interactionUIText != nullptr &&
-            !interactionGUIDPriorityQueue.empty())
-            if (_data->prevIsGrounded && !textbox::isProcessingMessage())
-            {
-                interactionUIText->excludeFromBulkRender = false;
-                if (!_data->disableInput && input::simInputSet().interact.onAction)
-                {
-                    DataSerializer ds;
-                    ds.dumpString("msg_commit_interaction");
-                    DataSerialized dsd = ds.getSerializedData();
-                    _em->sendMessage(interactionGUIDPriorityQueue.front().guid, dsd);
-                }
-            }
-            else
-                interactionUIText->excludeFromBulkRender = true;
-
-        // Notification UI
-        if (_data->notification.showMessageTimer > 0.0f)
-        {
-            _data->notification.showMessageTimer -= deltaTime;
-            _data->notification.message->excludeFromBulkRender = (_data->notification.showMessageTimer <= 0.0f);
-        }
-    }
-
-    if (textbox::isProcessingMessage())
-        return;
-
-    if (_data->characterType == CHARACTER_TYPE_PLAYER)
-    {
-        // Poll keydown inputs.
-        if (_data->knockbackMode == Character_XData::KnockbackStage::NONE)
-        {
-            _data->inputFlagJump |= !_data->disableInput && input::simInputSet().jump.holding;  // @INCOMPLETE: @TODO: change these input flags to actually using the new input system.
-            _data->inputFlagAttack |= !_data->disableInput && input::simInputSet().attack.holding;
-            _data->inputFlagRelease |= !_data->disableInput && input::simInputSet().detach.holding;
-        }
-
-        // Target an opponent.
-        if (_data->knockbackMode == Character_XData::KnockbackStage::NONE &&
-            input::simInputSet().focus.holding)
-        {
-            if (!_data->isTargetingOpponentObject)
-            {
-                // Search for opponent to target.
-                // @COPYPASTA
-                physengine::CapsulePhysicsData* closestCPD = nullptr;
-                float_t closestDistance = -1.0f;
-                for (size_t i = 0; i < physengine::getNumCapsules(); i++)
-                {
-                    physengine::CapsulePhysicsData* otherCPD = physengine::getCapsuleByIndex(i);
-                    if (otherCPD->entityGuid == getGUID())
-                        continue;  // Don't target self!
-
-                    float_t thisDistance = glm_vec3_distance2(_data->cpd->currentCOMPosition, otherCPD->currentCOMPosition);
-                    if (closestDistance < 0.0 || thisDistance < closestDistance)
-                    {
-                        closestCPD = otherCPD;
-                        closestDistance = thisDistance;
-                    }
-                }
-                _data->camera->mainCamMode.setOpponentCamTargetObject(closestCPD);
-                _data->isTargetingOpponentObject = true;
-            }
-        }
-        else
-        {
-            if (_data->isTargetingOpponentObject)
-            {
-                // Release targeting opponent.
-                _data->camera->mainCamMode.setOpponentCamTargetObject(nullptr);
-                _data->isTargetingOpponentObject = false;
-            }
-        }
-    }
 }
 
 void Character::lateUpdate(const float_t& deltaTime)
