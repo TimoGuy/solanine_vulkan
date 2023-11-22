@@ -403,5 +403,8 @@ FodyWeavers.xsd
 TestGUI/res/music/neko_hacker_sleep_tight.wav
 .link
 
+# Cooked Textures folder
+texture_cooked/
+
 # Compiled SPIRV shader files
 *.spv
