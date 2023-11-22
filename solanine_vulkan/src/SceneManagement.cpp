@@ -116,7 +116,7 @@ namespace scene
             const auto& path = entry.path();
             if (std::filesystem::is_directory(path))
                 continue;
-            if (!path.has_extension() || path.extension().compare(".ssdat") != 0)
+            if (!path.has_extension() || path.extension().compare(".hentais") != 0)
                 continue;
             auto relativePath = std::filesystem::relative(path, SCENE_DIRECTORY_PATH);
             scenes.push_back(relativePath.string());  // @NOTE: that this line could be dangerous if there are any filenames or directory names that have utf8 chars or wchars in it
@@ -140,13 +140,14 @@ namespace scene
         return prefabs;
     }
 
-    bool loadSerializationFull(const std::string& fullFname, bool ownEntities, std::vector<Entity*>& outEntityPtrs)
+    bool loadSerializationFull(const std::string& fullFname, const std::string& fileTag, bool ownEntities, std::vector<Entity*>& outEntityPtrs)
     {
         bool success = true;
 
         DataSerializer ds;
         std::string newObjectType = "";
 
+        bool foundTag = false;
         std::ifstream infile(fullFname);
         std::string line;
         for (size_t lineNum = 1; std::getline(infile, line); lineNum++)
@@ -169,7 +170,21 @@ namespace scene
             //
             // Process that line
             //
-            if (line[0] == ':')
+            if (!foundTag)
+            {
+                if (line == fileTag)
+                {
+                    foundTag = true;
+                }
+                else
+                {
+                    // File type is discerned to be incorrect.
+                    std::cerr << "[SCENE MANAGEMENT]" << std::endl
+                        << "ERROR: File must start with proper file marker. File is discerned to be corrupt. Abort." << std::endl;
+                    return false;
+                }
+            }
+            else if (line[0] == ':')
             {
                 // Wrap up the previous object if there was one
                 if (!newObjectType.empty())
@@ -219,15 +234,18 @@ namespace scene
         return success;
     }
 
+    constexpr const char* FILE_PREFAB_TAG = "Hawsoo prefab UNK";
+    constexpr const char* FILE_SCENE_TAG = "Hawsoo ENTity Assortment of IdentitieS";
+
     bool loadPrefab(const std::string& name, std::vector<Entity*>& outEntityPtrs)
     {
-        return loadSerializationFull(PREFAB_DIRECTORY_PATH + name, true, outEntityPtrs);
+        return loadSerializationFull(PREFAB_DIRECTORY_PATH + name, std::string(FILE_PREFAB_TAG), true, outEntityPtrs);
     }
 
     bool loadPrefabNonOwned(const std::string& name)
     {
         std::vector<Entity*> _;
-        return loadSerializationFull(PREFAB_DIRECTORY_PATH + name, false, _);
+        return loadSerializationFull(PREFAB_DIRECTORY_PATH + name, std::string(FILE_PREFAB_TAG), false, _);
     }
     
     bool loadScene(const std::string& name, bool deleteExistingEntitiesFirst)
@@ -245,7 +263,7 @@ namespace scene
     bool loadSceneImmediate(const std::string& name)
     {
         std::vector<Entity*> _;
-        bool ret = loadSerializationFull(SCENE_DIRECTORY_PATH + name, false, _);
+        bool ret = loadSerializationFull(SCENE_DIRECTORY_PATH + name, std::string(FILE_SCENE_TAG), false, _);
 
         if (ret)
             debug::pushDebugMessage({
@@ -274,6 +292,8 @@ namespace scene
 			    });
             return false;
         }
+
+        outfile << "Hawsoo ENTity Assortment of IdentitieS" << '\n';  // File marker.
 
         for (auto ent : entities)
         {

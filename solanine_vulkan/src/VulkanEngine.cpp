@@ -5832,7 +5832,7 @@ void VulkanEngine::changeEditorMode(EditorModes newEditorMode)
 		case EditorModes::TEXTURE_EDITOR:
 		{
 			_camera->requestCameraMode(_camera->_cameraMode_orbitSubjectCamMode);
-			scene::loadScene("EDITOR_texture_editor.ssdat", true);
+			scene::loadScene("EDITOR_texture_editor.hentais", true);
 		} break;
 
 		case EditorModes::MATERIAL_EDITOR:
@@ -5958,11 +5958,11 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 				if (ImGui::BeginPopup("save_scene_as_popup"))
 				{
 					static std::string saveSceneAsFname;
-					ImGui::InputText(".ssdat", &saveSceneAsFname);
-					if (ImGui::Button(("Save As \"" + saveSceneAsFname + ".ssdat\"").c_str()))
+					ImGui::InputText(".hentais", &saveSceneAsFname);
+					if (ImGui::Button(("Save As \"" + saveSceneAsFname + ".hentais\"").c_str()))
 					{
-						scene::saveScene(saveSceneAsFname + ".ssdat", _entityManager->_entities);
-						globalState::savedActiveScene = saveSceneAsFname + ".ssdat";
+						scene::saveScene(saveSceneAsFname + ".hentais", _entityManager->_entities);
+						globalState::savedActiveScene = saveSceneAsFname + ".hentais";
 						ImGui::CloseCurrentPopup();
 					}
 					ImGui::EndPopup();

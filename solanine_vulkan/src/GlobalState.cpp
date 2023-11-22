@@ -10,7 +10,7 @@
 namespace globalState
 {
     // Default values
-    std::string savedActiveScene                = "sample_scene_simplified.ssdat";
+    std::string savedActiveScene                = "sample_scene_simplified.hentais";
 
     vec3    savedPlayerPosition        = GLM_VEC3_ZERO_INIT;    // Currently unused. @TODO
     float_t savedPlayerFacingDirection = 0.0f;                  // Currently unused. @TODO
