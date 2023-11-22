@@ -9,7 +9,8 @@ layout (location = 5) in vec4 inWeight0;
 layout (location = 6) in vec4 inColor0;
 
 layout (location = 0) out vec2 outUV0;
-layout (location = 1) out uint baseInstanceID;
+layout (location = 1) out vec2 outUV1;
+layout (location = 2) out uint baseInstanceID;
 
 
 // Camera Props
@@ -91,6 +92,7 @@ void main()
 	}
 
 	outUV0 = inUV0;
+	outUV1 = inUV1;
 	baseInstanceID = gl_BaseInstance;
 	vec3 worldPos = locPos.xyz / locPos.w;
 	gl_Position =  cameraData.projectionView * vec4(worldPos, 1.0);

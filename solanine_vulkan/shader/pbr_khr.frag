@@ -112,7 +112,7 @@ struct MaterialParam
 	vec4  diffuseFactor;
 	vec4  specularFactor;
 	float workflow;
-	int   baseColorTextureSet;
+	int   baseColorTextureSet;     // @NOTE: all these `TextureSet` params are just which uv coord sets to use (none, 0, or 1) from the model.
 	int   physicalDescriptorTextureSet;
 	int   normalTextureSet;
 	int   occlusionTextureSet;
@@ -158,7 +158,7 @@ const float M_PI = 3.141592653589793;
 const float c_MinRoughness = 0.04;
 
 const float PBR_WORKFLOW_METALLIC_ROUGHNESS = 0.0;
-const float PBR_WORKFLOW_SPECULAR_GLOSSINESS = 1.0f;
+const float PBR_WORKFLOW_SPECULAR_GLOSSINESS = 1.0;
 
 
 #define MANUAL_SRGB 1
@@ -369,7 +369,7 @@ void main()
 
 	vec3 f0 = vec3(0.04);
 
-	if (material.alphaMask == 1.0f)
+	if (material.alphaMask == 1.0)
 	{
 		if (material.baseColorTextureSet > -1)
 		{

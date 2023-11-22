@@ -6447,7 +6447,37 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 			ImGui::SetNextWindowSizeConstraints(ImVec2(-1.0f, 0.0f), ImVec2(-1.0f, _windowExtent.height - MAIN_MENU_PADDING));
 			ImGui::Begin("TEXTURE EDITOR##Texture editor window.", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
 			{
-				ImGui::
+				if (ImGui::Button("New texture.."))
+					ImGui::OpenPopup("new_texture_popup");
+				ImGui::SameLine();
+				if (ImGui::Button("Edit texture.."))
+					ImGui::OpenPopup("edit_texture_popup");
+				if (true)
+				{
+					ImGui::SameLine();
+					ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0.0f, 0.5f, 0.6f));
+					ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0.0f, 0.7f, 0.7f));
+					ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0.0f, 0.8f, 0.8f));
+					bool doIt = ImGui::Button("Delete texture!");
+					ImGui::PopStyleColor(3);
+					if (doIt)
+					{
+						// TODO
+					}
+				}
+
+				// Popups.
+				if (ImGui::BeginPopup("new_texture_popup"))
+				{
+					ImGui::Text("NEW TTTTT");
+					ImGui::EndPopup();
+				}
+
+				if (ImGui::BeginPopup("edit_texture_popup"))
+				{
+					ImGui::Text("EDIT TTTTT");
+					ImGui::EndPopup();
+				}
 			}
 			ImGui::End();
 		} break;

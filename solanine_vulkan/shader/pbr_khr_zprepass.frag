@@ -1,7 +1,8 @@
 #version 460
 
 layout (location = 0) in vec2 inUV0;
-layout (location = 1) flat in uint baseInstanceID;
+layout (location = 1) in vec2 inUV1;
+layout (location = 2) flat in uint baseInstanceID;
 
 // Instance ID Pointers
 // @COPYPASTA
@@ -64,8 +65,14 @@ void main()
 	uint materialID = instancePtrBuffer.pointers[baseInstanceID].materialID;
 	if (materialCollection.params[materialID].alphaMask == 1.0)
 	{
-		float alpha = texture(textureMaps[materialCollection.params[instancePtrBuffer.pointers[baseInstanceID].materialID].colorMapIndex], inUV0).a;
-		if (alpha < 0.5)
+		float alpha = materialCollection.params[materialID].baseColorFactor.a;
+		if (materialCollection.params[materialID].baseColorTextureSet > -1)
+		{
+			alpha *= texture(textureMaps[materialCollection.params[materialID].colorMapIndex], materialCollection.params[materialID].baseColorTextureSet == 0 ? inUV0 : inUV1).a;
+		}
+		if (alpha < materialCollection.params[materialID].alphaMaskCutoff)
+		{
 			discard;
+		}
 	}
 }

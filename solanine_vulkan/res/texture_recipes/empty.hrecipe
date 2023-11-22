@@ -1,0 +1,6 @@
+Hawsoo texture RECIPE for delicious consumption    # Must have this as tag for showing the file type.
+2D                                                 # Valid options: 2D, 3D, 2DArray, Cubemap
+1                                                  # Number of images to load (NOTE: 6 required for cubemap)
+empty.png                                          # Image paths as input (relative to `res/texture_pool/`)
+false                                              # Whether to generate mip maps.
+3                                                  # Compression level (0 is no compression. Use 3 by default)

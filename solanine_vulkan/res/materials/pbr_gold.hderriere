@@ -1,0 +1,21 @@
+Hawsoo DERived MateRIal parametER Entry                                                  # File type identifier
+HUMBA                                                            pbr                     # Name of the Material Base (pbr.humba)
+MaterialCollection.MaterialParam.colorMapIndex                   empty                   # @NOTE: the name is placed here bc of the mapping (texture_idx) which will change the name into the correct uint that represents the texture index, provided the texture actually exists.
+MaterialCollection.MaterialParam.physicalDescriptorMapIndex      empty
+MaterialCollection.MaterialParam.normalMapIndex                  empty
+MaterialCollection.MaterialParam.aoMapIndex                      empty
+MaterialCollection.MaterialParam.emissiveMapIndex                empty
+MaterialCollection.MaterialParam.baseColorFactor                 0.8,0.645,0.197,1.0
+MaterialCollection.MaterialParam.emissiveFactor                  1.0,1.0,1.0,1.0
+MaterialCollection.MaterialParam.diffuseFactor                   0.0,0.0,0.0,0.0         # Unneeded bc using metallic (0.0) workflow not specular (1.0)
+MaterialCollection.MaterialParam.specularFactor                  0.0,0.0,0.0,0.0
+MaterialCollection.MaterialParam.workflow                        0.0
+MaterialCollection.MaterialParam.baseColorTextureSet             0
+MaterialCollection.MaterialParam.physicalDescriptorTextureSet    -1
+MaterialCollection.MaterialParam.normalTextureSet                -1
+MaterialCollection.MaterialParam.occlusionTextureSet             -1
+MaterialCollection.MaterialParam.emissiveTextureSet              -1
+MaterialCollection.MaterialParam.metallicFactor                  1.0
+MaterialCollection.MaterialParam.roughnessFactor                 0.2
+MaterialCollection.MaterialParam.alphaMask                       false
+MaterialCollection.MaterialParam.alphaMaskCutoff                 0.5
