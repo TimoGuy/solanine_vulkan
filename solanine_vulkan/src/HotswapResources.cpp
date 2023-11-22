@@ -7,6 +7,7 @@
 #include <thread>
 #include <SDL2/SDL.h>
 #include "GLSLToSPIRVHelper.h"
+#include "TextureCooker.h"
 #include "RenderObject.h"
 
 
@@ -64,6 +65,13 @@ namespace hotswapres
                         glslToSPIRVHelper::compileGLSLShaderToSPIRV(path);
                     }
                 }
+
+                // Cook texture if corresponding cooked texture isn't up to date.
+                if (ext.compare(".hrecipe") == 0)
+                {
+                    if (texturecooker::checkTextureCookNeeded(resource.path))
+                        texturecooker::cookTextureFromRecipe(resource.path);
+                }
             }
     }
 
@@ -84,6 +92,18 @@ namespace hotswapres
             {
                 /*try
                 {*/
+                    if (!std::filesystem::exists(resource.path))
+                    {
+                        // Delete missing resource to watch.
+                        for (auto it = resourcesToWatch.begin(); it != resourcesToWatch.end(); it++)
+                            if (it->path == resource.path)
+                            {
+                                resourcesToWatch.erase(it);
+                                break;
+                            }
+                        break;  // Just abort this round of checking resources to watch and simply restart again next round.
+                    }
+
                     const std::filesystem::file_time_type lastWriteTime = std::filesystem::last_write_time(resource.path);
                     if (resource.lastWriteTime == lastWriteTime)
                         continue;
@@ -111,9 +131,9 @@ namespace hotswapres
                     //
                     const auto& ext = resource.path.extension();
                     if (ext.compare(".vert") == 0 ||
-                        ext.compare(".frag") == 0)
+                        ext.compare(".frag") == 0 ||
+                        ext.compare(".comp") == 0)
                     {
-
                         // Compile the shader (GLSL -> SPIRV)
                         glslToSPIRVHelper::compileGLSLShaderToSPIRV(resource.path);
 
@@ -121,6 +141,11 @@ namespace hotswapres
                         *recreateSwapchain = true;
                         std::cout << "Recompile shader to SPIRV and trigger swapchain recreation SUCCESS" << std::endl;
                         continue;
+                    }
+                    else if (ext.compare(".hrecipe"))
+                    {
+                        // Cook textures
+                        texturecooker::cookTextureFromRecipe(resource.path);
                     }
                     else if (ext.compare(".gltf") == 0 ||
                             ext.compare(".glb")  == 0)
@@ -155,7 +180,7 @@ namespace hotswapres
                 catch (...) { }*/   // Just continue on if you get the filesystem error
             }
 
-            // Just a simple static delay of 1 sec
+            // Just a simple static delay of 1 sec to not overload the filesystem.
             SDL_Delay(1000);
         }
     }

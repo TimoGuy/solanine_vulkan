@@ -29,7 +29,7 @@
             - [x] Texture Editor
             - [ ] Material Editor (what we're gonna create. Just no objects except for the `MaterialViewer` object type to render the textures and a bunch of imgui stuff)
     - [ ] Texture cooker
-        - [ ] Textures into ktx format.
+        - [x] Textures from pool and recipe into ktx format.
             > I think that the texture viewer needs to happen after the new material system gets implemented. We can cook some textures into ktx and write the texture cooker, but the viewer feels EXTREMELY full of friction. I believe that once the material system gets written, the viewer should be really easy to implement. Just assign a material to a render object and just keep changing "texture test material"'s albedo with the texture the creator is looking at.
         - [ ] Texture viewer
             - [ ] Select filenames from the `/Textures` folder and subfolders. Import textures as a type of internal texture.
