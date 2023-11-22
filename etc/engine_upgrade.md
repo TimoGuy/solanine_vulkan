@@ -19,4 +19,30 @@
 - [x] At the end of the delay, at the beginning of the physics loop, lock the physics transform data and swap pointers between the "prev", "current", and "next" so that only pointer swaps have to happen instead of actual data copying inside of the lock.
 - [x] At the beginning of every frame right before uploading the positions of the renderobjects' transforms an object interpolation step is put.
     - [x] This, as well as where the simulation position pointers are getting swapped are where multithreaded locks are placed.
+    > This results in a massive speedup since the render thread can run almost lock free! (250 -> 600 fps (saving 2.333333ms))
+- [ ] Material maker
+    - [ ] Main Engine Changes
+        - [f] Change `VulkanEngine` to `VulkanRenderer`.
+            - [ ] Set up main engine. It manages the window, selects the renderer/starts the render engine, starts the simulation engine, then polls for input and keeps the input state up to date. Upon shutting down it takes care of shutting down the render engine and simulation engine.
+        - [ ] Separate things out into editor modes
+            - [ ] Level Editor (everything created up to this point with a loaded in scene)
+            - [ ] Material Editor (what we're gonna create. Just no objects except for the `MaterialViewer` object type to render the textures and a bunch of imgui stuff)
+    - [ ] Texture cooker
+        - [ ] Textures into ktx format.
+        - [ ] Texture viewer
+            - [ ] Select filenames from the `/Textures` folder and subfolders. Import textures as a type of internal texture.
+            - [ ] Can delete imported textures.
+            - [ ] Texture viewer once it's imported
+                - 2D
+                    - [ ] Quad
+                    - [ ] Sphere
+                - 3D/2Darray
+                    - [ ] Quad-slices
+                        - [ ] Slice spread attribute (so that can see each individual slice. Use z axis for 3d textures for slices)
+                - Cubemap
+                    - [ ] Sphere-cubemap
+                    - [ ] Skybox
+    - [ ] Material viewer
+        - [ ] Orbit camera view
+        - [ ] Sphere material inspector.
 

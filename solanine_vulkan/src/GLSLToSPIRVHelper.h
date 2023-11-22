@@ -23,7 +23,7 @@ namespace glslToSPIRVHelper
         //
         // Compile the file and save the results in a .spv file and the messages in a .log file
         //
-        const static std::string compilerPath = "C:/VulkanSDK/1.3.224.1/Bin/glslc.exe";
+        const static std::string compilerPath = std::filesystem::absolute("../helper_tools/glslc.exe").string();
         auto spvPath = sourceCodePath;  spvPath += ".spv";
         int compilerBit = system((compilerPath + " " + sourceCodePath.string() + " -o " + spvPath.string()).c_str());  // @NOTE: errors and output get routed to the console anyways! Yay!
 

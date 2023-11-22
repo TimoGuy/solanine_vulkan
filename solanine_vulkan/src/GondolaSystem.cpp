@@ -27,7 +27,6 @@ constexpr float_t LENGTH_BOGIE_PADDING_LOCAL_NETWORK = LENGTH_CART_LOCAL_NETWORK
 
 struct GondolaSystem_XData
 {
-    VulkanEngine*              engineRef;
     RenderObjectManager*       rom;
     RenderObject*              controlRenderObj;
 
@@ -301,26 +300,26 @@ void destructAndResetGondolaCollisions(GondolaSystem_XData* d, EntityManager* em
     d->detailedGondola.collisions.clear();
 }
 
-void buildCollisions(GondolaSystem_XData* d, VulkanEngine* engineRef, std::vector<VoxelField*>& outCollisions, GondolaSystem_XData::GondolaNetworkType networkType)
+void buildCollisions(GondolaSystem_XData* d, std::vector<VoxelField*>& outCollisions, GondolaSystem_XData::GondolaNetworkType networkType)
 {
     // Load prefab from file.
     std::vector<Entity*> ents;
     switch (networkType)
     {
         case GondolaSystem_XData::GondolaNetworkType::FUTSUU:
-            scene::loadPrefab("gondola_collision_futsuu.hunk", engineRef, ents);  // Supposed to contain all the cars for collision (even though there are repeats in the collision data).
+            scene::loadPrefab("gondola_collision_futsuu.hunk", ents);  // Supposed to contain all the cars for collision (even though there are repeats in the collision data).
             break;
 
         case GondolaSystem_XData::GondolaNetworkType::JUNKYUU:
-            scene::loadPrefab("gondola_collision_junkyuu.hunk", engineRef, ents);
+            scene::loadPrefab("gondola_collision_junkyuu.hunk", ents);
             break;
 
         case GondolaSystem_XData::GondolaNetworkType::KAISOKU:
-            scene::loadPrefab("gondola_collision_kaisoku.hunk", engineRef, ents);
+            scene::loadPrefab("gondola_collision_kaisoku.hunk", ents);
             break;
 
         case GondolaSystem_XData::GondolaNetworkType::TOKKYUU:
-            scene::loadPrefab("gondola_collision_tokkyuu.hunk", engineRef, ents);
+            scene::loadPrefab("gondola_collision_tokkyuu.hunk", ents);
             break;
     }
 
@@ -360,7 +359,7 @@ void readyGondolaInteraction(GondolaSystem_XData* d, EntityManager* em, const Go
 {
     // Clear and rebuild
     destructAndResetGondolaCollisions(d, em);
-    buildCollisions(d, d->engineRef, d->detailedGondola.collisions, d->gondolaNetworkType);
+    buildCollisions(d, d->detailedGondola.collisions, d->gondolaNetworkType);
     d->detailedGondola.prevClosestSimulation = desiredSimulationIdx;  // Mark cache as completed.
     moveCollisionBodies(d, true, 0.0f);
 }
@@ -378,7 +377,7 @@ void readyStationInteraction(GondolaSystem_XData* d, GondolaSystem_XData::Statio
     if (d->detailedStation.collision == nullptr)
     {
         std::vector<Entity*> ents;
-        scene::loadPrefab("gondola_collision_station.hunk", d->engineRef, ents);
+        scene::loadPrefab("gondola_collision_station.hunk", ents);
         for (auto& ent : ents)
         {
             VoxelField* entAsVF;
@@ -473,12 +472,11 @@ void calculateStationSecAuxCPIndices(GondolaSystem_XData* d)
     }
 }
 
-GondolaSystem::GondolaSystem(EntityManager* em, RenderObjectManager* rom, VulkanEngine* engineRef, DataSerialized* ds) : Entity(em, ds), _data(new GondolaSystem_XData())
+GondolaSystem::GondolaSystem(EntityManager* em, RenderObjectManager* rom, DataSerialized* ds) : Entity(em, ds), _data(new GondolaSystem_XData())
 {
     Entity::_enableSimulationUpdate = true;
 
     _data->rom = rom;
-    _data->engineRef = engineRef;
 
     if (ds)
         load(*ds);

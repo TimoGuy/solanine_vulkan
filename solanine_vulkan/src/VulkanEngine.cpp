@@ -99,6 +99,7 @@ void VulkanEngine::init()
 	AudioEngine::getInstance().initialize();
 	physengine::start(_entityManager);
 	globalState::initGlobalState(_camera->sceneCamera);
+	scene::init(this);
 	GondolaSystem::_engine = this;
 
 	while (!physengine::isInitialized);  // Spin lock so that new scene doesn't get loaded before physics are finished initializing.
@@ -107,7 +108,7 @@ void VulkanEngine::init()
 
 	_isInitialized = true;
 
-	scene::loadScene(globalState::savedActiveScene, this);
+	changeEditorMode(_currentEditorMode);
 }
 
 constexpr size_t numPerfs = 15;
@@ -5784,639 +5785,696 @@ void VulkanEngine::submitSelectedRenderObjectId(int32_t poolIndex)
 		<< "Selected object " << poolIndex << std::endl;
 }
 
+void VulkanEngine::changeEditorMode(EditorModes newEditorMode)
+{
+	// Spin down previous editor mode.
+	switch (_currentEditorMode)
+	{
+		case EditorModes::LEVEL_EDITOR:
+		{
+
+		} break;
+
+		case EditorModes::TEXTURE_EDITOR:
+		{
+
+		} break;
+
+		case EditorModes::MATERIAL_EDITOR:
+		{
+
+		} break;
+	}
+
+	_currentEditorMode = newEditorMode;
+
+	// Spin up new editor mode.
+	switch (_currentEditorMode)
+	{
+		case EditorModes::LEVEL_EDITOR:
+		{
+			scene::loadScene(globalState::savedActiveScene, true);
+		} break;
+
+		case EditorModes::TEXTURE_EDITOR:
+		{
+			scene::loadScene("EDITOR_texture_editor.ssdat", true);
+		} break;
+
+		case EditorModes::MATERIAL_EDITOR:
+		{
+
+		} break;
+	}
+}
+
 void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 {
 	static bool showDemoWindows = false;
-	// if (input::onKeyF1Press)  // @DEBUG: enable this to allow toggling showing demo windows.
-	// 	showDemoWindows = !showDemoWindows;
-	if (showDemoWindows)
-	{
-		ImGui::ShowDemoWindow();
-		ImPlot::ShowDemoWindow();
-	}
+	static bool showPerfWindow = false;
+
+	constexpr float_t windowPadding = 8.0f;
 
 	bool allowKeyboardShortcuts =
 		_camera->getCameraMode() == Camera::_cameraMode_freeCamMode &&
 		!_camera->freeCamMode.enabled &&
 		!io.WantTextInput;
 
-	//
-	// Debug Messages window
-	//
+	// Top menu.
+	if (ImGui::BeginMainMenuBar())
+	{
+		if (ImGui::BeginMenu("Mode"))
+		{
+			if (ImGui::MenuItem("Level Editor", "", (_currentEditorMode == EditorModes::LEVEL_EDITOR)) && _currentEditorMode != EditorModes::LEVEL_EDITOR) changeEditorMode(EditorModes::LEVEL_EDITOR);
+			if (ImGui::MenuItem("Texture Editor", "", (_currentEditorMode == EditorModes::TEXTURE_EDITOR)) && _currentEditorMode != EditorModes::TEXTURE_EDITOR) changeEditorMode(EditorModes::TEXTURE_EDITOR);
+			if (ImGui::MenuItem("Material Editor", "", (_currentEditorMode == EditorModes::MATERIAL_EDITOR)) && _currentEditorMode != EditorModes::MATERIAL_EDITOR) changeEditorMode(EditorModes::MATERIAL_EDITOR);
+			ImGui::EndMenu();
+		}
+		if (ImGui::BeginMenu("Window"))
+		{
+			ImGui::MenuItem("Demo Windows", "", &showDemoWindows);
+			ImGui::MenuItem("Performance Window", "", &showPerfWindow);
+			ImGui::EndMenu();
+		}
+		ImGui::EndMainMenuBar();
+	}
+
+	// Demo windows.
+	if (showDemoWindows)
+	{
+		ImGui::ShowDemoWindow();
+		ImPlot::ShowDemoWindow();
+	}
+
+	// Debug messages.
 	debug::renderImguiDebugMessages((float_t)_windowExtent.width, deltaTime);
 
-	//
-	// Scene Properties window
-	//
-	static std::string _flagNextStepLoadThisPathAsAScene = "";
-	if (!_flagNextStepLoadThisPathAsAScene.empty())
+	if (showPerfWindow)
 	{
-		scene::loadScene(_flagNextStepLoadThisPathAsAScene, this);
-		_flagNextStepLoadThisPathAsAScene = "";
-	}
-
-	static float_t scenePropertiesWindowWidth = 0.0f;
-	ImGui::SetNextWindowPos(ImVec2(_windowExtent.width - scenePropertiesWindowWidth, 0.0f), ImGuiCond_Always);
-	ImGui::Begin((globalState::savedActiveScene + " Properties").c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
-	{
-		ImGui::Text(globalState::savedActiveScene.c_str());
-
-		static std::vector<std::string> listOfScenes;
-		if (ImGui::Button("Open Scene.."))
+		// Debug Stats window.
+		static float_t debugStatsWindowWidth = 0.0f;
+		static float_t debugStatsWindowHeight = 0.0f;
+		ImGui::SetNextWindowPos(ImVec2(_windowExtent.width * 0.5f - debugStatsWindowWidth * 0.5f, _windowExtent.height - debugStatsWindowHeight), ImGuiCond_Always);		// @NOTE: the ImGuiCond_Always means that this line will execute always, when set to once, this line will be ignored after the first time it's called
+		ImGui::Begin("##Debug Statistics", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs);
 		{
-			listOfScenes = scene::getListOfScenes();
-			ImGui::OpenPopup("open_scene_popup");
-		}
-		if (ImGui::BeginPopup("open_scene_popup"))
-		{
-			for (auto& path : listOfScenes)
-				if (ImGui::Button(("Open \"" + path + "\"").c_str()))
-				{
-					_movingMatrix.matrixToMove = nullptr;  // @HACK: just a safeguard in case if the matrixtomove happened to be on an entity that will get deleted in the next line  -Timo 2022/11/05
-					for (auto& ent : _entityManager->_entities)
-						_entityManager->destroyEntity(ent);
-					_flagNextStepLoadThisPathAsAScene = path;  // @HACK: mireba wakaru... but it's needed bc it works when delaying the load by a step...  -Timo 2022/10/30
-					ImGui::CloseCurrentPopup();
-				}
-			ImGui::EndPopup();
-		}
+			ImGui::Text((std::to_string(_debugStats.currentFPS) + " FPS").c_str());
+			ImGui::Text(("Frame : " + std::to_string(_frameNumber)).c_str());
 
-		ImGui::SameLine();
-		if (ImGui::Button("Save Scene"))
-			scene::saveScene(globalState::savedActiveScene, _entityManager->_entities, this);
+			ImGui::Separator();
 
-		ImGui::SameLine();
-		if (ImGui::Button("Save Scene As.."))
-			ImGui::OpenPopup("save_scene_as_popup");
-		if (ImGui::BeginPopup("save_scene_as_popup"))
-		{
-			static std::string saveSceneAsFname;
-			ImGui::InputText(".ssdat", &saveSceneAsFname);
-			if (ImGui::Button(("Save As \"" + saveSceneAsFname + ".ssdat\"").c_str()))
-			{
-				scene::saveScene(saveSceneAsFname + ".ssdat", _entityManager->_entities, this);
-				globalState::savedActiveScene = saveSceneAsFname + ".ssdat";
-				ImGui::CloseCurrentPopup();
-			}
-			ImGui::EndPopup();
-		}
+			ImGui::Text(("Timescale: " + std::to_string(globalState::timescale)).c_str());
 
-		static std::vector<std::string> listOfPrefabs;
-		if (ImGui::Button("Open Prefab.."))
-		{
-			listOfPrefabs = scene::getListOfPrefabs();
-			ImGui::OpenPopup("open_prefab_popup");
-		}
-		if (ImGui::BeginPopup("open_prefab_popup"))
-		{
-			for (auto& path : listOfPrefabs)
-				if (ImGui::Button(("Open \"" + path + "\"").c_str()))
-				{
-					scene::loadPrefabNonOwned(path, this);
-					ImGui::CloseCurrentPopup();
-				}
-			ImGui::EndPopup();
-		}
+			ImGui::Separator();
 
-		scenePropertiesWindowWidth = ImGui::GetWindowWidth();
-	}
-	ImGui::End();
+			ImGui::Text("Render Times");
+			ImGui::Text((std::format("{:.2f}", _debugStats.renderTimesMS[_debugStats.renderTimesMSHeadIndex]) + "ms").c_str());
+			ImGui::PlotHistogram("##Render Times Histogram", _debugStats.renderTimesMS, (int32_t)_debugStats.renderTimesMSCount, (int32_t)_debugStats.renderTimesMSHeadIndex, "", 0.0f, _debugStats.highestRenderTime, ImVec2(256, 24.0f));
+			ImGui::SameLine();
+			ImGui::Text(("[0, " + std::format("{:.2f}", _debugStats.highestRenderTime) + "]").c_str());
 
-	//
-	// Debug Stats window
-	//
-	constexpr float_t windowPadding = 8.0f;
-	static float_t debugStatsWindowWidth = 0.0f;
-	static float_t debugStatsWindowHeight = 0.0f;
+			ImGui::Separator();
 
-	ImGui::SetNextWindowPos(ImVec2(_windowExtent.width * 0.5f - debugStatsWindowWidth - windowPadding, _windowExtent.height - debugStatsWindowHeight), ImGuiCond_Always);		// @NOTE: the ImGuiCond_Always means that this line will execute always, when set to once, this line will be ignored after the first time it's called
-	ImGui::Begin("##Debug Statistics", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs);
-	{
-		ImGui::Text((std::to_string(_debugStats.currentFPS) + " FPS").c_str());
-		ImGui::Text(("Frame : " + std::to_string(_frameNumber)).c_str());
+			physengine::renderImguiPerformanceStats();
 
-		ImGui::Separator();
-
-		ImGui::Text(("Timescale: " + std::to_string(globalState::timescale)).c_str());
-
-		ImGui::Separator();
-
-		ImGui::Text("Render Times");
-		ImGui::Text((std::format("{:.2f}", _debugStats.renderTimesMS[_debugStats.renderTimesMSHeadIndex]) + "ms").c_str());
-		ImGui::PlotHistogram("##Render Times Histogram", _debugStats.renderTimesMS, (int32_t)_debugStats.renderTimesMSCount, (int32_t)_debugStats.renderTimesMSHeadIndex, "", 0.0f, _debugStats.highestRenderTime, ImVec2(256, 24.0f));
-		ImGui::SameLine();
-		ImGui::Text(("[0, " + std::format("{:.2f}", _debugStats.highestRenderTime) + "]").c_str());
-
-		ImGui::Separator();
-
-		physengine::renderImguiPerformanceStats();
-
-		debugStatsWindowWidth = ImGui::GetWindowWidth();
-		debugStatsWindowHeight = ImGui::GetWindowHeight();
-	}
-	ImGui::End();
-
-	//
-	// GameState info window
-	//
-	static float_t gamestateInfoWindowHeight = 0.0f;
-	ImGui::SetNextWindowPos(ImVec2(_windowExtent.width * 0.5f + windowPadding, _windowExtent.height - gamestateInfoWindowHeight), ImGuiCond_Always);		// @NOTE: the ImGuiCond_Always means that this line will execute always, when set to once, this line will be ignored after the first time it's called
-	ImGui::Begin("##GameState Info", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
-	{
-		ImGui::Text(("Health: " + std::to_string(globalState::savedPlayerHealth) + " / " + std::to_string(globalState::savedPlayerMaxHealth)).c_str());
-
-		gamestateInfoWindowHeight = ImGui::GetWindowHeight();
-	}
-	ImGui::End();
-
-
-	//
-	// PBR Shading Properties
-	//
-	static float_t scrollSpeed = 40.0f;
-	static float_t windowOffsetY = 0.0f;
-	float_t accumulatedWindowHeight = 0.0f;
-	float_t maxWindowWidth = 0.0f;
-
-	ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight + windowOffsetY), ImGuiCond_Always);
-	ImGui::Begin("PBR Shading Properties", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
-	{
-		if (ImGui::DragFloat3("Light Direction", _pbrRendering.gpuSceneShadingProps.lightDir))
-			glm_normalize(_pbrRendering.gpuSceneShadingProps.lightDir);		
-
-		ImGui::DragFloat("Exposure", &_pbrRendering.gpuSceneShadingProps.exposure, 0.1f, 0.1f, 10.0f);
-		ImGui::DragFloat("Gamma", &_pbrRendering.gpuSceneShadingProps.gamma, 0.1f, 0.1f, 4.0f);
-		ImGui::DragFloat("IBL Strength", &_pbrRendering.gpuSceneShadingProps.scaleIBLAmbient, 0.1f, 0.0f, 2.0f);
-
-		ImGui::DragFloat("Shadow Jitter Strength", &_pbrRendering.gpuSceneShadingProps.shadowJitterMapOffsetScale, 0.1f);
-
-		static int debugViewIndex = 0;
-		if (ImGui::Combo("Debug View Input", &debugViewIndex, "none\0Base color\0Normal\0Occlusion\0Emissive\0Metallic\0Roughness"))
-			_pbrRendering.gpuSceneShadingProps.debugViewInputs = (float_t)debugViewIndex;
-
-		static int debugViewEquation = 0;
-		if (ImGui::Combo("Debug View Equation", &debugViewEquation, "none\0Diff (l,n)\0F (l,h)\0G (l,v,h)\0D (h)\0Specular"))
-			_pbrRendering.gpuSceneShadingProps.debugViewEquation = (float_t)debugViewEquation;
-
-		ImGui::Text(("Prefiltered Cubemap Miplevels: " + std::to_string((int32_t)_pbrRendering.gpuSceneShadingProps.prefilteredCubemapMipLevels)).c_str());
-
-		ImGui::Separator();
-
-		ImGui::Text("Toggle Layers");
-
-		static const ImVec2 imageButtonSize = ImVec2(64, 64);
-		static const ImVec4 tintColorActive = ImVec4(1, 1, 1, 1);
-		static const ImVec4 tintColorInactive = ImVec4(1, 1, 1, 0.25);
-
-		//
-		// Toggle Layers (Section: Rendering)
-		//
-		ImTextureID renderingLayersButtonIcons[] = {
-			(ImTextureID)_imguiData.textureLayerVisible,
-			(ImTextureID)_imguiData.textureLayerInvisible,
-			(ImTextureID)_imguiData.textureLayerBuilder,
-			(ImTextureID)_imguiData.textureLayerCollision,
-		};
-		std::string buttonTurnOnSfx[] = {
-			"res/_develop/layer_visible_sfx.ogg",
-			"res/_develop/layer_invisible_sfx.ogg",
-			"res/_develop/layer_builder_sfx.ogg",
-			"res/_develop/layer_collision_sfx.ogg",
-		};
-
-		for (size_t i = 0; i < std::size(renderingLayersButtonIcons); i++)
-		{
-			bool isLayerActive = false;
-			switch (i)
-			{
-			case 0:
-			case 1:
-			case 2:
-				isLayerActive = _roManager->_renderObjectLayersEnabled[i];
-				break;
-
-			case 3:
-				isLayerActive = generateCollisionDebugVisualization;
-				break;
-			}
-
-			if (ImGui::ImageButton(renderingLayersButtonIcons[i], imageButtonSize, ImVec2(0, 0), ImVec2(1, 1), -1, ImVec4(0, 0, 0, 0), isLayerActive ? tintColorActive : tintColorInactive))
-			{
-				switch (i)
-				{
-				case 0:
-				case 1:
-				case 2:
-				{
-					// Toggle render layer
-					_roManager->_renderObjectLayersEnabled[i] = !_roManager->_renderObjectLayersEnabled[i];
-					if (!_roManager->_renderObjectLayersEnabled[i])
-					{
-						// Find object that matrixToMove is pulling from (if any)
-						for (size_t poolIndex : _roManager->_renderObjectsIndices)
-						{
-							auto& ro = _roManager->_renderObjectPool[poolIndex];
-							if (_movingMatrix.matrixToMove == &ro.transformMatrix)
-							{
-								// @HACK: Reset the _movingMatrix.matrixToMove
-								//        if it's for one of the objects that just got disabled
-								if ((size_t)ro.renderLayer == i)
-									_movingMatrix.matrixToMove = nullptr;
-								break;
-							}
-						}
-					}
-					break;
-				}
-
-				case 3:
-					// Collision Layer debug draw toggle
-					generateCollisionDebugVisualization = !generateCollisionDebugVisualization;
-					break;
-				}
-
-				// Assume toggle occurred (so if layer wasn't active)
-				if (!isLayerActive)
-					AudioEngine::getInstance().playSound(buttonTurnOnSfx[i]);
-			}
-
-			if ((int32_t)fmodf((float_t)(i + 1), 3.0f) != 0)
-				ImGui::SameLine();
-		}
-
-		accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
-		maxWindowWidth = std::max(maxWindowWidth, ImGui::GetWindowWidth());
-	}
-	ImGui::End();
-
-	//
-	// Global Properties
-	//
-	ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight + windowOffsetY), ImGuiCond_Always);
-	ImGui::Begin("Global Properties", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
-	{
-		if (ImGui::CollapsingHeader("Debug Properties", ImGuiTreeNodeFlags_DefaultOpen))
-		{
-			ImGui::DragFloat("scrollSpeed", &scrollSpeed);
-		}
-
-		if (ImGui::CollapsingHeader("Physics Properties", ImGuiTreeNodeFlags_DefaultOpen))
-		{
-			static vec3 worldGravity = GLM_VEC3_ZERO_INIT;
-			if (ImGui::DragFloat3("worldGravity", worldGravity))
-				physengine::setWorldGravity(worldGravity);
-		}
-
-		if (ImGui::CollapsingHeader("Camera Properties", ImGuiTreeNodeFlags_DefaultOpen))
-		{
-			ImGui::Text("NOTE: press F10 to change camera types");
-
-			ImGui::SliderFloat("lookDistance", &_camera->mainCamMode.lookDistance, 1.0f, 100.0f);
-			ImGui::DragFloat("lookDistanceSmoothTime", &_camera->mainCamMode.lookDistanceSmoothTime, 0.01f);
-			ImGui::DragFloat("focusSmoothTimeXZ", &_camera->mainCamMode.focusSmoothTimeXZ, 0.01f);
-			ImGui::DragFloat("focusSmoothTimeY", &_camera->mainCamMode.focusSmoothTimeY, 0.01f);
-			ImGui::DragFloat3("focusPositionOffset", _camera->mainCamMode.focusPositionOffset);
-			ImGui::DragFloat("opponentTargetTransition.targetYOrbitAngleSideOffset", &_camera->mainCamMode.opponentTargetTransition.targetYOrbitAngleSideOffset, 0.01f);
-			ImGui::DragFloat("opponentTargetTransition.xOrbitAngleSmoothTime", &_camera->mainCamMode.opponentTargetTransition.xOrbitAngleSmoothTime, 0.01f);
-			ImGui::DragFloat("opponentTargetTransition.yOrbitAngleSmoothTimeSlow", &_camera->mainCamMode.opponentTargetTransition.yOrbitAngleSmoothTimeSlow, 0.01f);
-			ImGui::DragFloat("opponentTargetTransition.yOrbitAngleSmoothTimeFast", &_camera->mainCamMode.opponentTargetTransition.yOrbitAngleSmoothTimeFast, 0.01f);
-			ImGui::DragFloat("opponentTargetTransition.slowFastTransitionRadius", &_camera->mainCamMode.opponentTargetTransition.slowFastTransitionRadius, 0.1f);
-			ImGui::DragFloat("opponentTargetTransition.lookDistanceBaseAmount", &_camera->mainCamMode.opponentTargetTransition.lookDistanceBaseAmount, 0.1f);
-			ImGui::DragFloat("opponentTargetTransition.lookDistanceObliqueAmount", &_camera->mainCamMode.opponentTargetTransition.lookDistanceObliqueAmount, 0.1f);
-			ImGui::DragFloat("opponentTargetTransition.lookDistanceHeightAmount", &_camera->mainCamMode.opponentTargetTransition.lookDistanceHeightAmount, 0.1f);
-			ImGui::DragFloat("opponentTargetTransition.focusPositionExtraYOffsetWhenTargeting", &_camera->mainCamMode.opponentTargetTransition.focusPositionExtraYOffsetWhenTargeting, 0.1f);
-			ImGui::DragFloat("opponentTargetTransition.depthOfFieldSmoothTime", &_camera->mainCamMode.opponentTargetTransition.depthOfFieldSmoothTime, 0.1f);
-			ImGui::DragFloat3("opponentTargetTransition.DOFPropsRelaxedState", _camera->mainCamMode.opponentTargetTransition.DOFPropsRelaxedState, 0.1f);
-		}
-
-		if (ImGui::CollapsingHeader("Depth of Field Properties", ImGuiTreeNodeFlags_DefaultOpen))
-		{
-			ImGui::DragFloat("CoC Focus Depth", &globalState::DOFFocusDepth, 0.1f);
-			ImGui::DragFloat("CoC Focus Extent", &globalState::DOFFocusExtent, 0.1f);
-			ImGui::DragFloat("CoC Blur Extent", &globalState::DOFBlurExtent, 0.1f);
-			ImGui::DragFloat("DOF Gather Sample Radius", &_DOFSampleRadiusMultiplier, 0.1f);
-		}
-
-		if (ImGui::CollapsingHeader("Textbox Properties", ImGuiTreeNodeFlags_DefaultOpen))
-		{
-			ImGui::DragFloat3("mainRenderPosition", textbox::mainRenderPosition);
-			ImGui::DragFloat3("mainRenderExtents", textbox::mainRenderExtents);
-			ImGui::DragFloat3("querySelectionsRenderPosition", textbox::querySelectionsRenderPosition);
-		}
-
-		accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
-		maxWindowWidth = std::max(maxWindowWidth, ImGui::GetWindowWidth());
-	}
-	ImGui::End();
-
-	//
-	// Create Entity
-	//
-	ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight + windowOffsetY), ImGuiCond_Always);
-	ImGui::Begin("Create Entity", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
-	{
-		static int32_t entityToCreateIndex = 1;  // @NOTE: don't want default setting to be `:player` or else you could accidentally create another player entity... and that is not needed for the levels
-		std::vector<std::string> listEntityTypes = scene::getListOfEntityTypes();
-		std::stringstream allEntityTypes;
-		for (auto entType : listEntityTypes)
-			allEntityTypes << entType << '\0';
-
-		ImGui::Combo("##Entity to create", &entityToCreateIndex, allEntityTypes.str().c_str());
-
-		static Entity* _flagAttachToThisEntity = nullptr;  // One frame lag fetch bc the `INTERNALaddRemoveRequestedEntities()` gets run once a frame instead of immediate add when an entity gets constructed.
-		if (_flagAttachToThisEntity)
-		{
-			for (size_t poolIndex : _roManager->_renderObjectsIndices)
-			{
-				auto& ro = _roManager->_renderObjectPool[poolIndex];
-				if (ro.attachedEntityGuid == _flagAttachToThisEntity->getGUID())
-					_movingMatrix.matrixToMove = &ro.transformMatrix;
-			}
-			_flagAttachToThisEntity = nullptr;
-		}
-
-		if (ImGui::Button("Create!"))
-		{
-			auto newEnt = scene::spinupNewObject(listEntityTypes[(size_t)entityToCreateIndex], this, nullptr);
-			_flagAttachToThisEntity = newEnt;  // @HACK: ... but if it works?
-		}
-
-		// Manipulate the selected entity
-		Entity* selectedEntity = nullptr;
-		for (size_t poolIndex : _roManager->_renderObjectsIndices)
-		{
-			auto& ro = _roManager->_renderObjectPool[poolIndex];
-			if (_movingMatrix.matrixToMove == &ro.transformMatrix)
-				for (auto& ent : _entityManager->_entities)
-					if (ro.attachedEntityGuid == ent->getGUID())
-					{
-						selectedEntity = ent;
-						break;
-					}
-			if (selectedEntity)
-				break;
-		}
-		if (selectedEntity)
-		{
-			// Duplicate
-			static bool canRunDuplicateProc = true;
-			if (ImGui::Button("Duplicate Selected Entity") || (allowKeyboardShortcuts && input::editorInputSet().duplicateObject.onAction))
-			{
-				if (canRunDuplicateProc)
-				{
-					DataSerializer ds;
-					selectedEntity->dump(ds);
-					auto dsd = ds.getSerializedData();
-					auto newEnt = scene::spinupNewObject(selectedEntity->getTypeName(), this, &dsd);
-					_flagAttachToThisEntity = newEnt;
-				}
-
-				canRunDuplicateProc = false;
-			}
-			else
-				canRunDuplicateProc = true;
-
-			// Delete
-			static bool canRunDeleteProc = true;
-			
-            ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0.0f, 0.5f, 0.6f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0.0f, 0.7f, 0.7f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0.0f, 0.8f, 0.8f));
-
-			if (ImGui::Button("Delete Selected Entity!") || (allowKeyboardShortcuts && input::editorInputSet().deleteObject.onAction))
-			{
-				if (canRunDeleteProc)
-				{
-					_entityManager->destroyEntity(selectedEntity);
-					_movingMatrix.matrixToMove = nullptr;
-				}
-
-				canRunDeleteProc = false;
-			}
-			else
-				canRunDeleteProc = true;
-
-            ImGui::PopStyleColor(3);
-		}
-
-
-		accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
-		maxWindowWidth = std::max(maxWindowWidth, ImGui::GetWindowWidth());
-	}
-	ImGui::End();
-
-	//
-	// Moving stuff around window (using ImGuizmo)
-	//
-	if (_movingMatrix.matrixToMove != nullptr)
-	{
-		//
-		// Move the matrix via ImGuizmo
-		//
-		mat4 projection;
-		glm_mat4_copy(_camera->sceneCamera.gpuCameraData.projection, projection);
-		projection[1][1] *= -1.0f;
-
-		static ImGuizmo::OPERATION manipulateOperation = ImGuizmo::OPERATION::TRANSLATE;
-		static ImGuizmo::MODE manipulateMode           = ImGuizmo::MODE::WORLD;
-
-		vec3 snapValues(0.0f);
-		if (input::editorInputSet().snapModifier.holding)
-			if (manipulateOperation == ImGuizmo::OPERATION::ROTATE)
-				snapValues[0] = snapValues[1] = snapValues[2] = 45.0f;
-			else
-				snapValues[0] = snapValues[1] = snapValues[2] = 0.5f;
-
-		bool matrixToMoveMoved =
-			ImGuizmo::Manipulate(
-				(const float_t*)_camera->sceneCamera.gpuCameraData.view,
-				(const float_t*)projection,
-				manipulateOperation,
-				manipulateMode,
-				(float_t*)*_movingMatrix.matrixToMove,
-				nullptr,
-				(const float_t*)snapValues
-			);
-
-		//
-		// Move the matrix via the decomposed values
-		//
-		ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight + windowOffsetY), ImGuiCond_Always);
-		ImGui::Begin("Edit Selected", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
-		{
-			if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen))
-			{
-				vec3 position, eulerAngles, scale;
-				ImGuizmo::DecomposeMatrixToComponents(
-					(const float_t*)* _movingMatrix.matrixToMove,
-					position,
-					eulerAngles,
-					scale
-				);
-
-				bool changed = false;
-				changed |= ImGui::DragFloat3("Pos##ASDFASDFASDFJAKSDFKASDHF", position);
-				changed |= ImGui::DragFloat3("Rot##ASDFASDFASDFJAKSDFKASDHF", eulerAngles);
-				changed |= ImGui::DragFloat3("Sca##ASDFASDFASDFJAKSDFKASDHF", scale);
-
-				if (changed)
-				{
-					// Recompose the matrix
-					// @TODO: Figure out when to invalidate the cache bc the euler angles will reset!
-					//        Or... maybe invalidating the cache isn't necessary for this window????
-					ImGuizmo::RecomposeMatrixFromComponents(
-						position,
-						eulerAngles,
-						scale,
-						(float_t*)*_movingMatrix.matrixToMove
-					);
-
-					matrixToMoveMoved = true;
-				}
-			}
-
-			static bool forceRecalculation = false;    // @NOTE: this is a flag for the key bindings below
-			static int operationIndex = 0;
-			static int modeIndex = 0;
-			if (ImGui::CollapsingHeader("Manipulation Gizmo", ImGuiTreeNodeFlags_DefaultOpen))
-			{
-				if (ImGui::Combo("Operation", &operationIndex, "Translate\0Rotate\0Scale") || forceRecalculation)
-				{
-					switch (operationIndex)
-					{
-					case 0:
-						manipulateOperation = ImGuizmo::OPERATION::TRANSLATE;
-						break;
-					case 1:
-						manipulateOperation = ImGuizmo::OPERATION::ROTATE;
-						break;
-					case 2:
-						manipulateOperation = ImGuizmo::OPERATION::SCALE;
-						break;
-					}
-				}
-				if (ImGui::Combo("Mode", &modeIndex, "World\0Local") || forceRecalculation)
-				{
-					switch (modeIndex)
-					{
-					case 0:
-						manipulateMode = ImGuizmo::MODE::WORLD;
-						break;
-					case 1:
-						manipulateMode = ImGuizmo::MODE::LOCAL;
-						break;
-					}
-				}
-			}
-
-			// Key bindings for switching the operation and mode
-			forceRecalculation = false;
-
-			bool hasMouseButtonDown = false;
-			for (size_t i = 0; i < 5; i++)
-				hasMouseButtonDown |= io.MouseDown[i];    // @NOTE: this covers cases of gizmo operation changing while left clicking on the gizmo (or anywhere else) or flying around with right click.  -Timo
-			if (!hasMouseButtonDown && allowKeyboardShortcuts)
-			{
-				static bool qKeyLock = false;
-				if (input::editorInputSet().toggleTransformManipulationMode.onAction)
-				{
-					if (!qKeyLock)
-					{
-						modeIndex = (int)!(bool)modeIndex;
-						qKeyLock = true;
-						forceRecalculation = true;
-					}
-				}
-				else
-				{
-					qKeyLock = false;
-				}
-
-				if (input::editorInputSet().switchToTransformPosition.onAction)
-				{
-					operationIndex = 0;
-					forceRecalculation = true;
-				}
-				if (input::editorInputSet().switchToTransformRotation.onAction)
-				{
-					operationIndex = 1;
-					forceRecalculation = true;
-				}
-				if (input::editorInputSet().switchToTransformScale.onAction)
-				{
-					operationIndex = 2;
-					forceRecalculation = true;
-				}
-			}
-
-			//
-			// Edit props exclusive to render objects
-			//
-			RenderObject* foundRO = nullptr;
-			for (size_t poolIndex : _roManager->_renderObjectsIndices)
-			{
-				auto& ro = _roManager->_renderObjectPool[poolIndex];
-				if (_movingMatrix.matrixToMove == &ro.transformMatrix)
-				{
-					foundRO = &ro;
-					break;
-				}
-			}
-
-			if (foundRO)
-			{
-				if (ImGui::CollapsingHeader("Render Object", ImGuiTreeNodeFlags_DefaultOpen))
-				{
-					int32_t temp = (int32_t)foundRO->renderLayer;
-					if (ImGui::Combo("Render Layer##asdfasdfasgasgcombo", &temp, "VISIBLE\0INVISIBLE\0BUILDER"))
-						foundRO->renderLayer = RenderLayer(temp);
-				}
-
-				//
-				// @TODO: see if you can't implement one for physics objects
-				// @REPLY: I can't. I don't want to. I don't see a point.
-				//
-
-				//
-				// @NOTE: first see if there is an entity attached to the renderobject via guid
-				// Edit props connected to the entity
-				//
-				Entity* foundEnt = nullptr;
-				if (!foundRO->attachedEntityGuid.empty())
-				{
-					for (auto& ent : _entityManager->_entities)
-					{
-						if (ent->getGUID() == foundRO->attachedEntityGuid)
-						{
-							foundEnt = ent;
-							break;
-						}
-					}
-
-					if (foundEnt && ImGui::CollapsingHeader(("Entity " + foundEnt->getGUID()).c_str(), ImGuiTreeNodeFlags_DefaultOpen))
-					{
-						if (matrixToMoveMoved)
-							foundEnt->reportMoved(_movingMatrix.matrixToMove);
-
-						std::string guidCopy = foundEnt->getGUID();
-						ImGui::InputText("GUID", &guidCopy);
-
-						foundEnt->renderImGui();
-					}
-				}
-			}
-
-			accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
-			maxWindowWidth = std::max(maxWindowWidth, ImGui::GetWindowWidth());
+			debugStatsWindowWidth = ImGui::GetWindowWidth();
+			debugStatsWindowHeight = ImGui::GetWindowHeight();
 		}
 		ImGui::End();
 	}
 
-	//
-	// Scroll the left pane
-	//
-	if (io.MousePos.x <= maxWindowWidth)
-		windowOffsetY += input::renderInputSet().UIScrollDelta.axisY * scrollSpeed;
+	switch (_currentEditorMode)
+	{
+		case EditorModes::LEVEL_EDITOR:
+		{
+			//
+			// Scene Properties window
+			//
+			static float_t scenePropertiesWindowWidth = 0.0f;
+			ImGui::SetNextWindowPos(ImVec2(_windowExtent.width - scenePropertiesWindowWidth, 0.0f), ImGuiCond_Always);
+			ImGui::Begin((globalState::savedActiveScene + " Properties").c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
+			{
+				ImGui::Text(globalState::savedActiveScene.c_str());
+
+				static std::vector<std::string> listOfScenes;
+				if (ImGui::Button("Open Scene.."))
+				{
+					listOfScenes = scene::getListOfScenes();
+					ImGui::OpenPopup("open_scene_popup");
+				}
+				if (ImGui::BeginPopup("open_scene_popup"))
+				{
+					for (auto& path : listOfScenes)
+						if (ImGui::Button(("Open \"" + path + "\"").c_str()))
+						{
+							_movingMatrix.matrixToMove = nullptr;  // @HACK: just a safeguard in case if the matrixtomove happened to be on an entity that will get deleted in the next line  -Timo 2022/11/05
+							scene::loadScene(path, true);
+							globalState::savedActiveScene = path;
+							ImGui::CloseCurrentPopup();
+						}
+					ImGui::EndPopup();
+				}
+
+				ImGui::SameLine();
+				if (ImGui::Button("Save Scene"))
+					scene::saveScene(globalState::savedActiveScene, _entityManager->_entities);
+
+				ImGui::SameLine();
+				if (ImGui::Button("Save Scene As.."))
+					ImGui::OpenPopup("save_scene_as_popup");
+				if (ImGui::BeginPopup("save_scene_as_popup"))
+				{
+					static std::string saveSceneAsFname;
+					ImGui::InputText(".ssdat", &saveSceneAsFname);
+					if (ImGui::Button(("Save As \"" + saveSceneAsFname + ".ssdat\"").c_str()))
+					{
+						scene::saveScene(saveSceneAsFname + ".ssdat", _entityManager->_entities);
+						globalState::savedActiveScene = saveSceneAsFname + ".ssdat";
+						ImGui::CloseCurrentPopup();
+					}
+					ImGui::EndPopup();
+				}
+
+				static std::vector<std::string> listOfPrefabs;
+				if (ImGui::Button("Open Prefab.."))
+				{
+					listOfPrefabs = scene::getListOfPrefabs();
+					ImGui::OpenPopup("open_prefab_popup");
+				}
+				if (ImGui::BeginPopup("open_prefab_popup"))
+				{
+					for (auto& path : listOfPrefabs)
+						if (ImGui::Button(("Open \"" + path + "\"").c_str()))
+						{
+							scene::loadPrefabNonOwned(path);
+							ImGui::CloseCurrentPopup();
+						}
+					ImGui::EndPopup();
+				}
+
+				scenePropertiesWindowWidth = ImGui::GetWindowWidth();
+			}
+			ImGui::End();
+
+
+			//
+			// PBR Shading Properties
+			//
+			static float_t scrollSpeed = 40.0f;
+			static float_t windowOffsetY = 0.0f;
+			float_t accumulatedWindowHeight = 0.0f;
+			float_t maxWindowWidth = 0.0f;
+
+			ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight + windowOffsetY), ImGuiCond_Always);
+			ImGui::Begin("PBR Shading Properties", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
+			{
+				if (ImGui::DragFloat3("Light Direction", _pbrRendering.gpuSceneShadingProps.lightDir))
+					glm_normalize(_pbrRendering.gpuSceneShadingProps.lightDir);		
+
+				ImGui::DragFloat("Exposure", &_pbrRendering.gpuSceneShadingProps.exposure, 0.1f, 0.1f, 10.0f);
+				ImGui::DragFloat("Gamma", &_pbrRendering.gpuSceneShadingProps.gamma, 0.1f, 0.1f, 4.0f);
+				ImGui::DragFloat("IBL Strength", &_pbrRendering.gpuSceneShadingProps.scaleIBLAmbient, 0.1f, 0.0f, 2.0f);
+
+				ImGui::DragFloat("Shadow Jitter Strength", &_pbrRendering.gpuSceneShadingProps.shadowJitterMapOffsetScale, 0.1f);
+
+				static int debugViewIndex = 0;
+				if (ImGui::Combo("Debug View Input", &debugViewIndex, "none\0Base color\0Normal\0Occlusion\0Emissive\0Metallic\0Roughness"))
+					_pbrRendering.gpuSceneShadingProps.debugViewInputs = (float_t)debugViewIndex;
+
+				static int debugViewEquation = 0;
+				if (ImGui::Combo("Debug View Equation", &debugViewEquation, "none\0Diff (l,n)\0F (l,h)\0G (l,v,h)\0D (h)\0Specular"))
+					_pbrRendering.gpuSceneShadingProps.debugViewEquation = (float_t)debugViewEquation;
+
+				ImGui::Text(("Prefiltered Cubemap Miplevels: " + std::to_string((int32_t)_pbrRendering.gpuSceneShadingProps.prefilteredCubemapMipLevels)).c_str());
+
+				ImGui::Separator();
+
+				ImGui::Text("Toggle Layers");
+
+				static const ImVec2 imageButtonSize = ImVec2(64, 64);
+				static const ImVec4 tintColorActive = ImVec4(1, 1, 1, 1);
+				static const ImVec4 tintColorInactive = ImVec4(1, 1, 1, 0.25);
+
+				//
+				// Toggle Layers (Section: Rendering)
+				//
+				ImTextureID renderingLayersButtonIcons[] = {
+					(ImTextureID)_imguiData.textureLayerVisible,
+					(ImTextureID)_imguiData.textureLayerInvisible,
+					(ImTextureID)_imguiData.textureLayerBuilder,
+					(ImTextureID)_imguiData.textureLayerCollision,
+				};
+				std::string buttonTurnOnSfx[] = {
+					"res/_develop/layer_visible_sfx.ogg",
+					"res/_develop/layer_invisible_sfx.ogg",
+					"res/_develop/layer_builder_sfx.ogg",
+					"res/_develop/layer_collision_sfx.ogg",
+				};
+
+				for (size_t i = 0; i < std::size(renderingLayersButtonIcons); i++)
+				{
+					bool isLayerActive = false;
+					switch (i)
+					{
+					case 0:
+					case 1:
+					case 2:
+						isLayerActive = _roManager->_renderObjectLayersEnabled[i];
+						break;
+
+					case 3:
+						isLayerActive = generateCollisionDebugVisualization;
+						break;
+					}
+
+					if (ImGui::ImageButton(renderingLayersButtonIcons[i], imageButtonSize, ImVec2(0, 0), ImVec2(1, 1), -1, ImVec4(0, 0, 0, 0), isLayerActive ? tintColorActive : tintColorInactive))
+					{
+						switch (i)
+						{
+						case 0:
+						case 1:
+						case 2:
+						{
+							// Toggle render layer
+							_roManager->_renderObjectLayersEnabled[i] = !_roManager->_renderObjectLayersEnabled[i];
+							if (!_roManager->_renderObjectLayersEnabled[i])
+							{
+								// Find object that matrixToMove is pulling from (if any)
+								for (size_t poolIndex : _roManager->_renderObjectsIndices)
+								{
+									auto& ro = _roManager->_renderObjectPool[poolIndex];
+									if (_movingMatrix.matrixToMove == &ro.transformMatrix)
+									{
+										// @HACK: Reset the _movingMatrix.matrixToMove
+										//        if it's for one of the objects that just got disabled
+										if ((size_t)ro.renderLayer == i)
+											_movingMatrix.matrixToMove = nullptr;
+										break;
+									}
+								}
+							}
+							break;
+						}
+
+						case 3:
+							// Collision Layer debug draw toggle
+							generateCollisionDebugVisualization = !generateCollisionDebugVisualization;
+							break;
+						}
+
+						// Assume toggle occurred (so if layer wasn't active)
+						if (!isLayerActive)
+							AudioEngine::getInstance().playSound(buttonTurnOnSfx[i]);
+					}
+
+					if ((int32_t)fmodf((float_t)(i + 1), 3.0f) != 0)
+						ImGui::SameLine();
+				}
+
+				accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
+				maxWindowWidth = std::max(maxWindowWidth, ImGui::GetWindowWidth());
+			}
+			ImGui::End();
+
+			//
+			// Global Properties
+			//
+			ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight + windowOffsetY), ImGuiCond_Always);
+			ImGui::Begin("Global Properties", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
+			{
+				if (ImGui::CollapsingHeader("Debug Properties", ImGuiTreeNodeFlags_DefaultOpen))
+				{
+					ImGui::DragFloat("scrollSpeed", &scrollSpeed);
+				}
+
+				if (ImGui::CollapsingHeader("Physics Properties", ImGuiTreeNodeFlags_DefaultOpen))
+				{
+					static vec3 worldGravity = GLM_VEC3_ZERO_INIT;
+					if (ImGui::DragFloat3("worldGravity", worldGravity))
+						physengine::setWorldGravity(worldGravity);
+				}
+
+				if (ImGui::CollapsingHeader("Camera Properties", ImGuiTreeNodeFlags_DefaultOpen))
+				{
+					ImGui::Text("NOTE: press F10 to change camera types");
+
+					ImGui::SliderFloat("lookDistance", &_camera->mainCamMode.lookDistance, 1.0f, 100.0f);
+					ImGui::DragFloat("lookDistanceSmoothTime", &_camera->mainCamMode.lookDistanceSmoothTime, 0.01f);
+					ImGui::DragFloat("focusSmoothTimeXZ", &_camera->mainCamMode.focusSmoothTimeXZ, 0.01f);
+					ImGui::DragFloat("focusSmoothTimeY", &_camera->mainCamMode.focusSmoothTimeY, 0.01f);
+					ImGui::DragFloat3("focusPositionOffset", _camera->mainCamMode.focusPositionOffset);
+					ImGui::DragFloat("opponentTargetTransition.targetYOrbitAngleSideOffset", &_camera->mainCamMode.opponentTargetTransition.targetYOrbitAngleSideOffset, 0.01f);
+					ImGui::DragFloat("opponentTargetTransition.xOrbitAngleSmoothTime", &_camera->mainCamMode.opponentTargetTransition.xOrbitAngleSmoothTime, 0.01f);
+					ImGui::DragFloat("opponentTargetTransition.yOrbitAngleSmoothTimeSlow", &_camera->mainCamMode.opponentTargetTransition.yOrbitAngleSmoothTimeSlow, 0.01f);
+					ImGui::DragFloat("opponentTargetTransition.yOrbitAngleSmoothTimeFast", &_camera->mainCamMode.opponentTargetTransition.yOrbitAngleSmoothTimeFast, 0.01f);
+					ImGui::DragFloat("opponentTargetTransition.slowFastTransitionRadius", &_camera->mainCamMode.opponentTargetTransition.slowFastTransitionRadius, 0.1f);
+					ImGui::DragFloat("opponentTargetTransition.lookDistanceBaseAmount", &_camera->mainCamMode.opponentTargetTransition.lookDistanceBaseAmount, 0.1f);
+					ImGui::DragFloat("opponentTargetTransition.lookDistanceObliqueAmount", &_camera->mainCamMode.opponentTargetTransition.lookDistanceObliqueAmount, 0.1f);
+					ImGui::DragFloat("opponentTargetTransition.lookDistanceHeightAmount", &_camera->mainCamMode.opponentTargetTransition.lookDistanceHeightAmount, 0.1f);
+					ImGui::DragFloat("opponentTargetTransition.focusPositionExtraYOffsetWhenTargeting", &_camera->mainCamMode.opponentTargetTransition.focusPositionExtraYOffsetWhenTargeting, 0.1f);
+					ImGui::DragFloat("opponentTargetTransition.depthOfFieldSmoothTime", &_camera->mainCamMode.opponentTargetTransition.depthOfFieldSmoothTime, 0.1f);
+					ImGui::DragFloat3("opponentTargetTransition.DOFPropsRelaxedState", _camera->mainCamMode.opponentTargetTransition.DOFPropsRelaxedState, 0.1f);
+				}
+
+				if (ImGui::CollapsingHeader("Depth of Field Properties", ImGuiTreeNodeFlags_DefaultOpen))
+				{
+					ImGui::DragFloat("CoC Focus Depth", &globalState::DOFFocusDepth, 0.1f);
+					ImGui::DragFloat("CoC Focus Extent", &globalState::DOFFocusExtent, 0.1f);
+					ImGui::DragFloat("CoC Blur Extent", &globalState::DOFBlurExtent, 0.1f);
+					ImGui::DragFloat("DOF Gather Sample Radius", &_DOFSampleRadiusMultiplier, 0.1f);
+				}
+
+				if (ImGui::CollapsingHeader("Textbox Properties", ImGuiTreeNodeFlags_DefaultOpen))
+				{
+					ImGui::DragFloat3("mainRenderPosition", textbox::mainRenderPosition);
+					ImGui::DragFloat3("mainRenderExtents", textbox::mainRenderExtents);
+					ImGui::DragFloat3("querySelectionsRenderPosition", textbox::querySelectionsRenderPosition);
+				}
+
+				accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
+				maxWindowWidth = std::max(maxWindowWidth, ImGui::GetWindowWidth());
+			}
+			ImGui::End();
+
+			//
+			// Create Entity
+			//
+			ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight + windowOffsetY), ImGuiCond_Always);
+			ImGui::Begin("Create Entity", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
+			{
+				static int32_t entityToCreateIndex = 1;  // @NOTE: don't want default setting to be `:player` or else you could accidentally create another player entity... and that is not needed for the levels
+				std::vector<std::string> listEntityTypes = scene::getListOfEntityTypes();
+				std::stringstream allEntityTypes;
+				for (auto entType : listEntityTypes)
+					allEntityTypes << entType << '\0';
+
+				ImGui::Combo("##Entity to create", &entityToCreateIndex, allEntityTypes.str().c_str());
+
+				static Entity* _flagAttachToThisEntity = nullptr;  // One frame lag fetch bc the `INTERNALaddRemoveRequestedEntities()` gets run once a frame instead of immediate add when an entity gets constructed.
+				if (_flagAttachToThisEntity)
+				{
+					for (size_t poolIndex : _roManager->_renderObjectsIndices)
+					{
+						auto& ro = _roManager->_renderObjectPool[poolIndex];
+						if (ro.attachedEntityGuid == _flagAttachToThisEntity->getGUID())
+							_movingMatrix.matrixToMove = &ro.transformMatrix;
+					}
+					_flagAttachToThisEntity = nullptr;
+				}
+
+				if (ImGui::Button("Create!"))
+				{
+					auto newEnt = scene::spinupNewObject(listEntityTypes[(size_t)entityToCreateIndex], nullptr);
+					_flagAttachToThisEntity = newEnt;  // @HACK: ... but if it works?
+				}
+
+				// Manipulate the selected entity
+				Entity* selectedEntity = nullptr;
+				for (size_t poolIndex : _roManager->_renderObjectsIndices)
+				{
+					auto& ro = _roManager->_renderObjectPool[poolIndex];
+					if (_movingMatrix.matrixToMove == &ro.transformMatrix)
+						for (auto& ent : _entityManager->_entities)
+							if (ro.attachedEntityGuid == ent->getGUID())
+							{
+								selectedEntity = ent;
+								break;
+							}
+					if (selectedEntity)
+						break;
+				}
+				if (selectedEntity)
+				{
+					// Duplicate
+					static bool canRunDuplicateProc = true;
+					if (ImGui::Button("Duplicate Selected Entity") || (allowKeyboardShortcuts && input::editorInputSet().duplicateObject.onAction))
+					{
+						if (canRunDuplicateProc)
+						{
+							DataSerializer ds;
+							selectedEntity->dump(ds);
+							auto dsd = ds.getSerializedData();
+							auto newEnt = scene::spinupNewObject(selectedEntity->getTypeName(), &dsd);
+							_flagAttachToThisEntity = newEnt;
+						}
+
+						canRunDuplicateProc = false;
+					}
+					else
+						canRunDuplicateProc = true;
+
+					// Delete
+					static bool canRunDeleteProc = true;
+					
+					ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0.0f, 0.5f, 0.6f));
+					ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0.0f, 0.7f, 0.7f));
+					ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0.0f, 0.8f, 0.8f));
+
+					if (ImGui::Button("Delete Selected Entity!") || (allowKeyboardShortcuts && input::editorInputSet().deleteObject.onAction))
+					{
+						if (canRunDeleteProc)
+						{
+							_entityManager->destroyEntity(selectedEntity);
+							_movingMatrix.matrixToMove = nullptr;
+						}
+
+						canRunDeleteProc = false;
+					}
+					else
+						canRunDeleteProc = true;
+
+					ImGui::PopStyleColor(3);
+				}
+
+
+				accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
+				maxWindowWidth = std::max(maxWindowWidth, ImGui::GetWindowWidth());
+			}
+			ImGui::End();
+
+			//
+			// Moving stuff around window (using ImGuizmo)
+			//
+			if (_movingMatrix.matrixToMove != nullptr)
+			{
+				//
+				// Move the matrix via ImGuizmo
+				//
+				mat4 projection;
+				glm_mat4_copy(_camera->sceneCamera.gpuCameraData.projection, projection);
+				projection[1][1] *= -1.0f;
+
+				static ImGuizmo::OPERATION manipulateOperation = ImGuizmo::OPERATION::TRANSLATE;
+				static ImGuizmo::MODE manipulateMode           = ImGuizmo::MODE::WORLD;
+
+				vec3 snapValues(0.0f);
+				if (input::editorInputSet().snapModifier.holding)
+					if (manipulateOperation == ImGuizmo::OPERATION::ROTATE)
+						snapValues[0] = snapValues[1] = snapValues[2] = 45.0f;
+					else
+						snapValues[0] = snapValues[1] = snapValues[2] = 0.5f;
+
+				bool matrixToMoveMoved =
+					ImGuizmo::Manipulate(
+						(const float_t*)_camera->sceneCamera.gpuCameraData.view,
+						(const float_t*)projection,
+						manipulateOperation,
+						manipulateMode,
+						(float_t*)*_movingMatrix.matrixToMove,
+						nullptr,
+						(const float_t*)snapValues
+					);
+
+				//
+				// Move the matrix via the decomposed values
+				//
+				ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight + windowOffsetY), ImGuiCond_Always);
+				ImGui::Begin("Edit Selected", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
+				{
+					if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen))
+					{
+						vec3 position, eulerAngles, scale;
+						ImGuizmo::DecomposeMatrixToComponents(
+							(const float_t*)* _movingMatrix.matrixToMove,
+							position,
+							eulerAngles,
+							scale
+						);
+
+						bool changed = false;
+						changed |= ImGui::DragFloat3("Pos##ASDFASDFASDFJAKSDFKASDHF", position);
+						changed |= ImGui::DragFloat3("Rot##ASDFASDFASDFJAKSDFKASDHF", eulerAngles);
+						changed |= ImGui::DragFloat3("Sca##ASDFASDFASDFJAKSDFKASDHF", scale);
+
+						if (changed)
+						{
+							// Recompose the matrix
+							// @TODO: Figure out when to invalidate the cache bc the euler angles will reset!
+							//        Or... maybe invalidating the cache isn't necessary for this window????
+							ImGuizmo::RecomposeMatrixFromComponents(
+								position,
+								eulerAngles,
+								scale,
+								(float_t*)*_movingMatrix.matrixToMove
+							);
+
+							matrixToMoveMoved = true;
+						}
+					}
+
+					static bool forceRecalculation = false;    // @NOTE: this is a flag for the key bindings below
+					static int operationIndex = 0;
+					static int modeIndex = 0;
+					if (ImGui::CollapsingHeader("Manipulation Gizmo", ImGuiTreeNodeFlags_DefaultOpen))
+					{
+						if (ImGui::Combo("Operation", &operationIndex, "Translate\0Rotate\0Scale") || forceRecalculation)
+						{
+							switch (operationIndex)
+							{
+							case 0:
+								manipulateOperation = ImGuizmo::OPERATION::TRANSLATE;
+								break;
+							case 1:
+								manipulateOperation = ImGuizmo::OPERATION::ROTATE;
+								break;
+							case 2:
+								manipulateOperation = ImGuizmo::OPERATION::SCALE;
+								break;
+							}
+						}
+						if (ImGui::Combo("Mode", &modeIndex, "World\0Local") || forceRecalculation)
+						{
+							switch (modeIndex)
+							{
+							case 0:
+								manipulateMode = ImGuizmo::MODE::WORLD;
+								break;
+							case 1:
+								manipulateMode = ImGuizmo::MODE::LOCAL;
+								break;
+							}
+						}
+					}
+
+					// Key bindings for switching the operation and mode
+					forceRecalculation = false;
+
+					bool hasMouseButtonDown = false;
+					for (size_t i = 0; i < 5; i++)
+						hasMouseButtonDown |= io.MouseDown[i];    // @NOTE: this covers cases of gizmo operation changing while left clicking on the gizmo (or anywhere else) or flying around with right click.  -Timo
+					if (!hasMouseButtonDown && allowKeyboardShortcuts)
+					{
+						static bool qKeyLock = false;
+						if (input::editorInputSet().toggleTransformManipulationMode.onAction)
+						{
+							if (!qKeyLock)
+							{
+								modeIndex = (int)!(bool)modeIndex;
+								qKeyLock = true;
+								forceRecalculation = true;
+							}
+						}
+						else
+						{
+							qKeyLock = false;
+						}
+
+						if (input::editorInputSet().switchToTransformPosition.onAction)
+						{
+							operationIndex = 0;
+							forceRecalculation = true;
+						}
+						if (input::editorInputSet().switchToTransformRotation.onAction)
+						{
+							operationIndex = 1;
+							forceRecalculation = true;
+						}
+						if (input::editorInputSet().switchToTransformScale.onAction)
+						{
+							operationIndex = 2;
+							forceRecalculation = true;
+						}
+					}
+
+					//
+					// Edit props exclusive to render objects
+					//
+					RenderObject* foundRO = nullptr;
+					for (size_t poolIndex : _roManager->_renderObjectsIndices)
+					{
+						auto& ro = _roManager->_renderObjectPool[poolIndex];
+						if (_movingMatrix.matrixToMove == &ro.transformMatrix)
+						{
+							foundRO = &ro;
+							break;
+						}
+					}
+
+					if (foundRO)
+					{
+						if (ImGui::CollapsingHeader("Render Object", ImGuiTreeNodeFlags_DefaultOpen))
+						{
+							int32_t temp = (int32_t)foundRO->renderLayer;
+							if (ImGui::Combo("Render Layer##asdfasdfasgasgcombo", &temp, "VISIBLE\0INVISIBLE\0BUILDER"))
+								foundRO->renderLayer = RenderLayer(temp);
+						}
+
+						//
+						// @TODO: see if you can't implement one for physics objects
+						// @REPLY: I can't. I don't want to. I don't see a point.
+						//
+
+						//
+						// @NOTE: first see if there is an entity attached to the renderobject via guid
+						// Edit props connected to the entity
+						//
+						Entity* foundEnt = nullptr;
+						if (!foundRO->attachedEntityGuid.empty())
+						{
+							for (auto& ent : _entityManager->_entities)
+							{
+								if (ent->getGUID() == foundRO->attachedEntityGuid)
+								{
+									foundEnt = ent;
+									break;
+								}
+							}
+
+							if (foundEnt && ImGui::CollapsingHeader(("Entity " + foundEnt->getGUID()).c_str(), ImGuiTreeNodeFlags_DefaultOpen))
+							{
+								if (matrixToMoveMoved)
+									foundEnt->reportMoved(_movingMatrix.matrixToMove);
+
+								std::string guidCopy = foundEnt->getGUID();
+								ImGui::InputText("GUID", &guidCopy);
+
+								foundEnt->renderImGui();
+							}
+						}
+					}
+
+					accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
+					maxWindowWidth = std::max(maxWindowWidth, ImGui::GetWindowWidth());
+				}
+				ImGui::End();
+			}
+
+			//
+			// Scroll the left pane
+			//
+			if (io.MousePos.x <= maxWindowWidth)
+				windowOffsetY += input::renderInputSet().UIScrollDelta.axisY * scrollSpeed;
+		} break;
+
+		case EditorModes::TEXTURE_EDITOR:
+		{
+			ImGui::Begin("SAMPLE WINDOW");
+			{
+				ImGui::Text("Hi");
+			}
+			ImGui::End();
+		} break;
+	}
+	
 }
 
 void VulkanEngine::renderImGui(float_t deltaTime)

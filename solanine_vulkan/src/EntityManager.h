@@ -7,6 +7,10 @@
 
 class Entity;
 class DataSerialized;
+namespace scene
+{
+	void tick();
+}
 namespace physengine
 {
 	void runPhysicsEngineAsync();
@@ -42,5 +46,6 @@ private:
 
 	friend class VulkanEngine;
 	friend class Entity;
+	friend void scene::tick();
 	friend void physengine::runPhysicsEngineAsync();
 };

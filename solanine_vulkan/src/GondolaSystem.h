@@ -15,7 +15,7 @@ public:
 
     static VulkanEngine* _engine;
 
-    GondolaSystem(EntityManager* em, RenderObjectManager* rom, VulkanEngine* engineRef, DataSerialized* ds);
+    GondolaSystem(EntityManager* em, RenderObjectManager* rom, DataSerialized* ds);
     ~GondolaSystem();
 
     void simulationUpdate(float_t simDeltaTime) override;

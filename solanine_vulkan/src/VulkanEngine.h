@@ -478,6 +478,19 @@ public:
 private:
 
 	//
+	// Editor Modes
+	// @TODO: move this to a place that's not here!
+	//
+	enum class EditorModes
+	{
+		LEVEL_EDITOR,
+		TEXTURE_EDITOR,
+		MATERIAL_EDITOR,
+	};
+	EditorModes _currentEditorMode = EditorModes::TEXTURE_EDITOR;
+	void changeEditorMode(EditorModes newEditorMode);
+
+	//
 	// ImGui Stuff
 	//
 	struct ImGuiStuff
@@ -492,5 +505,6 @@ private:
 #endif
 
     friend class Entity;
-	friend Entity* scene::spinupNewObject(const std::string& objectName, VulkanEngine* engine, DataSerialized* ds);
+	friend void scene::tick();
+	friend Entity* scene::spinupNewObject(const std::string& objectName, DataSerialized* ds);
 };
