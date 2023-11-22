@@ -5,3 +5,10 @@ ktx2ktx2.exe
 ktxinfo.exe
 ktxsc.exe
 toktx.exe - KTX-Software v4.2.1
+
+Ideal ktx2 command:
+```
+./toktx.exe --zcmp 3 --genmipmaps [output.ktx] [input.png/.jpg/etc...]
+```
+
+NOTE: use https://github.com/kopaka1822/ImageViewer/releases/tag/3_7 (ImageViewer v3.7.0) to view ktx2 images.

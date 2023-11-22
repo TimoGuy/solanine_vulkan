@@ -24,6 +24,7 @@ namespace input
 		vec2 mouseDelta = GLM_VEC2_ZERO_INIT;
 		vec2 mouseScrollDelta = GLM_VEC2_ZERO_INIT;
 		bool LMB = false;
+		bool MMB = false;
 		bool RMB = false;
 		bool mouseMoved = false;
 
@@ -89,6 +90,10 @@ namespace input
 				{
 				case SDL_BUTTON_LEFT:
 					keyMouseState.LMB = (e.button.type == SDL_MOUSEBUTTONDOWN);
+					break;
+
+				case SDL_BUTTON_MIDDLE:
+					keyMouseState.MMB = (e.button.type == SDL_MOUSEBUTTONDOWN);
 					break;
 
 				case SDL_BUTTON_RIGHT:
@@ -221,6 +226,8 @@ namespace input
 		snapModifier.update(keyMouseState.lCtrl);
 		backwardsModifier.update(keyMouseState.lShift);
 
+		orbitCamFocusLengthMovement.update(keyMouseState.mouseScrollDelta[1]);
+		orbitCamDrag.update(keyMouseState.MMB);
 		freeCamMode.update(keyMouseState.RMB);
 
 		float_t h = 0.0f, v = 0.0f;

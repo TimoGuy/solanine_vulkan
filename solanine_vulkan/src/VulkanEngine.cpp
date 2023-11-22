@@ -98,7 +98,7 @@ void VulkanEngine::init()
 
 	AudioEngine::getInstance().initialize();
 	physengine::start(_entityManager);
-	globalState::initGlobalState(_camera->sceneCamera);
+	globalState::initGlobalState(this, _camera->sceneCamera);
 	scene::init(this);
 	GondolaSystem::_engine = this;
 
@@ -169,10 +169,7 @@ void VulkanEngine::run()
 		perfs[1] = SDL_GetPerformanceCounter();
 		// Toggle fullscreen.
 		if (input::renderInputSet().toggleFullscreen.onAction)
-		{
-			_windowFullscreen = !_windowFullscreen;
-			SDL_SetWindowFullscreen(_window, _windowFullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
-		}
+			setWindowFullscreen(!_windowFullscreen);
 
 #ifdef _DEVELOP
 		// Update time multiplier
@@ -240,6 +237,9 @@ void VulkanEngine::run()
 
 
 		perfs[8] = SDL_GetPerformanceCounter();
+		// Allow scene management to tear down or load scenes.
+		scene::tick();
+
 		// Add/Remove requested entities
 		_entityManager->INTERNALaddRemoveRequestedEntities();
 
@@ -354,6 +354,12 @@ void VulkanEngine::cleanup()
 	}
 
 	std::cout << "Cleanup procedure finished." << std::endl;
+}
+
+void VulkanEngine::setWindowFullscreen(bool isFullscreen)
+{
+	_windowFullscreen = isFullscreen;
+	SDL_SetWindowFullscreen(_window, _windowFullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
 }
 
 void VulkanEngine::renderPickingRenderpass(const FrameData& currentFrame)
@@ -568,14 +574,17 @@ void VulkanEngine::renderMainRenderpass(const FrameData& currentFrame, VkCommand
 	vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_INLINE);
 
 	// Render skybox //
-	// @TODO: put this into its own function!
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipeline);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipelineLayout, 1, 1, &skyboxMaterial.textureSet, 0, nullptr);
+	if (_currentEditorMode == EditorModes::LEVEL_EDITOR)
+	{
+		// @TODO: put this into its own function!
+		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipeline);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipelineLayout, 1, 1, &skyboxMaterial.textureSet, 0, nullptr);
 
-	auto skybox = _roManager->getModel("Box", nullptr, [](){});
-	skybox->bind(cmd);
-	skybox->draw(cmd);
+		auto skybox = _roManager->getModel("Box", nullptr, [](){});
+		skybox->bind(cmd);
+		skybox->draw(cmd);
+	}
 	///////////////////
 
 	// Bind material
@@ -1429,7 +1438,8 @@ void VulkanEngine::render()
 	//
 	// Picking Render Pass (OPTIONAL AND SEPARATE)
 	//
-	if (input::editorInputSet().pickObject.onAction &&
+	if (_currentEditorMode == EditorModes::LEVEL_EDITOR &&
+		input::editorInputSet().pickObject.onAction &&
 		_camera->getCameraMode() == Camera::_cameraMode_freeCamMode &&
 		!_camera->freeCamMode.enabled &&
 		!ImGui::GetIO().WantCaptureMouse &&
@@ -1478,7 +1488,7 @@ void VulkanEngine::loadImages()
 	// Load empty
 	{
 		Texture empty;
-		vkutil::loadImageFromFile(*this, "res/textures/empty.png", VK_FORMAT_R8G8B8A8_UNORM, 1, empty.image);
+		vkutil::loadImageFromFile(*this, "res/texture_pool/empty.png", VK_FORMAT_R8G8B8A8_UNORM, 1, empty.image);
 
 		VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_UNORM, empty.image._image, VK_IMAGE_ASPECT_COLOR_BIT, empty.image._mipLevels);
 		vkCreateImageView(_device, &imageInfo, nullptr, &empty.imageView);
@@ -1495,7 +1505,7 @@ void VulkanEngine::loadImages()
 	}
 	{
 		Texture empty;
-		vkutil::loadImage3DFromFile(*this, { "res/textures/empty.png" }, VK_FORMAT_R8G8B8A8_UNORM, empty.image);
+		vkutil::loadImage3DFromFile(*this, { "res/texture_pool/empty.png" }, VK_FORMAT_R8G8B8A8_UNORM, empty.image);
 
 		VkImageViewCreateInfo imageInfo = vkinit::imageview3DCreateInfo(VK_FORMAT_R8G8B8A8_UNORM, empty.image._image, VK_IMAGE_ASPECT_COLOR_BIT, empty.image._mipLevels);
 		vkCreateImageView(_device, &imageInfo, nullptr, &empty.imageView);
@@ -1514,7 +1524,7 @@ void VulkanEngine::loadImages()
 	// Load woodFloor057
 	{
 		Texture woodFloor057;
-		vkutil::loadImageFromFile(*this, "res/textures/WoodFloor057_1K-JPG/WoodFloor057_1K_Color.jpg", VK_FORMAT_R8G8B8A8_SRGB, 0, woodFloor057.image);
+		vkutil::loadImageFromFile(*this, "res/texture_pool/WoodFloor057_1K-JPG/WoodFloor057_1K_Color.jpg", VK_FORMAT_R8G8B8A8_SRGB, 0, woodFloor057.image);
 
 		VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, woodFloor057.image._image, VK_IMAGE_ASPECT_COLOR_BIT, woodFloor057.image._mipLevels);
 		vkCreateImageView(_device, &imageInfo, nullptr, &woodFloor057.imageView);
@@ -3833,7 +3843,7 @@ void VulkanEngine::initDescriptors()    // @NOTE: don't destroy and then recreat
 	//
 	// Text Mesh Fonts
 	//
-	textmesh::loadFontSDF("res/textures/font_sdf_rgba.png", "res/font.fnt", "defaultFont");
+	textmesh::loadFontSDF("res/texture_pool/font_sdf_rgba.png", "res/font.fnt", "defaultFont");
 
 	physengine::initDebugVisDescriptors(this);
 }
@@ -5787,6 +5797,8 @@ void VulkanEngine::submitSelectedRenderObjectId(int32_t poolIndex)
 
 void VulkanEngine::changeEditorMode(EditorModes newEditorMode)
 {
+	_movingMatrix.matrixToMove = nullptr;
+
 	// Spin down previous editor mode.
 	switch (_currentEditorMode)
 	{
@@ -5813,16 +5825,19 @@ void VulkanEngine::changeEditorMode(EditorModes newEditorMode)
 	{
 		case EditorModes::LEVEL_EDITOR:
 		{
+			_camera->requestCameraMode(_camera->_cameraMode_freeCamMode);
 			scene::loadScene(globalState::savedActiveScene, true);
 		} break;
 
 		case EditorModes::TEXTURE_EDITOR:
 		{
+			_camera->requestCameraMode(_camera->_cameraMode_orbitSubjectCamMode);
 			scene::loadScene("EDITOR_texture_editor.ssdat", true);
 		} break;
 
 		case EditorModes::MATERIAL_EDITOR:
 		{
+			_camera->requestCameraMode(_camera->_cameraMode_orbitSubjectCamMode);
 
 		} break;
 	}
@@ -5830,10 +5845,9 @@ void VulkanEngine::changeEditorMode(EditorModes newEditorMode)
 
 void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 {
+	constexpr float_t MAIN_MENU_PADDING = 18.0f;
 	static bool showDemoWindows = false;
 	static bool showPerfWindow = false;
-
-	constexpr float_t windowPadding = 8.0f;
 
 	bool allowKeyboardShortcuts =
 		_camera->getCameraMode() == Camera::_cameraMode_freeCamMode &&
@@ -5975,137 +5989,120 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 			}
 			ImGui::End();
 
-
-			//
-			// PBR Shading Properties
-			//
-			static float_t scrollSpeed = 40.0f;
-			static float_t windowOffsetY = 0.0f;
-			float_t accumulatedWindowHeight = 0.0f;
-			float_t maxWindowWidth = 0.0f;
-
-			ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight + windowOffsetY), ImGuiCond_Always);
-			ImGui::Begin("PBR Shading Properties", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
+			// Left side props windows.
+			ImGui::SetNextWindowPos(ImVec2(0.0f, MAIN_MENU_PADDING), ImGuiCond_Always);
+			ImGui::SetNextWindowSizeConstraints(ImVec2(-1.0f, 0.0f), ImVec2(-1.0f, _windowExtent.height - MAIN_MENU_PADDING));
+			ImGui::Begin("LEVEL EDITOR##Left side props windows", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
 			{
-				if (ImGui::DragFloat3("Light Direction", _pbrRendering.gpuSceneShadingProps.lightDir))
+				// PBR Shading props.
+				if (ImGui::CollapsingHeader("PBR Shading Properties", ImGuiTreeNodeFlags_DefaultOpen))
+				{
+					if (ImGui::DragFloat3("Light Direction", _pbrRendering.gpuSceneShadingProps.lightDir))
 					glm_normalize(_pbrRendering.gpuSceneShadingProps.lightDir);		
 
-				ImGui::DragFloat("Exposure", &_pbrRendering.gpuSceneShadingProps.exposure, 0.1f, 0.1f, 10.0f);
-				ImGui::DragFloat("Gamma", &_pbrRendering.gpuSceneShadingProps.gamma, 0.1f, 0.1f, 4.0f);
-				ImGui::DragFloat("IBL Strength", &_pbrRendering.gpuSceneShadingProps.scaleIBLAmbient, 0.1f, 0.0f, 2.0f);
+					ImGui::DragFloat("Exposure", &_pbrRendering.gpuSceneShadingProps.exposure, 0.1f, 0.1f, 10.0f);
+					ImGui::DragFloat("Gamma", &_pbrRendering.gpuSceneShadingProps.gamma, 0.1f, 0.1f, 4.0f);
+					ImGui::DragFloat("IBL Strength", &_pbrRendering.gpuSceneShadingProps.scaleIBLAmbient, 0.1f, 0.0f, 2.0f);
 
-				ImGui::DragFloat("Shadow Jitter Strength", &_pbrRendering.gpuSceneShadingProps.shadowJitterMapOffsetScale, 0.1f);
+					ImGui::DragFloat("Shadow Jitter Strength", &_pbrRendering.gpuSceneShadingProps.shadowJitterMapOffsetScale, 0.1f);
 
-				static int debugViewIndex = 0;
-				if (ImGui::Combo("Debug View Input", &debugViewIndex, "none\0Base color\0Normal\0Occlusion\0Emissive\0Metallic\0Roughness"))
-					_pbrRendering.gpuSceneShadingProps.debugViewInputs = (float_t)debugViewIndex;
+					static int debugViewIndex = 0;
+					if (ImGui::Combo("Debug View Input", &debugViewIndex, "none\0Base color\0Normal\0Occlusion\0Emissive\0Metallic\0Roughness"))
+						_pbrRendering.gpuSceneShadingProps.debugViewInputs = (float_t)debugViewIndex;
 
-				static int debugViewEquation = 0;
-				if (ImGui::Combo("Debug View Equation", &debugViewEquation, "none\0Diff (l,n)\0F (l,h)\0G (l,v,h)\0D (h)\0Specular"))
-					_pbrRendering.gpuSceneShadingProps.debugViewEquation = (float_t)debugViewEquation;
+					static int debugViewEquation = 0;
+					if (ImGui::Combo("Debug View Equation", &debugViewEquation, "none\0Diff (l,n)\0F (l,h)\0G (l,v,h)\0D (h)\0Specular"))
+						_pbrRendering.gpuSceneShadingProps.debugViewEquation = (float_t)debugViewEquation;
 
-				ImGui::Text(("Prefiltered Cubemap Miplevels: " + std::to_string((int32_t)_pbrRendering.gpuSceneShadingProps.prefilteredCubemapMipLevels)).c_str());
+					ImGui::Text(("Prefiltered Cubemap Miplevels: " + std::to_string((int32_t)_pbrRendering.gpuSceneShadingProps.prefilteredCubemapMipLevels)).c_str());
 
-				ImGui::Separator();
+					ImGui::Separator();
 
-				ImGui::Text("Toggle Layers");
+					ImGui::Text("Toggle Layers");
 
-				static const ImVec2 imageButtonSize = ImVec2(64, 64);
-				static const ImVec4 tintColorActive = ImVec4(1, 1, 1, 1);
-				static const ImVec4 tintColorInactive = ImVec4(1, 1, 1, 0.25);
+					static const ImVec2 imageButtonSize = ImVec2(64, 64);
+					static const ImVec4 tintColorActive = ImVec4(1, 1, 1, 1);
+					static const ImVec4 tintColorInactive = ImVec4(1, 1, 1, 0.25);
 
-				//
-				// Toggle Layers (Section: Rendering)
-				//
-				ImTextureID renderingLayersButtonIcons[] = {
-					(ImTextureID)_imguiData.textureLayerVisible,
-					(ImTextureID)_imguiData.textureLayerInvisible,
-					(ImTextureID)_imguiData.textureLayerBuilder,
-					(ImTextureID)_imguiData.textureLayerCollision,
-				};
-				std::string buttonTurnOnSfx[] = {
-					"res/_develop/layer_visible_sfx.ogg",
-					"res/_develop/layer_invisible_sfx.ogg",
-					"res/_develop/layer_builder_sfx.ogg",
-					"res/_develop/layer_collision_sfx.ogg",
-				};
+					//
+					// Toggle Layers (Section: Rendering)
+					//
+					ImTextureID renderingLayersButtonIcons[] = {
+						(ImTextureID)_imguiData.textureLayerVisible,
+						(ImTextureID)_imguiData.textureLayerInvisible,
+						(ImTextureID)_imguiData.textureLayerBuilder,
+						(ImTextureID)_imguiData.textureLayerCollision,
+					};
+					std::string buttonTurnOnSfx[] = {
+						"res/_develop/layer_visible_sfx.ogg",
+						"res/_develop/layer_invisible_sfx.ogg",
+						"res/_develop/layer_builder_sfx.ogg",
+						"res/_develop/layer_collision_sfx.ogg",
+					};
 
-				for (size_t i = 0; i < std::size(renderingLayersButtonIcons); i++)
-				{
-					bool isLayerActive = false;
-					switch (i)
+					for (size_t i = 0; i < std::size(renderingLayersButtonIcons); i++)
 					{
-					case 0:
-					case 1:
-					case 2:
-						isLayerActive = _roManager->_renderObjectLayersEnabled[i];
-						break;
-
-					case 3:
-						isLayerActive = generateCollisionDebugVisualization;
-						break;
-					}
-
-					if (ImGui::ImageButton(renderingLayersButtonIcons[i], imageButtonSize, ImVec2(0, 0), ImVec2(1, 1), -1, ImVec4(0, 0, 0, 0), isLayerActive ? tintColorActive : tintColorInactive))
-					{
+						bool isLayerActive = false;
 						switch (i)
 						{
 						case 0:
 						case 1:
 						case 2:
-						{
-							// Toggle render layer
-							_roManager->_renderObjectLayersEnabled[i] = !_roManager->_renderObjectLayersEnabled[i];
-							if (!_roManager->_renderObjectLayersEnabled[i])
-							{
-								// Find object that matrixToMove is pulling from (if any)
-								for (size_t poolIndex : _roManager->_renderObjectsIndices)
-								{
-									auto& ro = _roManager->_renderObjectPool[poolIndex];
-									if (_movingMatrix.matrixToMove == &ro.transformMatrix)
-									{
-										// @HACK: Reset the _movingMatrix.matrixToMove
-										//        if it's for one of the objects that just got disabled
-										if ((size_t)ro.renderLayer == i)
-											_movingMatrix.matrixToMove = nullptr;
-										break;
-									}
-								}
-							}
+							isLayerActive = _roManager->_renderObjectLayersEnabled[i];
 							break;
-						}
 
 						case 3:
-							// Collision Layer debug draw toggle
-							generateCollisionDebugVisualization = !generateCollisionDebugVisualization;
+							isLayerActive = generateCollisionDebugVisualization;
 							break;
 						}
 
-						// Assume toggle occurred (so if layer wasn't active)
-						if (!isLayerActive)
-							AudioEngine::getInstance().playSound(buttonTurnOnSfx[i]);
+						if (ImGui::ImageButton(renderingLayersButtonIcons[i], imageButtonSize, ImVec2(0, 0), ImVec2(1, 1), -1, ImVec4(0, 0, 0, 0), isLayerActive ? tintColorActive : tintColorInactive))
+						{
+							switch (i)
+							{
+							case 0:
+							case 1:
+							case 2:
+							{
+								// Toggle render layer
+								_roManager->_renderObjectLayersEnabled[i] = !_roManager->_renderObjectLayersEnabled[i];
+								if (!_roManager->_renderObjectLayersEnabled[i])
+								{
+									// Find object that matrixToMove is pulling from (if any)
+									for (size_t poolIndex : _roManager->_renderObjectsIndices)
+									{
+										auto& ro = _roManager->_renderObjectPool[poolIndex];
+										if (_movingMatrix.matrixToMove == &ro.transformMatrix)
+										{
+											// @HACK: Reset the _movingMatrix.matrixToMove
+											//        if it's for one of the objects that just got disabled
+											if ((size_t)ro.renderLayer == i)
+												_movingMatrix.matrixToMove = nullptr;
+											break;
+										}
+									}
+								}
+								break;
+							}
+
+							case 3:
+								// Collision Layer debug draw toggle
+								generateCollisionDebugVisualization = !generateCollisionDebugVisualization;
+								break;
+							}
+
+							// Assume toggle occurred (so if layer wasn't active)
+							if (!isLayerActive)
+								AudioEngine::getInstance().playSound(buttonTurnOnSfx[i]);
+						}
+
+						if ((int32_t)fmodf((float_t)(i + 1), 3.0f) != 0)
+							ImGui::SameLine();
 					}
-
-					if ((int32_t)fmodf((float_t)(i + 1), 3.0f) != 0)
-						ImGui::SameLine();
 				}
 
-				accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
-				maxWindowWidth = std::max(maxWindowWidth, ImGui::GetWindowWidth());
-			}
-			ImGui::End();
-
-			//
-			// Global Properties
-			//
-			ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight + windowOffsetY), ImGuiCond_Always);
-			ImGui::Begin("Global Properties", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
-			{
-				if (ImGui::CollapsingHeader("Debug Properties", ImGuiTreeNodeFlags_DefaultOpen))
-				{
-					ImGui::DragFloat("scrollSpeed", &scrollSpeed);
-				}
-
+				// Physics Props.
+				ImGui::Separator();
 				if (ImGui::CollapsingHeader("Physics Properties", ImGuiTreeNodeFlags_DefaultOpen))
 				{
 					static vec3 worldGravity = GLM_VEC3_ZERO_INIT;
@@ -6113,6 +6110,8 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 						physengine::setWorldGravity(worldGravity);
 				}
 
+				// Camera props.
+				ImGui::Separator();
 				if (ImGui::CollapsingHeader("Camera Properties", ImGuiTreeNodeFlags_DefaultOpen))
 				{
 					ImGui::Text("NOTE: press F10 to change camera types");
@@ -6135,6 +6134,8 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 					ImGui::DragFloat3("opponentTargetTransition.DOFPropsRelaxedState", _camera->mainCamMode.opponentTargetTransition.DOFPropsRelaxedState, 0.1f);
 				}
 
+				// DOF props.
+				ImGui::Separator();
 				if (ImGui::CollapsingHeader("Depth of Field Properties", ImGuiTreeNodeFlags_DefaultOpen))
 				{
 					ImGui::DragFloat("CoC Focus Depth", &globalState::DOFFocusDepth, 0.1f);
@@ -6143,6 +6144,8 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 					ImGui::DragFloat("DOF Gather Sample Radius", &_DOFSampleRadiusMultiplier, 0.1f);
 				}
 
+				// Textbox props.
+				ImGui::Separator();
 				if (ImGui::CollapsingHeader("Textbox Properties", ImGuiTreeNodeFlags_DefaultOpen))
 				{
 					ImGui::DragFloat3("mainRenderPosition", textbox::mainRenderPosition);
@@ -6150,326 +6153,301 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 					ImGui::DragFloat3("querySelectionsRenderPosition", textbox::querySelectionsRenderPosition);
 				}
 
-				accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
-				maxWindowWidth = std::max(maxWindowWidth, ImGui::GetWindowWidth());
-			}
-			ImGui::End();
-
-			//
-			// Create Entity
-			//
-			ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight + windowOffsetY), ImGuiCond_Always);
-			ImGui::Begin("Create Entity", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
-			{
-				static int32_t entityToCreateIndex = 1;  // @NOTE: don't want default setting to be `:player` or else you could accidentally create another player entity... and that is not needed for the levels
-				std::vector<std::string> listEntityTypes = scene::getListOfEntityTypes();
-				std::stringstream allEntityTypes;
-				for (auto entType : listEntityTypes)
-					allEntityTypes << entType << '\0';
-
-				ImGui::Combo("##Entity to create", &entityToCreateIndex, allEntityTypes.str().c_str());
-
-				static Entity* _flagAttachToThisEntity = nullptr;  // One frame lag fetch bc the `INTERNALaddRemoveRequestedEntities()` gets run once a frame instead of immediate add when an entity gets constructed.
-				if (_flagAttachToThisEntity)
+				// Entity creation. @TODO: this needs to be moved out.
+				ImGui::Separator();
+				if (ImGui::CollapsingHeader("Create Entity", ImGuiTreeNodeFlags_DefaultOpen))
 				{
-					for (size_t poolIndex : _roManager->_renderObjectsIndices)
-					{
-						auto& ro = _roManager->_renderObjectPool[poolIndex];
-						if (ro.attachedEntityGuid == _flagAttachToThisEntity->getGUID())
-							_movingMatrix.matrixToMove = &ro.transformMatrix;
-					}
-					_flagAttachToThisEntity = nullptr;
-				}
+					static int32_t entityToCreateIndex = 1;  // @NOTE: don't want default setting to be `:player` or else you could accidentally create another player entity... and that is not needed for the levels
+					std::vector<std::string> listEntityTypes = scene::getListOfEntityTypes();
+					std::stringstream allEntityTypes;
+					for (auto entType : listEntityTypes)
+						allEntityTypes << entType << '\0';
 
-				if (ImGui::Button("Create!"))
-				{
-					auto newEnt = scene::spinupNewObject(listEntityTypes[(size_t)entityToCreateIndex], nullptr);
-					_flagAttachToThisEntity = newEnt;  // @HACK: ... but if it works?
-				}
+					ImGui::Combo("##Entity to create", &entityToCreateIndex, allEntityTypes.str().c_str());
 
-				// Manipulate the selected entity
-				Entity* selectedEntity = nullptr;
-				for (size_t poolIndex : _roManager->_renderObjectsIndices)
-				{
-					auto& ro = _roManager->_renderObjectPool[poolIndex];
-					if (_movingMatrix.matrixToMove == &ro.transformMatrix)
-						for (auto& ent : _entityManager->_entities)
-							if (ro.attachedEntityGuid == ent->getGUID())
-							{
-								selectedEntity = ent;
-								break;
-							}
-					if (selectedEntity)
-						break;
-				}
-				if (selectedEntity)
-				{
-					// Duplicate
-					static bool canRunDuplicateProc = true;
-					if (ImGui::Button("Duplicate Selected Entity") || (allowKeyboardShortcuts && input::editorInputSet().duplicateObject.onAction))
+					static Entity* _flagAttachToThisEntity = nullptr;  // One frame lag fetch bc the `INTERNALaddRemoveRequestedEntities()` gets run once a frame instead of immediate add when an entity gets constructed.
+					if (_flagAttachToThisEntity)
 					{
-						if (canRunDuplicateProc)
+						for (size_t poolIndex : _roManager->_renderObjectsIndices)
 						{
-							DataSerializer ds;
-							selectedEntity->dump(ds);
-							auto dsd = ds.getSerializedData();
-							auto newEnt = scene::spinupNewObject(selectedEntity->getTypeName(), &dsd);
-							_flagAttachToThisEntity = newEnt;
+							auto& ro = _roManager->_renderObjectPool[poolIndex];
+							if (ro.attachedEntityGuid == _flagAttachToThisEntity->getGUID())
+								_movingMatrix.matrixToMove = &ro.transformMatrix;
 						}
-
-						canRunDuplicateProc = false;
-					}
-					else
-						canRunDuplicateProc = true;
-
-					// Delete
-					static bool canRunDeleteProc = true;
-					
-					ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0.0f, 0.5f, 0.6f));
-					ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0.0f, 0.7f, 0.7f));
-					ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0.0f, 0.8f, 0.8f));
-
-					if (ImGui::Button("Delete Selected Entity!") || (allowKeyboardShortcuts && input::editorInputSet().deleteObject.onAction))
-					{
-						if (canRunDeleteProc)
-						{
-							_entityManager->destroyEntity(selectedEntity);
-							_movingMatrix.matrixToMove = nullptr;
-						}
-
-						canRunDeleteProc = false;
-					}
-					else
-						canRunDeleteProc = true;
-
-					ImGui::PopStyleColor(3);
-				}
-
-
-				accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
-				maxWindowWidth = std::max(maxWindowWidth, ImGui::GetWindowWidth());
-			}
-			ImGui::End();
-
-			//
-			// Moving stuff around window (using ImGuizmo)
-			//
-			if (_movingMatrix.matrixToMove != nullptr)
-			{
-				//
-				// Move the matrix via ImGuizmo
-				//
-				mat4 projection;
-				glm_mat4_copy(_camera->sceneCamera.gpuCameraData.projection, projection);
-				projection[1][1] *= -1.0f;
-
-				static ImGuizmo::OPERATION manipulateOperation = ImGuizmo::OPERATION::TRANSLATE;
-				static ImGuizmo::MODE manipulateMode           = ImGuizmo::MODE::WORLD;
-
-				vec3 snapValues(0.0f);
-				if (input::editorInputSet().snapModifier.holding)
-					if (manipulateOperation == ImGuizmo::OPERATION::ROTATE)
-						snapValues[0] = snapValues[1] = snapValues[2] = 45.0f;
-					else
-						snapValues[0] = snapValues[1] = snapValues[2] = 0.5f;
-
-				bool matrixToMoveMoved =
-					ImGuizmo::Manipulate(
-						(const float_t*)_camera->sceneCamera.gpuCameraData.view,
-						(const float_t*)projection,
-						manipulateOperation,
-						manipulateMode,
-						(float_t*)*_movingMatrix.matrixToMove,
-						nullptr,
-						(const float_t*)snapValues
-					);
-
-				//
-				// Move the matrix via the decomposed values
-				//
-				ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight + windowOffsetY), ImGuiCond_Always);
-				ImGui::Begin("Edit Selected", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
-				{
-					if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen))
-					{
-						vec3 position, eulerAngles, scale;
-						ImGuizmo::DecomposeMatrixToComponents(
-							(const float_t*)* _movingMatrix.matrixToMove,
-							position,
-							eulerAngles,
-							scale
-						);
-
-						bool changed = false;
-						changed |= ImGui::DragFloat3("Pos##ASDFASDFASDFJAKSDFKASDHF", position);
-						changed |= ImGui::DragFloat3("Rot##ASDFASDFASDFJAKSDFKASDHF", eulerAngles);
-						changed |= ImGui::DragFloat3("Sca##ASDFASDFASDFJAKSDFKASDHF", scale);
-
-						if (changed)
-						{
-							// Recompose the matrix
-							// @TODO: Figure out when to invalidate the cache bc the euler angles will reset!
-							//        Or... maybe invalidating the cache isn't necessary for this window????
-							ImGuizmo::RecomposeMatrixFromComponents(
-								position,
-								eulerAngles,
-								scale,
-								(float_t*)*_movingMatrix.matrixToMove
-							);
-
-							matrixToMoveMoved = true;
-						}
+						_flagAttachToThisEntity = nullptr;
 					}
 
-					static bool forceRecalculation = false;    // @NOTE: this is a flag for the key bindings below
-					static int operationIndex = 0;
-					static int modeIndex = 0;
-					if (ImGui::CollapsingHeader("Manipulation Gizmo", ImGuiTreeNodeFlags_DefaultOpen))
+					if (ImGui::Button("Create!"))
 					{
-						if (ImGui::Combo("Operation", &operationIndex, "Translate\0Rotate\0Scale") || forceRecalculation)
-						{
-							switch (operationIndex)
-							{
-							case 0:
-								manipulateOperation = ImGuizmo::OPERATION::TRANSLATE;
-								break;
-							case 1:
-								manipulateOperation = ImGuizmo::OPERATION::ROTATE;
-								break;
-							case 2:
-								manipulateOperation = ImGuizmo::OPERATION::SCALE;
-								break;
-							}
-						}
-						if (ImGui::Combo("Mode", &modeIndex, "World\0Local") || forceRecalculation)
-						{
-							switch (modeIndex)
-							{
-							case 0:
-								manipulateMode = ImGuizmo::MODE::WORLD;
-								break;
-							case 1:
-								manipulateMode = ImGuizmo::MODE::LOCAL;
-								break;
-							}
-						}
+						auto newEnt = scene::spinupNewObject(listEntityTypes[(size_t)entityToCreateIndex], nullptr);
+						_flagAttachToThisEntity = newEnt;  // @HACK: ... but if it works?
 					}
 
-					// Key bindings for switching the operation and mode
-					forceRecalculation = false;
-
-					bool hasMouseButtonDown = false;
-					for (size_t i = 0; i < 5; i++)
-						hasMouseButtonDown |= io.MouseDown[i];    // @NOTE: this covers cases of gizmo operation changing while left clicking on the gizmo (or anywhere else) or flying around with right click.  -Timo
-					if (!hasMouseButtonDown && allowKeyboardShortcuts)
-					{
-						static bool qKeyLock = false;
-						if (input::editorInputSet().toggleTransformManipulationMode.onAction)
-						{
-							if (!qKeyLock)
-							{
-								modeIndex = (int)!(bool)modeIndex;
-								qKeyLock = true;
-								forceRecalculation = true;
-							}
-						}
-						else
-						{
-							qKeyLock = false;
-						}
-
-						if (input::editorInputSet().switchToTransformPosition.onAction)
-						{
-							operationIndex = 0;
-							forceRecalculation = true;
-						}
-						if (input::editorInputSet().switchToTransformRotation.onAction)
-						{
-							operationIndex = 1;
-							forceRecalculation = true;
-						}
-						if (input::editorInputSet().switchToTransformScale.onAction)
-						{
-							operationIndex = 2;
-							forceRecalculation = true;
-						}
-					}
-
-					//
-					// Edit props exclusive to render objects
-					//
-					RenderObject* foundRO = nullptr;
+					// Manipulate the selected entity
+					Entity* selectedEntity = nullptr;
 					for (size_t poolIndex : _roManager->_renderObjectsIndices)
 					{
 						auto& ro = _roManager->_renderObjectPool[poolIndex];
 						if (_movingMatrix.matrixToMove == &ro.transformMatrix)
-						{
-							foundRO = &ro;
-							break;
-						}
-					}
-
-					if (foundRO)
-					{
-						if (ImGui::CollapsingHeader("Render Object", ImGuiTreeNodeFlags_DefaultOpen))
-						{
-							int32_t temp = (int32_t)foundRO->renderLayer;
-							if (ImGui::Combo("Render Layer##asdfasdfasgasgcombo", &temp, "VISIBLE\0INVISIBLE\0BUILDER"))
-								foundRO->renderLayer = RenderLayer(temp);
-						}
-
-						//
-						// @TODO: see if you can't implement one for physics objects
-						// @REPLY: I can't. I don't want to. I don't see a point.
-						//
-
-						//
-						// @NOTE: first see if there is an entity attached to the renderobject via guid
-						// Edit props connected to the entity
-						//
-						Entity* foundEnt = nullptr;
-						if (!foundRO->attachedEntityGuid.empty())
-						{
 							for (auto& ent : _entityManager->_entities)
-							{
-								if (ent->getGUID() == foundRO->attachedEntityGuid)
+								if (ro.attachedEntityGuid == ent->getGUID())
 								{
-									foundEnt = ent;
+									selectedEntity = ent;
+									break;
+								}
+						if (selectedEntity)
+							break;
+					}
+					if (selectedEntity)
+					{
+						// Duplicate
+						static bool canRunDuplicateProc = true;
+						if (ImGui::Button("Duplicate Selected Entity") || (allowKeyboardShortcuts && input::editorInputSet().duplicateObject.onAction))
+						{
+							if (canRunDuplicateProc)
+							{
+								DataSerializer ds;
+								selectedEntity->dump(ds);
+								auto dsd = ds.getSerializedData();
+								auto newEnt = scene::spinupNewObject(selectedEntity->getTypeName(), &dsd);
+								_flagAttachToThisEntity = newEnt;
+							}
+
+							canRunDuplicateProc = false;
+						}
+						else
+							canRunDuplicateProc = true;
+
+						// Delete
+						static bool canRunDeleteProc = true;
+						
+						ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0.0f, 0.5f, 0.6f));
+						ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0.0f, 0.7f, 0.7f));
+						ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0.0f, 0.8f, 0.8f));
+
+						if (ImGui::Button("Delete Selected Entity!") || (allowKeyboardShortcuts && input::editorInputSet().deleteObject.onAction))
+						{
+							if (canRunDeleteProc)
+							{
+								_entityManager->destroyEntity(selectedEntity);
+								_movingMatrix.matrixToMove = nullptr;
+							}
+
+							canRunDeleteProc = false;
+						}
+						else
+							canRunDeleteProc = true;
+
+						ImGui::PopStyleColor(3);
+					}
+				}
+
+				if (_movingMatrix.matrixToMove != nullptr)
+				{
+					// Move the picked matrix via ImGuizmo.
+					mat4 projection;
+					glm_mat4_copy(_camera->sceneCamera.gpuCameraData.projection, projection);
+					projection[1][1] *= -1.0f;
+
+					static ImGuizmo::OPERATION manipulateOperation = ImGuizmo::OPERATION::TRANSLATE;
+					static ImGuizmo::MODE manipulateMode           = ImGuizmo::MODE::WORLD;
+
+					vec3 snapValues(0.0f);
+					if (input::editorInputSet().snapModifier.holding)
+						if (manipulateOperation == ImGuizmo::OPERATION::ROTATE)
+							snapValues[0] = snapValues[1] = snapValues[2] = 45.0f;
+						else
+							snapValues[0] = snapValues[1] = snapValues[2] = 0.5f;
+
+					bool matrixToMoveMoved =
+						ImGuizmo::Manipulate(
+							(const float_t*)_camera->sceneCamera.gpuCameraData.view,
+							(const float_t*)projection,
+							manipulateOperation,
+							manipulateMode,
+							(float_t*)*_movingMatrix.matrixToMove,
+							nullptr,
+							(const float_t*)snapValues
+						);
+
+					// Edit Selected Entity.
+					ImGui::Separator();
+					if (ImGui::CollapsingHeader("Edit Selected Entity", ImGuiTreeNodeFlags_DefaultOpen))
+					{
+						if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen))
+						{
+							vec3 position, eulerAngles, scale;
+							ImGuizmo::DecomposeMatrixToComponents(
+								(const float_t*)* _movingMatrix.matrixToMove,
+								position,
+								eulerAngles,
+								scale
+							);
+
+							bool changed = false;
+							changed |= ImGui::DragFloat3("Pos##ASDFASDFASDFJAKSDFKASDHF", position);
+							changed |= ImGui::DragFloat3("Rot##ASDFASDFASDFJAKSDFKASDHF", eulerAngles);
+							changed |= ImGui::DragFloat3("Sca##ASDFASDFASDFJAKSDFKASDHF", scale);
+
+							if (changed)
+							{
+								// Recompose the matrix
+								// @TODO: Figure out when to invalidate the cache bc the euler angles will reset!
+								//        Or... maybe invalidating the cache isn't necessary for this window????
+								ImGuizmo::RecomposeMatrixFromComponents(
+									position,
+									eulerAngles,
+									scale,
+									(float_t*)*_movingMatrix.matrixToMove
+								);
+
+								matrixToMoveMoved = true;
+							}
+						}
+
+						static bool forceRecalculation = false;    // @NOTE: this is a flag for the key bindings below
+						static int operationIndex = 0;
+						static int modeIndex = 0;
+						if (ImGui::CollapsingHeader("Manipulation Gizmo", ImGuiTreeNodeFlags_DefaultOpen))
+						{
+							if (ImGui::Combo("Operation", &operationIndex, "Translate\0Rotate\0Scale") || forceRecalculation)
+							{
+								switch (operationIndex)
+								{
+								case 0:
+									manipulateOperation = ImGuizmo::OPERATION::TRANSLATE;
+									break;
+								case 1:
+									manipulateOperation = ImGuizmo::OPERATION::ROTATE;
+									break;
+								case 2:
+									manipulateOperation = ImGuizmo::OPERATION::SCALE;
 									break;
 								}
 							}
-
-							if (foundEnt && ImGui::CollapsingHeader(("Entity " + foundEnt->getGUID()).c_str(), ImGuiTreeNodeFlags_DefaultOpen))
+							if (ImGui::Combo("Mode", &modeIndex, "World\0Local") || forceRecalculation)
 							{
-								if (matrixToMoveMoved)
-									foundEnt->reportMoved(_movingMatrix.matrixToMove);
+								switch (modeIndex)
+								{
+								case 0:
+									manipulateMode = ImGuizmo::MODE::WORLD;
+									break;
+								case 1:
+									manipulateMode = ImGuizmo::MODE::LOCAL;
+									break;
+								}
+							}
+						}
 
-								std::string guidCopy = foundEnt->getGUID();
-								ImGui::InputText("GUID", &guidCopy);
+						// Key bindings for switching the operation and mode
+						forceRecalculation = false;
 
-								foundEnt->renderImGui();
+						bool hasMouseButtonDown = false;
+						for (size_t i = 0; i < 5; i++)
+							hasMouseButtonDown |= io.MouseDown[i];    // @NOTE: this covers cases of gizmo operation changing while left clicking on the gizmo (or anywhere else) or flying around with right click.  -Timo
+						if (!hasMouseButtonDown && allowKeyboardShortcuts)
+						{
+							static bool qKeyLock = false;
+							if (input::editorInputSet().toggleTransformManipulationMode.onAction)
+							{
+								if (!qKeyLock)
+								{
+									modeIndex = (int)!(bool)modeIndex;
+									qKeyLock = true;
+									forceRecalculation = true;
+								}
+							}
+							else
+							{
+								qKeyLock = false;
+							}
+
+							if (input::editorInputSet().switchToTransformPosition.onAction)
+							{
+								operationIndex = 0;
+								forceRecalculation = true;
+							}
+							if (input::editorInputSet().switchToTransformRotation.onAction)
+							{
+								operationIndex = 1;
+								forceRecalculation = true;
+							}
+							if (input::editorInputSet().switchToTransformScale.onAction)
+							{
+								operationIndex = 2;
+								forceRecalculation = true;
+							}
+						}
+
+						//
+						// Edit props exclusive to render objects
+						//
+						RenderObject* foundRO = nullptr;
+						for (size_t poolIndex : _roManager->_renderObjectsIndices)
+						{
+							auto& ro = _roManager->_renderObjectPool[poolIndex];
+							if (_movingMatrix.matrixToMove == &ro.transformMatrix)
+							{
+								foundRO = &ro;
+								break;
+							}
+						}
+
+						if (foundRO)
+						{
+							if (ImGui::CollapsingHeader("Render Object", ImGuiTreeNodeFlags_DefaultOpen))
+							{
+								int32_t temp = (int32_t)foundRO->renderLayer;
+								if (ImGui::Combo("Render Layer##asdfasdfasgasgcombo", &temp, "VISIBLE\0INVISIBLE\0BUILDER"))
+									foundRO->renderLayer = RenderLayer(temp);
+							}
+
+							//
+							// @TODO: see if you can't implement one for physics objects
+							// @REPLY: I can't. I don't want to. I don't see a point.
+							//
+
+							//
+							// @NOTE: first see if there is an entity attached to the renderobject via guid
+							// Edit props connected to the entity
+							//
+							Entity* foundEnt = nullptr;
+							if (!foundRO->attachedEntityGuid.empty())
+							{
+								for (auto& ent : _entityManager->_entities)
+								{
+									if (ent->getGUID() == foundRO->attachedEntityGuid)
+									{
+										foundEnt = ent;
+										break;
+									}
+								}
+
+								if (foundEnt && ImGui::CollapsingHeader(("Entity " + foundEnt->getGUID()).c_str(), ImGuiTreeNodeFlags_DefaultOpen))
+								{
+									if (matrixToMoveMoved)
+										foundEnt->reportMoved(_movingMatrix.matrixToMove);
+
+									std::string guidCopy = foundEnt->getGUID();
+									ImGui::InputText("GUID", &guidCopy);
+
+									foundEnt->renderImGui();
+								}
 							}
 						}
 					}
-
-					accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
-					maxWindowWidth = std::max(maxWindowWidth, ImGui::GetWindowWidth());
 				}
-				ImGui::End();
 			}
-
-			//
-			// Scroll the left pane
-			//
-			if (io.MousePos.x <= maxWindowWidth)
-				windowOffsetY += input::renderInputSet().UIScrollDelta.axisY * scrollSpeed;
+			ImGui::End();
 		} break;
 
 		case EditorModes::TEXTURE_EDITOR:
 		{
-			ImGui::Begin("SAMPLE WINDOW");
+			ImGui::SetNextWindowPos(ImVec2(0.0f, MAIN_MENU_PADDING), ImGuiCond_Always);
+			ImGui::SetNextWindowSizeConstraints(ImVec2(-1.0f, 0.0f), ImVec2(-1.0f, _windowExtent.height - MAIN_MENU_PADDING));
+			ImGui::Begin("TEXTURE EDITOR##Texture editor window.", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
 			{
-				ImGui::Text("Hi");
+				ImGui::
 			}
 			ImGui::End();
 		} break;

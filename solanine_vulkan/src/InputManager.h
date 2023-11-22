@@ -83,6 +83,8 @@ namespace input
 		HoldAction          snapModifier;
 		HoldAction          backwardsModifier;
 
+		OneAxis             orbitCamFocusLengthMovement;
+		OnHoldReleaseAction orbitCamDrag;
 		OnHoldReleaseAction freeCamMode;
 		TwoAxis             freeCamMovement;
 		OneAxis             verticalFreeCamMovement;

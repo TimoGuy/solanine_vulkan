@@ -169,37 +169,53 @@ void MainCamMode::setOpponentCamTargetObject(physengine::CapsulePhysicsData* tar
 //
 // Camera
 //
-Camera::Camera(VulkanEngine* engine) : _engine(engine)
+Camera::Camera(VulkanEngine* engine) : _engine(engine) { }
+
+void Camera::requestCameraMode(uint32_t camMode)
 {
-	// Setup the initial camera mode with ::ENTER event
-	_changeEvents[_cameraMode] = CameraModeChangeEvent::ENTER;
+	_requestedCameraMode = camMode;
 }
 
 void Camera::update(float_t deltaTime)
 {
-    //
-	// Update camera modes
-	// @TODO: scrunch this into its own function
-	//
+	// Update camera modes if in free/main cam modes.
+	if (input::editorInputSet().togglePlayEditMode.onAction)
+	{
+		if (_cameraMode == _cameraMode_mainCamMode)
+			requestCameraMode(_cameraMode_freeCamMode);
+		else if (_cameraMode == _cameraMode_freeCamMode)
+			requestCameraMode(_cameraMode_mainCamMode);
+	}
+
+	// Execute 2-step camera mode change.
 	if (_flagNextStepChangeCameraMode)
 	{
 		_flagNextStepChangeCameraMode = false;
 
-		_cameraMode = (_cameraMode + 1) % _numCameraModes;
+		_cameraMode = _requestedCameraMode;
 		_changeEvents[_cameraMode] = CameraModeChangeEvent::ENTER;
 
+		static std::string names[] = {
+			"game camera",
+			"free camera",
+			"orbit subject camera",
+		};
+
 		debug::pushDebugMessage({
-			.message = "Changed to " + std::string(_cameraMode == 0 ? "game camera" : "free camera") + " mode",
+			.message = "Changed to " + names[(size_t)_cameraMode] + " mode",
 			});
 	}
-	else if (input::editorInputSet().togglePlayEditMode.onAction)  // @NOTE: we never want a state where _flagNextStepChangeCameraMode==true and onKeyF10Press==true are processed. Only one at a time so that there is a dedicated frame for ::ENTER and ::EXIT
+	else if (_cameraMode != _requestedCameraMode)
 	{
-		_changeEvents[_cameraMode] = CameraModeChangeEvent::EXIT;
+		if (_cameraMode < _numCameraModes)
+			_changeEvents[_cameraMode] = CameraModeChangeEvent::EXIT;
 		_flagNextStepChangeCameraMode = true;
 	}
 
+	// Update camera modes.
 	updateMainCam(deltaTime, _changeEvents[_cameraMode_mainCamMode]);
 	updateFreeCam(deltaTime, _changeEvents[_cameraMode_freeCamMode]);
+	updateOrbitSubjectCam(deltaTime, _changeEvents[_cameraMode_orbitSubjectCamMode]);
 	
 	// Reset all camera mode change events
 	for (size_t i = 0; i < _numCameraModes; i++)
@@ -524,12 +540,15 @@ void Camera::updateMainCam(float_t deltaTime, CameraModeChangeEvent changeEvent)
 	//
 	// Manual rotation via mouse input
 	//
-	vec2 mouseDeltaFloatSwizzled = { input::renderInputSet().cameraDelta.axisY, -input::renderInputSet().cameraDelta.axisX };
+	vec2 mouseDeltaFloatSwizzled = {
+		input::renderInputSet().cameraDelta.axisY,
+		-input::renderInputSet().cameraDelta.axisX
+	};
 	if (allowInput && glm_vec3_norm2(mouseDeltaFloatSwizzled) > 0.000001f)
 	{
 		vec2 sensitivityRadians = {
-			glm_rad(mainCamMode.sensitivity[0]),
 			glm_rad(mainCamMode.sensitivity[1]),
+			glm_rad(mainCamMode.sensitivity[0]),
 		};
 		glm_vec2_muladd(mouseDeltaFloatSwizzled, sensitivityRadians, mainCamMode.orbitAngles);
 
@@ -618,7 +637,7 @@ void Camera::updateFreeCam(float_t deltaTime, CameraModeChangeEvent changeEvent)
 
 	if (input::editorInputSet().freeCamMode.onAction || input::editorInputSet().freeCamMode.onRelease)
 	{
-		freeCamMode.enabled = (input::editorInputSet().freeCamMode.holding && _cameraMode == _cameraMode_freeCamMode);
+		freeCamMode.enabled = (input::editorInputSet().freeCamMode.onAction && _cameraMode == _cameraMode_freeCamMode);
 		SDL_SetRelativeMouseMode(freeCamMode.enabled ? SDL_TRUE : SDL_FALSE);		// @NOTE: this causes cursor to disappear and not leave window boundaries (@BUG: Except for if you right click into the window?)
 					
 		if (freeCamMode.enabled)
@@ -685,6 +704,96 @@ void Camera::updateFreeCam(float_t deltaTime, CameraModeChangeEvent changeEvent)
 		glm_vec3_addadd(facingDirectionScaled, upScaled, sceneCamera.gpuCameraData.cameraPosition);
 
 		// Recalculate camera
+		sceneCamera.recalculateSceneCamera(_engine->_pbrRendering.gpuSceneShadingProps);
+	}
+}
+
+void Camera::updateOrbitSubjectCam(float_t deltaTime, CameraModeChangeEvent changeEvent)
+{
+	if (_cameraMode != _cameraMode_orbitSubjectCamMode)
+		return;
+
+	if (changeEvent == CameraModeChangeEvent::ENTER)
+	{
+		// @HARDCODE
+		glm_vec3_zero(orbitSubjectCamMode.focusPosition);
+		orbitSubjectCamMode.focusLength = 2.5f;
+		orbitSubjectCamMode.orbitAngles[0] = glm_rad(30.0f);
+		orbitSubjectCamMode.orbitAngles[1] = 0.0f;
+	}
+
+	bool forceDragRelease = false;
+	if (changeEvent == CameraModeChangeEvent::EXIT)
+		forceDragRelease = true;
+
+	if (input::editorInputSet().orbitCamDrag.onAction || input::editorInputSet().orbitCamDrag.onRelease || forceDragRelease)
+	{
+		orbitSubjectCamMode.moving = input::editorInputSet().orbitCamDrag.onAction;
+		if (forceDragRelease)
+			orbitSubjectCamMode.moving = false;
+
+		SDL_SetRelativeMouseMode(orbitSubjectCamMode.moving ? SDL_TRUE : SDL_FALSE);
+					
+		if (orbitSubjectCamMode.moving)
+			SDL_GetMouseState(
+				&orbitSubjectCamMode.savedMousePosition[0],
+				&orbitSubjectCamMode.savedMousePosition[1]
+			);
+		else
+			SDL_WarpMouseInWindow(_engine->_window, orbitSubjectCamMode.savedMousePosition[0], orbitSubjectCamMode.savedMousePosition[1]);
+	}
+
+	bool recalculateCamera = false;
+	if (changeEvent == CameraModeChangeEvent::ENTER)
+		recalculateCamera = true;
+	
+	// Add input to new camera settings.
+	if (orbitSubjectCamMode.moving)
+	{
+		vec2 orbitDeltaSwizzledCooked = {
+			input::renderInputSet().cameraDelta.axisY * glm_rad(orbitSubjectCamMode.sensitivity[1]),
+			-input::renderInputSet().cameraDelta.axisX * glm_rad(orbitSubjectCamMode.sensitivity[0]),
+		};
+		glm_vec2_add(
+			orbitSubjectCamMode.orbitAngles,
+			orbitDeltaSwizzledCooked,
+			orbitSubjectCamMode.orbitAngles
+		);
+
+		recalculateCamera = true;
+	}
+
+	if (std::abs(input::editorInputSet().orbitCamFocusLengthMovement.axis) > 0.000001f)
+	{
+		float_t focusLengthDeltaCooked = input::editorInputSet().orbitCamFocusLengthMovement.axis * orbitSubjectCamMode.focusLengthSensitivity;
+
+		orbitSubjectCamMode.focusLength += -focusLengthDeltaCooked;
+		orbitSubjectCamMode.focusLength = glm_max(orbitSubjectCamMode.focusLength, 1.5f);
+
+		// std::cout << "NEW FOCUS LENGTH: " << orbitSubjectCamMode.focusLength << std::endl;
+
+		recalculateCamera = true;
+	}
+
+	// Recalculate camera.
+	if (recalculateCamera)
+	{
+		clampXOrbitAngle(orbitSubjectCamMode.orbitAngles[0]);
+		mat4 lookRotation;
+		glm_euler_zyx(
+			vec3{ orbitSubjectCamMode.orbitAngles[0], orbitSubjectCamMode.orbitAngles[1], 0.0f },
+			lookRotation
+		);
+
+		vec3 lookDirection;
+		glm_mat4_mulv3(lookRotation, vec3{ 0.0f, 0.0f, 1.0f }, 0.0f, lookDirection);
+
+		vec3 camPosition;
+		glm_vec3_scale(lookDirection, -(orbitSubjectCamMode.focusLength * orbitSubjectCamMode.focusLength), camPosition);  // @NOTE: squaring the focus length so that as the creator zooms out or zooms in it's not slower the further out and vice versa.  -Timo 2023/11/21
+		glm_vec3_add(camPosition, orbitSubjectCamMode.focusPosition, camPosition);
+
+		glm_vec3_copy(lookDirection, sceneCamera.facingDirection);
+		glm_vec3_copy(camPosition, sceneCamera.gpuCameraData.cameraPosition);
 		sceneCamera.recalculateSceneCamera(_engine->_pbrRendering.gpuSceneShadingProps);
 	}
 }

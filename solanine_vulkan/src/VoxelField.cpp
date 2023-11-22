@@ -84,7 +84,7 @@ VoxelField::~VoxelField()
 
 void triggerLoadLightingIfExists(VoxelField_XData& d, const std::string& guid)
 {
-    std::string folder = "res/textures/generated_voxelfield_lightgrids/vf_" + guid;
+    std::string folder = "res/texture_pool/generated_voxelfield_lightgrids/vf_" + guid;
     if (!std::filesystem::exists(folder) ||
         !std::filesystem::is_directory(folder))
     {
@@ -1166,7 +1166,7 @@ void buildLighting(VoxelField_XData* d, const std::string& guid)
     //
     // Save lightgrid information to file
     //
-    std::string folder = "res/textures/generated_voxelfield_lightgrids/vf_" + guid;
+    std::string folder = "res/texture_pool/generated_voxelfield_lightgrids/vf_" + guid;
     std::filesystem::create_directories(folder);
     for (size_t k = 0; k < lightgridZ; k++)
     {

@@ -25,7 +25,8 @@
         - [f] Change `VulkanEngine` to `VulkanRenderer`.
             - [ ] Set up main engine. It manages the window, selects the renderer/starts the render engine, starts the simulation engine, then polls for input and keeps the input state up to date. Upon shutting down it takes care of shutting down the render engine and simulation engine.
         - [ ] Separate things out into editor modes
-            - [ ] Level Editor (everything created up to this point with a loaded in scene)
+            - [x] Level Editor (everything created up to this point with a loaded in scene)
+            - [x] Texture Editor
             - [ ] Material Editor (what we're gonna create. Just no objects except for the `MaterialViewer` object type to render the textures and a bunch of imgui stuff)
     - [ ] Texture cooker
         - [ ] Textures into ktx format.

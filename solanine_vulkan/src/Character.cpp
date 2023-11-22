@@ -1759,14 +1759,6 @@ void defaultPhysicsUpdate(float_t simDeltaTime, Character_XData* d, EntityManage
             if (d->prevIsGrounded)
             {
                 d->facingDirection = atan2f(d->worldSpaceInput[0], d->worldSpaceInput[2]);
-
-                // Update facing direction with cosmetic simulation transform.
-                vec3 eulerAngles = { 0.0f, d->facingDirection, 0.0f };
-                mat4 rotation;
-                glm_euler_zyx(eulerAngles, rotation);
-                versor rotationV;
-                glm_mat4_quat(rotation, rotationV);
-                physengine::updateSimulationTransformRotation(d->cpd->simTransformId, rotationV);
             }
             if (d->prevIsGrounded &&
                 (d->prevIsGrounded != d->prevPrevIsGrounded ||
@@ -2098,6 +2090,14 @@ void defaultPhysicsUpdate(float_t simDeltaTime, Character_XData* d, EntityManage
 
     glm_vec3_copy(d->cpd->currentCOMPosition, d->position);
     d->prevIsGrounded = physengine::isGrounded(*d->cpd);
+
+    // Update facing direction with cosmetic simulation transform.
+    vec3 eulerAngles = { 0.0f, d->facingDirection, 0.0f };
+    mat4 rotation;
+    glm_euler_zyx(eulerAngles, rotation);
+    versor rotationV;
+    glm_mat4_quat(rotation, rotationV);
+    physengine::updateSimulationTransformRotation(d->cpd->simTransformId, rotationV);
 }
 
 void calculateBladeStartEndFromHandAttachment(Character_XData* d, vec3& bladeStart, vec3& bladeEnd)

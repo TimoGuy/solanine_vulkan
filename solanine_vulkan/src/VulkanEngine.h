@@ -7,6 +7,7 @@
 #include "SceneManagement.h"
 
 
+struct SDL_Window;
 struct RenderObject;
 class RenderObjectManager;
 class Entity;
@@ -138,10 +139,12 @@ public:
 
 	VkExtent2D _windowExtent{ 1920, 1080 };
 	// VkExtent2D _windowExtent{ 1280, 720 };
-	struct SDL_Window* _window{ nullptr };
-	bool _windowFullscreen = true;
+	SDL_Window* _window = nullptr;
+	bool _windowFullscreen = false;
 	bool _isWindowMinimized = false;    // @NOTE: if we don't handle window minimization correctly, we can get the VK_ERROR_DEVICE_LOST(-4) error
 	bool _recreateSwapchain = false;
+
+	void setWindowFullscreen(bool isFullscreen);
 
 	//
 	// Vulkan Base

@@ -115,6 +115,22 @@ struct FreeCamMode
 	ivec2 savedMousePosition;
 	float_t sensitivity = 0.1f;
 };
+
+//
+// Orbit subject cam mode.
+// (Use middle mouse button to lock cursor and orbit around a set point)
+//
+struct OrbitSubjectCamMode
+{
+	bool moving = false;
+	ivec2 savedMousePosition;
+	vec3 focusPosition;
+	float_t focusLength;
+	vec2 orbitAngles;
+
+	vec2 sensitivity = { 0.2f, 0.2f };
+	float_t focusLengthSensitivity = 0.2f;
+};
 #endif
 
 //
@@ -124,15 +140,19 @@ struct Camera
 {
 	Camera(VulkanEngine* engine);
 
-	SceneCamera    sceneCamera;
-	MainCamMode    mainCamMode;
+	SceneCamera         sceneCamera;
+	MainCamMode         mainCamMode;
 #ifdef _DEVELOP
-	FreeCamMode    freeCamMode;
+	FreeCamMode         freeCamMode;
+	OrbitSubjectCamMode orbitSubjectCamMode;
 #endif
 
 	const static uint32_t
-		_cameraMode_mainCamMode = 0,
-		_cameraMode_freeCamMode = 1;
+		_cameraMode_mainCamMode         = 0,
+		_cameraMode_freeCamMode         = 1,
+		_cameraMode_orbitSubjectCamMode = 2,
+		_numCameraModes                 = 3;
+	void requestCameraMode(uint32_t camMode);
 	inline uint32_t getCameraMode() { return _cameraMode; }
 
 	void update(float_t deltaTime);
@@ -140,11 +160,12 @@ struct Camera
 private:
 	VulkanEngine* _engine;
 
-	static const uint32_t _numCameraModes = 2;
-	uint32_t _cameraMode = _cameraMode_freeCamMode;
+	uint32_t _cameraMode = (uint32_t)-1;
+	uint32_t _requestedCameraMode = (uint32_t)-1;
 	CameraModeChangeEvent _changeEvents[_numCameraModes];
 	bool _flagNextStepChangeCameraMode = false;
 
 	void updateMainCam(float_t deltaTime, CameraModeChangeEvent changeEvent);
 	void updateFreeCam(float_t deltaTime, CameraModeChangeEvent changeEvent);
+	void updateOrbitSubjectCam(float_t deltaTime, CameraModeChangeEvent changeEvent);
 };

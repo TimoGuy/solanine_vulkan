@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Imports.h"
+class VulkanEngine;
 struct SceneCamera;
 
 
@@ -62,7 +63,7 @@ namespace globalState
     };
 
 
-    void initGlobalState(SceneCamera& sc);
+    void initGlobalState(VulkanEngine* engine, SceneCamera& sc);
     void launchAsyncWriteTask();  // @NOTE: this is simply for things that are marked saved
     void cleanupGlobalState();
 

@@ -7,6 +7,7 @@
 #include "Imports.h"
 struct RenderObject;
 class RenderObjectManager;
+struct EDITORTextureViewer_XData;
 
 
 class EDITORTextureViewer : public Entity
@@ -24,14 +25,7 @@ public:
     void renderImGui();
 
 private:
-    RenderObject*        _renderObj;
-    RenderObjectManager* _rom;
-
-    // Load Props
-    mat4 _load_transform = GLM_MAT4_IDENTITY_INIT;
-
-    // Tweak Props
-    std::string          _notes;
+    EDITORTextureViewer_XData* d;
 };
 
 #endif
