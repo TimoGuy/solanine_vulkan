@@ -404,6 +404,7 @@ TestGUI/res/music/neko_hacker_sleep_tight.wav
 .link
 
 # Cooked Textures folder
+_mid_gen_textures/
 texture_cooked/
 
 # Compiled SPIRV shader files

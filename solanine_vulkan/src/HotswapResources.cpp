@@ -67,6 +67,13 @@ namespace hotswapres
                 }
 
                 // Cook texture if corresponding cooked texture isn't up to date.
+                if (ext.compare(".halfstep") == 0)
+                {
+                    if (texturecooker::checkHalfStepNeeded(resource.path))
+                        texturecooker::cookHalfStepFromRecipe(resource.path);
+                }
+
+                // Cook texture if corresponding cooked texture isn't up to date.
                 if (ext.compare(".hrecipe") == 0)
                 {
                     if (texturecooker::checkTextureCookNeeded(resource.path))
