@@ -28,10 +28,17 @@
             - [x] Level Editor (everything created up to this point with a loaded in scene)
             - [x] Texture Editor
             - [ ] Material Editor (what we're gonna create. Just no objects except for the `MaterialViewer` object type to render the textures and a bunch of imgui stuff)
-    - [ ] Texture cooker
+    - [x] Texture cooker
+        - [x] Textures to mid gen textures.
+        - [ ] Run all mid gen then run texture cooking.
+            - [ ] Create simple hotswap dependency tree.
+            - [ ] Collect jobs when checking hot swappiness.
+            - [ ] Order all jobs with a few dependency relationship entries.
+                > Seomthing like `".halfstep" -> ".hrecipe"`, then `".hrecipe" -> ".hderriere"`, and `".vert" -> ".humba"`, and `".frag" -> ".humba"`
+                > Maybe there could be something like each file type gathering other resources to reload bc one resource reloaded. Idk.
         - [x] Textures from pool and recipe into ktx format.
             > I think that the texture viewer needs to happen after the new material system gets implemented. We can cook some textures into ktx and write the texture cooker, but the viewer feels EXTREMELY full of friction. I believe that once the material system gets written, the viewer should be really easy to implement. Just assign a material to a render object and just keep changing "texture test material"'s albedo with the texture the creator is looking at.
-        - [ ] Texture viewer
+        - [f] Texture viewer
             - [ ] Select filenames from the `/Textures` folder and subfolders. Import textures as a type of internal texture.
             - [ ] Can delete imported textures.
             - [ ] Texture viewer once it's imported
@@ -44,6 +51,18 @@
                 - Cubemap
                     - [ ] Sphere-cubemap
                     - [ ] Skybox
+    - [ ] New material system.
+        - [ ] Load in pipelines from .humba files.
+            - [ ] Use SPIRV-Reflect to generate descriptor set layouts and pipeline layouts.
+            - [ ] Connect globaldescriptor, objectdescriptor, etc. to the parts where the name matches from reflection.
+        - [ ] Load in materials from .hderriere files.
+            - [ ] Create list of which unique textures to use and insert into descriptor set.
+            - [ ] Insert all material params into material collection.
+        - [ ] Migrate to material system.
+            - [ ] Connect material to render object's palette. When loading in the model, it will also return a palette, and the programmer can insert that palette or insert a loaded palette swap file into the render object.
+                - [f] Load palette swap file.
+            - [ ] Don't load textures with vkgltf. (bandaid)
+            - [ ] Turn off the "pbrmaterial" material.
     - [ ] Material viewer
         - [x] Orbit camera view
         - [ ] Sphere material inspector.

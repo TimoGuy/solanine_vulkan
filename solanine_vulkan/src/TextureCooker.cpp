@@ -7,7 +7,7 @@ namespace texturecooker
 {
     stbi_uc* loadUCharImage(const std::filesystem::path& path, int32_t& outWidth, int32_t& outHeight, int32_t& outNumChannels)
     {
-        stbi_uc* pixels = stbi_load(("res/texture_pool/" + path.string()).c_str(), &outWidth, &outHeight, &outNumChannels, STBI_rgb_alpha);
+        stbi_uc* pixels = stbi_load(("res/texture_pool/" + path.string()).c_str(), &outWidth, &outHeight, &outNumChannels, STBI_default);
         if (!pixels)
         {
             std::cerr << "ERROR: failed to load texture " << path << std::endl;
@@ -99,7 +99,7 @@ namespace texturecooker
 
                         myChannel->used = true;
                         if (resType == "file")
-                            myChannel->bwImagePath = p2;
+                            myChannel->bwImagePath = "res/texture_pool/" + p2;
                         else if (resType == "scale")
                             myChannel->scale = std::stof(p2);
                         else
@@ -293,6 +293,15 @@ namespace texturecooker
                     aVal *= a.scale;
                 imgData[pos + 3] = aVal;
             }
+
+            if (rUC != nullptr)
+                stbi_image_free(rUC);
+            if (gUC != nullptr)
+                stbi_image_free(gUC);
+            if (bUC != nullptr)
+                stbi_image_free(bUC);
+            if (aUC != nullptr)
+                stbi_image_free(aUC);
 
             stbi_write_png(
                 outputPath.string().c_str(),
