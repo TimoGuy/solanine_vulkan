@@ -36,6 +36,7 @@
             - [ ] Order all jobs with a few dependency relationship entries.
                 > Seomthing like `".halfstep" -> ".hrecipe"`, then `".hrecipe" -> ".hderriere"`, and `".vert" -> ".humba"`, and `".frag" -> ".humba"`
                 > Maybe there could be something like each file type gathering other resources to reload bc one resource reloaded. Idk.
+                > But hey, instead of saving a resource list and checking just those resources, maybe something like just recursively checking all the files in the "res" folder would be good, then processing on the new ones and saving their previous modified time. Then any that are missing, create a delete resource job for them.
         - [x] Textures from pool and recipe into ktx format.
             > I think that the texture viewer needs to happen after the new material system gets implemented. We can cook some textures into ktx and write the texture cooker, but the viewer feels EXTREMELY full of friction. I believe that once the material system gets written, the viewer should be really easy to implement. Just assign a material to a render object and just keep changing "texture test material"'s albedo with the texture the creator is looking at.
         - [f] Texture viewer
