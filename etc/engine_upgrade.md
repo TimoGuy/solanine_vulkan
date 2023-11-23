@@ -34,7 +34,13 @@
             - [ ] Create simple hotswap dependency tree.
             - [ ] Collect jobs when checking hot swappiness.
             - [ ] Order all jobs with a few dependency relationship entries.
-                > Seomthing like `".halfstep" -> ".hrecipe"`, then `".hrecipe" -> ".hderriere"`, and `".vert" -> ".humba"`, and `".frag" -> ".humba"`
+                > Seomthing like these:
+                    - `".halfstep" -> ".hrecipe"`
+                    - `".hrecipe" -> ".hderriere"`
+                    - `".vert" -> ".humba"`
+                    - `".frag" -> ".humba"`
+                    - `".humba" -> "rebuildPipelines"`
+                    - `".hderriere" -> "materialPropagation"`    # NOTE: notice the "rebuildPipelines" and "materialPropagation" don't have a "." at the beginning. Those point to a specific function to run rather than the file extension.
                 > Maybe there could be something like each file type gathering other resources to reload bc one resource reloaded. Idk.
                 > But hey, instead of saving a resource list and checking just those resources, maybe something like just recursively checking all the files in the "res" folder would be good, then processing on the new ones and saving their previous modified time. Then any that are missing, create a delete resource job for them.
         - [x] Textures from pool and recipe into ktx format.
