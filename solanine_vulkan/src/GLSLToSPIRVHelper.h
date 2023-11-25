@@ -9,6 +9,19 @@
 
 namespace glslToSPIRVHelper
 {
+    bool checkGLSLShaderCompileNeeded(const std::filesystem::path& sourceCodePath)
+    {
+        auto spvPath = sourceCodePath;
+        spvPath += ".spv";
+
+        if (!std::filesystem::exists(spvPath) ||
+            std::filesystem::last_write_time(spvPath) <= std::filesystem::last_write_time(sourceCodePath))
+        {
+            return true;
+        }
+        return false;
+    }
+
     bool compileGLSLShaderToSPIRV(const std::filesystem::path& sourceCodePath)
     {
         std::cout << "[COMPILING SHADER SOURCE]" << std::endl << sourceCodePath << " to SPIRV\t...\t";

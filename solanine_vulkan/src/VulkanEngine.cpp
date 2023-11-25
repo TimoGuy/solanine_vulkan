@@ -34,6 +34,10 @@
 
 constexpr uint64_t TIMEOUT_1_SEC = 1000000000;
 
+#ifdef _DEVELOP
+std::mutex* hotswapMutex = nullptr;
+#endif
+
 void VulkanEngine::init()
 {
 	//
@@ -72,7 +76,7 @@ void VulkanEngine::init()
 	_camera = new Camera(this);
 
 #ifdef _DEVELOP
-	hotswapres::buildResourceList();
+	std::mutex* hotswapMutex = hotswapres::startResourceChecker(this, &_recreateSwapchain, _roManager);
 #endif
 
 	initVulkan();
@@ -143,7 +147,6 @@ void VulkanEngine::run()
 	float_t saveGlobalStateTimeElapsed = 0.0f;
 
 #ifdef _DEVELOP
-	std::mutex* hotswapMutex = hotswapres::startResourceChecker(this, &_recreateSwapchain, _roManager);
 	input::registerEditorInputSetOnThisThread();
 #endif
 
@@ -270,23 +273,27 @@ void VulkanEngine::run()
 		// Render
 		//
 #ifdef _DEVELOP
-		std::lock_guard<std::mutex> lg(*hotswapMutex);
+		{
+			std::lock_guard<std::mutex> lg(*hotswapMutex);
 #endif
 
-		if (_recreateSwapchain)
-			recreateSwapchain();
-		perfs[11] = SDL_GetPerformanceCounter() - perfs[11];
+			if (_recreateSwapchain)
+				recreateSwapchain();
+			perfs[11] = SDL_GetPerformanceCounter() - perfs[11];
 
 
-		perfs[12] = SDL_GetPerformanceCounter();
-		renderImGui(deltaTime);
-		perfs[12] = SDL_GetPerformanceCounter() - perfs[12];
+			perfs[12] = SDL_GetPerformanceCounter();
+			renderImGui(deltaTime);
+			perfs[12] = SDL_GetPerformanceCounter() - perfs[12];
 
 
-		perfs[13] = SDL_GetPerformanceCounter();
-		render();
-		perfs[13] = SDL_GetPerformanceCounter() - perfs[13];
+			perfs[13] = SDL_GetPerformanceCounter();
+			render();
+			perfs[13] = SDL_GetPerformanceCounter() - perfs[13];
 
+#ifdef _DEVELOP
+		}
+#endif
 
 		//
 		// Calculate performance

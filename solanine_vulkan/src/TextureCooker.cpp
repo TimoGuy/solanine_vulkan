@@ -7,7 +7,7 @@ namespace texturecooker
 {
     stbi_uc* loadUCharImage(const std::filesystem::path& path, int32_t& outWidth, int32_t& outHeight, int32_t& outNumChannels)
     {
-        stbi_uc* pixels = stbi_load(("res/texture_pool/" + path.string()).c_str(), &outWidth, &outHeight, &outNumChannels, STBI_default);
+        stbi_uc* pixels = stbi_load(path.string().c_str(), &outWidth, &outHeight, &outNumChannels, STBI_default);
         if (!pixels)
         {
             std::cerr << "ERROR: failed to load texture " << path << std::endl;
@@ -472,9 +472,15 @@ namespace texturecooker
             return false;
         }
 
-        if (!std::filesystem::exists(r.outputPath) ||
-            std::filesystem::last_write_time(r.outputPath) <= std::filesystem::last_write_time(recipePath))
+        if (!std::filesystem::exists(r.outputPath))
             return true;
+
+        auto lwt = std::filesystem::last_write_time(r.outputPath);
+        if (lwt <= std::filesystem::last_write_time(recipePath))
+            return true;
+        for (auto& inpath : r.inputPaths)
+            if (lwt <= std::filesystem::last_write_time(inpath))
+                return true;
         return false;
     }
 
