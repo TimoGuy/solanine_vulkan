@@ -3855,8 +3855,8 @@ void VulkanEngine::initPipelines()
 	//
 	/*VkShaderModule debugPhysicsObjectVertShader,
 					debugPhysicsObjectFragShader;
-	loadShaderModule("shader/debug_physics_object.vert.spv", debugPhysicsObjectVertShader);
-	loadShaderModule("shader/debug_physics_object.frag.spv", debugPhysicsObjectFragShader);*/
+	loadShaderModule("res/shaders/debug_physics_object.vert.spv", debugPhysicsObjectVertShader);
+	loadShaderModule("res/shaders/debug_physics_object.frag.spv", debugPhysicsObjectFragShader);*/
 
 
 
@@ -3904,8 +3904,8 @@ void VulkanEngine::initPipelines()
 		{},
 		{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _pbrTexturesSetLayout, _skeletalAnimationSetLayout },
 		{
-			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/pbr_zprepass.vert.spv" },
-			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/pbr_khr_zprepass.frag.spv" },
+			{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/pbr_zprepass.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/pbr_khr_zprepass.frag.spv" },
 		},
 		modelVertexDescription.attributes,
 		modelVertexDescription.bindings,
@@ -3932,8 +3932,8 @@ void VulkanEngine::initPipelines()
 		{},
 		{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _pbrTexturesSetLayout, _skeletalAnimationSetLayout, _voxelFieldLightingGridTextureSet.layout },
 		{
-			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/pbr.vert.spv" },
-			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/pbr_khr.frag.spv" },
+			{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/pbr.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/pbr_khr.frag.spv" },
 		},
 		modelVertexDescription.attributes,
 		modelVertexDescription.bindings,
@@ -3960,8 +3960,8 @@ void VulkanEngine::initPipelines()
 		{},
 		{ _singleTextureSetLayout },
 		{
-			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/genbrdflut.vert.spv" },
-			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/snapshotImage.frag.spv" },
+			{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/genbrdflut.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/snapshotImage.frag.spv" },
 		},
 		{},  // No triangles are actually streamed in
 		{},
@@ -3988,8 +3988,8 @@ void VulkanEngine::initPipelines()
 		{},
 		{ _globalSetLayout, _singleTextureSetLayout },
 		{
-			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/skybox.vert.spv" },
-			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/skybox.frag.spv" },
+			{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/skybox.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/skybox.frag.spv" },
 		},
 		modelVertexDescription.attributes,
 		modelVertexDescription.bindings,
@@ -4016,8 +4016,8 @@ void VulkanEngine::initPipelines()
 		{},
 		{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _pickingReturnValueSetLayout, _skeletalAnimationSetLayout },
 		{
-			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/picking.vert.spv" },
-			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/picking.frag.spv" },
+			{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/picking.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/picking.frag.spv" },
 		},
 		modelVertexDescription.attributes,
 		modelVertexDescription.bindings,
@@ -4050,8 +4050,8 @@ void VulkanEngine::initPipelines()
 		},
 		{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _skeletalAnimationSetLayout },
 		{
-			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/wireframe_color.vert.spv" },
-			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/color.frag.spv" },
+			{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/wireframe_color.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/color.frag.spv" },
 		},
 		modelVertexDescription.attributes,
 		modelVertexDescription.bindings,
@@ -4082,8 +4082,8 @@ void VulkanEngine::initPipelines()
 		},
 		{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _skeletalAnimationSetLayout },
 		{
-			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/wireframe_color.vert.spv" },
-			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/color.frag.spv" },
+			{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/wireframe_color.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/color.frag.spv" },
 		},
 		modelVertexDescription.attributes,
 		modelVertexDescription.bindings,
@@ -4119,8 +4119,8 @@ void VulkanEngine::initPipelines()
 		},
 		{ _cascadeViewProjsSetLayout, _objectSetLayout, _instancePtrSetLayout, _pbrTexturesSetLayout, _skeletalAnimationSetLayout },
 		{
-			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/shadow_depthpass.vert.spv" },
-			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/shadow_depthpass.frag.spv" },
+			{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/shadow_depthpass.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/shadow_depthpass.frag.spv" },
 		},
 		modelVertexDescription.attributes,
 		modelVertexDescription.bindings,
@@ -4160,8 +4160,8 @@ void VulkanEngine::initPipelines()
 		},
 		{ _globalSetLayout, _postprocessSetLayout },
 		{
-			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/genbrdflut.vert.spv" },
-			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/postprocess.frag.spv" },
+			{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/genbrdflut.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/postprocess.frag.spv" },
 		},
 		{},  // No triangles are actually streamed in
 		{},
@@ -4200,8 +4200,8 @@ void VulkanEngine::initPipelines()
 		},
 		{ _dofSingleTextureLayout },
 		{
-			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/genbrdflut.vert.spv" },
-			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/generate_coc.frag.spv" },
+			{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/genbrdflut.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/generate_coc.frag.spv" },
 		},
 		{},  // No triangles are actually streamed in
 		{},
@@ -4234,8 +4234,8 @@ void VulkanEngine::initPipelines()
 		},
 		{ _dofDoubleTextureLayout },
 		{
-			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/genbrdflut.vert.spv" },
-			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/halve_coc.frag.spv" },
+			{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/genbrdflut.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/halve_coc.frag.spv" },
 		},
 		{},  // No triangles are actually streamed in
 		{},
@@ -4264,8 +4264,8 @@ void VulkanEngine::initPipelines()
 			{},
 			{ _dofSingleTextureLayout },
 			{
-				{ VK_SHADER_STAGE_VERTEX_BIT, "shader/genbrdflut.vert.spv" },
-				{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/incrementalReductionHalve_coc.frag.spv" },
+				{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/genbrdflut.vert.spv" },
+				{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/incrementalReductionHalve_coc.frag.spv" },
 			},
 			{},  // No triangles are actually streamed in
 			{},
@@ -4300,8 +4300,8 @@ void VulkanEngine::initPipelines()
 		},
 		{ _dofSingleTextureLayout },
 		{
-			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/genbrdflut.vert.spv" },
-			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/blur_x_singlechannel.frag.spv" },
+			{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/genbrdflut.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/blur_x_singlechannel.frag.spv" },
 		},
 		{},  // No triangles are actually streamed in
 		{},
@@ -4334,8 +4334,8 @@ void VulkanEngine::initPipelines()
 		},
 		{ _dofSingleTextureLayout },
 		{
-			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/genbrdflut.vert.spv" },
-			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/blur_y_singlechannel.frag.spv" },
+			{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/genbrdflut.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/blur_y_singlechannel.frag.spv" },
 		},
 		{},  // No triangles are actually streamed in
 		{},
@@ -4368,8 +4368,8 @@ void VulkanEngine::initPipelines()
 		},
 		{ _dofTripleTextureLayout },
 		{
-			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/genbrdflut.vert.spv" },
-			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/gather_dof.frag.spv" },
+			{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/genbrdflut.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/gather_dof.frag.spv" },
 		},
 		{},  // No triangles are actually streamed in
 		{},
@@ -4402,8 +4402,8 @@ void VulkanEngine::initPipelines()
 		},
 		{ _dofDoubleTextureLayout },
 		{
-			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/genbrdflut.vert.spv" },
-			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/dof_floodfill.frag.spv" },
+			{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/genbrdflut.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/dof_floodfill.frag.spv" },
 		},
 		{},  // No triangles are actually streamed in
 		{},
@@ -4796,17 +4796,17 @@ void VulkanEngine::generatePBRCubemaps()
 
 		VkShaderModule filtercubeVertShader,
 						filtercubeFragShader;
-		vkutil::pipelinebuilder::loadShaderModule("shader/filtercube.vert.spv", filtercubeVertShader);
+		vkutil::pipelinebuilder::loadShaderModule("res/shaders/filtercube.vert.spv", filtercubeVertShader);
 		switch (target)
 		{
 		case ENVIRONMENT:
-			vkutil::pipelinebuilder::loadShaderModule("shader/skyboxfiltercube.frag.spv", filtercubeFragShader);
+			vkutil::pipelinebuilder::loadShaderModule("res/shaders/skyboxfiltercube.frag.spv", filtercubeFragShader);
 			break;
 		case IRRADIANCE:
-			vkutil::pipelinebuilder::loadShaderModule("shader/irradiancecube.frag.spv", filtercubeFragShader);
+			vkutil::pipelinebuilder::loadShaderModule("res/shaders/irradiancecube.frag.spv", filtercubeFragShader);
 			break;
 		case PREFILTEREDENV:
-			vkutil::pipelinebuilder::loadShaderModule("shader/prefilterenvmap.frag.spv", filtercubeFragShader);
+			vkutil::pipelinebuilder::loadShaderModule("res/shaders/prefilterenvmap.frag.spv", filtercubeFragShader);
 			break;
 		default:
 			filtercubeFragShader = VK_NULL_HANDLE;
@@ -5260,8 +5260,8 @@ void VulkanEngine::generateBRDFLUT()
 
 	VkShaderModule genBrdfLUTVertShader,
 					genBrdfLUTFragShader;
-	vkutil::pipelinebuilder::loadShaderModule("shader/genbrdflut.vert.spv", genBrdfLUTVertShader);
-	vkutil::pipelinebuilder::loadShaderModule("shader/genbrdflut.frag.spv", genBrdfLUTFragShader);
+	vkutil::pipelinebuilder::loadShaderModule("res/shaders/genbrdflut.vert.spv", genBrdfLUTVertShader);
+	vkutil::pipelinebuilder::loadShaderModule("res/shaders/genbrdflut.frag.spv", genBrdfLUTFragShader);
 
 	std::array<VkPipelineShaderStageCreateInfo, 2> shaderStages = {
 		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, genBrdfLUTVertShader),

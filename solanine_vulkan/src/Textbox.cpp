@@ -164,8 +164,8 @@ namespace textbox
             },
             { textmesh::gpuUICameraSetLayout },
             {
-                { VK_SHADER_STAGE_VERTEX_BIT, "shader/sdf.vert.spv" },
-                { VK_SHADER_STAGE_FRAGMENT_BIT, "shader/color_textbox_bg.frag.spv" },
+                { VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/sdf.vert.spv" },
+                { VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/color_textbox_bg.frag.spv" },
             },
             attributes,
             bindings,

@@ -140,8 +140,8 @@ namespace textmesh
 			},
 			{ gpuUICameraSetLayout, textMeshSetLayout },
 			{
-				{ VK_SHADER_STAGE_VERTEX_BIT, "shader/sdf.vert.spv" },
-				{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/sdf.frag.spv" },
+				{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/sdf.vert.spv" },
+				{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/sdf.frag.spv" },
 			},
 			attributes,
 			bindings,

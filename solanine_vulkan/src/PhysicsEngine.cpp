@@ -327,8 +327,8 @@ namespace physengine
             },
             { debugVisDescriptorLayout },
             {
-                { VK_SHADER_STAGE_VERTEX_BIT, "shader/physengineDebugVis.vert.spv" },
-                { VK_SHADER_STAGE_FRAGMENT_BIT, "shader/physengineDebugVis.frag.spv" },
+                { VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/physengineDebugVis.vert.spv" },
+                { VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/physengineDebugVis.frag.spv" },
             },
             attributes,
             bindings,

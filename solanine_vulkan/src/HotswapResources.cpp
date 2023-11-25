@@ -27,19 +27,14 @@ namespace hotswapres
 
 	void buildResourceList()
     {
-        std::vector<std::string> directories = {
-            "res",
-            "shader",
-        };
-        for (auto directory : directories)
-            for (const auto& entry : std::filesystem::recursive_directory_iterator(directory))
-            {
-                // Add the resource if it should be watched
-                const auto& path = entry.path();
-                if (std::filesystem::is_directory(path))
-                    continue;		// Ignore directories
-                if (!path.has_extension())
-                    continue;		// @NOTE: only allow resource files if they have an extension!  -Timo
+        for (const auto& entry : std::filesystem::recursive_directory_iterator("res"))
+        {
+            // Add the resource if it should be watched
+            const auto& path = entry.path();
+            if (std::filesystem::is_directory(path))
+                continue;		// Ignore directories
+            if (!path.has_extension())
+                continue;		// @NOTE: only allow resource files if they have an extension!  -Timo
 
                 if (path.extension().compare(".spv") == 0 ||
                     path.extension().compare(".log") == 0)
