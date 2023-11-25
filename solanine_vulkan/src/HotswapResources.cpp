@@ -365,6 +365,7 @@ namespace hotswapres
             {
                 std::cout << "[RELOAD HOTSWAPPABLE RESOURCE]" << std::endl
                     << "Checking which resources to hotswap..." << std::endl;
+                int32_t numGroupsProcessed = 0;
                 std::lock_guard<std::mutex> lg(hotswapResourcesMutex);
                 
                 // Process each stage, traversing thru each linked list.
@@ -373,13 +374,23 @@ namespace hotswapres
                     JobStageNode* n = headRef;
                     while (n != nullptr)
                     {
-                        if (executeHotswapOnResourcesThatNeedIt(engine, roManager, n->stageName, headRef->resources) &&
-                            n->next != nullptr)
-                            for (auto& nextRes : n->next->resources)  // Mark all resources in the next node as check.
-                                nextRes.includeInCheck = true;
+                        std::cout << "\tChecking " << n->stageName << std::endl;
+                        if (executeHotswapOnResourcesThatNeedIt(engine, roManager, n->stageName, n->resources))
+                        {
+                            numGroupsProcessed++;
+                            std::cout << "\t\tProcessed." << std::endl;
+                            if (n->next != nullptr)
+                                for (auto& nextRes : n->next->resources)  // Mark all resources in the next node as check.
+                                    nextRes.includeInCheck = true;
+                        }
                         n = n->next;
                     }
                 }
+
+                if (numGroupsProcessed == 0)
+                    std::cout << "None Processed." << std::endl;
+                else
+                    std::cout << numGroupsProcessed << " Groups Processed." << std::endl;
             }
 
 
