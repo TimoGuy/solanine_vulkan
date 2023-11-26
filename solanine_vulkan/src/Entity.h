@@ -1,8 +1,5 @@
 #pragma once
 
-#include <cmath>
-#include <string>
-#include <cglm/types.h>
 class EntityManager;
 class DataSerializer;
 class DataSerialized;

@@ -1,7 +1,5 @@
 #pragma once
 
-#include <vector>
-#include <vulkan/vulkan.h>
 class VulkanEngine;
 struct AllocatedImage;
 

@@ -1,8 +1,5 @@
 #pragma once
 
-#include <string>
-#include <vulkan/vulkan.h>
-#include "ImportGLM.h"
 #include "VkDataStructures.h"
 
 class VulkanEngine;

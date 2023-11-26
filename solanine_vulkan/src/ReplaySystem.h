@@ -1,8 +1,5 @@
 #pragma once
 
-#include <vector>
-#include "ImportGLM.h"
-
 
 struct ReplayData  // Version 0.  @NOTE: this system relies on the fixed timestep of the physics update. `physicsDeltaTime` cannot change while recording and playing back.
 {

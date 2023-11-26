@@ -1,8 +1,5 @@
 #pragma once
 
-#include <string>
-#include <vector>
-#include "ImportGLM.h"
 #include <Jolt/Jolt.h>
 #include <Jolt/Physics/Body/BodyID.h>
 #include <Jolt/Math/Mat44.h>
@@ -13,7 +10,6 @@ struct DeletionQueue;
 namespace JPH { struct Character; }
 
 #ifdef _DEVELOP
-#include <vulkan/vulkan.h>
 class VulkanEngine;
 #endif
 

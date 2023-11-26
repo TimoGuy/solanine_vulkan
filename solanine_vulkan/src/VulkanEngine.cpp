@@ -5847,7 +5847,7 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 {
 	constexpr float_t MAIN_MENU_PADDING = 18.0f;
 	static bool showDemoWindows = false;
-	static bool showPerfWindow = false;
+	static bool showPerfWindow = true;
 
 	bool allowKeyboardShortcuts =
 		_camera->getCameraMode() == Camera::_cameraMode_freeCamMode &&

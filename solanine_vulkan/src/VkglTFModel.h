@@ -8,9 +8,6 @@
 
 #pragma once
 
-#include "ImportGLM.h"
-#include <mutex>
-#include <taskflow/taskflow.hpp>
 #include "VkDataStructures.h"
 #include "Settings.h"
 

@@ -1,11 +1,6 @@
 #pragma once
 
-#include <string>
-#include <vector>
-#include <functional>
-#include <vulkan/vulkan.h>
 #include "VkDataStructures.h"
-#include "ImportGLM.h"
 
 class VulkanEngine;
 struct DeletionQueue;

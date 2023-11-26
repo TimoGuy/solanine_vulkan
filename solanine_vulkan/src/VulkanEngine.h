@@ -1,6 +1,5 @@
 #pragma once
 
-#include "Imports.h"
 #include "Settings.h"
 #include "VkDataStructures.h"
 #include "EntityManager.h"

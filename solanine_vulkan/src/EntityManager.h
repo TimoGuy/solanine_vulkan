@@ -1,10 +1,5 @@
 #pragma once
 
-#include <string>
-#include <vector>
-#include <queue>
-#include <mutex>
-
 class Entity;
 class DataSerialized;
 namespace scene

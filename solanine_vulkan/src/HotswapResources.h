@@ -1,11 +1,10 @@
 #pragma once
 #ifdef _DEVELOP
 
-#include <string>
-#include <functional>
 namespace std { class mutex; }
 class VulkanEngine;
 class RenderObjectManager;
+
 
 namespace hotswapres
 {

@@ -1,13 +1,5 @@
 #pragma once
 
-#include <vector>
-#include <array>
-#include <string>
-#include <functional>
-#include <unordered_map>
-#include <mutex>
-#include <vma/vk_mem_alloc.h>
-#include "ImportGLM.h"
 #include "Settings.h"
 
 namespace vkglTF { struct Model; struct Animator; }

@@ -1,8 +1,5 @@
 #pragma once
 
-#include <vector>
-#include <vulkan/vulkan.h>
-
 
 namespace vkutil
 {

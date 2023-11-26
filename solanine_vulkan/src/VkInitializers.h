@@ -1,7 +1,5 @@
 #pragma once
 
-#include <cmath>
-#include <vulkan/vulkan.h>
 struct Texture;
 
 
