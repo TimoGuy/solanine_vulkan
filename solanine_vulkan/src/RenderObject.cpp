@@ -1,6 +1,7 @@
+#include "pch.h"
+
 #include "RenderObject.h"
 
-#include <iostream>
 #include "VkglTFModel.h"
 #include "PhysicsEngine.h"
 

@@ -1,10 +1,10 @@
+#include "pch.h"
+
 #include "Character.h"
 
-#include <cstdlib>
 #include <Jolt/Jolt.h>
 #include <Jolt/Physics/Body/Body.h>
 #include <Jolt/Physics/Collision/ContactListener.h>
-#include "Imports.h"
 #include "PhysUtil.h"
 #include "PhysicsEngine.h"
 #include "VkglTFModel.h"
@@ -21,8 +21,6 @@
 #include "HarvestableItem.h"
 #include "ScannableItem.h"
 #include "Debug.h"
-#include "imgui/imgui.h"
-#include "imgui/imgui_stdlib.h"
 #ifdef _DEVELOP
 #include "HotswapResources.h"
 #endif

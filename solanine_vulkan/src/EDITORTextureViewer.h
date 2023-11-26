@@ -1,6 +1,4 @@
 #pragma once
-
-
 #ifdef _DEVELOP
 
 #include "Entity.h"

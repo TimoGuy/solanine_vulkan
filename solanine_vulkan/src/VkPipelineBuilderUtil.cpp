@@ -1,7 +1,7 @@
+#include "pch.h"
+
 #include "VkPipelineBuilderUtil.h"
 
-#include <iostream>
-#include <fstream>
 #include "VkDataStructures.h"
 #include "VkInitializers.h"
 

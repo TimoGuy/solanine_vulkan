@@ -1,3 +1,5 @@
+#include "pch.h"
+
 // MIT License
 
 // Copyright (c) 2020 Evan Pezent

@@ -1,7 +1,7 @@
+#include "pch.h"
+
 #include "SceneManagement.h"
 
-#include <fstream>
-#include <sstream>
 #include "DataSerialization.h"
 #include "VulkanEngine.h"
 #include "PhysicsEngine.h"

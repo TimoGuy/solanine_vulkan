@@ -1,10 +1,10 @@
+#include "pch.h"
+
 #include "NoteTaker.h"
 
 #include "RenderObject.h"
 #include "DataSerialization.h"
 #include "StringHelper.h"
-#include "imgui/imgui.h"
-#include "imgui/imgui_stdlib.h"
 
 
 NoteTaker::NoteTaker(EntityManager* em, RenderObjectManager* rom, DataSerialized* ds) : Entity(em, ds), _rom(rom)

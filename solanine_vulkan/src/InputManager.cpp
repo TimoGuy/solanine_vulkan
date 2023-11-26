@@ -1,20 +1,7 @@
-#include "ImportGLM.h"
+#include "pch.h"
 
 #include "InputManager.h"
 
-#include <iostream>
-#include <SDL2/SDL.h>
-#include "imgui/imgui.h"
-#include "imgui/imgui_impl_sdl.h"
-
-#ifdef _DEVELOP
-#include <map>
-#include <thread>
-#endif
-
-#ifdef _DEBUG
-#include <mutex>
-#endif
 
 namespace input
 {

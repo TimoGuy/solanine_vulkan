@@ -1,9 +1,8 @@
+#include "pch.h"
+
 #include "Debug.h"
 
 #ifdef _DEVELOP
-
-#include "ImportGLM.h"
-#include "imgui/imgui.h"
 
 
 std::vector<debug::DebugMessage> debug::_debugMessages;

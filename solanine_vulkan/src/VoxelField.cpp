@@ -1,8 +1,7 @@
+#include "pch.h"
+
 #include "VoxelField.h"
 
-#include <stb_image_write.h>
-#include <mutex>
-#include "Imports.h"
 #include "VkglTFModel.h"
 #include "VkTextures.h"
 #include "VkInitializers.h"
@@ -14,7 +13,6 @@
 #include "VulkanEngine.h"
 #include "AudioEngine.h"
 #include "Camera.h"
-#include "imgui/imgui.h"
 
 
 struct VoxelField_XData

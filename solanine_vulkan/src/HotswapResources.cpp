@@ -1,11 +1,9 @@
-#ifdef _DEVELOP
+#include "pch.h"
+
 #include "HotswapResources.h"
 
-#include <iostream>
-#include <vector>
-#include <filesystem>
-#include <thread>
-#include <SDL2/SDL.h>
+#ifdef _DEVELOP
+
 #include "GLSLToSPIRVHelper.h"
 #include "TextureCooker.h"
 #include "RenderObject.h"

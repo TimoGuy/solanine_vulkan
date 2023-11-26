@@ -1,7 +1,7 @@
+#include "pch.h"
+
 #include "VkTextures.h"
 
-#include <iostream>
-#include <stb_image.h>
 #include "VkInitializers.h"
 #include "VkDataStructures.h"
 #include "VulkanEngine.h"

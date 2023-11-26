@@ -1,9 +1,8 @@
+#include "pch.h"
+
 #include "Camera.h"
 
-#include <string>
-#include <SDL2/SDL.h>
 #include "PhysUtil.h"
-#include "ImportGLM.h"
 #include "InputManager.h"
 #include "RenderObject.h"
 #include "PhysicsEngine.h"

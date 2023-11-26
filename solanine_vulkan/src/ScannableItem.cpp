@@ -1,13 +1,13 @@
+#include "pch.h"
+
 #include "ScannableItem.h"
 
-#include <iostream>
 #include "VkglTFModel.h"
 #include "RenderObject.h"
 #include "EntityManager.h"
 #include "DataSerialization.h"
 #include "GlobalState.h"
 #include "Textbox.h"
-#include "imgui/imgui.h"
 
 
 struct ScannableItem_XData

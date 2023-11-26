@@ -6,7 +6,8 @@
  * This code is licensed under the MIT license (MIT) (http://opensource.org/licenses/MIT)
  */
 
-#include "Imports.h"
+#include "pch.h"
+
 #include "VkglTFModel.h"
 #include "VkDescriptorBuilderUtil.h"
 #include "VulkanEngine.h"
@@ -14,8 +15,6 @@
 #include "VkTextures.h"
 #include "VkInitializers.h"
 #include "StringHelper.h"
-#include <chrono>
-#include <taskflow/algorithm/for_each.hpp>
 
 
 namespace vkglTF

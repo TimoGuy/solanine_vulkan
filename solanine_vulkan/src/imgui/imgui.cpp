@@ -1,3 +1,5 @@
+#include "pch.h"
+
 // dear imgui, v1.88
 // (main code and documentation)
 
@@ -1665,11 +1667,12 @@ const char* ImStrSkipBlank(const char* str)
 // designed using two-passes worst case, which probably could be improved using the stbsp_vsprintfcb() function.)
 #ifdef IMGUI_USE_STB_SPRINTF
 #define STB_SPRINTF_IMPLEMENTATION
-#ifdef IMGUI_STB_SPRINTF_FILENAME
-#include IMGUI_STB_SPRINTF_FILENAME
-#else
+//#ifdef IMGUI_STB_SPRINTF_FILENAME
+//#include IMGUI_STB_SPRINTF_FILENAME
+//#else
+// NOTE TO SELF, COMPILER IS AN IDIOT  -Timo 2023/11/26
 #include "stb_sprintf.h"
-#endif
+//#endif
 #endif
 
 #if defined(_MSC_VER) && !defined(vsnprintf)

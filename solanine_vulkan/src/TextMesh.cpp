@@ -1,12 +1,7 @@
+#include "pch.h"
+
 #include "TextMesh.h"
 
-#include <fstream>
-#include <sstream>
-#include <array>
-#include <vector>
-#include <algorithm>
-#include <mutex>
-#include <assert.h>
 #include "VulkanEngine.h"  // @TODO: work to just include the forward declaration of the createBuffer function
 #include "VkTextures.h"
 #include "VkInitializers.h"

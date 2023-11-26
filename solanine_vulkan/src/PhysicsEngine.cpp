@@ -1,7 +1,8 @@
+#include "pch.h"
+
 #include "PhysicsEngine.h"
 
 #ifdef _DEVELOP
-#include <array>
 #include "VkDataStructures.h"
 #include "VulkanEngine.h"
 #include "VkDescriptorBuilderUtil.h"
@@ -10,13 +11,6 @@
 #include "Camera.h"
 #endif
 
-#include <SDL2/SDL.h>
-#include <iostream>
-#include <chrono>
-#include <thread>
-#include <algorithm>
-#include <format>
-#include <map>
 #include <Jolt/Jolt.h>
 #include <Jolt/RegisterTypes.h>
 #include <Jolt/Core/Factory.h>
@@ -41,8 +35,6 @@
 #include "EntityManager.h"
 #include "Character.h"
 #include "GlobalState.h"
-#include "imgui/imgui.h"
-#include "imgui/implot.h"
 
 JPH_SUPPRESS_WARNINGS
 using namespace JPH;

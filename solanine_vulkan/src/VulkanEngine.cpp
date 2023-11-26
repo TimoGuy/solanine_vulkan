@@ -1,8 +1,7 @@
+#include "pch.h"
+
 #include "VulkanEngine.h"
 
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_vulkan.h>
-#include <vma/vk_mem_alloc.h>
 #include "VkBootstrap.h"
 #include "VkInitializers.h"
 #include "VkDescriptorBuilderUtil.h"
@@ -24,12 +23,6 @@
 #include "HotswapResources.h"
 #include "GlobalState.h"
 #include "GondolaSystem.h"
-#include "imgui/imgui.h"
-#include "imgui/imgui_stdlib.h"
-#include "imgui/imgui_impl_sdl.h"
-#include "imgui/imgui_impl_vulkan.h"
-#include "imgui/implot.h"
-#include "imgui/ImGuizmo.h"
 
 
 constexpr uint64_t TIMEOUT_1_SEC = 1000000000;

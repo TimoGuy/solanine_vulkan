@@ -1,10 +1,10 @@
+#include "pch.h"
+
 #include "EDITORTextureViewer.h"
 
 #include "RenderObject.h"
 #include "Camera.h"
 #include "DataSerialization.h"
-#include "imgui/imgui.h"
-#include "imgui/imgui_stdlib.h"
 
 
 struct EDITORTextureViewer_XData

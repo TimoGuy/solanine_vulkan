@@ -1,8 +1,6 @@
-#include "VkDescriptorBuilderUtil.h"
+#include "pch.h"
 
-#include <algorithm>
-#include <unordered_map>
-#include <utility>
+#include "VkDescriptorBuilderUtil.h"
 
 
 namespace vkutil

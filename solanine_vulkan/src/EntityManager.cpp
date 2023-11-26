@@ -1,6 +1,7 @@
+#include "pch.h"
+
 #include "EntityManager.h"
 
-#include <iostream>
 #include "Entity.h"
 #include "GenerateGUID.h"
 #include "DataSerialization.h"

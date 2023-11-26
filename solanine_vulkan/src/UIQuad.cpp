@@ -1,7 +1,7 @@
+#include "pch.h"
+
 #include "UIQuad.h"
 
-#include <array>
-#include <functional>
 #include "TextMesh.h"
 #include "VulkanEngine.h"
 #include "VkDescriptorBuilderUtil.h"

@@ -1,3 +1,5 @@
+#include "pch.h"
+
 #include "TextureCooker.h"
 
 #include "StringHelper.h"

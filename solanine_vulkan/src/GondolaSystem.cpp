@@ -1,3 +1,5 @@
+#include "pch.h"
+
 #include "GondolaSystem.h"
 
 #include <Jolt/Jolt.h>
@@ -11,7 +13,6 @@
 #include "DataSerialization.h"
 #include "VoxelField.h"
 #include "VulkanEngine.h"
-#include "imgui/imgui.h"
 
 
 VulkanEngine* GondolaSystem::_engine = nullptr;

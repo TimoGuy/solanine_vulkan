@@ -1,7 +1,6 @@
-#include "RandomNumberGenerator.h"
+#include "pch.h"
 
-#include <random>
-#include <chrono>
+#include "RandomNumberGenerator.h"
 
 
 namespace rng

@@ -1,3 +1,5 @@
+#include "pch.h"
+
 // dear imgui, v1.88
 // (drawing and font code)
 
@@ -134,11 +136,12 @@ namespace IMGUI_STB_NAMESPACE
 #define STBRP_SORT          ImQsort
 #define STB_RECT_PACK_IMPLEMENTATION
 #endif
-#ifdef IMGUI_STB_RECT_PACK_FILENAME
-#include IMGUI_STB_RECT_PACK_FILENAME
-#else
+//#ifdef IMGUI_STB_RECT_PACK_FILENAME
+//#include IMGUI_STB_RECT_PACK_FILENAME
+//#else
+// NOTE TO SELF, COMPILER IS AN IDIOT  -Timo 2023/11/26
 #include "imstb_rectpack.h"
-#endif
+//#endif
 #endif
 
 #ifdef  IMGUI_ENABLE_STB_TRUETYPE
@@ -158,11 +161,12 @@ namespace IMGUI_STB_NAMESPACE
 #else
 #define STBTT_DEF extern
 #endif
-#ifdef IMGUI_STB_TRUETYPE_FILENAME
-#include IMGUI_STB_TRUETYPE_FILENAME
-#else
+//#ifdef IMGUI_STB_TRUETYPE_FILENAME
+//#include IMGUI_STB_TRUETYPE_FILENAME
+//#else
+// NOTE TO SELF, COMPILER IS AN IDIOT  -Timo 2023/11/26
 #include "imstb_truetype.h"
-#endif
+//#endif
 #endif
 #endif // IMGUI_ENABLE_STB_TRUETYPE
 

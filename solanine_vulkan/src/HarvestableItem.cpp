@@ -1,6 +1,7 @@
+#include "pch.h"
+
 #include "HarvestableItem.h"
 
-#include <iostream>
 #include "VkglTFModel.h"
 #include "RenderObject.h"
 #include "EntityManager.h"
@@ -10,7 +11,6 @@
 #include "GlobalState.h"
 #include "Textbox.h"
 #include "Debug.h"
-#include "imgui/imgui.h"
 
 
 struct HarvestableItem_XData
