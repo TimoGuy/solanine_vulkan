@@ -22,6 +22,7 @@
 #include <thread>
 #include <assert.h>  // Maybe....?
 
+// https://stackoverflow.com/questions/6847360/error-lnk2019-unresolved-external-symbol-main-referenced-in-function-tmainc
 #include <SDL2/SDL.h>
 #undef main
 #include <SDL2/SDL_vulkan.h>
