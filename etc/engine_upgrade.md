@@ -30,10 +30,10 @@
             - [ ] Material Editor (what we're gonna create. Just no objects except for the `MaterialViewer` object type to render the textures and a bunch of imgui stuff)
     - [x] Texture cooker
         - [x] Textures to mid gen textures.
-        - [ ] Run all mid gen then run texture cooking.
-            - [ ] Create simple hotswap dependency tree.
-            - [ ] Collect jobs when checking hot swappiness.
-            - [ ] Order all jobs with a few dependency relationship entries.
+        - [x] Run all mid gen then run texture cooking.
+            - [x] Create simple hotswap dependency tree.
+            - [x] Collect jobs when checking hot swappiness.
+            - [x] Order all jobs with a few dependency relationship entries.
                 > Seomthing like these:
                     - `".halfstep" -> ".hrecipe"`
                     - `".hrecipe" -> ".hderriere"`
@@ -58,6 +58,9 @@
                 - Cubemap
                     - [ ] Sphere-cubemap
                     - [ ] Skybox
+    - [x] Upgrade hotswapper
+        - [x] Allow dependency trees. Allow pngs to be gen'd with the halfway cooker, then trigger another check routine to see if any pngs got updated that are reliant upon the hrecipe's.
+            > THIS WAS A FREAKTON OF WORK THAT I WILL NOT BE LISTING HERE!
     - [ ] New material system.
         - [ ] Load in pipelines from .humba files.
             - [ ] Use SPIRV-Reflect to generate descriptor set layouts and pipeline layouts.

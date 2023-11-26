@@ -45,7 +45,7 @@ namespace hotswapres
         { ".humba", "rebuildPipelines" },
     };
 
-    void checkIfResourceUpdatedThenHotswapRoutineAsync(VulkanEngine* engine, bool* recreateSwapchain, RenderObjectManager* roManager);
+    void checkIfResourceUpdatedThenHotswapRoutineAsync(VulkanEngine* engine, RenderObjectManager* roManager, bool* recreateSwapchain);
     bool isAsyncRunnerRunning;
     bool isFirstRun;
     std::thread* asyncRunner = nullptr;
@@ -108,11 +108,11 @@ namespace hotswapres
 
     std::unordered_map<std::string, std::vector<ReloadCallback>> resourceReloadCallbackMap;
     
-	std::mutex* startResourceChecker(VulkanEngine* engine, bool* recreateSwapchain, RenderObjectManager* roManager)
+	std::mutex* startResourceChecker(VulkanEngine* engine, RenderObjectManager* roManager, bool* recreateSwapchain)
     {
         isAsyncRunnerRunning = true;
         isFirstRun = true;
-        asyncRunner = new std::thread(checkIfResourceUpdatedThenHotswapRoutineAsync, engine, recreateSwapchain, roManager);
+        asyncRunner = new std::thread(checkIfResourceUpdatedThenHotswapRoutineAsync, engine, roManager, recreateSwapchain);
         while (isFirstRun) { }
         return &hotswapResourcesMutex;
     }
@@ -123,7 +123,7 @@ namespace hotswapres
         std::filesystem::path path;
     };
 
-    inline bool executeHotswapOnResourcesThatNeedIt(VulkanEngine* engine, RenderObjectManager* roManager, const std::string& stageName, const std::vector<CheckStageResource>& resources)
+    inline bool executeHotswapOnResourcesThatNeedIt(VulkanEngine* engine, RenderObjectManager* roManager, const std::string& stageName, const std::vector<CheckStageResource>& resources, bool* recreateSwapchain)
     {
         bool executedHotswap = false;
         if (stageName == ".jpg" ||
@@ -158,8 +158,8 @@ namespace hotswapres
                     glslToSPIRVHelper::compileGLSLShaderToSPIRV(r.path))
                     executedHotswap = true;
         }
-        else if (stageName ==".gltf" ||
-                stageName ==".glb")
+        else if (stageName == ".gltf" ||
+                stageName == ".glb")
         {
             for (auto& r : resources)
             {
@@ -170,6 +170,17 @@ namespace hotswapres
                 std::cout << "Sent message to model \"" << r.path.stem().string() << "\" to reload." << std::endl;
                 executedHotswap = true;
             }
+        }
+        else if (stageName == "rebuildPipelines")
+        {
+            // Trip reloading the shaders (recreate swapchain flag) @INCOMPLETE
+            *recreateSwapchain = true;
+            executedHotswap = true;
+        }
+        else if (stageName == "materialPropagation")
+        {
+            // @TODO: propagate the materials!
+            // executedHotswap = true;
         }
         else
         {
@@ -190,6 +201,7 @@ namespace hotswapres
                     if (callbacks > 0)
                     {
                         std::cout << "Executed " << callbacks << " callback function(s) for \"" << fname << "\" to reload." << std::endl;
+                        executedHotswap = true;
                         continue;
                     }
                 }
@@ -219,7 +231,7 @@ namespace hotswapres
         return false;
     }
 
-	void checkIfResourceUpdatedThenHotswapRoutineAsync(VulkanEngine* engine, bool* recreateSwapchain, RenderObjectManager* roManager)
+	void checkIfResourceUpdatedThenHotswapRoutineAsync(VulkanEngine* engine, RenderObjectManager* roManager, bool* recreateSwapchain)
     {
         while (isAsyncRunnerRunning)
         {
@@ -421,7 +433,7 @@ namespace hotswapres
                 for (JobStage& stage : jobStages)
                 {
                     std::cout << "\tChecking " << stage.stageName << std::endl;
-                    if (executeHotswapOnResourcesThatNeedIt(engine, roManager, stage.stageName, stage.resources))
+                    if (executeHotswapOnResourcesThatNeedIt(engine, roManager, stage.stageName, stage.resources, recreateSwapchain))
                     {
                         numGroupsProcessed++;
                         std::cout << "\t\tProcessed." << std::endl;
@@ -475,8 +487,7 @@ namespace hotswapres
                     // Compile the shader (GLSL -> SPIRV)
                     glslToSPIRVHelper::compileGLSLShaderToSPIRV(resource.path);
 
-                    // Trip reloading the shaders (recreate swapchain flag)
-                    *recreateSwapchain = true;
+                    
                     std::cout << "Recompile shader to SPIRV and trigger swapchain recreation SUCCESS" << std::endl;
                     continue;
                 }

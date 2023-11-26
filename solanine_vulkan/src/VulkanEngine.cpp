@@ -76,7 +76,7 @@ void VulkanEngine::init()
 	_camera = new Camera(this);
 
 #ifdef _DEVELOP
-	hotswapMutex = hotswapres::startResourceChecker(this, &_recreateSwapchain, _roManager);
+	hotswapMutex = hotswapres::startResourceChecker(this, _roManager, &_recreateSwapchain);
 #endif
 
 	initVulkan();
