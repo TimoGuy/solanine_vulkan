@@ -42,6 +42,7 @@ namespace hotswapres
         { ".hderriere", "materialPropagation" },
         { ".vert", ".humba" },
         { ".frag", ".humba" },
+        { ".humba", ".hderriere" },
         { ".humba", "rebuildPipelines" },
     };
 
@@ -173,7 +174,7 @@ namespace hotswapres
         }
         else if (stageName == "rebuildPipelines")
         {
-            // Trip reloading the shaders (recreate swapchain flag) @INCOMPLETE
+            // Trip reloading the shaders (recreate swapchain flag) @INCOMPLETE: there really should be a trigger into the materials system bc they should be the ones in charge of rebuilding the shaders (in .humba files) for the materials that got reloaded.
             *recreateSwapchain = true;
             executedHotswap = true;
         }
