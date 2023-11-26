@@ -33,7 +33,9 @@ namespace hotswapres
         std::string before, after;
     };
     std::vector<JobDependency> jobDependencies = {
-        { ".jpg", ".hrecipe" },  // @NOTE: can't have .jpg/.png both be dependants of .halfstep and .hrecipe, so just doing .hrecipe would probs be better. This is due to the limitation of the hotswap dependency system.  -Timo 2023/11/25
+        { ".jpg", ".halfstep" },
+        { ".png", ".halfstep" },
+        { ".jpg", ".hrecipe" },
         { ".png", ".hrecipe" },
         { ".halfstep", ".hrecipe" },
         { ".hrecipe", ".hderriere" },
@@ -197,6 +199,26 @@ namespace hotswapres
         return executedHotswap;
     }
 
+    bool checkForCircularJobDependencyRecur(std::string myBefore, std::vector<std::string> markedBefores)
+    {
+        // Check for circular dependency.
+        for (auto& before : markedBefores)
+            if (myBefore == before)
+            {
+                std::cerr << "[CHECK RESOURCE CIRCULAR DEPENDENCIES]" << std::endl
+                    << "ERROR: Circular dependency found: " << myBefore << std::endl;
+                return true;  // Exit bc jobs cannot run with this set of dependencies.
+            }
+
+        // Recurse.
+        markedBefores.push_back(myBefore);
+        for (auto& otherJD : jobDependencies)
+            if (myBefore == otherJD.before &&
+                checkForCircularJobDependencyRecur(otherJD.after, markedBefores))
+                return true;  // Bubble up the circular dependency.
+        return false;
+    }
+
 	void checkIfResourceUpdatedThenHotswapRoutineAsync(VulkanEngine* engine, bool* recreateSwapchain, RenderObjectManager* roManager)
     {
         while (isAsyncRunnerRunning)
@@ -307,19 +329,30 @@ namespace hotswapres
                     rtc.includeInCheck = true;
             }
 
+            // Check for any circular job dependencies.
+            if (isFirstRun)
+            {
+                bool circularDependency = false;
+                for (auto& jd : jobDependencies)     // @TODO: @RESUME @HERE: make this a recursive function since this needs to be able to fork.
+                    if (checkForCircularJobDependencyRecur(jd.before, {}))
+                    {
+                        circularDependency = true;
+                        break;
+                    }                
+            }
+
             // Short circuit if there are no jobs to check.
             if (!thereAreActuallyResourcesToCheck)
                 continue;
 
             // Sort jobs into stages.
-            struct JobStageNode
+            struct JobStage
             {
                 std::string stageName;
                 std::vector<CheckStageResource> resources;
-                bool isHead = true;
-                JobStageNode* next = nullptr;
+                std::vector<std::string> afters;
             };
-            std::vector<JobStageNode> jobStages;
+            std::vector<JobStage> jobStages;
 
             for (auto& rth : resourcesToCheck)
             {
@@ -341,25 +374,41 @@ namespace hotswapres
                     });
             }
 
-            // Connect stages into a linked list.
-            for (auto& depend : jobDependencies)
-                for (auto& stageBefore : jobStages)
-                    if (stageBefore.stageName == depend.before)
-                    {
-                        for (auto& stageAfter : jobStages)
-                            if (stageAfter.stageName == depend.after)
-                            {
-                                stageBefore.next = &stageAfter;
-                                stageAfter.isHead = false;
-                                break;
-                            }
-                        break;
-                    }
+            // Connect dependencies of stages.
+            for (auto& jobStage : jobStages)
+                for (auto& depend : jobDependencies)
+                    if (jobStage.stageName == depend.before)
+                        jobStage.afters.push_back(depend.after);
 
-            std::vector<JobStageNode*> jobStagesHeadRefs;
-            for (auto& stage : jobStages)
-                if (stage.isHead)
-                    jobStagesHeadRefs.push_back(&stage);
+            // Sort stages into order of dependencies.
+            bool sorted = false;
+            while (!sorted)
+            {
+                sorted = true;
+                for (size_t b = 0; b < jobStages.size(); b++)
+                {
+                    auto& jobStageBefore = jobStages[b];
+                    for (size_t a = 0; a < jobStages.size(); a++)
+                    {
+                        auto& jobStageAfter = jobStages[a];
+                        for (auto& depend : jobDependencies)
+                            if (depend.before == jobStageBefore.stageName &&
+                                depend.after == jobStageAfter.stageName)
+                            {
+                                if (b == a)
+                                    std::cerr << "You're an idiot.  -Dmitri" << std::endl;
+                                else if (b > a)
+                                {
+                                    std::iter_swap(
+                                        jobStages.begin() + b,
+                                        jobStages.begin() + a
+                                    );
+                                    sorted = false;
+                                }
+                            }
+                    }
+                }
+            }
 
             // Lock guard.
             {
@@ -369,21 +418,21 @@ namespace hotswapres
                 std::lock_guard<std::mutex> lg(hotswapResourcesMutex);
                 
                 // Process each stage, traversing thru each linked list.
-                for (JobStageNode* headRef : jobStagesHeadRefs)
+                for (JobStage& stage : jobStages)
                 {
-                    JobStageNode* n = headRef;
-                    while (n != nullptr)
+                    std::cout << "\tChecking " << stage.stageName << std::endl;
+                    if (executeHotswapOnResourcesThatNeedIt(engine, roManager, stage.stageName, stage.resources))
                     {
-                        std::cout << "\tChecking " << n->stageName << std::endl;
-                        if (executeHotswapOnResourcesThatNeedIt(engine, roManager, n->stageName, n->resources))
-                        {
-                            numGroupsProcessed++;
-                            std::cout << "\t\tProcessed." << std::endl;
-                            if (n->next != nullptr)
-                                for (auto& nextRes : n->next->resources)  // Mark all resources in the next node as check.
-                                    nextRes.includeInCheck = true;
-                        }
-                        n = n->next;
+                        numGroupsProcessed++;
+                        std::cout << "\t\tProcessed." << std::endl;
+                        for (auto& after : stage.afters)
+                            for (auto& otherStage : jobStages)
+                                if (otherStage.stageName == after)
+                                {
+                                    for (auto& afterRes : otherStage.resources)  // Mark all resources in the after job stage as ones to check.
+                                        afterRes.includeInCheck = true;
+                                    break;  // Should only be one job stage with a certain name and we found it.
+                                }
                     }
                 }
 
