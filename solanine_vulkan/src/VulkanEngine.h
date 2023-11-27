@@ -365,6 +365,7 @@ private:
 	FrameData _frames[FRAME_OVERLAP];
 	FrameData& getCurrentFrame();
 
+	void loadMaterials();
 	void loadMeshes();
 
 	void uploadCurrentFrameToGPU(const FrameData& currentFrame);

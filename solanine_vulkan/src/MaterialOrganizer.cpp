@@ -428,10 +428,7 @@ namespace materialorganizer
                             {
                                 // Is filename.
                                 newParam.valueType = DerivedMaterialParamSet::Param::ValueType::TEXTURE_NAME;
-                                if (p2 == "empty")
-                                    newParam.stringValue = "";
-                                else
-                                    newParam.stringValue = p2;
+                                newParam.stringValue = p2;
                             }
                         }
 
@@ -492,5 +489,30 @@ namespace materialorganizer
         }
         *dmps = {};  // Clear state.
         return dmps->loadFromFile(path);
+    }
+
+    std::vector<std::string> textureNamesInOrder;
+
+    void cookTextureIndices()
+    {
+        textureNamesInOrder.clear();
+        for (auto& dmps : existingDMPSs)
+        for (auto& param : dmps.params)
+            if (param.valueType == DerivedMaterialParamSet::Param::ValueType::TEXTURE_NAME)
+            {
+                bool found = false;
+                for (size_t i = 0; i < textureNamesInOrder.size(); i++)
+                    if (param.stringValue == textureNamesInOrder[i])
+                    {
+                        param.numericalValue[0] = i;
+                        found = true;
+                        break;
+                    }
+                if (!found)
+                {
+                    textureNamesInOrder.push_back(param.stringValue);
+                    param.numericalValue[0] = textureNamesInOrder.size() - 1;
+                }
+            }
     }
 }

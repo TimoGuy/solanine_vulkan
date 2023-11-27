@@ -10,4 +10,6 @@ namespace materialorganizer
 
     bool checkDerivedMaterialParamReloadNeeded(const std::filesystem::path& path);
     bool loadDerivedMaterialParam(const std::filesystem::path& path);
+
+    void cookTextureIndices();
 }

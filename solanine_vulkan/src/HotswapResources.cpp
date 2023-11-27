@@ -196,6 +196,7 @@ namespace hotswapres
         else if (stageName == "materialPropagation")
         {
             // @TODO: propagate the materials!
+            materialorganizer::cookTextureIndices();
             // executedHotswap = true;
         }
         else

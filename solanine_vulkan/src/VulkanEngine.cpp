@@ -7,6 +7,7 @@
 #include "VkDescriptorBuilderUtil.h"
 #include "VkPipelineBuilderUtil.h"
 #include "VkTextures.h"
+#include "MaterialOrganizer.h"
 #include "VkglTFModel.h"
 #include "TextMesh.h"
 #include "AudioEngine.h"
@@ -87,6 +88,7 @@ void VulkanEngine::init()
 
 	initImgui();
 	loadImages();
+	loadMaterials();
 	loadMeshes();
 	generatePBRCubemaps();
 	generateBRDFLUT();
@@ -5456,6 +5458,27 @@ void VulkanEngine::recreateSwapchain()
 FrameData& VulkanEngine::getCurrentFrame()
 {
 	return _frames[_frameNumber % FRAME_OVERLAP];
+}
+
+void VulkanEngine::loadMaterials()
+{
+	for (const auto& entry : std::filesystem::recursive_directory_iterator("res/materials/"))
+	{
+		const auto& path = entry.path();
+		if (std::filesystem::is_directory(path) ||
+			!path.has_extension())
+			continue;
+
+		if (path.extension().compare(".humba") == 0)
+		{
+			materialorganizer::loadMaterialBase(path);
+		}
+		else if (path.extension().compare(".hderriere") == 0)
+		{
+			materialorganizer::loadDerivedMaterialParam(path);
+		}
+	}
+	materialorganizer::cookTextureIndices();
 }
 
 void VulkanEngine::loadMeshes()
