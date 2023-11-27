@@ -157,7 +157,7 @@ namespace texturecooker
             loaded = true;
         }
 
-        bool checkIfNeedToExecute()
+        bool checkIfNeedToExecute(const std::filesystem::path& halfstepPath)
         {
             if (!loaded)
                 return false;
@@ -166,6 +166,8 @@ namespace texturecooker
                 return true;
             
             auto lwt = std::filesystem::last_write_time(outputPath);
+            if (lwt <= std::filesystem::last_write_time(halfstepPath))
+                return true;
             if (!r.bwImagePath.empty() &&
                 std::filesystem::last_write_time(r.bwImagePath) >= lwt)
                 return true;
@@ -321,7 +323,7 @@ namespace texturecooker
     bool checkHalfStepNeeded(const std::filesystem::path& path)
     {
         HalfStepRecipe hsp(path);
-        return hsp.checkIfNeedToExecute();
+        return hsp.checkIfNeedToExecute(path);
     }
 
     bool cookHalfStepFromRecipe(const std::filesystem::path& path)

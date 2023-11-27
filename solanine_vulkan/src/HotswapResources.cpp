@@ -6,6 +6,7 @@
 
 #include "GLSLToSPIRVHelper.h"
 #include "TextureCooker.h"
+#include "MaterialOrganizer.h"
 #include "RenderObject.h"
 
 
@@ -155,6 +156,22 @@ namespace hotswapres
                 if (r.includeInCheck &&
                     glslToSPIRVHelper::checkGLSLShaderCompileNeeded(r.path) &&
                     glslToSPIRVHelper::compileGLSLShaderToSPIRV(r.path))
+                    executedHotswap = true;
+        }
+        else if (stageName == ".humba")
+        {
+            for (auto& r : resources)
+                if (r.includeInCheck &&
+                    materialorganizer::checkMaterialBaseReloadNeeded(r.path) &&
+                    materialorganizer::loadMaterialBase(r.path))
+                    executedHotswap = true;
+        }
+        else if (stageName == ".hderriere")
+        {
+            for (auto& r : resources)
+                if (r.includeInCheck &&
+                    materialorganizer::checkDerivedMaterialParamReloadNeeded(r.path) &&
+                    materialorganizer::loadDerivedMaterialParam(r.path))
                     executedHotswap = true;
         }
         else if (stageName == ".gltf" ||

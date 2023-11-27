@@ -62,6 +62,7 @@
         - [x] Allow dependency trees. Allow pngs to be gen'd with the halfway cooker, then trigger another check routine to see if any pngs got updated that are reliant upon the hrecipe's.
             > THIS WAS A FREAKTON OF WORK THAT I WILL NOT BE LISTING HERE!
     - [ ] New material system.
+        - [x] Connect the hotswap reload to hotswapresources.h/.cpp
         - [ ] Load in pipelines from .humba files.
             - [ ] Use SPIRV-Reflect to generate descriptor set layouts and pipeline layouts.
             - [ ] Connect globaldescriptor, objectdescriptor, etc. to the parts where the name matches from reflection.
