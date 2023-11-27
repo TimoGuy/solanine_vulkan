@@ -1,5 +1,5 @@
 Hawsoo DERived MateRIal parametER Entry                                                  # File type identifier
-HUMBA                                                            pbr                     # Name of the Material Base (pbr.humba)
+HUMBA                                                            pbr.humba               # Name of the Material Base (pbr.humba)
 MaterialCollection.MaterialParam.colorMapIndex                   empty                   # @NOTE: the name is placed here bc of the mapping (texture_idx) which will change the name into the correct uint that represents the texture index, provided the texture actually exists.
 MaterialCollection.MaterialParam.physicalDescriptorMapIndex      empty
 MaterialCollection.MaterialParam.normalMapIndex                  empty

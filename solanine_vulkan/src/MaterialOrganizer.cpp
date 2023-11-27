@@ -2,11 +2,41 @@
 
 #include "MaterialOrganizer.h"
 
+#include "StringHelper.h"
+#include "DataSerialization.h"
+
 
 namespace materialorganizer
 {
+    // Helper functions.
+    void threePartStringParse(std::string line, std::string& outP1, std::string& outP2, std::string& outP3)
+    {
+        size_t k1 = line.find(' ');
+        outP1 = line.substr(0, k1);
+        outP2 = line.substr(k1);
+        trim(outP1);
+        trim(outP2);
+        size_t k2 = outP2.find(' ');
+        outP3 = outP2.substr(k2);
+        outP2 = outP2.substr(0, k2);
+        trim(outP2);
+        trim(outP3);
+    }
+
+    void twoPartStringParse(std::string line, std::string& outP1, std::string& outP2)
+    {
+        size_t k = line.find(' ');
+        outP1 = line.substr(0, k);
+        outP2 = line.substr(k);
+        trim(outP1);
+        trim(outP2);
+    }
+
+    // Material Base (.humba)
     struct UniqueMaterialBase
     {
+        bool loaded = false;
+        std::filesystem::file_time_type lastLoadTime;
         std::filesystem::path umbPath;
 
         struct ShaderStage
@@ -23,12 +53,62 @@ namespace materialorganizer
                     UINT,
                 } type;
 
+                bool setTypeFromString(const std::string& s)
+                {
+                    if (s == "sampler1D")
+                        type = UniqueMaterialBase::ShaderStage::Variable::Type::SAMPLER_1D;
+                    else if (s == "sampler2D")
+                        type = UniqueMaterialBase::ShaderStage::Variable::Type::SAMPLER_2D;
+                    else if (s == "sampler2DArray")
+                        type = UniqueMaterialBase::ShaderStage::Variable::Type::SAMPLER_2D_ARRAY;
+                    else if (s == "sampler3D")
+                        type = UniqueMaterialBase::ShaderStage::Variable::Type::SAMPLER_3D;
+                    else if (s == "samplerCube")
+                        type = UniqueMaterialBase::ShaderStage::Variable::Type::SAMPLER_CUBE;
+                    else if (s == "float")
+                        type = UniqueMaterialBase::ShaderStage::Variable::Type::FLOAT;
+                    else if (s == "vec2")
+                        type = UniqueMaterialBase::ShaderStage::Variable::Type::VEC2;
+                    else if (s == "vec3")
+                        type = UniqueMaterialBase::ShaderStage::Variable::Type::VEC3;
+                    else if (s == "vec4")
+                        type = UniqueMaterialBase::ShaderStage::Variable::Type::VEC4;
+                    else if (s == "bool")
+                        type = UniqueMaterialBase::ShaderStage::Variable::Type::BOOL;
+                    else if (s == "int")
+                        type = UniqueMaterialBase::ShaderStage::Variable::Type::INT;
+                    else if (s == "uint")
+                        type = UniqueMaterialBase::ShaderStage::Variable::Type::UINT;
+                    else
+                    {
+                        std::cerr << "ERROR: material type " << s << " not found." << std::endl;
+                        return false;
+                    }
+                    return true;
+                }
+
                 enum class Mapping
                 {
                     ONE_TO_ONE,
                     TEXTURE_INDEX,
                     TO_FLOAT,
                 } mapping;
+
+                bool setMappingFromString(const std::string& s)
+                {
+                    if (s == "121")
+                        mapping = UniqueMaterialBase::ShaderStage::Variable::Mapping::ONE_TO_ONE;
+                    else if (s == "texture_idx")
+                        mapping = UniqueMaterialBase::ShaderStage::Variable::Mapping::TEXTURE_INDEX;
+                    else if (s == "float")
+                        mapping = UniqueMaterialBase::ShaderStage::Variable::Mapping::TO_FLOAT;
+                    else
+                    {
+                        std::cerr << "ERROR: material mapping " << s << " not found." << std::endl;
+                        return false;
+                    }
+                    return true;
+                }
 
                 std::string scopedName;
             };
@@ -42,14 +122,12 @@ namespace materialorganizer
             VkPipelineLayout layout;
         } compiled;
 
-        bool loaded = false;
 
-
-        void loadFromFile(const std::filesystem::path& path)
+        bool loadFromFile(const std::filesystem::path& path)
         {
             umbPath = path;
 
-            std::ifstream infile(umbPath);  // @TODO: continue from here!
+            std::ifstream infile(umbPath);
             std::string line;
             size_t stage = 0;
             for (size_t lineNum = 1; std::getline(infile, line); lineNum++)
@@ -72,10 +150,189 @@ namespace materialorganizer
                 switch (stage)
                 {
                     case 0:
-                        if (line != "HAwsoo Little texture mixing Format Scrumdiddly Titillating Enticing Procedure (uchar only!)")
+                        if (line != "Hawsoo Unique Material BAse")
                         {
                             std::cerr << "ERROR: file tag missing." << std::endl;
-                            return;
+                            return false;
+                        }
+                        stage++;
+                        break;
+
+                    case 1:
+                    {
+                        vertex.fname = line;
+                        stage++;
+                    } break;
+
+                    case 2:
+                    {
+                        if (line == "---")
+                        {
+                            stage++;
+                            break;
+                        }
+
+                        // Parse into 3 parts.
+                        std::string p1, p2, p3;
+                        threePartStringParse(line, p1, p2, p3);
+
+                        // Put into variables.
+                        bool failed = false;
+                        UniqueMaterialBase::ShaderStage::Variable matParam = {};
+                        failed |= !matParam.setTypeFromString(p1);
+                        failed |= !matParam.setMappingFromString(p2);
+                        matParam.scopedName = p3;
+
+                        if (!failed)
+                            vertex.materialParams.push_back(matParam);
+                    } break;
+
+                    case 3:
+                    {
+                        fragment.fname = line;
+                        stage++;
+                    } break;
+
+                    case 4:
+                    {
+                        if (line == "---")
+                        {
+                            stage++;
+                            break;
+                        }
+
+                        // Parse into 3 parts.
+                        std::string p1, p2, p3;
+                        threePartStringParse(line, p1, p2, p3);
+
+                        // Put into variables.
+                        bool failed = false;
+                        UniqueMaterialBase::ShaderStage::Variable matParam = {};
+                        failed |= !matParam.setTypeFromString(p1);
+                        failed |= !matParam.setMappingFromString(p2);
+                        matParam.scopedName = p3;
+
+                        if (!failed)
+                            fragment.materialParams.push_back(matParam);
+                    } break;
+                }
+            }
+
+            lastLoadTime = std::filesystem::file_time_type::clock::now();
+            loaded = true;
+            return true;
+        }
+
+        bool reloadNeeded()
+        {
+            if (!loaded)
+                return true;
+            if (std::filesystem::last_write_time(umbPath) >= lastLoadTime)
+                return true;
+            if (std::filesystem::last_write_time("res/shaders/" + vertex.fname) >= lastLoadTime)
+                return true;
+            if (std::filesystem::last_write_time("res/shaders/" + fragment.fname) >= lastLoadTime)
+                return true;
+            return false;
+        }
+    };
+    std::vector<UniqueMaterialBase> existingUMBs;
+
+    bool checkMaterialBaseReloadNeeded(const std::filesystem::path& path)
+    {
+        UniqueMaterialBase* umb = nullptr;
+        for (auto& eUMB : existingUMBs)
+            if (eUMB.umbPath == path)
+            {
+                umb = &eUMB;
+                break;
+            }
+        if (umb == nullptr)
+            return true;
+        return umb->reloadNeeded();
+    }
+
+    bool loadMaterialBase(const std::filesystem::path& path)
+    {
+        UniqueMaterialBase* umb = nullptr;  // @COPYPASTA
+        for (auto& eUMB : existingUMBs)
+            if (eUMB.umbPath == path)
+            {
+                umb = &eUMB;
+                break;
+            }
+        if (umb == nullptr)
+        {
+            UniqueMaterialBase newUMB = {};
+            existingUMBs.push_back(newUMB);
+            umb = &existingUMBs.back();
+        }
+        *umb = {};  // Clear state.
+        return umb->loadFromFile(path);
+    }
+
+    // Derived Material Parameter Set (.hderriere)
+    struct DerivedMaterialParamSet
+    {
+        bool loaded = false;
+        std::filesystem::file_time_type lastLoadTime;
+        std::filesystem::path dmpsPath;
+
+        std::string humbaFname;
+
+        struct Param
+        {
+            std::string scopedName;
+
+            enum class ValueType
+            {
+                TEXTURE_NAME,
+                FLOAT,
+                VEC2,
+                VEC3,
+                VEC4,
+                BOOL,
+                INT,
+                UINT,
+            } valueType;
+
+            std::string stringValue;
+            vec4 numericalValue;
+        };
+        std::vector<Param> params;
+
+
+        bool loadFromFile(const std::filesystem::path& path)
+        {
+            dmpsPath = path;
+
+            std::ifstream infile(dmpsPath);
+            std::string line;
+            size_t stage = 0;
+            for (size_t lineNum = 1; std::getline(infile, line); lineNum++)
+            {
+                //
+                // Prep line data
+                //
+                std::string originalLine = line;
+
+                size_t found = line.find('#');
+                if (found != std::string::npos)
+                {
+                    line = line.substr(0, found);
+                }
+
+                trim(line);
+                if (line.empty())
+                    continue;
+
+                switch (stage)
+                {
+                    case 0:
+                        if (line != "Hawsoo DERived MateRIal parametER Entry")
+                        {
+                            std::cerr << "ERROR: file tag missing." << std::endl;
+                            return false;
                         }
                         stage++;
                         break;
@@ -83,120 +340,157 @@ namespace materialorganizer
                     case 1:
                     {
                         std::string p1, p2;
-                        size_t nextWS;
-                        if ((nextWS = line.find(' ')) == std::string::npos)
+                        twoPartStringParse(line, p1, p2);
+                        if (p1 != "HUMBA")
                         {
-                            std::cerr << "[LOAD HALF STEP RECIPE]" << std::endl
-                                << "ERROR: line does not have 2 arguments." << std::endl;
-                            return;
+                            std::cerr << "ERROR: HUMBA filename expected. Received: " << line << std::endl;
+                            return false;
+                        }
+                        humbaFname = p2;
+                        stage++;
+                    } break;
+
+                    case 2:
+                    {
+                        std::string p1, p2;
+                        twoPartStringParse(line, p1, p2);
+
+                        DerivedMaterialParamSet::Param newParam = {};
+                        newParam.scopedName = p1;
+
+                        bool isNumerical = (p2.find_first_not_of("0123456789-.,") == std::string::npos);
+                        if (isNumerical)
+                        {
+                            int32_t numCommas = 0;
+                            for (auto c : p2)
+                                if (c == ',')
+                                    numCommas++;
+                            std::replace(p2.begin(), p2.end(), ',', ' ');  // Values separated by space is required for DataSerializer.
+                            switch (numCommas)
+                            {
+                                case 0:
+                                {
+                                    // Either float, int, or uint.
+                                    if (p2.find('.') == std::string::npos)
+                                    {
+                                        newParam.valueType = DerivedMaterialParamSet::Param::ValueType::INT;
+                                        // newParam.valueType = DerivedMaterialParamSet::Param::ValueType::UINT;  // There will have to be some kind of connection to the shader, the .humba file and this to discern whether this is a uint versus a regular int, so assume int.  -Timo 2023/11/27
+                                    }
+                                    else
+                                        newParam.valueType = DerivedMaterialParamSet::Param::ValueType::FLOAT;
+                                    DataSerializer ds;
+                                    ds.dumpString(p2);
+                                    ds.getSerializedData().loadFloat(newParam.numericalValue[0]);
+                                } break;
+
+                                case 1:
+                                {
+                                    // Is Vec2.
+                                    newParam.valueType = DerivedMaterialParamSet::Param::ValueType::VEC2;
+                                    DataSerializer ds;
+                                    ds.dumpString(p2);
+                                    vec2 v;
+                                    ds.getSerializedData().loadVec2(v);
+                                    glm_vec2_copy(v, newParam.numericalValue);
+                                } break;
+
+                                case 2:
+                                {
+                                    // Is Vec3.
+                                    newParam.valueType = DerivedMaterialParamSet::Param::ValueType::VEC3;
+                                    DataSerializer ds;
+                                    ds.dumpString(p2);
+                                    vec3 v;
+                                    ds.getSerializedData().loadVec3(v);
+                                    glm_vec3_copy(v, newParam.numericalValue);
+                                } break;
+
+                                case 3:
+                                {
+                                    // Is Vec4.
+                                    newParam.valueType = DerivedMaterialParamSet::Param::ValueType::VEC4;
+                                    DataSerializer ds;
+                                    ds.dumpString(p2);
+                                    ds.getSerializedData().loadQuat(newParam.numericalValue);
+                                } break;
+                            }
                         }
                         else
                         {
-                            p1 = line.substr(0, nextWS);
-                            p2 = line.substr(nextWS);
-                            trim(p1);
-                            trim(p2);
+                            // Either bool, or filename.
+                            if (p2 == "true" || p2 == "false")
+                            {
+                                // Is bool.
+                                newParam.valueType = DerivedMaterialParamSet::Param::ValueType::BOOL;
+                                newParam.numericalValue[0] = (p2 == "true" ? 1.0f : 0.0f);
+                            }
+                            else
+                            {
+                                // Is filename.
+                                newParam.valueType = DerivedMaterialParamSet::Param::ValueType::TEXTURE_NAME;
+                                if (p2 == "empty")
+                                    newParam.stringValue = "";
+                                else
+                                    newParam.stringValue = p2;
+                            }
                         }
 
-                        // Load channel image or scale.
-                        std::string channel = p1.substr(0, 1);
-                        std::string resType = p1.substr(2);
-                        Channel* myChannel = nullptr;
-                        if (channel == "r")
-                            myChannel = &r;
-                        else if (channel == "g")
-                            myChannel = &g;
-                        else if (channel == "b")
-                            myChannel = &b;
-                        else if (channel == "a")
-                            myChannel = &a;
-                        else
-                        {
-                            std::cerr << "ERROR: channel name not found." << std::endl;
-                            return;
-                        }
-
-                        myChannel->used = true;
-                        if (resType == "file")
-                            myChannel->bwImagePath = "res/texture_pool/" + p2;
-                        else if (resType == "scale")
-                            myChannel->scale = std::stof(p2);
-                        else
-                        {
-                            std::cerr << "ERROR: resource type not found." << std::endl;
-                            return;
-                        }
+                        params.push_back(newParam);
                     } break;
                 }
             }
 
-            // Post loading check.
-            bool channelUsed = false;
-            bool imageUsed = false;
-            if (r.used)
-            {
-                channelUsed = true;
-                if (!r.bwImagePath.empty())
-                    imageUsed = true;
-            }
-            if (g.used)
-            {
-                channelUsed = true;
-                if (!g.bwImagePath.empty())
-                    imageUsed = true;
-            }
-            if (b.used)
-            {
-                channelUsed = true;
-                if (!b.bwImagePath.empty())
-                    imageUsed = true;
-            }
-            if (a.used)
-            {
-                channelUsed = true;
-                if (!a.bwImagePath.empty())
-                    imageUsed = true;
-            }
-
-            if (!channelUsed)
-            {
-                std::cerr << "ERROR: no channel was used." << std::endl;
-                return;
-            }
-            if (!imageUsed)
-            {
-                std::cerr << "ERROR: no image was used." << std::endl;
-                return;
-            }
-
-            // SUCCESS! Finish.
-            outputPath = "res/texture_pool/_mid_gen_textures/" + path.stem().string() + ".png";
+            lastLoadTime = std::filesystem::file_time_type::clock::now();
             loaded = true;
+            return true;
+        }
+
+        bool reloadNeeded()
+        {
+            if (!loaded)
+                return true;
+            if (std::filesystem::last_write_time(dmpsPath) >= lastLoadTime)
+                return true;
+            for (auto param : params)
+                if (param.valueType == DerivedMaterialParamSet::Param::ValueType::TEXTURE_NAME &&
+                    !param.stringValue.empty() &&
+                    std::filesystem::last_write_time("res/texture_cooked/" + param.stringValue) >= lastLoadTime)
+                    return true;
+            return false;
         }
     };
-    std::vector<UniqueMaterialBase> existingUMBs;
-
-    bool checkMaterialBaseReloadNeeded(const std::filesystem::path& path)
-    {
-        // @TODO: Search to see if the path is used in `umbPath` for an existing material base, then use that. If not, create a new one.
-        UniqueMaterialBase umb(path);
-        if (!umb.loaded)
-            return false;
-        return umb.reloadNeeded();
-    }
-
-    bool loadMaterialBase(const std::filesystem::path& path)
-    {
-        return true;
-    }
+    std::vector<DerivedMaterialParamSet> existingDMPSs;
 
     bool checkDerivedMaterialParamReloadNeeded(const std::filesystem::path& path)
     {
-        return true;
+        DerivedMaterialParamSet* dmps = nullptr;  // @COPYPASTA
+        for (auto& eDMPS : existingDMPSs)
+            if (eDMPS.dmpsPath == path)
+            {
+                dmps = &eDMPS;
+                break;
+            }
+        if (dmps == nullptr)
+            return true;
+        return dmps->reloadNeeded();
     }
 
     bool loadDerivedMaterialParam(const std::filesystem::path& path)
     {
-        return true;
+        DerivedMaterialParamSet* dmps = nullptr;  // @COPYPASTA
+        for (auto& eDMPS : existingDMPSs)
+            if (eDMPS.dmpsPath == path)
+            {
+                dmps = &eDMPS;
+                break;
+            }
+        if (dmps == nullptr)
+        {
+            DerivedMaterialParamSet newDMPS = {};
+            existingDMPSs.push_back(newDMPS);
+            dmps = &existingDMPSs.back();
+        }
+        *dmps = {};  // Clear state.
+        return dmps->loadFromFile(path);
     }
 }
