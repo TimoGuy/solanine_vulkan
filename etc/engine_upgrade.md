@@ -63,6 +63,7 @@
             > THIS WAS A FREAKTON OF WORK THAT I WILL NOT BE LISTING HERE!
     - [ ] New material system.
         - [x] Connect the hotswap reload to hotswapresources.h/.cpp
+        - [x] Load in .hderriere and .humba files into a data structure.
         - [ ] Load in pipelines from .humba files.
             - [ ] Use SPIRV-Reflect to generate descriptor set layouts and pipeline layouts.
             - [ ] Connect globaldescriptor, objectdescriptor, etc. to the parts where the name matches from reflection.
