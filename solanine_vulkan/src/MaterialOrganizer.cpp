@@ -2,12 +2,25 @@
 
 #include "MaterialOrganizer.h"
 
+#include "VkDataStructures.h"
+#include "VkInitializers.h"
+#include "VkDescriptorBuilderUtil.h"
+#include "VkPipelineBuilderUtil.h"
+#include "VkglTFModel.h"
+#include "VulkanEngine.h"
 #include "StringHelper.h"
 #include "DataSerialization.h"
 
 
 namespace materialorganizer
 {
+    VulkanEngine* engineRef;
+
+    void init(VulkanEngine* engine)
+    {
+        engineRef = engine;
+    }
+
     // Helper functions.
     void threePartStringParse(std::string line, std::string& outP1, std::string& outP2, std::string& outP3)
     {
@@ -118,8 +131,12 @@ namespace materialorganizer
 
         struct Compiled
         {
+            bool cooked = false;
             VkPipeline pipeline;
-            VkPipelineLayout layout;
+            VkPipelineLayout pipelineLayout;
+            AllocatedBuffer materialParamsBuffer;
+            VkDescriptorSet materialParamsDescriptorSet;
+            VkDescriptorSetLayout materialParamsDescriptorSetLayout;
         } compiled;
 
 
@@ -491,18 +508,24 @@ namespace materialorganizer
         return dmps->loadFromFile(path);
     }
 
-    std::vector<std::string> textureNamesInOrder;
+    struct TextureNameWithMap
+    {
+        std::string name;
+        Texture* map = nullptr;
+    };
+    std::vector<TextureNameWithMap> texturesInOrder;
 
     void cookTextureIndices()
     {
-        textureNamesInOrder.clear();
+        // Put together unique set of textures.
+        texturesInOrder.clear();
         for (auto& dmps : existingDMPSs)
         for (auto& param : dmps.params)
             if (param.valueType == DerivedMaterialParamSet::Param::ValueType::TEXTURE_NAME)
             {
                 bool found = false;
-                for (size_t i = 0; i < textureNamesInOrder.size(); i++)
-                    if (param.stringValue == textureNamesInOrder[i])
+                for (size_t i = 0; i < texturesInOrder.size(); i++)
+                    if (param.stringValue == texturesInOrder[i].name)
                     {
                         param.numericalValue[0] = i;
                         found = true;
@@ -510,9 +533,91 @@ namespace materialorganizer
                     }
                 if (!found)
                 {
-                    textureNamesInOrder.push_back(param.stringValue);
-                    param.numericalValue[0] = textureNamesInOrder.size() - 1;
+                    texturesInOrder.push_back({ .name = param.stringValue });
+                    param.numericalValue[0] = texturesInOrder.size() - 1;
                 }
             }
+
+        // Load textures.  @TODO
+        for (auto& texture : texturesInOrder)
+        {
+            texture.map = loadFromKTX("res/texture_cooked/" + texture.name + ".hdelicious");
+        }
+        
+        // Build descriptor sets for materials.
+        for (auto& umb : existingUMBs)
+        {
+            // Find derived materials that use this base.
+            std::string umbHumba = umb.umbPath.stem().string();
+            std::vector<size_t> dmpsIndices;
+            for (size_t i = 0; i < existingDMPSs.size(); i++)
+                if (existingDMPSs[i].humbaFname == umbHumba)
+                    dmpsIndices.push_back(i);
+
+            // Delete previously cooked.
+            if (umb.compiled.cooked)
+                vmaDestroyBuffer(engineRef->_allocator, umb.compiled.materialParamsBuffer._buffer, umb.compiled.materialParamsBuffer._allocation);
+
+            // Create descriptor set and attach to material.
+            size_t materialParamsBufferSize = sizeof(PBRMaterialParam) * dmpsIndices.size();
+            umb.compiled.materialParamsBuffer = engineRef->createBuffer(materialParamsBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+            VkDescriptorBufferInfo materialParamsBufferInfo = {
+                .buffer = umb.compiled.materialParamsBuffer._buffer,
+                .offset = 0,
+                .range = materialParamsBufferSize,
+            };
+
+            std::vector<VkDescriptorImageInfo> textureMapInfos;
+            for (auto& texture : texturesInOrder)
+                textureMapInfos.push_back(vkinit::textureToDescriptorImageInfo(texture.map));
+            
+            vkutil::DescriptorBuilder::begin()
+                .bindImageArray(0, (uint32_t)textureMapInfos.size(), textureMapInfos.data(), VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+                .bindBuffer(1, &materialParamsBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT)
+                .build(umb.compiled.materialParamsDescriptorSet, umb.compiled.materialParamsDescriptorSetLayout);
+
+            engineRef->attachTextureSetToMaterial(umb.compiled.materialParamsDescriptorSet, umb.umbPath.string());
+
+            // Load pipeline and attach to material.
+            vkglTF::VertexInputDescription modelVertexDescription = vkglTF::Model::Vertex::getVertexDescription();
+
+            VkViewport screenspaceViewport = {
+                0.0f, 0.0f,
+                (float_t)engineRef->_windowExtent.width, (float_t)engineRef->_windowExtent.height,
+                0.0f, 1.0f,
+            };
+            VkRect2D screenspaceScissor = {
+                { 0, 0 },
+                engineRef->_windowExtent,
+            };
+
+            vkutil::pipelinebuilder::build(
+                {},
+                { engineRef->_globalSetLayout, engineRef->_objectSetLayout, engineRef->_instancePtrSetLayout, umb.compiled.materialParamsDescriptorSetLayout, engineRef->_skeletalAnimationSetLayout, engineRef->_voxelFieldLightingGridTextureSet.layout },
+                {
+                    { VK_SHADER_STAGE_VERTEX_BIT, ("res/shaders/" + umb.vertex.fname).c_str() },
+                    { VK_SHADER_STAGE_FRAGMENT_BIT, ("res/shaders/" + umb.fragment.fname).c_str() },
+                },
+                modelVertexDescription.attributes,
+                modelVertexDescription.bindings,
+                vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+                screenspaceViewport,
+                screenspaceScissor,
+                vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT),
+                { vkinit::colorBlendAttachmentState() },
+                vkinit::multisamplingStateCreateInfo(),
+                vkinit::depthStencilCreateInfo(true, false, VK_COMPARE_OP_EQUAL),
+                {},
+                engineRef->_mainRenderPass,
+                1,
+                umb.compiled.pipeline,
+                umb.compiled.pipelineLayout,
+                engineRef->_swapchainDependentDeletionQueue
+            );
+            engineRef->attachPipelineToMaterial(umb.compiled.pipeline, umb.compiled.pipelineLayout, umb.umbPath.string());
+
+            // Finished.
+            umb.compiled.cooked = true;
+        }
     }
 }

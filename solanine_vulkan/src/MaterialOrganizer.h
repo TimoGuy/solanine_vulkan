@@ -2,9 +2,13 @@
 
 #include "pch.h"
 
+class VulkanEngine;
+
 
 namespace materialorganizer
 {
+    void init(VulkanEngine* engine);
+
     bool checkMaterialBaseReloadNeeded(const std::filesystem::path& path);
     bool loadMaterialBase(const std::filesystem::path& path);
 
