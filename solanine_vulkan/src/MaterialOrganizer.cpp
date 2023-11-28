@@ -550,6 +550,7 @@ namespace materialorganizer
         // Load textures.  @TODO
         for (auto& texture : texturesInOrder)
         {
+            // @TODO: I want this function but read the mip levels, format and stuff without having to do that myself (only specify whether this is a 1D, 2D, 2DArray, 3D, or Cubemap texture).
             vkutil::loadImageFromFile(*engineRef, ("res/texture_cooked/" + texture.name + ".hdelicious").c_str(), VK_FORMAT_R8G8B8A8_UNORM, 1, texture.map->image);
 
             VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_UNORM, texture.map->image._image, VK_IMAGE_ASPECT_COLOR_BIT, texture.map->image._mipLevels);
