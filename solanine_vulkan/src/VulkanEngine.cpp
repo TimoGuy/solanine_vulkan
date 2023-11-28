@@ -1523,25 +1523,6 @@ void VulkanEngine::loadImages()
 		_loadedTextures["empty3d"] = empty;
 	}
 
-	// Load woodFloor057
-	{
-		Texture woodFloor057;
-		vkutil::loadImageFromFile(*this, "res/texture_pool/WoodFloor057_1K-JPG/WoodFloor057_1K_Color.jpg", VK_FORMAT_R8G8B8A8_SRGB, 0, woodFloor057.image);
-
-		VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, woodFloor057.image._image, VK_IMAGE_ASPECT_COLOR_BIT, woodFloor057.image._mipLevels);
-		vkCreateImageView(_device, &imageInfo, nullptr, &woodFloor057.imageView);
-
-		VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(woodFloor057.image._mipLevels), VK_FILTER_LINEAR);
-		vkCreateSampler(_device, &samplerInfo, nullptr, &woodFloor057.sampler);
-
-		_mainDeletionQueue.pushFunction([=]() {
-			vkDestroySampler(_device, woodFloor057.sampler, nullptr);
-			vkDestroyImageView(_device, woodFloor057.imageView, nullptr);
-			});
-
-		_loadedTextures["WoodFloor057"] = woodFloor057;
-	}
-
 	// Load imguiTextureLayerVisible
 	{
 		Texture textureLayerVisible;
@@ -1908,6 +1889,7 @@ void VulkanEngine::initVulkan()
 	vkutil::pipelinelayoutcache::init(_device);
 	textmesh::init(this);
 	textbox::init(this);
+	materialorganizer::init(this);
 	vkinit::_maxSamplerAnisotropy = _gpuProperties.limits.maxSamplerAnisotropy;
 
 	//
@@ -6057,10 +6039,10 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 						(ImTextureID)_imguiData.textureLayerCollision,
 					};
 					std::string buttonTurnOnSfx[] = {
-						"res/_develop/layer_visible_sfx.ogg",
-						"res/_develop/layer_invisible_sfx.ogg",
-						"res/_develop/layer_builder_sfx.ogg",
-						"res/_develop/layer_collision_sfx.ogg",
+						"res/sfx/_develop/layer_visible_sfx.ogg",
+						"res/sfx/_develop/layer_invisible_sfx.ogg",
+						"res/sfx/_develop/layer_builder_sfx.ogg",
+						"res/sfx/_develop/layer_collision_sfx.ogg",
 					};
 
 					for (size_t i = 0; i < std::size(renderingLayersButtonIcons); i++)

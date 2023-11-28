@@ -4,6 +4,7 @@
 
 #include "VkDataStructures.h"
 #include "VkInitializers.h"
+#include "VkTextures.h"
 #include "VkDescriptorBuilderUtil.h"
 #include "VkPipelineBuilderUtil.h"
 #include "VkglTFModel.h"
@@ -517,8 +518,16 @@ namespace materialorganizer
 
     void cookTextureIndices()
     {
-        // Put together unique set of textures.
+        // Delete previous textures.
+        for (auto& texture : texturesInOrder)
+            if (texture.map != nullptr)
+            {
+                vkDestroySampler(engineRef->_device, texture.map->sampler, nullptr);
+                vkDestroyImageView(engineRef->_device, texture.map->imageView, nullptr);
+            }
         texturesInOrder.clear();
+
+        // Put together unique set of textures.
         for (auto& dmps : existingDMPSs)
         for (auto& param : dmps.params)
             if (param.valueType == DerivedMaterialParamSet::Param::ValueType::TEXTURE_NAME)
@@ -541,7 +550,13 @@ namespace materialorganizer
         // Load textures.  @TODO
         for (auto& texture : texturesInOrder)
         {
-            texture.map = loadFromKTX("res/texture_cooked/" + texture.name + ".hdelicious");
+            vkutil::loadImageFromFile(*engineRef, ("res/texture_cooked/" + texture.name + ".hdelicious").c_str(), VK_FORMAT_R8G8B8A8_UNORM, 1, texture.map->image);
+
+            VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_UNORM, texture.map->image._image, VK_IMAGE_ASPECT_COLOR_BIT, texture.map->image._mipLevels);
+            vkCreateImageView(engineRef->_device, &imageInfo, nullptr, &texture.map->imageView);
+
+            VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(texture.map->image._mipLevels), VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
+            vkCreateSampler(engineRef->_device, &samplerInfo, nullptr, &texture.map->sampler);
         }
         
         // Build descriptor sets for materials.
@@ -559,6 +574,7 @@ namespace materialorganizer
                 vmaDestroyBuffer(engineRef->_allocator, umb.compiled.materialParamsBuffer._buffer, umb.compiled.materialParamsBuffer._allocation);
 
             // Create descriptor set and attach to material.
+            // @TODO: load in the equivalent of `PBRMaterialParam` but it be the correct, padded size from the reflection data from the shaders.
             size_t materialParamsBufferSize = sizeof(PBRMaterialParam) * dmpsIndices.size();
             umb.compiled.materialParamsBuffer = engineRef->createBuffer(materialParamsBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
             VkDescriptorBufferInfo materialParamsBufferInfo = {

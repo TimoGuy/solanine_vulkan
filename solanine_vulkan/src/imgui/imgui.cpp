@@ -6251,7 +6251,7 @@ bool ImGui::Begin(const char* name, bool* p_open, ImGuiWindowFlags flags)
                 window->Collapsed = !window->Collapsed;
                 // @TIMO: @MOD: I thought this'd be funny
                 if (!window->Collapsed)
-                    AudioEngine::getInstance().playSound("res/_develop/tbc.ogg");
+                    AudioEngine::getInstance().playSound("res/sfx/_develop/tbc.ogg");
                 MarkIniSettingsDirty(window);
             }
         }
