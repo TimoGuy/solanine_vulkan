@@ -154,6 +154,7 @@ copy $(SolutionDir)libs\ktx\lib_$(ConfigurationName)\ktx.dll $(OutDirfullPath)kt
   <ItemGroup>
     <ClInclude Include="src\spirv\unified1\spirv.h" />
     <ClInclude Include="src\spirv_reflect.h" />
+    <ClInclude Include="src\SPIRVReflectionHelper.h" />
     <ClInclude Include="src\AudioEngine.h" />
     <ClInclude Include="src\Camera.h" />
     <ClInclude Include="src\Debug.h" />
@@ -210,6 +211,7 @@ copy $(SolutionDir)libs\ktx\lib_$(ConfigurationName)\ktx.dll $(OutDirfullPath)kt
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\spirv_reflect.cpp" />
+    <ClCompile Include="src\SPIRVReflectionHelper.cpp" />
     <ClCompile Include="src\AudioEngine.cpp" />
     <ClCompile Include="src\Camera.cpp" />
     <ClCompile Include="src\Debug.cpp" />

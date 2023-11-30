@@ -87,7 +87,7 @@ void VulkanEngine::init()
 	initSyncStructures();
 
 	initImgui();
-	loadImages();
+	//loadImages();  // @NOCHECKIN
 	loadMaterials();
 	loadMeshes();
 	generatePBRCubemaps();

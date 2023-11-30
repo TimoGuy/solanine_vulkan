@@ -64,12 +64,15 @@
     - [ ] New material system.
         - [x] Connect the hotswap reload to hotswapresources.h/.cpp
         - [x] Load in .hderriere and .humba files into a data structure.
-        - [ ] Load in pipelines from .humba files.
-            - [ ] Use SPIRV-Reflect to generate descriptor set layouts and pipeline layouts.
-            - [ ] Connect globaldescriptor, objectdescriptor, etc. to the parts where the name matches from reflection.
-        - [ ] Load in materials from .hderriere files.
-            - [ ] Create list of which unique textures to use and insert into descriptor set.
-            - [ ] Insert all material params into material collection.
+        - [x] Load in pipelines from .humba files.
+            - [x] Use SPIRV-Reflect to generate descriptor set layouts and pipeline layouts.
+            - [x] Connect globaldescriptor, objectdescriptor, etc. to the parts where the name matches from reflection.
+                - [x] CHANGE: actually just assume every shader file that will be a material has a certain order to the bindings.
+        - [x] Load in materials from .hderriere files.
+            - [x] Create list of which unique textures to use and insert into descriptor set.
+            - [x] Insert all material params into material collection.
+            - [ ] Insert all textures into material collection texture maps.
+                - [ ] Create KTX texture loader.
         - [ ] Migrate to material system.
             - [ ] Connect material to render object's palette. When loading in the model, it will also return a palette, and the programmer can insert that palette or insert a loaded palette swap file into the render object.
                 - [f] Load palette swap file.

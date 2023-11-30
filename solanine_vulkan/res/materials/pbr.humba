@@ -3,26 +3,26 @@ pbr.vert.spv                   # Vertex shader name
 ---                            # No more unique properties in vertex shader.
 pbr_khr.frag.spv               # Fragment shader name
 
-# Var Type  | Mapping to   | Variable name in the shader
-sampler2D    texture_idx    MaterialCollection.MaterialParam.colorMapIndex
-sampler2D    texture_idx    MaterialCollection.MaterialParam.physicalDescriptorMapIndex
-sampler2D    texture_idx    MaterialCollection.MaterialParam.normalMapIndex
-sampler2D    texture_idx    MaterialCollection.MaterialParam.aoMapIndex
-sampler2D    texture_idx    MaterialCollection.MaterialParam.emissiveMapIndex
-vec4         121            MaterialCollection.MaterialParam.baseColorFactor
-vec4         121            MaterialCollection.MaterialParam.emissiveFactor
-vec4         121            MaterialCollection.MaterialParam.diffuseFactor
-vec4         121            MaterialCollection.MaterialParam.specularFactor
-float        121            MaterialCollection.MaterialParam.workflow
-int          121            MaterialCollection.MaterialParam.baseColorTextureSet
-int          121            MaterialCollection.MaterialParam.physicalDescriptorTextureSet
-int          121            MaterialCollection.MaterialParam.normalTextureSet
-int          121            MaterialCollection.MaterialParam.occlusionTextureSet
-int          121            MaterialCollection.MaterialParam.emissiveTextureSet
-float        121            MaterialCollection.MaterialParam.metallicFactor
-float        121            MaterialCollection.MaterialParam.roughnessFactor
-bool         float          MaterialCollection.MaterialParam.alphaMask
-float        121            MaterialCollection.MaterialParam.alphaMaskCutoff
+# Var Type  | Mapping to   | MaterialCollection :: MaterialParam :: member name
+sampler2D    texture_idx    colorMapIndex
+sampler2D    texture_idx    physicalDescriptorMapIndex
+sampler2D    texture_idx    normalMapIndex
+sampler2D    texture_idx    aoMapIndex
+sampler2D    texture_idx    emissiveMapIndex
+vec4         121            baseColorFactor
+vec4         121            emissiveFactor
+vec4         121            diffuseFactor
+vec4         121            specularFactor
+float        121            workflow
+int          121            baseColorTextureSet
+int          121            physicalDescriptorTextureSet
+int          121            normalTextureSet
+int          121            occlusionTextureSet
+int          121            emissiveTextureSet
+float        121            metallicFactor
+float        121            roughnessFactor
+bool         float          alphaMask
+float        121            alphaMaskCutoff
 ---                            # No more unique properties in fragment shader.
 
 # @NOTE: `121` means "one-to-one" mapping. It's just easier to type 121 and it's more fun.

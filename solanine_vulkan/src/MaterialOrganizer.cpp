@@ -9,6 +9,7 @@
 #include "VkPipelineBuilderUtil.h"
 #include "VkglTFModel.h"
 #include "VulkanEngine.h"
+#include "SPIRVReflectionHelper.h"
 #include "StringHelper.h"
 #include "DataSerialization.h"
 
@@ -547,24 +548,24 @@ namespace materialorganizer
                 }
             }
 
-        // Load textures.  @TODO
+        // Load textures.  @TODO START HERE!!!!
         for (auto& texture : texturesInOrder)
         {
-            // @TODO: I want this function but read the mip levels, format and stuff without having to do that myself (only specify whether this is a 1D, 2D, 2DArray, 3D, or Cubemap texture).
-            vkutil::loadImageFromFile(*engineRef, ("res/texture_cooked/" + texture.name + ".hdelicious").c_str(), VK_FORMAT_R8G8B8A8_UNORM, 1, texture.map->image);
+           // @TODO: I want this function but read the mip levels, format and stuff without having to do that myself (only specify whether this is a 1D, 2D, 2DArray, 3D, or Cubemap texture).
+           vkutil::loadImageFromFile(*engineRef, ("res/texture_cooked/" + texture.name + ".hdelicious").c_str(), VK_FORMAT_R8G8B8A8_UNORM, 1, texture.map->image);
 
-            VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_UNORM, texture.map->image._image, VK_IMAGE_ASPECT_COLOR_BIT, texture.map->image._mipLevels);
-            vkCreateImageView(engineRef->_device, &imageInfo, nullptr, &texture.map->imageView);
+           VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_UNORM, texture.map->image._image, VK_IMAGE_ASPECT_COLOR_BIT, texture.map->image._mipLevels);
+           vkCreateImageView(engineRef->_device, &imageInfo, nullptr, &texture.map->imageView);
 
-            VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(texture.map->image._mipLevels), VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
-            vkCreateSampler(engineRef->_device, &samplerInfo, nullptr, &texture.map->sampler);
+           VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(texture.map->image._mipLevels), VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
+           vkCreateSampler(engineRef->_device, &samplerInfo, nullptr, &texture.map->sampler);
         }
         
         // Build descriptor sets for materials.
         for (auto& umb : existingUMBs)
         {
             // Find derived materials that use this base.
-            std::string umbHumba = umb.umbPath.stem().string();
+            std::string umbHumba = umb.umbPath.filename().string();
             std::vector<size_t> dmpsIndices;
             for (size_t i = 0; i < existingDMPSs.size(); i++)
                 if (existingDMPSs[i].humbaFname == umbHumba)
@@ -574,9 +575,85 @@ namespace materialorganizer
             if (umb.compiled.cooked)
                 vmaDestroyBuffer(engineRef->_allocator, umb.compiled.materialParamsBuffer._buffer, umb.compiled.materialParamsBuffer._allocation);
 
+            // Load in struct size and offsets for `MaterialCollection.MaterialParam` struct.
+            spv_reflect::ShaderModule umbSM;
+            if (!reflectionhelper::loadShaderModule(("res/shaders/" + umb.fragment.fname).c_str(), umbSM))
+            {
+                std::cerr << "ERROR: Cook failed for unique material: " << umb.umbPath << std::endl;
+                continue;  // Duck out bc cook failed.
+            }
+            auto descriptorBindings = reflectionhelper::extractDescriptorBindingsSorted(umbSM);
+
+            bool materialCollectionDescriptorExists =
+                reflectionhelper::findDescriptorBindingsWithName(descriptorBindings, {
+                    {
+                        .bindings = {
+                            {
+                                .bindingName = "textureMaps",
+                                .bindingType = SpvOpTypeArray,
+                                .binding = 0,
+                            },
+                            {
+                                .bindingName = "materialCollection",
+                                .bindingType = SpvOpTypeStruct,
+                                .binding = 1,
+                            },
+                        },
+                    },
+                });
+            if (!materialCollectionDescriptorExists)
+            {
+                std::cerr << "[COOK EXISTING UMBS]" << std::endl
+                    << "ERROR: material collection not found." << std::endl;
+                continue; 
+            }
+
+            struct MaterialParamElement
+            {
+                std::string paramName;
+                uint32_t relativeOffset;
+            };
+            std::vector<MaterialParamElement> materialParamStruct;
+            uint32_t materialParamsTotalSize = 0;
+            for (auto descriptorBinding : descriptorBindings)
+            {
+                if (descriptorBinding->type_description->op == SpvOpTypeStruct &&
+                    std::string(descriptorBinding->type_description->type_name) == "MaterialCollection")
+                {
+                    for (size_t i = 0; i < descriptorBinding->block.member_count; i++)
+                    {
+                        auto matCollection = descriptorBinding->block.members[i];
+                        if (matCollection.type_description->op == SpvOpTypeArray &&
+                            std::string(matCollection.type_description->type_name) == "MaterialParam")
+                        {
+                            for (size_t j = 0; j < matCollection.member_count; j++)
+                            {
+                                // Add param into param struct list.
+                                auto matParam = matCollection.members[j];
+                                materialParamStruct.push_back({
+                                    .paramName = matParam.name,
+                                    .relativeOffset = matParam.offset,
+                                });
+                            }
+                            materialParamsTotalSize = matCollection.array.stride;
+                        }
+                    }
+                }
+            }
+
             // Create descriptor set and attach to material.
-            // @TODO: load in the equivalent of `PBRMaterialParam` but it be the correct, padded size from the reflection data from the shaders.
-            size_t materialParamsBufferSize = sizeof(PBRMaterialParam) * dmpsIndices.size();
+            std::vector<VkDescriptorImageInfo> textureMapInfos;
+            std::map<std::string, size_t> textureNameToMapIndex;
+            {
+                size_t i = 0;
+                for (auto& texture : texturesInOrder)
+                {
+                    textureMapInfos.push_back(vkinit::textureToDescriptorImageInfo(texture.map));
+                    textureNameToMapIndex[texture.name] = i++;
+                }
+            }
+
+            size_t materialParamsBufferSize = materialParamsTotalSize * dmpsIndices.size();
             umb.compiled.materialParamsBuffer = engineRef->createBuffer(materialParamsBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
             VkDescriptorBufferInfo materialParamsBufferInfo = {
                 .buffer = umb.compiled.materialParamsBuffer._buffer,
@@ -584,9 +661,80 @@ namespace materialorganizer
                 .range = materialParamsBufferSize,
             };
 
-            std::vector<VkDescriptorImageInfo> textureMapInfos;
-            for (auto& texture : texturesInOrder)
-                textureMapInfos.push_back(vkinit::textureToDescriptorImageInfo(texture.map));
+            // Upload material param info.
+            void* data;
+            vmaMapMemory(engineRef->_allocator, umb.compiled.materialParamsBuffer._allocation, &data);
+            for (size_t i = 0; i < dmpsIndices.size(); i++)
+            {
+                size_t dmpsIdx = dmpsIndices[i];
+                for (auto& dmpsParam : existingDMPSs[dmpsIdx].params)
+                for (auto& matParam : materialParamStruct)
+                for (auto& umbParam : umb.fragment.materialParams)
+                    if (dmpsParam.scopedName == matParam.paramName &&
+                        dmpsParam.scopedName == umbParam.scopedName)
+                    {
+                        size_t offset = materialParamsTotalSize * i + (size_t)matParam.relativeOffset;
+                        // switch (umbParam.mapping)
+                        switch (umbParam.type)
+                        {
+                            case UniqueMaterialBase::ShaderStage::Variable::Type::SAMPLER_1D:
+                            case UniqueMaterialBase::ShaderStage::Variable::Type::SAMPLER_2D:
+                            case UniqueMaterialBase::ShaderStage::Variable::Type::SAMPLER_2D_ARRAY:
+                            case UniqueMaterialBase::ShaderStage::Variable::Type::SAMPLER_3D:
+                            case UniqueMaterialBase::ShaderStage::Variable::Type::SAMPLER_CUBE:
+                            {
+                                if (umbParam.mapping != UniqueMaterialBase::ShaderStage::Variable::Mapping::TEXTURE_INDEX)
+                                    std::cerr << "ERROR: texture index mapping isn't selected." << std::endl;
+                                uint32_t textureIdx = (uint32_t)textureNameToMapIndex[dmpsParam.stringValue];
+                                memcpy(data, &textureIdx, sizeof(uint32_t));
+                            } break;
+
+                            case UniqueMaterialBase::ShaderStage::Variable::Type::FLOAT:
+                            {
+                                memcpy(data, &dmpsParam.numericalValue, sizeof(float_t));
+                            } break;
+
+                            case UniqueMaterialBase::ShaderStage::Variable::Type::VEC2:
+                            {
+                                memcpy(data, &dmpsParam.numericalValue, sizeof(vec2));
+                            } break;
+
+                            case UniqueMaterialBase::ShaderStage::Variable::Type::VEC3:
+                            {
+                                memcpy(data, &dmpsParam.numericalValue, sizeof(vec3));
+                            } break;
+
+                            case UniqueMaterialBase::ShaderStage::Variable::Type::VEC4:
+                            {
+                                memcpy(data, &dmpsParam.numericalValue, sizeof(vec4));
+                            } break;
+
+                            case UniqueMaterialBase::ShaderStage::Variable::Type::BOOL:
+                            {
+                                if (umbParam.mapping == UniqueMaterialBase::ShaderStage::Variable::Mapping::TO_FLOAT)
+                                {
+                                    float_t val = (float_t)dmpsParam.numericalValue[0];  // Bool is already stored as float.
+                                    memcpy(data, &val, sizeof(float_t));
+                                }
+                                else
+                                    std::cerr << "ERROR: bool with `float` mapping isn't selected." << std::endl;
+                            } break;
+
+                            case UniqueMaterialBase::ShaderStage::Variable::Type::INT:
+                            {
+                                int32_t val = (int32_t)dmpsParam.numericalValue[0];
+                                memcpy(data, &val, sizeof(int32_t));
+                            } break;
+
+                            case UniqueMaterialBase::ShaderStage::Variable::Type::UINT:
+                            {
+                                uint32_t val = (uint32_t)dmpsParam.numericalValue[0];
+                                memcpy(data, &val, sizeof(uint32_t));
+                            } break;
+                        }
+                    }
+            }
+            vmaUnmapMemory(engineRef->_allocator, umb.compiled.materialParamsBuffer._allocation);
             
             vkutil::DescriptorBuilder::begin()
                 .bindImageArray(0, (uint32_t)textureMapInfos.size(), textureMapInfos.data(), VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
@@ -610,7 +758,14 @@ namespace materialorganizer
 
             vkutil::pipelinebuilder::build(
                 {},
-                { engineRef->_globalSetLayout, engineRef->_objectSetLayout, engineRef->_instancePtrSetLayout, umb.compiled.materialParamsDescriptorSetLayout, engineRef->_skeletalAnimationSetLayout, engineRef->_voxelFieldLightingGridTextureSet.layout },
+                {
+                    engineRef->_globalSetLayout,
+                    engineRef->_objectSetLayout,
+                    engineRef->_instancePtrSetLayout,
+                    umb.compiled.materialParamsDescriptorSetLayout,
+                    engineRef->_skeletalAnimationSetLayout,
+                    engineRef->_voxelFieldLightingGridTextureSet.layout,
+                },
                 {
                     { VK_SHADER_STAGE_VERTEX_BIT, ("res/shaders/" + umb.vertex.fname).c_str() },
                     { VK_SHADER_STAGE_FRAGMENT_BIT, ("res/shaders/" + umb.fragment.fname).c_str() },
