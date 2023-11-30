@@ -87,13 +87,13 @@ void VulkanEngine::init()
 	initSyncStructures();
 
 	initImgui();
-	//loadImages();  // @NOCHECKIN
-	loadMaterials();
+	loadImages();
 	loadMeshes();
 	generatePBRCubemaps();
 	generateBRDFLUT();
 	initDescriptors();
 	initPipelines();
+	loadMaterials();
 
 	AudioEngine::getInstance().initialize();
 	physengine::start(_entityManager);
@@ -508,7 +508,7 @@ void VulkanEngine::renderShadowRenderpass(const FrameData& currentFrame, VkComma
 	memcpy(data, &_camera->sceneCamera.gpuCascadeViewProjsData, sizeof(GPUCascadeViewProjsData));
 	vmaUnmapMemory(_allocator, currentFrame.cascadeViewProjsBuffer._allocation);
 
-	Material& shadowDepthPassMaterial = *getMaterial("shadowDepthPassMaterial");
+	Material& shadowDepthPassMaterial = *getMaterial("shadowdepthpass.special.humba");
 	for (uint32_t i = 0; i < SHADOWMAP_CASCADES; i++)
 	{
 		renderpassInfo.framebuffer = _shadowCascades[i].framebuffer;
@@ -559,7 +559,7 @@ void VulkanEngine::renderMainRenderpass(const FrameData& currentFrame, VkCommand
 	vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
 	Material& defaultMaterial = *getMaterial("pbrMaterial");    // @HACK: @TODO: currently, the way that the pipeline is getting used is by just hardcode using it in the draw commands for models... however, each model should get its pipeline set to this material instead (or whatever material its using... that's why we can't hardcode stuff!!!)   @TODO: create some kind of way to propagate the newly created pipeline to the primMat (calculated material in the gltf model) instead of using defaultMaterial directly.  -Timo
-	Material& defaultZPrepassMaterial = *getMaterial("pbrZPrepassMaterial");
+	Material& defaultZPrepassMaterial = *getMaterial("zprepass.special.humba");
 	Material& skyboxMaterial = *getMaterial("skyboxMaterial");
 
 	// Render z prepass //
@@ -1487,117 +1487,133 @@ void VulkanEngine::render()
 
 void VulkanEngine::loadImages()
 {
-	// Load empty
+	// @NOTE: @NOCHECKIN: This needs to be resolved. Do we keep this or discard this? Images should be loaded in with ktx loaders now.
+	// // Load empty
+	// {
+	// 	Texture empty;
+	// 	vkutil::loadImageFromFile(*this, "res/texture_pool/empty.png", VK_FORMAT_R8G8B8A8_UNORM, 1, empty.image);
+
+	// 	VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_UNORM, empty.image._image, VK_IMAGE_ASPECT_COLOR_BIT, empty.image._mipLevels);
+	// 	vkCreateImageView(_device, &imageInfo, nullptr, &empty.imageView);
+
+	// 	VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(empty.image._mipLevels), VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
+	// 	vkCreateSampler(_device, &samplerInfo, nullptr, &empty.sampler);
+
+	// 	_mainDeletionQueue.pushFunction([=]() {
+	// 		vkDestroySampler(_device, empty.sampler, nullptr);
+	// 		vkDestroyImageView(_device, empty.imageView, nullptr);
+	// 	});
+
+	// 	_loadedTextures["empty"] = empty;
+	// }
+	struct ImageFnameName
 	{
-		Texture empty;
-		vkutil::loadImageFromFile(*this, "res/texture_pool/empty.png", VK_FORMAT_R8G8B8A8_UNORM, 1, empty.image);
+		std::string fname;
+		std::string textureName;
+	};
+	std::vector<ImageFnameName> fnameNames = {
+		{ "empty.hdelicious", "empty" },
+		{ "empty3d.hdelicious", "empty3d" },
+		{ "_develop_icon_layer_visible.hdelicious", "imguiTextureLayerVisible" },
+		{ "_develop_icon_layer_invisible.hdelicious", "imguiTextureLayerInvisible" },
+		{ "_develop_icon_layer_builder.hdelicious", "imguiTextureLayerBuilder" },
+		{ "_develop_icon_layer_collision.hdelicious", "imguiTextureLayerCollision" },
+	};
+	for (auto& fn : fnameNames)
+	{
+		Texture tex;
+		vkutil::loadKTXImageFromFile(*this, ("res/texture_cooked/" + fn.fname).c_str(), VK_FORMAT_R8G8B8A8_UNORM, tex.image);
 
-		VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_UNORM, empty.image._image, VK_IMAGE_ASPECT_COLOR_BIT, empty.image._mipLevels);
-		vkCreateImageView(_device, &imageInfo, nullptr, &empty.imageView);
+		VkImageViewCreateInfo imageInfo = vkinit::imageview3DCreateInfo(VK_FORMAT_R8G8B8A8_UNORM, tex.image._image, VK_IMAGE_ASPECT_COLOR_BIT, tex.image._mipLevels);
+		vkCreateImageView(_device, &imageInfo, nullptr, &tex.imageView);
 
-		VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(empty.image._mipLevels), VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
-		vkCreateSampler(_device, &samplerInfo, nullptr, &empty.sampler);
+		VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(tex.image._mipLevels), VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
+		vkCreateSampler(_device, &samplerInfo, nullptr, &tex.sampler);
 
 		_mainDeletionQueue.pushFunction([=]() {
-			vkDestroySampler(_device, empty.sampler, nullptr);
-			vkDestroyImageView(_device, empty.imageView, nullptr);
+			vkDestroySampler(_device, tex.sampler, nullptr);
+			vkDestroyImageView(_device, tex.imageView, nullptr);
 		});
 
-		_loadedTextures["empty"] = empty;
-	}
-	{
-		Texture empty;
-		vkutil::loadImage3DFromFile(*this, { "res/texture_pool/empty.png" }, VK_FORMAT_R8G8B8A8_UNORM, empty.image);
-
-		VkImageViewCreateInfo imageInfo = vkinit::imageview3DCreateInfo(VK_FORMAT_R8G8B8A8_UNORM, empty.image._image, VK_IMAGE_ASPECT_COLOR_BIT, empty.image._mipLevels);
-		vkCreateImageView(_device, &imageInfo, nullptr, &empty.imageView);
-
-		VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(empty.image._mipLevels), VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
-		vkCreateSampler(_device, &samplerInfo, nullptr, &empty.sampler);
-
-		_mainDeletionQueue.pushFunction([=]() {
-			vkDestroySampler(_device, empty.sampler, nullptr);
-			vkDestroyImageView(_device, empty.imageView, nullptr);
-		});
-
-		_loadedTextures["empty3d"] = empty;
+		_loadedTextures[fn.textureName] = tex;
 	}
 
-	// Load imguiTextureLayerVisible
-	{
-		Texture textureLayerVisible;
-		vkutil::loadImageFromFile(*this, "res/_develop/icon_layer_visible.png", VK_FORMAT_R8G8B8A8_SRGB, 0, textureLayerVisible.image);
 
-		VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, textureLayerVisible.image._image, VK_IMAGE_ASPECT_COLOR_BIT, textureLayerVisible.image._mipLevels);
-		vkCreateImageView(_device, &imageInfo, nullptr, &textureLayerVisible.imageView);
+	// // Load imguiTextureLayerVisible
+	// {
+	// 	Texture textureLayerVisible;
+	// 	vkutil::loadImageFromFile(*this, "res/_develop/icon_layer_visible.png", VK_FORMAT_R8G8B8A8_SRGB, 0, textureLayerVisible.image);
 
-		VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(textureLayerVisible.image._mipLevels), VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
-		vkCreateSampler(_device, &samplerInfo, nullptr, &textureLayerVisible.sampler);
+	// 	VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, textureLayerVisible.image._image, VK_IMAGE_ASPECT_COLOR_BIT, textureLayerVisible.image._mipLevels);
+	// 	vkCreateImageView(_device, &imageInfo, nullptr, &textureLayerVisible.imageView);
 
-		_mainDeletionQueue.pushFunction([=]() {
-			vkDestroySampler(_device, textureLayerVisible.sampler, nullptr);
-			vkDestroyImageView(_device, textureLayerVisible.imageView, nullptr);
-			});
+	// 	VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(textureLayerVisible.image._mipLevels), VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
+	// 	vkCreateSampler(_device, &samplerInfo, nullptr, &textureLayerVisible.sampler);
 
-		_loadedTextures["imguiTextureLayerVisible"] = textureLayerVisible;
-	}
+	// 	_mainDeletionQueue.pushFunction([=]() {
+	// 		vkDestroySampler(_device, textureLayerVisible.sampler, nullptr);
+	// 		vkDestroyImageView(_device, textureLayerVisible.imageView, nullptr);
+	// 		});
 
-	// Load imguiTextureLayerInvisible
-	{
-		Texture textureLayerInvisible;
-		vkutil::loadImageFromFile(*this, "res/_develop/icon_layer_invisible.png", VK_FORMAT_R8G8B8A8_SRGB, 0, textureLayerInvisible.image);
+	// 	_loadedTextures["imguiTextureLayerVisible"] = textureLayerVisible;
+	// }
 
-		VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, textureLayerInvisible.image._image, VK_IMAGE_ASPECT_COLOR_BIT, textureLayerInvisible.image._mipLevels);
-		vkCreateImageView(_device, &imageInfo, nullptr, &textureLayerInvisible.imageView);
+	// // Load imguiTextureLayerInvisible
+	// {
+	// 	Texture textureLayerInvisible;
+	// 	vkutil::loadImageFromFile(*this, "res/_develop/icon_layer_invisible.png", VK_FORMAT_R8G8B8A8_SRGB, 0, textureLayerInvisible.image);
 
-		VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(textureLayerInvisible.image._mipLevels), VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
-		vkCreateSampler(_device, &samplerInfo, nullptr, &textureLayerInvisible.sampler);
+	// 	VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, textureLayerInvisible.image._image, VK_IMAGE_ASPECT_COLOR_BIT, textureLayerInvisible.image._mipLevels);
+	// 	vkCreateImageView(_device, &imageInfo, nullptr, &textureLayerInvisible.imageView);
 
-		_mainDeletionQueue.pushFunction([=]() {
-			vkDestroySampler(_device, textureLayerInvisible.sampler, nullptr);
-			vkDestroyImageView(_device, textureLayerInvisible.imageView, nullptr);
-			});
+	// 	VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(textureLayerInvisible.image._mipLevels), VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
+	// 	vkCreateSampler(_device, &samplerInfo, nullptr, &textureLayerInvisible.sampler);
 
-		_loadedTextures["imguiTextureLayerInvisible"] = textureLayerInvisible;
-	}
+	// 	_mainDeletionQueue.pushFunction([=]() {
+	// 		vkDestroySampler(_device, textureLayerInvisible.sampler, nullptr);
+	// 		vkDestroyImageView(_device, textureLayerInvisible.imageView, nullptr);
+	// 		});
 
-	// Load imguiTextureLayerBuilder
-	{
-		Texture textureLayerBuilder;
-		vkutil::loadImageFromFile(*this, "res/_develop/icon_layer_builder.png", VK_FORMAT_R8G8B8A8_SRGB, 0, textureLayerBuilder.image);
+	// 	_loadedTextures["imguiTextureLayerInvisible"] = textureLayerInvisible;
+	// }
 
-		VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, textureLayerBuilder.image._image, VK_IMAGE_ASPECT_COLOR_BIT, textureLayerBuilder.image._mipLevels);
-		vkCreateImageView(_device, &imageInfo, nullptr, &textureLayerBuilder.imageView);
+	// // Load imguiTextureLayerBuilder
+	// {
+	// 	Texture textureLayerBuilder;
+	// 	vkutil::loadImageFromFile(*this, "res/_develop/icon_layer_builder.png", VK_FORMAT_R8G8B8A8_SRGB, 0, textureLayerBuilder.image);
 
-		VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(textureLayerBuilder.image._mipLevels), VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
-		vkCreateSampler(_device, &samplerInfo, nullptr, &textureLayerBuilder.sampler);
+	// 	VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, textureLayerBuilder.image._image, VK_IMAGE_ASPECT_COLOR_BIT, textureLayerBuilder.image._mipLevels);
+	// 	vkCreateImageView(_device, &imageInfo, nullptr, &textureLayerBuilder.imageView);
 
-		_mainDeletionQueue.pushFunction([=]() {
-			vkDestroySampler(_device, textureLayerBuilder.sampler, nullptr);
-			vkDestroyImageView(_device, textureLayerBuilder.imageView, nullptr);
-			});
+	// 	VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(textureLayerBuilder.image._mipLevels), VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
+	// 	vkCreateSampler(_device, &samplerInfo, nullptr, &textureLayerBuilder.sampler);
 
-		_loadedTextures["imguiTextureLayerBuilder"] = textureLayerBuilder;
-	}
+	// 	_mainDeletionQueue.pushFunction([=]() {
+	// 		vkDestroySampler(_device, textureLayerBuilder.sampler, nullptr);
+	// 		vkDestroyImageView(_device, textureLayerBuilder.imageView, nullptr);
+	// 		});
 
-	// Load imguiTextureLayerCollision  @NOTE: this is a special case. It's not a render layer but rather a toggle to see the debug shapes rendered
-	{
-		Texture textureLayerCollision;
-		vkutil::loadImageFromFile(*this, "res/_develop/icon_layer_collision.png", VK_FORMAT_R8G8B8A8_SRGB, 0, textureLayerCollision.image);
+	// 	_loadedTextures["imguiTextureLayerBuilder"] = textureLayerBuilder;
+	// }
 
-		VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, textureLayerCollision.image._image, VK_IMAGE_ASPECT_COLOR_BIT, textureLayerCollision.image._mipLevels);
-		vkCreateImageView(_device, &imageInfo, nullptr, &textureLayerCollision.imageView);
+	// // Load imguiTextureLayerCollision  @NOTE: this is a special case. It's not a render layer but rather a toggle to see the debug shapes rendered
+	// {
+	// 	Texture textureLayerCollision;
+	// 	vkutil::loadImageFromFile(*this, "res/_develop/icon_layer_collision.png", VK_FORMAT_R8G8B8A8_SRGB, 0, textureLayerCollision.image);
 
-		VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(textureLayerCollision.image._mipLevels), VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
-		vkCreateSampler(_device, &samplerInfo, nullptr, &textureLayerCollision.sampler);
+	// 	VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, textureLayerCollision.image._image, VK_IMAGE_ASPECT_COLOR_BIT, textureLayerCollision.image._mipLevels);
+	// 	vkCreateImageView(_device, &imageInfo, nullptr, &textureLayerCollision.imageView);
 
-		_mainDeletionQueue.pushFunction([=]() {
-			vkDestroySampler(_device, textureLayerCollision.sampler, nullptr);
-			vkDestroyImageView(_device, textureLayerCollision.imageView, nullptr);
-			});
+	// 	VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(textureLayerCollision.image._mipLevels), VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
+	// 	vkCreateSampler(_device, &samplerInfo, nullptr, &textureLayerCollision.sampler);
 
-		_loadedTextures["imguiTextureLayerCollision"] = textureLayerCollision;
-	}
+	// 	_mainDeletionQueue.pushFunction([=]() {
+	// 		vkDestroySampler(_device, textureLayerCollision.sampler, nullptr);
+	// 		vkDestroyImageView(_device, textureLayerCollision.imageView, nullptr);
+	// 		});
+
+	// 	_loadedTextures["imguiTextureLayerCollision"] = textureLayerCollision;
+	// }
 
 	// Initialize the shadow jitter image
 	{
@@ -3722,6 +3738,8 @@ void VulkanEngine::initDescriptors()    // @NOTE: don't destroy and then recreat
 		.build(singleTextureSet, _singleTextureSetLayout);
 	attachTextureSetToMaterial(singleTextureSet, "skyboxMaterial");
 
+#if 0
+	// @NOTE: @NOCHECKIN: the goal is for this whole section is to be unneeded bc the material recipes will take care of material organization.
 	//
 	// All PBR Textures
 	//
@@ -3809,6 +3827,12 @@ void VulkanEngine::initDescriptors()    // @NOTE: don't destroy and then recreat
 	}
 	vmaUnmapMemory(_allocator, materialParamsBuffer._allocation);
 
+	// Add cleanup procedure
+	_mainDeletionQueue.pushFunction([=]() {
+		vmaDestroyBuffer(_allocator, materialParamsBuffer._buffer, materialParamsBuffer._allocation);
+	});
+#endif
+
 	//
 	// Voxel Field Lightgrids Descriptor Set
 	//
@@ -3818,11 +3842,6 @@ void VulkanEngine::initDescriptors()    // @NOTE: don't destroy and then recreat
 	// Joint Descriptor
 	//
 	vkglTF::Animator::initializeEmpty(this);
-
-	// Add cleanup procedure
-	_mainDeletionQueue.pushFunction([=]() {
-		vmaDestroyBuffer(_allocator, materialParamsBuffer._buffer, materialParamsBuffer._allocation);
-	});
 
 	//
 	// Text Mesh Fonts
@@ -3881,61 +3900,61 @@ void VulkanEngine::initPipelines()
 		};
 	}
 
-	// Mesh ZPrepass Pipeline
-	VkPipeline meshZPrepassPipeline;
-	VkPipelineLayout meshZPrepassPipelineLayout;
-	vkutil::pipelinebuilder::build(
-		{},
-		{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _pbrTexturesSetLayout, _skeletalAnimationSetLayout },
-		{
-			{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/pbr_zprepass.vert.spv" },
-			{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/pbr_khr_zprepass.frag.spv" },
-		},
-		modelVertexDescription.attributes,
-		modelVertexDescription.bindings,
-		vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
-		screenspaceViewport,
-		screenspaceScissor,
-		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT),
-		{}, // No color attachment for the z prepass pipeline; only writing to depth!
-		vkinit::multisamplingStateCreateInfo(),
-		vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS),
-		{},
-		_mainRenderPass,
-		0,
-		meshZPrepassPipeline,
-		meshZPrepassPipelineLayout,
-		_swapchainDependentDeletionQueue
-	);
-	attachPipelineToMaterial(meshZPrepassPipeline, meshZPrepassPipelineLayout, "pbrZPrepassMaterial");
+	// // Mesh ZPrepass Pipeline
+	// VkPipeline meshZPrepassPipeline;
+	// VkPipelineLayout meshZPrepassPipelineLayout;
+	// vkutil::pipelinebuilder::build(
+	// 	{},
+	// 	{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _pbrTexturesSetLayout, _skeletalAnimationSetLayout },
+	// 	{
+	// 		{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/pbr_zprepass.vert.spv" },
+	// 		{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/pbr_khr_zprepass.frag.spv" },
+	// 	},
+	// 	modelVertexDescription.attributes,
+	// 	modelVertexDescription.bindings,
+	// 	vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+	// 	screenspaceViewport,
+	// 	screenspaceScissor,
+	// 	vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT),
+	// 	{}, // No color attachment for the z prepass pipeline; only writing to depth!
+	// 	vkinit::multisamplingStateCreateInfo(),
+	// 	vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS),
+	// 	{},
+	// 	_mainRenderPass,
+	// 	0,
+	// 	meshZPrepassPipeline,
+	// 	meshZPrepassPipelineLayout,
+	// 	_swapchainDependentDeletionQueue
+	// );
+	// attachPipelineToMaterial(meshZPrepassPipeline, meshZPrepassPipelineLayout, "pbrZPrepassMaterial");
 
-	// Mesh Pipeline
-	VkPipeline meshPipeline;
-	VkPipelineLayout meshPipelineLayout;
-	vkutil::pipelinebuilder::build(
-		{},
-		{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _pbrTexturesSetLayout, _skeletalAnimationSetLayout, _voxelFieldLightingGridTextureSet.layout },
-		{
-			{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/pbr.vert.spv" },
-			{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/pbr_khr.frag.spv" },
-		},
-		modelVertexDescription.attributes,
-		modelVertexDescription.bindings,
-		vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
-		screenspaceViewport,
-		screenspaceScissor,
-		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT),
-		{ vkinit::colorBlendAttachmentState() },
-		vkinit::multisamplingStateCreateInfo(),
-		vkinit::depthStencilCreateInfo(true, false, VK_COMPARE_OP_EQUAL),
-		{},
-		_mainRenderPass,
-		1,
-		meshPipeline,
-		meshPipelineLayout,
-		_swapchainDependentDeletionQueue
-	);
-	attachPipelineToMaterial(meshPipeline, meshPipelineLayout, "pbrMaterial");
+	// // Mesh Pipeline
+	// VkPipeline meshPipeline;
+	// VkPipelineLayout meshPipelineLayout;
+	// vkutil::pipelinebuilder::build(
+	// 	{},
+	// 	{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _pbrTexturesSetLayout, _skeletalAnimationSetLayout, _voxelFieldLightingGridTextureSet.layout },
+	// 	{
+	// 		{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/pbr.vert.spv" },
+	// 		{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/pbr_khr.frag.spv" },
+	// 	},
+	// 	modelVertexDescription.attributes,
+	// 	modelVertexDescription.bindings,
+	// 	vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+	// 	screenspaceViewport,
+	// 	screenspaceScissor,
+	// 	vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT),
+	// 	{ vkinit::colorBlendAttachmentState() },
+	// 	vkinit::multisamplingStateCreateInfo(),
+	// 	vkinit::depthStencilCreateInfo(true, false, VK_COMPARE_OP_EQUAL),
+	// 	{},
+	// 	_mainRenderPass,
+	// 	1,
+	// 	meshPipeline,
+	// 	meshPipelineLayout,
+	// 	_swapchainDependentDeletionQueue
+	// );
+	// attachPipelineToMaterial(meshPipeline, meshPipelineLayout, "pbrMaterial");
 
 	// Snapshot image pipeline
 	VkPipeline snapshotImagePipeline;
@@ -4087,49 +4106,49 @@ void VulkanEngine::initPipelines()
 	);
 	attachPipelineToMaterial(wireframeBehindPipeline, wireframePipelineLayout, "wireframeColorBehindMaterial");
 
-	// Shadow Depth Pass pipeline
-	auto shadowRasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE);
-	shadowRasterizer.depthClampEnable = VK_TRUE;
+	// // Shadow Depth Pass pipeline
+	// auto shadowRasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE);
+	// shadowRasterizer.depthClampEnable = VK_TRUE;
 
-	VkPipeline shadowDepthPassPipeline;
-	VkPipelineLayout shadowDepthPassPipelineLayout;
-	vkutil::pipelinebuilder::build(
-		{
-			VkPushConstantRange{
-				.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-				.offset = 0,
-				.size = sizeof(CascadeIndexPushConstBlock)
-			}
-		},
-		{ _cascadeViewProjsSetLayout, _objectSetLayout, _instancePtrSetLayout, _pbrTexturesSetLayout, _skeletalAnimationSetLayout },
-		{
-			{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/shadow_depthpass.vert.spv" },
-			{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/shadow_depthpass.frag.spv" },
-		},
-		modelVertexDescription.attributes,
-		modelVertexDescription.bindings,
-		vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
-		VkViewport{
-			0.0f, 0.0f,
-			(float_t)SHADOWMAP_DIMENSION, (float_t)SHADOWMAP_DIMENSION,
-			0.0f, 1.0f,
-		},
-		VkRect2D{
-			{ 0, 0 },
-			VkExtent2D{ SHADOWMAP_DIMENSION, SHADOWMAP_DIMENSION },
-		},
-		shadowRasterizer,
-		{},  // No color attachment for this pipeline
-		vkinit::multisamplingStateCreateInfo(),
-		vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL),
-		{},
-		_shadowRenderPass,
-		0,
-		shadowDepthPassPipeline,
-		shadowDepthPassPipelineLayout,
-		_swapchainDependentDeletionQueue
-	);
-	attachPipelineToMaterial(shadowDepthPassPipeline, shadowDepthPassPipelineLayout, "shadowDepthPassMaterial");
+	// VkPipeline shadowDepthPassPipeline;
+	// VkPipelineLayout shadowDepthPassPipelineLayout;
+	// vkutil::pipelinebuilder::build(
+	// 	{
+	// 		VkPushConstantRange{
+	// 			.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+	// 			.offset = 0,
+	// 			.size = sizeof(CascadeIndexPushConstBlock)
+	// 		}
+	// 	},
+	// 	{ _cascadeViewProjsSetLayout, _objectSetLayout, _instancePtrSetLayout, _pbrTexturesSetLayout, _skeletalAnimationSetLayout },
+	// 	{
+	// 		{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/shadow_depthpass.vert.spv" },
+	// 		{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/shadow_depthpass.frag.spv" },
+	// 	},
+	// 	modelVertexDescription.attributes,
+	// 	modelVertexDescription.bindings,
+	// 	vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+	// 	VkViewport{
+	// 		0.0f, 0.0f,
+	// 		(float_t)SHADOWMAP_DIMENSION, (float_t)SHADOWMAP_DIMENSION,
+	// 		0.0f, 1.0f,
+	// 	},
+	// 	VkRect2D{
+	// 		{ 0, 0 },
+	// 		VkExtent2D{ SHADOWMAP_DIMENSION, SHADOWMAP_DIMENSION },
+	// 	},
+	// 	shadowRasterizer,
+	// 	{},  // No color attachment for this pipeline
+	// 	vkinit::multisamplingStateCreateInfo(),
+	// 	vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL),
+	// 	{},
+	// 	_shadowRenderPass,
+	// 	0,
+	// 	shadowDepthPassPipeline,
+	// 	shadowDepthPassPipelineLayout,
+	// 	_swapchainDependentDeletionQueue
+	// );
+	// attachPipelineToMaterial(shadowDepthPassPipeline, shadowDepthPassPipelineLayout, "shadowDepthPassMaterial");
 
 	// Postprocess pipeline
 	VkPipeline postprocessPipeline;

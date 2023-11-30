@@ -507,13 +507,24 @@ namespace materialorganizer
             dmps = &existingDMPSs.back();
         }
         *dmps = {};  // Clear state.
-        return dmps->loadFromFile(path);
+        bool succ = dmps->loadFromFile(path);
+
+        // Group by unique material bases.
+        std::sort(
+            existingDMPSs.begin(),
+            existingDMPSs.end(),
+            [&](DerivedMaterialParamSet a, DerivedMaterialParamSet b) {
+                return a.dmpsPath.compare(b.dmpsPath) < 0;
+            }
+        );
+
+        return succ;
     }
 
     struct TextureNameWithMap
     {
         std::string name;
-        Texture* map = nullptr;
+        Texture map;
     };
     std::vector<TextureNameWithMap> texturesInOrder;
 
@@ -521,11 +532,12 @@ namespace materialorganizer
     {
         // Delete previous textures.
         for (auto& texture : texturesInOrder)
-            if (texture.map != nullptr)
-            {
-                vkDestroySampler(engineRef->_device, texture.map->sampler, nullptr);
-                vkDestroyImageView(engineRef->_device, texture.map->imageView, nullptr);
-            }
+        {
+            if (texture.map.sampler)
+                vkDestroySampler(engineRef->_device, texture.map.sampler, nullptr);
+            if (texture.map.imageView)
+                vkDestroyImageView(engineRef->_device, texture.map.imageView, nullptr);
+        }
         texturesInOrder.clear();
 
         // Put together unique set of textures.
@@ -548,17 +560,16 @@ namespace materialorganizer
                 }
             }
 
-        // Load textures.  @TODO START HERE!!!!
+        // Load textures.
         for (auto& texture : texturesInOrder)
         {
-           // @TODO: I want this function but read the mip levels, format and stuff without having to do that myself (only specify whether this is a 1D, 2D, 2DArray, 3D, or Cubemap texture).
-           vkutil::loadImageFromFile(*engineRef, ("res/texture_cooked/" + texture.name + ".hdelicious").c_str(), VK_FORMAT_R8G8B8A8_UNORM, 1, texture.map->image);
+           vkutil::loadKTXImageFromFile(*engineRef, ("res/texture_cooked/" + texture.name + ".hdelicious").c_str(), VK_FORMAT_R8G8B8A8_UNORM, texture.map.image);
 
-           VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_UNORM, texture.map->image._image, VK_IMAGE_ASPECT_COLOR_BIT, texture.map->image._mipLevels);
-           vkCreateImageView(engineRef->_device, &imageInfo, nullptr, &texture.map->imageView);
+           VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_UNORM, texture.map.image._image, VK_IMAGE_ASPECT_COLOR_BIT, texture.map.image._mipLevels);
+           vkCreateImageView(engineRef->_device, &imageInfo, nullptr, &texture.map.imageView);
 
-           VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(texture.map->image._mipLevels), VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
-           vkCreateSampler(engineRef->_device, &samplerInfo, nullptr, &texture.map->sampler);
+           VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(texture.map.image._mipLevels), VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
+           vkCreateSampler(engineRef->_device, &samplerInfo, nullptr, &texture.map.sampler);
         }
         
         // Build descriptor sets for materials.
@@ -567,8 +578,12 @@ namespace materialorganizer
             // Find derived materials that use this base.
             std::string umbHumba = umb.umbPath.filename().string();
             std::vector<size_t> dmpsIndices;
+            bool includeAllMaterials =
+                (umbHumba == "zprepass.special.humba" ||
+                umbHumba == "shadowdepthpass.special.humba");
             for (size_t i = 0; i < existingDMPSs.size(); i++)
-                if (existingDMPSs[i].humbaFname == umbHumba)
+                if (includeAllMaterials ||
+                    existingDMPSs[i].humbaFname == umbHumba)
                     dmpsIndices.push_back(i);
 
             // Delete previously cooked.
@@ -608,12 +623,14 @@ namespace materialorganizer
                 continue; 
             }
 
-            struct MaterialParamElement
+            struct StructElement
             {
                 std::string paramName;
                 uint32_t relativeOffset;
             };
-            std::vector<MaterialParamElement> materialParamStruct;
+            StructElement materialIDOffsetElem;
+            uint32_t materialParamArrayOffset;
+            std::vector<StructElement> materialParamStruct;
             uint32_t materialParamsTotalSize = 0;
             for (auto descriptorBinding : descriptorBindings)
             {
@@ -623,9 +640,16 @@ namespace materialorganizer
                     for (size_t i = 0; i < descriptorBinding->block.member_count; i++)
                     {
                         auto matCollection = descriptorBinding->block.members[i];
-                        if (matCollection.type_description->op == SpvOpTypeArray &&
+                        if (matCollection.type_description->op == SpvOpTypeInt &&
+                            std::string(matCollection.name) == "materialIDOffset")
+                        {
+                            materialIDOffsetElem.paramName = matCollection.name;
+                            materialIDOffsetElem.relativeOffset = matCollection.offset;
+                        }
+                        else if (matCollection.type_description->op == SpvOpTypeArray &&
                             std::string(matCollection.type_description->type_name) == "MaterialParam")
                         {
+                            materialParamArrayOffset = matCollection.offset;
                             for (size_t j = 0; j < matCollection.member_count; j++)
                             {
                                 // Add param into param struct list.
@@ -648,12 +672,12 @@ namespace materialorganizer
                 size_t i = 0;
                 for (auto& texture : texturesInOrder)
                 {
-                    textureMapInfos.push_back(vkinit::textureToDescriptorImageInfo(texture.map));
+                    textureMapInfos.push_back(vkinit::textureToDescriptorImageInfo(&texture.map));
                     textureNameToMapIndex[texture.name] = i++;
                 }
             }
 
-            size_t materialParamsBufferSize = materialParamsTotalSize * dmpsIndices.size();
+            size_t materialParamsBufferSize = materialParamArrayOffset + materialParamsTotalSize * dmpsIndices.size();  // @HACK: first `uint materialIDOffset` is only 4 bytes, but since the `params` array is next, the `params` array has an offset of 16 bytes. Include these extra bytes in the buffer, so don't use the size of `uint materialIDOffset` in the calc for size of buffer.  -Timo 2023/11/30
             umb.compiled.materialParamsBuffer = engineRef->createBuffer(materialParamsBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
             VkDescriptorBufferInfo materialParamsBufferInfo = {
                 .buffer = umb.compiled.materialParamsBuffer._buffer,
@@ -664,6 +688,10 @@ namespace materialorganizer
             // Upload material param info.
             void* data;
             vmaMapMemory(engineRef->_allocator, umb.compiled.materialParamsBuffer._allocation, &data);
+            {
+                uint32_t materialIDOffset = (uint32_t)dmpsIndices.front();
+                memcpy(data, &materialIDOffset, sizeof(uint32_t));
+            }
             for (size_t i = 0; i < dmpsIndices.size(); i++)
             {
                 size_t dmpsIdx = dmpsIndices[i];
@@ -673,7 +701,7 @@ namespace materialorganizer
                     if (dmpsParam.scopedName == matParam.paramName &&
                         dmpsParam.scopedName == umbParam.scopedName)
                     {
-                        size_t offset = materialParamsTotalSize * i + (size_t)matParam.relativeOffset;
+                        size_t offset = materialParamArrayOffset + materialParamsTotalSize * i + (size_t)matParam.relativeOffset;
                         // switch (umbParam.mapping)
                         switch (umbParam.type)
                         {
@@ -741,7 +769,7 @@ namespace materialorganizer
                 .bindBuffer(1, &materialParamsBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT)
                 .build(umb.compiled.materialParamsDescriptorSet, umb.compiled.materialParamsDescriptorSetLayout);
 
-            engineRef->attachTextureSetToMaterial(umb.compiled.materialParamsDescriptorSet, umb.umbPath.string());
+            engineRef->attachTextureSetToMaterial(umb.compiled.materialParamsDescriptorSet, umbHumba);
 
             // Load pipeline and attach to material.
             vkglTF::VertexInputDescription modelVertexDescription = vkglTF::Model::Vertex::getVertexDescription();
@@ -786,7 +814,7 @@ namespace materialorganizer
                 umb.compiled.pipelineLayout,
                 engineRef->_swapchainDependentDeletionQueue
             );
-            engineRef->attachPipelineToMaterial(umb.compiled.pipeline, umb.compiled.pipelineLayout, umb.umbPath.string());
+            engineRef->attachPipelineToMaterial(umb.compiled.pipeline, umb.compiled.pipelineLayout, umbHumba);
 
             // Finished.
             umb.compiled.cooked = true;

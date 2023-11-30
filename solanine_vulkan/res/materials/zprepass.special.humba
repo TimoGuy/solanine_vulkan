@@ -1,0 +1,10 @@
+Hawsoo Unique Material BAse
+pbr_zprepass.vert.spv
+---
+pbr_khr_zprepass.frag.spv
+sampler2D    texture_idx    colorMapIndex
+vec4         121            baseColorFactor
+int          121            baseColorTextureSet
+bool         float          alphaMask
+float        121            alphaMaskCutoff
+---

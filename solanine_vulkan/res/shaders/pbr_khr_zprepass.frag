@@ -31,24 +31,10 @@ struct MaterialParam
 {
 	// Texture map references
 	uint colorMapIndex;
-	uint physicalDescriptorMapIndex;
-	uint normalMapIndex;
-	uint aoMapIndex;
-	uint emissiveMapIndex;
 
 	// Material properties
 	vec4  baseColorFactor;
-	vec4  emissiveFactor;
-	vec4  diffuseFactor;
-	vec4  specularFactor;
-	float workflow;
 	int   baseColorTextureSet;
-	int   physicalDescriptorTextureSet;
-	int   normalTextureSet;
-	int   occlusionTextureSet;
-	int   emissiveTextureSet;
-	float metallicFactor;
-	float roughnessFactor;
 	float alphaMask;
 	float alphaMaskCutoff;
 };
@@ -56,13 +42,14 @@ struct MaterialParam
 #define MAX_NUM_MATERIALS 256
 layout (std140, set = 3, binding = 1) readonly buffer MaterialCollection
 {
+	uint materialIDOffset;
 	MaterialParam params[MAX_NUM_MATERIALS];
 } materialCollection;
 
 
 void main() 
 {
-	uint materialID = instancePtrBuffer.pointers[baseInstanceID].materialID;
+	uint materialID = instancePtrBuffer.pointers[baseInstanceID].materialID - materialCollection.materialIDOffset;
 	if (materialCollection.params[materialID].alphaMask == 1.0)
 	{
 		float alpha = materialCollection.params[materialID].baseColorFactor.a;

@@ -126,6 +126,7 @@ struct MaterialParam
 #define MAX_NUM_MATERIALS 256
 layout (std140, set = 3, binding = 1) readonly buffer MaterialCollection
 {
+	uint materialIDOffset;
 	MaterialParam params[MAX_NUM_MATERIALS];
 } materialCollection;
 
@@ -183,7 +184,7 @@ vec4 SRGBtoLINEAR(vec4 srgbIn)
 vec3 getNormal()
 {
 	// @COPYPASTA
-	MaterialParam material = materialCollection.params[instancePtrBuffer.pointers[baseInstanceID].materialID];  // @TODO: figure out how to use the different material things. 
+	MaterialParam material = materialCollection.params[instancePtrBuffer.pointers[baseInstanceID].materialID - materialCollection.materialIDOffset];  // @TODO: figure out how to use the different material things. 
 
 	// Perturb normal, see http://www.thetenthplanet.de/archives/1180
 	vec3 tangentNormal = texture(textureMaps[material.normalMapIndex], material.normalTextureSet == 0 ? inUV0 : inUV1).xyz * 2.0 - 1.0;
@@ -360,7 +361,7 @@ void main()
 	// outFragColor = vec4(vec3(amb), 1.0);
 	// return;
 
-	MaterialParam material = materialCollection.params[instancePtrBuffer.pointers[baseInstanceID].materialID];  // @TODO: figure out how to use the different material things.
+	MaterialParam material = materialCollection.params[instancePtrBuffer.pointers[baseInstanceID].materialID - materialCollection.materialIDOffset];  // @TODO: figure out how to use the different material things.
 
 	float perceptualRoughness;
 	float metallic;

@@ -7,6 +7,163 @@
 #include "VulkanEngine.h"
 
 
+bool vkutil::loadKTXImageFromFile(VulkanEngine& engine, const char* fname, VkFormat imageFormat, AllocatedImage& outImage)
+{
+	ktxTexture* ktxTexture;
+	ktxResult result = ktxTexture_CreateFromNamedFile(fname, KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &ktxTexture);
+	assert(result == KTX_SUCCESS);
+
+	bool ret = loadKTXImageFromBuffer(engine, ktxTexture->baseWidth, ktxTexture->baseHeight, ktxTexture->dataSize, imageFormat, ktxTexture->pData, ktxTexture->numLayers, ktxTexture->numLevels, ktxTexture, outImage);
+	ktxTexture_Destroy(ktxTexture);
+
+	return false;
+}
+
+bool vkutil::loadKTXImageFromBuffer(VulkanEngine& engine, int32_t texWidth, int32_t texHeight, VkDeviceSize imageSize, VkFormat imageFormat, void* pixels, uint32_t numLayers, uint32_t mipLevels, ktxTexture* ktxTexture, AllocatedImage& outImage)
+{
+	//
+	// Copy image to CPU-side buffer
+	//
+	AllocatedBuffer stagingBuffer = engine.createBuffer(imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+
+	void* data;
+	vmaMapMemory(engine._allocator, stagingBuffer._allocation, &data);
+	memcpy(data, pixels, static_cast<size_t>(imageSize));
+	vmaUnmapMemory(engine._allocator, stagingBuffer._allocation);
+
+	//
+	// Create GPU-side buffer
+	//
+	AllocatedImage newImage;
+	newImage._mipLevels = mipLevels;
+
+	VkExtent3D imageExtent = {
+		.width = static_cast<uint32_t>(texWidth),
+		.height = static_cast<uint32_t>(texHeight),
+		.depth = 1,
+	};
+	VkImageCreateInfo dstImageInfo;
+	switch (ktxTexture->numDimensions)
+	{
+		case 1:
+			std::cout << "WARNING: 1D texture loading not supported yet. Abort." << std::endl;
+			return false;
+			break;
+
+		case 2:
+			dstImageInfo =
+				vkinit::imageCreateInfo(
+					imageFormat,
+					VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+					imageExtent,
+					newImage._mipLevels
+				);
+			break;
+
+		case 3:
+			dstImageInfo =
+				vkinit::image3DCreateInfo(
+					imageFormat,
+					VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+					imageExtent,
+					newImage._mipLevels
+				);
+			break;
+	}
+
+	VmaAllocationCreateInfo dstImageAllocInfo = {
+		.usage = VMA_MEMORY_USAGE_GPU_ONLY,
+	};
+	vmaCreateImage(engine._allocator, &dstImageInfo, &dstImageAllocInfo, &newImage._image, &newImage._allocation, nullptr);
+
+	//
+	// Copy image data to GPU
+	//
+	std::vector<VkBufferImageCopy> bufferCopyRegions;
+	for (uint32_t layer = 0; layer < numLayers; layer++)
+	{
+		for (uint32_t level = 0; level < mipLevels; level++)
+		{
+			ktx_size_t offset;
+			KTX_error_code result = ktxTexture_GetImageOffset(ktxTexture, level, layer, 0, &offset);
+			assert(result == KTX_SUCCESS);
+
+			VkBufferImageCopy bufferCopyRegion = {
+				.bufferOffset = offset,
+				.bufferRowLength = 0,
+				.bufferImageHeight = 0,
+				.imageSubresource = {
+					.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+					.mipLevel = 0,
+					.baseArrayLayer = 0,
+					.layerCount = 1,
+				},
+				.imageExtent = {
+					.width = imageExtent.width >> level,
+					.height = imageExtent.height >> level,
+					.depth = imageExtent.depth,
+				},
+			};
+			bufferCopyRegions.push_back(bufferCopyRegion);
+		}
+	}
+
+	engine.immediateSubmit([&](VkCommandBuffer cmd) {
+		// Image layout for copying optimal
+		VkImageMemoryBarrier imageBarrier = {
+			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+			.srcAccessMask = 0,
+			.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+			.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+			.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			.image = newImage._image,
+			.subresourceRange = {
+				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+				.baseMipLevel = 0,
+				.levelCount = newImage._mipLevels,
+				.baseArrayLayer = 0,
+				.layerCount = 1,
+			},
+		};
+		vkCmdPipelineBarrier(cmd,
+			VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+			0, nullptr,
+			0, nullptr,
+			1, &imageBarrier
+		);
+
+		// Copy pixel data into image.
+		vkCmdCopyBufferToImage(cmd, stagingBuffer._buffer, newImage._image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, (uint32_t)bufferCopyRegions.size(), bufferCopyRegions.data());
+
+		// Pipeline barrier for changing FINAL prev mip to shader reading optimal image
+		imageBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		imageBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		imageBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+		imageBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+		vkCmdPipelineBarrier(
+			cmd,
+			VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+			0, nullptr,
+			0, nullptr,
+			1, &imageBarrier
+		);
+	});
+
+	//
+	// Cleanup
+	//
+	auto engineAllocator = engine._allocator;
+	engine._mainDeletionQueue.pushFunction([=]() {
+		vmaDestroyImage(engineAllocator, newImage._image, newImage._allocation);
+		});
+	vmaDestroyBuffer(engine._allocator, stagingBuffer._buffer, stagingBuffer._allocation);
+
+	outImage = newImage;
+	return true;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 bool vkutil::loadImageFromFile(VulkanEngine& engine, const char* fname, VkFormat imageFormat, uint32_t mipLevels, AllocatedImage& outImage)
 {
 	int32_t width, height;
