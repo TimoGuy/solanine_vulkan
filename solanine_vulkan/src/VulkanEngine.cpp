@@ -518,7 +518,7 @@ void VulkanEngine::renderShadowRenderpass(const FrameData& currentFrame, VkComma
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 0, 1, &currentFrame.cascadeViewProjsDescriptor, 0, nullptr);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 3, 1, &getMaterial("pbrMaterial")->textureSet, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 3, 1, &shadowDepthPassMaterial.textureSet, 0, nullptr);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(this), 0, nullptr);
 
 		CascadeIndexPushConstBlock pc = { i };
@@ -558,16 +558,14 @@ void VulkanEngine::renderMainRenderpass(const FrameData& currentFrame, VkCommand
 	// Begin renderpass
 	vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-	Material& defaultMaterial = *getMaterial("pbrMaterial");    // @HACK: @TODO: currently, the way that the pipeline is getting used is by just hardcode using it in the draw commands for models... however, each model should get its pipeline set to this material instead (or whatever material its using... that's why we can't hardcode stuff!!!)   @TODO: create some kind of way to propagate the newly created pipeline to the primMat (calculated material in the gltf model) instead of using defaultMaterial directly.  -Timo
-	Material& defaultZPrepassMaterial = *getMaterial("zprepass.special.humba");
-	Material& skyboxMaterial = *getMaterial("skyboxMaterial");
 
 	// Render z prepass //
+	Material& defaultZPrepassMaterial = *getMaterial("zprepass.special.humba");
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipeline);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 3, 1, &defaultMaterial.textureSet, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 3, 1, &defaultZPrepassMaterial.textureSet, 0, nullptr);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(this), 0, nullptr);
 	renderRenderObjects(cmd, currentFrame);
 	//////////////////////
@@ -579,6 +577,7 @@ void VulkanEngine::renderMainRenderpass(const FrameData& currentFrame, VkCommand
 	if (_currentEditorMode == EditorModes::LEVEL_EDITOR)
 	{
 		// @TODO: put this into its own function!
+		Material& skyboxMaterial = *getMaterial("skyboxMaterial");
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipeline);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipelineLayout, 1, 1, &skyboxMaterial.textureSet, 0, nullptr);
@@ -591,6 +590,7 @@ void VulkanEngine::renderMainRenderpass(const FrameData& currentFrame, VkCommand
 
 	// Bind material
 	// @TODO: put this into its own function!
+	Material& defaultMaterial = *getMaterial("pbrMaterial");    // @HACK: @TODO: currently, the way that the pipeline is getting used is by just hardcode using it in the draw commands for models... however, each model should get its pipeline set to this material instead (or whatever material its using... that's why we can't hardcode stuff!!!)   @TODO: create some kind of way to propagate the newly created pipeline to the primMat (calculated material in the gltf model) instead of using defaultMaterial directly.  -Timo
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipeline);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
