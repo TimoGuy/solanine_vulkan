@@ -555,18 +555,12 @@ namespace vkglTF
 						return;
 					}
 				}
-				
-				uint32_t materialID = 0;  // Default material
-				if (primitive.material >= 0)
+
+				uint32_t materialID = (uint32_t)primitive.material;
+				if (primitive.material < 0)
 				{
-					// Find index of the material in the global material collection
-					auto& v = pbrMaterialCollection.materials;
-					for (size_t i = 0; i < v.size(); i++)
-						if (v[i] == &materials[primitive.material])
-						{
-							materialID = i;
-							break;
-						}
+					std::cerr << "[GLTF MATERIAL LOADING]" << std::endl
+						<< "ERROR: Material ID was not attached to primitive. Using materialID=" << materialID << std::endl;
 				}
 				Primitive* newPrimitive = new Primitive(indexStart, indexCount, vertexCount, materialID);
 				newPrimitive->setBoundingBox(posMin, posMax);
@@ -819,6 +813,7 @@ namespace vkglTF
 		for (tinygltf::Material& mat : gltfModel.materials)
 		{
 			vkglTF::PBRMaterial material = {};
+			material.name = mat.name;
 
 			material.doubleSided = mat.doubleSided;
 

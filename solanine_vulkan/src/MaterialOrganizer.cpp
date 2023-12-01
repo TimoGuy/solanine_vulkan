@@ -898,4 +898,28 @@ namespace materialorganizer
             umb.compiled.cooked = true;
         }
     }
+
+    size_t derivedMaterialNameToUMBIdx(std::string derivedMatName)
+    {
+        for (auto& dmps : existingDMPSs)
+            if (dmps.dmpsPath.filename().string() == derivedMatName)
+                for (size_t i = 0; i < existingUMBs.size(); i++)
+                    if (existingUMBs[i].umbPath.filename().string() == dmps.humbaFname)
+                        return i;
+        
+        std::cerr << "[DERIVED MATERIAL NAME TO UMB IDX]" << std::endl
+            << "ERROR: derived material name " << derivedMatName << " not connected to a UMB." << std::endl;
+        return 0;
+    }
+
+    size_t derivedMaterialNameToDMPSIdx(std::string derivedMatName)
+    {
+        for (size_t i = 0; i < existingDMPSs.size(); i++)
+            if (existingDMPSs[i].dmpsPath.filename().string() == derivedMatName)
+                return i;
+        
+        std::cerr << "[DERIVED MATERIAL NAME TO DMPS IDX]" << std::endl
+            << "ERROR: derived material name " << derivedMatName << " not connected to a DMPS." << std::endl;
+        return 0;
+    }
 }

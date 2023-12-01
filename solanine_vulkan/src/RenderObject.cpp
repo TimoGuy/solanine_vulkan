@@ -3,6 +3,7 @@
 #include "RenderObject.h"
 
 #include "VkglTFModel.h"
+#include "MaterialOrganizer.h"
 #include "PhysicsEngine.h"
 
 
@@ -41,17 +42,27 @@ bool RenderObjectManager::registerRenderObjects(std::vector<RenderObject> inRend
 		// Calculate instance pointers
 		RenderObject& renderObjectData = inRenderObjectDatas[i];
 		renderObjectData.calculatedModelInstances.clear();
+		renderObjectData.perPrimitiveUniqueMaterialBaseIndices.clear();
+
 		auto primitives = renderObjectData.model->getAllPrimitivesInOrder();
 		for (auto& primitive : primitives)
+		{
+			std::string derivedMatName = renderObjectData.model->materials[primitive->materialID].name;
+
 			renderObjectData.calculatedModelInstances.push_back({
 				.objectID = (uint32_t)registerIndex,
-				.materialID = primitive->materialID,
+				.materialID = (uint32_t)materialorganizer::derivedMaterialNameToDMPSIdx(derivedMatName),
 				.animatorNodeID =
 					(uint32_t)(renderObjectData.animator == nullptr ?
 					0 :
 					renderObjectData.animator->skinIndexToGlobalReservedNodeIndex(primitive->animatorSkinIndexPropagatedCopy)),
 				.voxelFieldLightingGridID = 0,  // @NOTE: the default lightmap is blank 1.0f with identity transform, so set 0 to use the default lightmap.
-				});
+			});
+
+			renderObjectData.perPrimitiveUniqueMaterialBaseIndices.push_back(
+				materialorganizer::derivedMaterialNameToUMBIdx(derivedMatName)
+			);
+		}
 
 		// Register object
 		_renderObjectPool[registerIndex] = renderObjectData;
@@ -61,7 +72,7 @@ bool RenderObjectManager::registerRenderObjects(std::vector<RenderObject> inRend
 		*outRenderObjectDatas[i] = &_renderObjectPool[registerIndex];
 	}
 
-	// Sort pool indices so that models are next to each other (helps with model compacting in the rendering stage).
+	// Sort pool indices so that materials and then models are next to each other (helps with compacting render objects in the rendering stage).
 	std::sort(
 		_renderObjectsIndices.begin(),
 		_renderObjectsIndices.end(),

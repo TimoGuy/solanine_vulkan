@@ -16,4 +16,6 @@ namespace materialorganizer
     bool loadDerivedMaterialParam(const std::filesystem::path& path);
 
     void cookTextureIndices();
+    size_t derivedMaterialNameToUMBIdx(std::string derivedMatName);
+    size_t derivedMaterialNameToDMPSIdx(std::string derivedMatName);
 }

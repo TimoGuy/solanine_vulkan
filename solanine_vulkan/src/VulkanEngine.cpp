@@ -5571,54 +5571,144 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, 
 		visibleIndices.push_back(poolIndex);
 	}
 
-	//
-	// Gather the number of times a model is drawn
-	//
-	struct ModelDrawCount
+	// Decompose render objects into meshes.
+	struct MeshASDFASDF
 	{
 		vkglTF::Model* model;
-		size_t drawCount;
-		size_t baseModelRenderObjectIndex;
+		size_t meshIdx;
+		size_t uniqueMaterialBaseId;
+		std::vector<size_t> renderObjectIndices;
+		size_t cookedMeshDrawIdx;
 	};
-	std::vector<ModelDrawCount> mdcs;
+	std::vector<MeshASDFASDF> meshesASDFASDF;
+	std::vector<vkglTF::Model*> uniqueModels;
 
-	vkglTF::Model* lastModel = nullptr;
 	for (size_t roIdx = 0; roIdx < visibleIndices.size(); roIdx++)
 	{
 		RenderObject& ro = _roManager->_renderObjectPool[visibleIndices[roIdx]];
-		if (ro.model == lastModel)
-		{
-			mdcs.back().drawCount++;
-		}
-		else
-		{
-			mdcs.push_back({
+		for (size_t mi = 0; mi < ro.perPrimitiveUniqueMaterialBaseIndices.size(); mi++)
+			meshesASDFASDF.push_back({
 				.model = ro.model,
-				.drawCount = 1,
-				.baseModelRenderObjectIndex = roIdx,
-				});
-			lastModel = ro.model;
-		}
+				.meshIdx = mi,
+				.uniqueMaterialBaseId = ro.perPrimitiveUniqueMaterialBaseIndices[mi],
+				.renderObjectIndices = { visibleIndices[roIdx] },
+			});
+		if (std::find(uniqueModels.begin(), uniqueModels.end(), ro.model) == uniqueModels.end())
+			uniqueModels.push_back(ro.model);
 	}
 
-	//
-	// Gather each model's meshes and collate them into their own draw commands
-	//
-	std::vector<MeshCapturedInfo> meshDraws;
-	for (ModelDrawCount& mdc : mdcs)
+	// Group by materials used, then by model used, then by mesh index, then by render object index.
+	// @NOTE: this is to reduce the number of times to rebind materials and models.
+	std::sort(
+		meshesASDFASDF.begin(),
+		meshesASDFASDF.end(),
+		[&](MeshASDFASDF a, MeshASDFASDF b) {
+			if (a.uniqueMaterialBaseId != b.uniqueMaterialBaseId)
+				return a.uniqueMaterialBaseId < b.uniqueMaterialBaseId;
+			if (a.model != b.model)
+				return a.model < b.model;
+			if (a.meshIdx != b.meshIdx)
+				return a.meshIdx < b.meshIdx;
+			return a.renderObjectIndices[0] < b.renderObjectIndices[0];
+		}
+	);
+
+	// Smoosh meshes together.
+	for (size_t i = 0; i < meshesASDFASDF.size(); i++)
 	{
-		uint32_t numMeshes = 0;
-		mdc.model->appendPrimitiveDraws(meshDraws, numMeshes);
-
-		for (size_t i = 0; i < numMeshes; i++)
+		auto& parentMesh = meshesASDFASDF[i];
+		if (parentMesh.renderObjectIndices.empty())
+			continue;  // Already consumed.
+		
+		for (size_t j = i + 1; j < meshesASDFASDF.size(); j++)
 		{
-			// Tell each mesh to draw as many times as the model exists, thus
-			// collating the mesh draws inside the model drawing window.
-			meshDraws[meshDraws.size() - numMeshes + i].modelDrawCount = mdc.drawCount;
-			meshDraws[meshDraws.size() - numMeshes + i].baseModelRenderObjectIndex = mdc.baseModelRenderObjectIndex;
-			meshDraws[meshDraws.size() - numMeshes + i].meshNumInModel = numMeshes;
+			auto& siblingMesh = meshesASDFASDF[j];
+			if (siblingMesh.renderObjectIndices.size() != 1)
+				continue;  // Already consumed... or this is a parent mesh... Though neither should happen at this stage bc of sorting previously.
+
+			bool sameAsParent =
+				(parentMesh.model == siblingMesh.model &&
+				parentMesh.meshIdx == siblingMesh.meshIdx &&
+				parentMesh.uniqueMaterialBaseId == siblingMesh.uniqueMaterialBaseId);
+			if (sameAsParent)
+			{
+				parentMesh.renderObjectIndices.push_back(siblingMesh.renderObjectIndices[0]);
+				siblingMesh.renderObjectIndices.clear();
+			}
+			else
+			{
+				i = j - 1;  // Speed up parent mesh seeker to where new mesh is (minus 1 so that the iterator can increment for it!).
+				break;  // Bc of sorting, there shouldn't be any other sibling meshes to find.
+			}
 		}
 	}
+
+	// Capture mesh info.
+	std::vector<MeshCapturedInfo> meshDraws;
+	for (vkglTF::Model* um : uniqueModels)
+	{
+		size_t baseMeshIndex = meshDraws.size();
+		uint32_t numMeshes = 0;
+		um->appendPrimitiveDraws(meshDraws, numMeshes);
+		for (auto& metaMesh : meshesASDFASDF)
+			if (metaMesh.model == um)
+			{
+				metaMesh.cookedMeshDrawIdx = baseMeshIndex + metaMesh.meshIdx;
+			}
+	}
+
+
+	// /////////////////////////////////////////////////////////
+
+	// // Gather the number of times a model is drawn.
+	// struct ModelDrawCount
+	// {
+	// 	vkglTF::Model* model;
+	// 	size_t drawCount;
+	// 	size_t baseModelRenderObjectIndex;
+	// 	std::vector<size_t> umbIndices;
+	// };
+	// std::vector<ModelDrawCount> mdcs;
+
+	// vkglTF::Model* lastModel = nullptr;
+	// for (size_t roIdx = 0; roIdx < visibleIndices.size(); roIdx++)
+	// {
+	// 	RenderObject& ro = _roManager->_renderObjectPool[visibleIndices[roIdx]];
+	// 	if (ro.model == lastModel)
+	// 	{
+	// 		mdcs.back().drawCount++;
+	// 	}
+	// 	else
+	// 	{
+	// 		mdcs.push_back({
+	// 			.model = ro.model,
+	// 			.drawCount = 1,
+	// 			.baseModelRenderObjectIndex = roIdx,
+	// 			});
+	// 		lastModel = ro.model;
+	// 	}
+	// }
+
+	// //
+	// // Gather each model's meshes and collate them into their own draw commands
+	// // @TODO: @OPTIMIZE: have the gathering and sorting be done when render objects are added and just copy indirect commands from the heap.
+	// //
+	// std::vector<MeshCapturedInfo> meshDraws;
+	// for (ModelDrawCount& mdc : mdcs)
+	// {
+	// 	uint32_t numMeshes = 0;
+	// 	mdc.model->appendPrimitiveDraws(meshDraws, numMeshes);
+
+	// 	for (size_t i = 0; i < numMeshes; i++)
+	// 	{
+	// 		// Tell each mesh to draw as many times as the model exists, thus
+	// 		// collating the mesh draws inside the model drawing window.
+	// 		meshDraws[meshDraws.size() - numMeshes + i].modelDrawCount = mdc.drawCount;
+	// 		meshDraws[meshDraws.size() - numMeshes + i].baseModelRenderObjectIndex = mdc.baseModelRenderObjectIndex;
+	// 		meshDraws[meshDraws.size() - numMeshes + i].meshNumInModel = numMeshes;
+	// 		// meshDraws[meshDraws.size() - numMeshes + i].uniqueMaterialBaseIndex = mdc.;  // @NOCHECKIN
+	// 	}
+	// }
 
 	//
 	// Open up memory map for instance level data
@@ -5631,37 +5721,30 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, 
 	vmaMapMemory(_allocator, currentFrame.indirectDrawCommandBuffer._allocation, &indirectDrawCommandsData);
 	VkDrawIndexedIndirectCommand* indirectDrawCommands = (VkDrawIndexedIndirectCommand*)indirectDrawCommandsData;
 
-	//
-	// Write indirect commands
-	//
+	// Write indirect commands.
 	std::vector<IndirectBatch> batches;
-	lastModel = nullptr;
+	vkglTF::Model* lastModel = nullptr;
 	size_t instanceID = 0;
-	size_t meshIndex = 0;
-	size_t baseModelRenderObjectIndex = 0;
-	for (MeshCapturedInfo& ib : meshDraws)
+	for (auto& metaMesh : meshesASDFASDF)
 	{
-		// Combine the mesh-level draw commands into model-level draw commands.
-		if (lastModel == ib.model)
+		if (metaMesh.model == lastModel)
 		{
-			batches.back().count += ib.modelDrawCount;
+			batches.back().count += metaMesh.renderObjectIndices.size();
 		}
 		else
 		{
 			batches.push_back({
-				.model = ib.model,
+				.model = metaMesh.model,
 				.first = (uint32_t)instanceID,
-				.count = ib.modelDrawCount,  // @NOTE: since the meshes are collated, we need to draw each mesh the number of times the model is going to get drawn.
-				});
-
-			lastModel = ib.model;
-			meshIndex = 0;  // New model, so reset the mesh index counter.
-			baseModelRenderObjectIndex = ib.baseModelRenderObjectIndex;
+				.count = (uint32_t)metaMesh.renderObjectIndices.size(),
+			});
+			lastModel = metaMesh.model;
 		}
 
 		// Create draw command for each mesh instance.
-		for (size_t modelIndex = 0; modelIndex < ib.modelDrawCount; modelIndex++)
+		for (size_t roIndex = 0; roIndex < metaMesh.renderObjectIndices.size(); roIndex++)
 		{
+			auto& ib = meshDraws[metaMesh.cookedMeshDrawIdx];
 			*indirectDrawCommands = {
 				.indexCount = ib.meshIndexCount,
 				.instanceCount = 1,
@@ -5669,9 +5752,9 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, 
 				.vertexOffset = 0,
 				.firstInstance = (uint32_t)instanceID,
 			};
-			indirectDrawCommands++;
 
-			GPUInstancePointer& gip = _roManager->_renderObjectPool[visibleIndices[baseModelRenderObjectIndex + modelIndex]].calculatedModelInstances[meshIndex];
+			// @NOCHECKIN: INDIRECT BUFFER FOR INSTANCE POINTERS.
+			GPUInstancePointer& gip = _roManager->_renderObjectPool[metaMesh.renderObjectIndices[roIndex]].calculatedModelInstances[metaMesh.meshIdx];
 #ifdef _DEVELOP
 			if (!onlyPoolIndices.empty())
 				for (size_t index : onlyPoolIndices)
@@ -5683,14 +5766,79 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, 
 					}
 #endif
 			*instancePtrSSBO = gip;
-			instancePtrSSBO++;
 
+			indirectDrawCommands++;
+			instancePtrSSBO++;
 			instanceID++;
 		}
-
-		// Increment to the next mesh
-		meshIndex++;
 	}
+
+
+
+
+// 	///////////////////////////////////
+
+// 	//
+// 	// Write indirect commands
+// 	//
+// 	std::vector<IndirectBatch> batches;
+// 	lastModel = nullptr;
+// 	size_t instanceID = 0;
+// 	size_t meshIndex = 0;
+// 	size_t baseModelRenderObjectIndex = 0;
+// 	for (MeshCapturedInfo& ib : meshDraws)
+// 	{
+// 		// Combine the mesh-level draw commands into model-level draw commands.
+// 		if (lastModel == ib.model)
+// 		{
+// 			batches.back().count += ib.modelDrawCount;
+// 		}
+// 		else
+// 		{
+// 			batches.push_back({
+// 				.model = ib.model,
+// 				.first = (uint32_t)instanceID,
+// 				.count = ib.modelDrawCount,  // @NOTE: since the meshes are collated, we need to draw each mesh the number of times the model is going to get drawn.
+// 			});
+
+// 			lastModel = ib.model;
+// 			meshIndex = 0;  // New model, so reset the mesh index counter.
+// 			baseModelRenderObjectIndex = ib.baseModelRenderObjectIndex;
+// 		}
+
+// 		// Create draw command for each mesh instance.
+// 		for (size_t modelIndex = 0; modelIndex < ib.modelDrawCount; modelIndex++)
+// 		{
+// 			*indirectDrawCommands = {
+// 				.indexCount = ib.meshIndexCount,
+// 				.instanceCount = 1,
+// 				.firstIndex = ib.meshFirstIndex,
+// 				.vertexOffset = 0,
+// 				.firstInstance = (uint32_t)instanceID,
+// 			};
+// 			indirectDrawCommands++;
+
+// 			// @NOCHECKIN: INDIRECT BUFFER FOR INSTANCE POINTERS.
+// 			GPUInstancePointer& gip = _roManager->_renderObjectPool[visibleIndices[baseModelRenderObjectIndex + modelIndex]].calculatedModelInstances[meshIndex];
+// #ifdef _DEVELOP
+// 			if (!onlyPoolIndices.empty())
+// 				for (size_t index : onlyPoolIndices)
+// 					if (index == gip.objectID)
+// 					{
+// 						// Include this draw indirect command.
+// 						outIndirectDrawCommandIdsForPoolIndex.push_back({ ib.model, (uint32_t)instanceID });
+// 						break;
+// 					}
+// #endif
+// 			*instancePtrSSBO = gip;
+// 			instancePtrSSBO++;
+
+// 			instanceID++;
+// 		}
+
+// 		// Increment to the next mesh
+// 		meshIndex++;
+// 	}
 
 	// Cleanup and return
 	vmaUnmapMemory(_allocator, currentFrame.instancePtrBuffer._allocation);

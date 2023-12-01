@@ -32,6 +32,7 @@ struct RenderObject
 	RenderLayer renderLayer    = RenderLayer::VISIBLE;
 	std::string attachedEntityGuid;  // @NOTE: this is just for @DEBUG purposes for the imgui property panel
 	std::vector<GPUInstancePointer> calculatedModelInstances;
+	std::vector<size_t> perPrimitiveUniqueMaterialBaseIndices;
 };
 
 class RenderObjectManager
