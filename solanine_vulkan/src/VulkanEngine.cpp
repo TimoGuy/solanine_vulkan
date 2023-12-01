@@ -3853,16 +3853,6 @@ void VulkanEngine::initDescriptors()    // @NOTE: don't destroy and then recreat
 
 void VulkanEngine::initPipelines()
 {
-	//
-	// Load shader modules
-	//
-	/*VkShaderModule debugPhysicsObjectVertShader,
-					debugPhysicsObjectFragShader;
-	loadShaderModule("res/shaders/debug_physics_object.vert.spv", debugPhysicsObjectVertShader);
-	loadShaderModule("res/shaders/debug_physics_object.frag.spv", debugPhysicsObjectFragShader);*/
-
-
-
 	// Common values
 	vkglTF::VertexInputDescription modelVertexDescription = vkglTF::Model::Vertex::getVertexDescription();
 	VkViewport screenspaceViewport = {

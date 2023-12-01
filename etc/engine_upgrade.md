@@ -71,9 +71,11 @@
         - [x] Load in materials from .hderriere files.
             - [x] Create list of which unique textures to use and insert into descriptor set.
             - [x] Insert all material params into material collection.
-            - [ ] Insert all textures into material collection texture maps.
-                - [ ] Create KTX texture loader.
+            - [x] Insert all textures into material collection texture maps.
+                - [x] Create KTX texture loader.
         - [ ] Migrate to material system.
+            - [ ] Add different materials (group by humba) in `compactRenderObjectsIntoDraws`
+            - [ ] Load in correct material IDs instead of using material ids from vkgltf
             - [ ] Connect material to render object's palette. When loading in the model, it will also return a palette, and the programmer can insert that palette or insert a loaded palette swap file into the render object.
                 - [f] Load palette swap file.
             - [ ] Don't load textures with vkgltf. (bandaid)

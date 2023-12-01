@@ -578,11 +578,11 @@ namespace materialorganizer
             // Find derived materials that use this base.
             std::string umbHumba = umb.umbPath.filename().string();
             std::vector<size_t> dmpsIndices;
-            bool includeAllMaterials =
-                (umbHumba == "zprepass.special.humba" ||
-                umbHumba == "shadowdepthpass.special.humba");
+            bool zprepassSpecialMat = (umbHumba == "zprepass.special.humba");
+            bool shadowSpecialMat = (umbHumba == "shadowdepthpass.special.humba");
             for (size_t i = 0; i < existingDMPSs.size(); i++)
-                if (includeAllMaterials ||
+                if (zprepassSpecialMat ||
+                    shadowSpecialMat ||
                     existingDMPSs[i].humbaFname == umbHumba)
                     dmpsIndices.push_back(i);
 
@@ -784,36 +784,114 @@ namespace materialorganizer
                 engineRef->_windowExtent,
             };
 
-            vkutil::pipelinebuilder::build(
-                {},
-                {
-                    engineRef->_globalSetLayout,
-                    engineRef->_objectSetLayout,
-                    engineRef->_instancePtrSetLayout,
-                    umb.compiled.materialParamsDescriptorSetLayout,
-                    engineRef->_skeletalAnimationSetLayout,
-                    engineRef->_voxelFieldLightingGridTextureSet.layout,
-                },
-                {
-                    { VK_SHADER_STAGE_VERTEX_BIT, ("res/shaders/" + umb.vertex.fname).c_str() },
-                    { VK_SHADER_STAGE_FRAGMENT_BIT, ("res/shaders/" + umb.fragment.fname).c_str() },
-                },
-                modelVertexDescription.attributes,
-                modelVertexDescription.bindings,
-                vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
-                screenspaceViewport,
-                screenspaceScissor,
-                vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT),
-                { vkinit::colorBlendAttachmentState() },
-                vkinit::multisamplingStateCreateInfo(),
-                vkinit::depthStencilCreateInfo(true, false, VK_COMPARE_OP_EQUAL),
-                {},
-                engineRef->_mainRenderPass,
-                1,
-                umb.compiled.pipeline,
-                umb.compiled.pipelineLayout,
-                engineRef->_swapchainDependentDeletionQueue
-            );
+            if (zprepassSpecialMat)
+                vkutil::pipelinebuilder::build(
+                    {},
+                    {
+                        engineRef->_globalSetLayout,
+                        engineRef->_objectSetLayout,
+                        engineRef->_instancePtrSetLayout,
+                        umb.compiled.materialParamsDescriptorSetLayout,
+                        engineRef->_skeletalAnimationSetLayout,
+                    },
+                    {
+                        { VK_SHADER_STAGE_VERTEX_BIT, ("res/shaders/" + umb.vertex.fname).c_str() },
+                        { VK_SHADER_STAGE_FRAGMENT_BIT, ("res/shaders/" + umb.fragment.fname).c_str() },
+                    },
+                    modelVertexDescription.attributes,
+                    modelVertexDescription.bindings,
+                    vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+                    screenspaceViewport,
+                    screenspaceScissor,
+                    vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT),
+                    {}, // No color attachment for the z prepass pipeline; only writing to depth!
+                    vkinit::multisamplingStateCreateInfo(),
+                    vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS),
+                    {},
+                    engineRef->_mainRenderPass,
+                    0,
+                    umb.compiled.pipeline,
+                    umb.compiled.pipelineLayout,
+                    engineRef->_swapchainDependentDeletionQueue
+                );
+            else if (shadowSpecialMat)
+            {
+                auto shadowRasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE);
+                shadowRasterizer.depthClampEnable = VK_TRUE;
+                vkutil::pipelinebuilder::build(
+                    {
+                        VkPushConstantRange{
+                            .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+                            .offset = 0,
+                            .size = sizeof(CascadeIndexPushConstBlock)
+                        }
+                    },
+                    {
+                        engineRef->_globalSetLayout,
+                        engineRef->_objectSetLayout,
+                        engineRef->_instancePtrSetLayout,
+                        umb.compiled.materialParamsDescriptorSetLayout,
+                        engineRef->_skeletalAnimationSetLayout,
+                    },
+                    {
+                        { VK_SHADER_STAGE_VERTEX_BIT, ("res/shaders/" + umb.vertex.fname).c_str() },
+                        { VK_SHADER_STAGE_FRAGMENT_BIT, ("res/shaders/" + umb.fragment.fname).c_str() },
+                    },
+                    modelVertexDescription.attributes,
+                    modelVertexDescription.bindings,
+                    vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+                    VkViewport{
+                        0.0f, 0.0f,
+                        (float_t)SHADOWMAP_DIMENSION, (float_t)SHADOWMAP_DIMENSION,
+                        0.0f, 1.0f,
+                    },
+                    VkRect2D{
+                        { 0, 0 },
+                        VkExtent2D{ SHADOWMAP_DIMENSION, SHADOWMAP_DIMENSION },
+                    },
+                    shadowRasterizer,
+                    {},  // No color attachment for this pipeline
+                    vkinit::multisamplingStateCreateInfo(),
+                    vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL),
+                    {},
+                    engineRef->_shadowRenderPass,
+                    0,
+                    umb.compiled.pipeline,
+                    umb.compiled.pipelineLayout,
+                    engineRef->_swapchainDependentDeletionQueue
+                );
+            }
+            else
+                vkutil::pipelinebuilder::build(
+                    {},
+                    {
+                        engineRef->_globalSetLayout,
+                        engineRef->_objectSetLayout,
+                        engineRef->_instancePtrSetLayout,
+                        umb.compiled.materialParamsDescriptorSetLayout,
+                        engineRef->_skeletalAnimationSetLayout,
+                        engineRef->_voxelFieldLightingGridTextureSet.layout,
+                    },
+                    {
+                        { VK_SHADER_STAGE_VERTEX_BIT, ("res/shaders/" + umb.vertex.fname).c_str() },
+                        { VK_SHADER_STAGE_FRAGMENT_BIT, ("res/shaders/" + umb.fragment.fname).c_str() },
+                    },
+                    modelVertexDescription.attributes,
+                    modelVertexDescription.bindings,
+                    vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+                    screenspaceViewport,
+                    screenspaceScissor,
+                    vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT),
+                    { vkinit::colorBlendAttachmentState() },
+                    vkinit::multisamplingStateCreateInfo(),
+                    vkinit::depthStencilCreateInfo(true, false, VK_COMPARE_OP_EQUAL),
+                    {},
+                    engineRef->_mainRenderPass,
+                    1,
+                    umb.compiled.pipeline,
+                    umb.compiled.pipelineLayout,
+                    engineRef->_swapchainDependentDeletionQueue
+                );
             engineRef->attachPipelineToMaterial(umb.compiled.pipeline, umb.compiled.pipelineLayout, umbHumba);
 
             // Finished.
