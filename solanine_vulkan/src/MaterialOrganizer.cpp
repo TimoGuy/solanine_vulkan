@@ -514,7 +514,7 @@ namespace materialorganizer
             existingDMPSs.begin(),
             existingDMPSs.end(),
             [&](DerivedMaterialParamSet a, DerivedMaterialParamSet b) {
-                return a.dmpsPath.compare(b.dmpsPath) < 0;
+                return a.dmpsPath.compare(b.humbaFname) < 0;
             }
         );
 
