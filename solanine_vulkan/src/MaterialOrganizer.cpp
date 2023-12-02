@@ -901,6 +901,7 @@ namespace materialorganizer
 
     size_t derivedMaterialNameToUMBIdx(std::string derivedMatName)
     {
+        derivedMatName += ".hderriere";
         for (auto& dmps : existingDMPSs)
             if (dmps.dmpsPath.filename().string() == derivedMatName)
                 for (size_t i = 0; i < existingUMBs.size(); i++)
@@ -909,17 +910,23 @@ namespace materialorganizer
         
         std::cerr << "[DERIVED MATERIAL NAME TO UMB IDX]" << std::endl
             << "ERROR: derived material name " << derivedMatName << " not connected to a UMB." << std::endl;
-        return 0;
+        return (size_t)-1;
     }
 
     size_t derivedMaterialNameToDMPSIdx(std::string derivedMatName)
     {
+        derivedMatName += ".hderriere";
         for (size_t i = 0; i < existingDMPSs.size(); i++)
             if (existingDMPSs[i].dmpsPath.filename().string() == derivedMatName)
                 return i;
         
         std::cerr << "[DERIVED MATERIAL NAME TO DMPS IDX]" << std::endl
             << "ERROR: derived material name " << derivedMatName << " not connected to a DMPS." << std::endl;
-        return 0;
+        return (size_t)-1;
+    }
+
+    std::string umbIdxToUniqueMaterialName(size_t umbIdx)
+    {
+        return existingUMBs[umbIdx].umbPath.filename().string();
     }
 }

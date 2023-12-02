@@ -55,6 +55,7 @@ struct MeshCapturedInfo
 struct IndirectBatch
 {
 	vkglTF::Model* model;
+	size_t uniqueMaterialBaseId;
 	uint32_t first;
 	uint32_t count;
 };

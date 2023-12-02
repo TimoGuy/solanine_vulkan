@@ -426,7 +426,7 @@ void VulkanEngine::renderPickingRenderpass(const FrameData& currentFrame)
 	std::cout << "[PICKING]" << std::endl
 		<< "set picking scissor to: x=" << scissor.offset.x << "  y=" << scissor.offset.y << "  w=" << scissor.extent.width << "  h=" << scissor.extent.height << std::endl;
 
-	renderRenderObjects(cmd, currentFrame);
+	renderRenderObjects(cmd, currentFrame, true);
 
 	// End renderpass
 	vkCmdEndRenderPass(cmd);
@@ -524,7 +524,7 @@ void VulkanEngine::renderShadowRenderpass(const FrameData& currentFrame, VkComma
 		CascadeIndexPushConstBlock pc = { i };
 		vkCmdPushConstants(cmd, shadowDepthPassMaterial.pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(CascadeIndexPushConstBlock), &pc);
 
-		renderRenderObjects(cmd, currentFrame);
+		renderRenderObjects(cmd, currentFrame, true);
 		
 		vkCmdEndRenderPass(cmd);
 	}
@@ -567,7 +567,7 @@ void VulkanEngine::renderMainRenderpass(const FrameData& currentFrame, VkCommand
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 3, 1, &defaultZPrepassMaterial.textureSet, 0, nullptr);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(this), 0, nullptr);
-	renderRenderObjects(cmd, currentFrame);
+	renderRenderObjects(cmd, currentFrame, true);
 	//////////////////////
 
 	// Switch from zprepass subpass to main subpass
@@ -588,19 +588,7 @@ void VulkanEngine::renderMainRenderpass(const FrameData& currentFrame, VkCommand
 	}
 	///////////////////
 
-	// Bind material
-	// @TODO: put this into its own function!
-	Material& defaultMaterial = *getMaterial("pbrMaterial");    // @HACK: @TODO: currently, the way that the pipeline is getting used is by just hardcode using it in the draw commands for models... however, each model should get its pipeline set to this material instead (or whatever material its using... that's why we can't hardcode stuff!!!)   @TODO: create some kind of way to propagate the newly created pipeline to the primMat (calculated material in the gltf model) instead of using defaultMaterial directly.  -Timo
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipeline);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 3, 1, &defaultMaterial.textureSet, 0, nullptr);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(this), 0, nullptr);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 5, 1, &_voxelFieldLightingGridTextureSet.descriptor, 0, nullptr);
-	////////////////
-
-	renderRenderObjects(cmd, currentFrame);
+	renderRenderObjects(cmd, currentFrame, false);
 	if (!pickingIndirectDrawCommandIds.empty())
 		renderPickedObject(cmd, currentFrame, pickingIndirectDrawCommandIds);
 	physengine::renderDebugVisualization(cmd);
@@ -5724,10 +5712,12 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, 
 	// Write indirect commands.
 	std::vector<IndirectBatch> batches;
 	vkglTF::Model* lastModel = nullptr;
+	size_t lastUMBId = (size_t)-1;
 	size_t instanceID = 0;
 	for (auto& metaMesh : meshesASDFASDF)
 	{
-		if (metaMesh.model == lastModel)
+		if (metaMesh.model == lastModel &&
+			metaMesh.uniqueMaterialBaseId == lastUMBId)
 		{
 			batches.back().count += metaMesh.renderObjectIndices.size();
 		}
@@ -5735,10 +5725,12 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, 
 		{
 			batches.push_back({
 				.model = metaMesh.model,
+				.uniqueMaterialBaseId = metaMesh.uniqueMaterialBaseId,
 				.first = (uint32_t)instanceID,
 				.count = (uint32_t)metaMesh.renderObjectIndices.size(),
 			});
 			lastModel = metaMesh.model;
+			lastUMBId = metaMesh.uniqueMaterialBaseId;
 		}
 
 		// Create draw command for each mesh instance.
@@ -5846,14 +5838,36 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, 
 	indirectBatches = batches;
 }
 
-void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame)
+void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, bool materialOverride)
 {
 	// Iterate thru all the batches
+	vkglTF::Model* lastModel = nullptr;
+	size_t lastUMBIdx = (size_t)-1;
 	uint32_t drawStride = sizeof(VkDrawIndexedIndirectCommand);
 	for (IndirectBatch& batch : indirectBatches)
 	{
+		if (lastModel != batch.model)
+		{
+			batch.model->bind(cmd);
+			lastModel = batch.model;
+		}
+		if (!materialOverride && lastUMBIdx != batch.uniqueMaterialBaseId)
+		{
+			// Bind material
+			// @TODO: put this into its own function!
+			Material& uMaterial = *getMaterial(materialorganizer::umbIdxToUniqueMaterialName(batch.uniqueMaterialBaseId));    // @HACK: @TODO: currently, the way that the pipeline is getting used is by just hardcode using it in the draw commands for models... however, each model should get its pipeline set to this material instead (or whatever material its using... that's why we can't hardcode stuff!!!)   @TODO: create some kind of way to propagate the newly created pipeline to the primMat (calculated material in the gltf model) instead of using uMaterial directly.  -Timo
+			vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, uMaterial.pipeline);
+			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, uMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
+			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, uMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
+			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, uMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
+			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, uMaterial.pipelineLayout, 3, 1, &uMaterial.textureSet, 0, nullptr);
+			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, uMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(this), 0, nullptr);
+			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, uMaterial.pipelineLayout, 5, 1, &_voxelFieldLightingGridTextureSet.descriptor, 0, nullptr);
+			////////////////
+			
+			lastUMBIdx = batch.uniqueMaterialBaseId;
+		}
 		VkDeviceSize indirectOffset = batch.first * drawStride;
-		batch.model->bind(cmd);
 		vkCmdDrawIndexedIndirect(cmd, currentFrame.indirectDrawCommandBuffer._buffer, indirectOffset, batch.count, drawStride);
 	}
 }

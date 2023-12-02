@@ -385,7 +385,7 @@ private:
 		std::vector<ModelWithIndirectDrawId>& outIndirectDrawCommandIdsForPoolIndex
 #endif
 		);
-	void renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame);
+	void renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, bool materialOverride);
 
 	bool searchForPickedObjectPoolIndex(size_t& outPoolIndex);
 	void renderPickedObject(VkCommandBuffer cmd, const FrameData& currentFrame, const std::vector<ModelWithIndirectDrawId>& indirectDrawCommandIds);

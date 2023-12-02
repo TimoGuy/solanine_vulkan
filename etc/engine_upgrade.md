@@ -73,12 +73,15 @@
             - [x] Insert all material params into material collection.
             - [x] Insert all textures into material collection texture maps.
                 - [x] Create KTX texture loader.
+        - [ ] Get new material data to run.
+            - [ ] Implement bindless textures for the giant texturemap
         - [ ] Migrate to material system.
             - [ ] Add different materials (group by humba) in `compactRenderObjectsIntoDraws`
             - [ ] Load in correct material IDs instead of using material ids from vkgltf
             - [ ] Connect material to render object's palette. When loading in the model, it will also return a palette, and the programmer can insert that palette or insert a loaded palette swap file into the render object.
                 - [f] Load palette swap file.
-            - [ ] Don't load textures with vkgltf. (bandaid)
+            - [ ] Don't load textures with vkgltf. (bandaid... see sub task for real.)
+                - [ ] Re-export all gltf models with "Geometry->Materials->Placeholder" and "Geometry->Images->None" set.
             - [ ] Turn off the "pbrmaterial" material.
     - [ ] Material viewer
         - [x] Orbit camera view
