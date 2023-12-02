@@ -604,13 +604,13 @@ namespace materialorganizer
                     {
                         .bindings = {
                             {
-                                .bindingName = "textureMaps",
-                                .bindingType = SpvOpTypeArray,
+                                .bindingName = "materialCollection",
+                                .bindingType = SpvOpTypeStruct,
                                 .binding = 0,
                             },
                             {
-                                .bindingName = "materialCollection",
-                                .bindingType = SpvOpTypeStruct,
+                                .bindingName = "textureMaps",
+                                .bindingType = SpvOpTypeRuntimeArray,
                                 .binding = 1,
                             },
                         },
@@ -629,7 +629,7 @@ namespace materialorganizer
                 uint32_t relativeOffset;
             };
             StructElement materialIDOffsetElem;
-            uint32_t materialParamArrayOffset;
+            uint32_t materialParamArrayOffset = 0;
             std::vector<StructElement> materialParamStruct;
             uint32_t materialParamsTotalSize = 0;
             for (auto descriptorBinding : descriptorBindings)
@@ -686,11 +686,11 @@ namespace materialorganizer
             };
 
             // Upload material param info.
-            void* data;
-            vmaMapMemory(engineRef->_allocator, umb.compiled.materialParamsBuffer._allocation, &data);
+            uint8_t* data;
+            vmaMapMemory(engineRef->_allocator, umb.compiled.materialParamsBuffer._allocation, (void**)&data);
             {
                 uint32_t materialIDOffset = (uint32_t)dmpsIndices.front();
-                memcpy(data, &materialIDOffset, sizeof(uint32_t));
+                memcpy(data + 0, &materialIDOffset, sizeof(uint32_t));
             }
             for (size_t i = 0; i < dmpsIndices.size(); i++)
             {
@@ -702,7 +702,6 @@ namespace materialorganizer
                         dmpsParam.scopedName == umbParam.scopedName)
                     {
                         size_t offset = materialParamArrayOffset + materialParamsTotalSize * i + (size_t)matParam.relativeOffset;
-                        // switch (umbParam.mapping)
                         switch (umbParam.type)
                         {
                             case UniqueMaterialBase::ShaderStage::Variable::Type::SAMPLER_1D:
@@ -714,27 +713,27 @@ namespace materialorganizer
                                 if (umbParam.mapping != UniqueMaterialBase::ShaderStage::Variable::Mapping::TEXTURE_INDEX)
                                     std::cerr << "ERROR: texture index mapping isn't selected." << std::endl;
                                 uint32_t textureIdx = (uint32_t)textureNameToMapIndex[dmpsParam.stringValue];
-                                memcpy(data, &textureIdx, sizeof(uint32_t));
+                                memcpy(data + offset, &textureIdx, sizeof(uint32_t));
                             } break;
 
                             case UniqueMaterialBase::ShaderStage::Variable::Type::FLOAT:
                             {
-                                memcpy(data, &dmpsParam.numericalValue, sizeof(float_t));
+                                memcpy(data + offset, &dmpsParam.numericalValue, sizeof(float_t));
                             } break;
 
                             case UniqueMaterialBase::ShaderStage::Variable::Type::VEC2:
                             {
-                                memcpy(data, &dmpsParam.numericalValue, sizeof(vec2));
+                                memcpy(data + offset, &dmpsParam.numericalValue, sizeof(vec2));
                             } break;
 
                             case UniqueMaterialBase::ShaderStage::Variable::Type::VEC3:
                             {
-                                memcpy(data, &dmpsParam.numericalValue, sizeof(vec3));
+                                memcpy(data + offset, &dmpsParam.numericalValue, sizeof(vec3));
                             } break;
 
                             case UniqueMaterialBase::ShaderStage::Variable::Type::VEC4:
                             {
-                                memcpy(data, &dmpsParam.numericalValue, sizeof(vec4));
+                                memcpy(data + offset, &dmpsParam.numericalValue, sizeof(vec4));
                             } break;
 
                             case UniqueMaterialBase::ShaderStage::Variable::Type::BOOL:
@@ -742,7 +741,7 @@ namespace materialorganizer
                                 if (umbParam.mapping == UniqueMaterialBase::ShaderStage::Variable::Mapping::TO_FLOAT)
                                 {
                                     float_t val = (float_t)dmpsParam.numericalValue[0];  // Bool is already stored as float.
-                                    memcpy(data, &val, sizeof(float_t));
+                                    memcpy(data + offset, &val, sizeof(float_t));
                                 }
                                 else
                                     std::cerr << "ERROR: bool with `float` mapping isn't selected." << std::endl;
@@ -751,13 +750,13 @@ namespace materialorganizer
                             case UniqueMaterialBase::ShaderStage::Variable::Type::INT:
                             {
                                 int32_t val = (int32_t)dmpsParam.numericalValue[0];
-                                memcpy(data, &val, sizeof(int32_t));
+                                memcpy(data + offset, &val, sizeof(int32_t));
                             } break;
 
                             case UniqueMaterialBase::ShaderStage::Variable::Type::UINT:
                             {
                                 uint32_t val = (uint32_t)dmpsParam.numericalValue[0];
-                                memcpy(data, &val, sizeof(uint32_t));
+                                memcpy(data + offset, &val, sizeof(uint32_t));
                             } break;
                         }
                     }
@@ -765,8 +764,8 @@ namespace materialorganizer
             vmaUnmapMemory(engineRef->_allocator, umb.compiled.materialParamsBuffer._allocation);
             
             vkutil::DescriptorBuilder::begin()
-                .bindImageArray(0, (uint32_t)textureMapInfos.size(), textureMapInfos.data(), VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
-                .bindBuffer(1, &materialParamsBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT)
+                .bindBuffer(0, &materialParamsBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT)
+                .bindImageArray(1, (uint32_t)textureMapInfos.size(), textureMapInfos.data(), VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
                 .build(umb.compiled.materialParamsDescriptorSet, umb.compiled.materialParamsDescriptorSetLayout);
 
             engineRef->attachTextureSetToMaterial(umb.compiled.materialParamsDescriptorSet, umbHumba);
@@ -827,7 +826,7 @@ namespace materialorganizer
                         }
                     },
                     {
-                        engineRef->_globalSetLayout,
+                        engineRef->_cascadeViewProjsSetLayout,
                         engineRef->_objectSetLayout,
                         engineRef->_instancePtrSetLayout,
                         umb.compiled.materialParamsDescriptorSetLayout,

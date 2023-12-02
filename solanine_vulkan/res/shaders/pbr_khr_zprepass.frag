@@ -1,4 +1,5 @@
 #version 460
+#extension GL_EXT_nonuniform_qualifier : require
 
 layout (location = 0) in vec2 inUV0;
 layout (location = 1) in vec2 inUV1;
@@ -24,9 +25,6 @@ layout(std140, set = 2, binding = 0) readonly buffer InstancePtrBuffer
 // Material bindings
 // @COPYPASTA
 //
-#define MAX_NUM_MAPS 128
-layout (set = 3, binding = 0) uniform sampler2D textureMaps[MAX_NUM_MAPS];
-
 struct MaterialParam
 {
 	// Texture map references
@@ -40,11 +38,13 @@ struct MaterialParam
 };
 
 #define MAX_NUM_MATERIALS 256
-layout (std140, set = 3, binding = 1) readonly buffer MaterialCollection
+layout (std140, set = 3, binding = 0) readonly buffer MaterialCollection
 {
 	uint materialIDOffset;
 	MaterialParam params[MAX_NUM_MATERIALS];
 } materialCollection;
+
+layout (set = 3, binding = 1) uniform sampler2D textureMaps[];
 
 
 void main() 
@@ -55,7 +55,7 @@ void main()
 		float alpha = materialCollection.params[materialID].baseColorFactor.a;
 		if (materialCollection.params[materialID].baseColorTextureSet > -1)
 		{
-			alpha *= texture(textureMaps[materialCollection.params[materialID].colorMapIndex], materialCollection.params[materialID].baseColorTextureSet == 0 ? inUV0 : inUV1).a;
+			alpha *= texture(textureMaps[nonuniformEXT(materialCollection.params[materialID].colorMapIndex)], materialCollection.params[materialID].baseColorTextureSet == 0 ? inUV0 : inUV1).a;
 		}
 		if (alpha < materialCollection.params[materialID].alphaMaskCutoff)
 		{

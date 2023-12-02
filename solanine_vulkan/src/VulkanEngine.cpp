@@ -1390,7 +1390,7 @@ void VulkanEngine::render()
 		pickedPoolIndices.clear();
 	std::vector<ModelWithIndirectDrawId> pickingIndirectDrawCommandIds;
 #endif
-	compactRenderObjectsIntoDraws(currentFrame, pickedPoolIndices, pickingIndirectDrawCommandIds);
+	compactRenderObjectsIntoDraws(currentFrame, pickedPoolIndices, pickingIndirectDrawCommandIds);  // @TODO: this only needs to be run once if the renderobject situation gets chagned!!!!!
 	perfs[14] = SDL_GetPerformanceCounter() - perfs[14];
 
 	// Render render passes.
@@ -1834,7 +1834,7 @@ void VulkanEngine::initVulkan()
 
 	vkb::PhysicalDeviceSelector selector{ vkbInstance };
 	vkb::PhysicalDevice physicalDevice = selector
-		.set_minimum_version(1, 3)
+		.set_minimum_version(1, 3)  // For using indirectDrawCount (only available on 1.3+).  @REPLY: Well, if you ever implement it lol. If not, just revert to 1.2  -Timo 2023/12/2
 		.set_surface(_surface)
 		.set_required_features({
 			// @NOTE: @FEATURES: Enable required features right here
@@ -1860,6 +1860,12 @@ void VulkanEngine::initVulkan()
 	VkPhysicalDeviceVulkan12Features vulkan12Features = {
 		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
 		.pNext = nullptr,
+		// For non-uniform, dynamic arrays of textures in shaders.
+		.descriptorIndexing = VK_TRUE,
+		.shaderSampledImageArrayNonUniformIndexing = VK_TRUE,
+		.descriptorBindingVariableDescriptorCount = VK_TRUE,
+		.runtimeDescriptorArray = VK_TRUE,
+		// For MIN/MAX sampler when creating mip chains.
 		.samplerFilterMinmax = VK_TRUE,
 	};
 	vkb::Device vkbDevice =

@@ -9,19 +9,25 @@ namespace vkutil
         void cleanup();
 
         void resetPools();
-        bool allocate(VkDescriptorSet* set, VkDescriptorSetLayout layout);
+        bool allocate(VkDescriptorSet* set, VkDescriptorSetLayout layout, const std::vector<uint32_t>& variableDescriptorCounts);
     }
+
+    struct DescriptorSetLayoutBindingWithMetadata
+    {
+        VkDescriptorSetLayoutBinding binding;
+        bool useVariableDescriptorCount;
+    };
 
     namespace descriptorlayoutcache
     {
         void init(VkDevice newDevice);
         void cleanup();
 
-        VkDescriptorSetLayout createDescriptorLayout(VkDescriptorSetLayoutCreateInfo* info);
+        VkDescriptorSetLayout createDescriptorLayout(std::vector<DescriptorSetLayoutBindingWithMetadata> assortedBindings, std::vector<uint32_t>& outVariableDescriptorCounts);
 
         struct DescriptorLayoutInfo
         {
-            std::vector<VkDescriptorSetLayoutBinding> bindings;
+            std::vector<DescriptorSetLayoutBindingWithMetadata> bindings;
             bool operator==(const DescriptorLayoutInfo& other) const;
             size_t hash() const;
         };
@@ -42,6 +48,6 @@ namespace vkutil
         DescriptorBuilder() { }
 
         std::vector<VkWriteDescriptorSet> writes;
-        std::vector<VkDescriptorSetLayoutBinding> bindings;
+        std::vector<DescriptorSetLayoutBindingWithMetadata> bindings;
     };
 }

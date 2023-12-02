@@ -47,6 +47,10 @@ bool RenderObjectManager::registerRenderObjects(std::vector<RenderObject> inRend
 		auto primitives = renderObjectData.model->getAllPrimitivesInOrder();
 		for (auto& primitive : primitives)
 		{
+			// @NOTE: Welcome to erroring out right here! This means that a model got consumed that
+			//        does not have a proper material. Go back to the model and re-export with the settings
+			//        Geometry>Materials set to "Placeholder", and Geometry>Images set to "None". Also, make sure
+			//        there is actually a material assigned to all the faces. Thanks!  -Timo 2023/12/2
 			std::string derivedMatName = renderObjectData.model->materials[primitive->materialID].name;
 
 			renderObjectData.calculatedModelInstances.push_back({

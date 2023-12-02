@@ -73,8 +73,11 @@
             - [x] Insert all material params into material collection.
             - [x] Insert all textures into material collection texture maps.
                 - [x] Create KTX texture loader.
-        - [ ] Get new material data to run.
-            - [ ] Implement bindless textures for the giant texturemap
+        - [x] Get new material data to run.
+            - [x] Implement bindless textures for the giant texturemap
+                - [x] Turns out I'm looking for descriptor indexing.
+                - [x] Enable extensions.
+                - [x] Mark descriptor binding as using a variable count.
         - [ ] Migrate to material system.
             - [ ] Add different materials (group by humba) in `compactRenderObjectsIntoDraws`
             - [ ] Load in correct material IDs instead of using material ids from vkgltf

@@ -54,7 +54,7 @@ namespace vkutil
             currentPool = VK_NULL_HANDLE;
         }
 
-        bool allocate(VkDescriptorSet* set, VkDescriptorSetLayout layout)
+        bool allocate(VkDescriptorSet* set, VkDescriptorSetLayout layout, const std::vector<uint32_t>& variableDescriptorCounts)
         {
             if (currentPool == VK_NULL_HANDLE)
             {
@@ -69,6 +69,17 @@ namespace vkutil
                 .descriptorSetCount = 1,
                 .pSetLayouts = &layout,
             };
+
+            if (!variableDescriptorCounts.empty())
+            {
+                // Add variable descriptor count info.
+                VkDescriptorSetVariableDescriptorCountAllocateInfo variableDescriptorCountAllocInfo = {
+                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO,
+                    .descriptorSetCount = 1,
+                    .pDescriptorCounts = variableDescriptorCounts.data(),
+                };
+                allocInfo.pNext = &variableDescriptorCountAllocInfo;
+            }
 
             VkResult allocResult = vkAllocateDescriptorSets(device, &allocInfo, set);
             bool needReallocate = false;
@@ -156,21 +167,24 @@ namespace vkutil
                 vkDestroyDescriptorSetLayout(device, pair.second, nullptr);
         }
 
-        VkDescriptorSetLayout createDescriptorLayout(VkDescriptorSetLayoutCreateInfo* info)
+        VkDescriptorSetLayout createDescriptorLayout(std::vector<DescriptorSetLayoutBindingWithMetadata> assortedBindings, std::vector<uint32_t>& outVariableDescriptorCounts)
         {
             DescriptorLayoutInfo layoutInfo;
-            layoutInfo.bindings.reserve(info->bindingCount);
+            layoutInfo.bindings.reserve(assortedBindings.size());
             bool isSorted = true;
             int32_t lastBinding = -1;
 
-            for (uint32_t i = 0; i < info->bindingCount; i++)
+            for (uint32_t i = 0; i < assortedBindings.size(); i++)
             {
-                layoutInfo.bindings.push_back(info->pBindings[i]);
+                layoutInfo.bindings.push_back({
+                    .binding = assortedBindings[i].binding,
+                    .useVariableDescriptorCount = assortedBindings[i].useVariableDescriptorCount,
+                });
 
                 // Check if sorted
-                if ((int32_t)info->pBindings[i].binding > lastBinding)
+                if ((int32_t)assortedBindings[i].binding.binding > lastBinding)
                 {
-                    lastBinding = info->pBindings[i].binding;
+                    lastBinding = assortedBindings[i].binding.binding;
                 }
                 else
                     isSorted = false;
@@ -182,11 +196,16 @@ namespace vkutil
                 std::sort(
                     layoutInfo.bindings.begin(),
                     layoutInfo.bindings.end(),
-                    [](VkDescriptorSetLayoutBinding& a, VkDescriptorSetLayoutBinding& b) {
-                        return a.binding < b.binding;
+                    [](DescriptorSetLayoutBindingWithMetadata& a, DescriptorSetLayoutBindingWithMetadata& b) {
+                        return a.binding.binding < b.binding.binding;
                     }
                 );
             }
+
+            // Add descriptor counts for descriptor set allocator.
+            for (auto& dslwm : layoutInfo.bindings)
+                if (dslwm.useVariableDescriptorCount)
+                    outVariableDescriptorCounts.push_back(dslwm.binding.descriptorCount);
 
             // Grab from cache
             auto it = layoutCache.find(layoutInfo);
@@ -195,8 +214,38 @@ namespace vkutil
             else
             {
                 // Create new layout & add to cache
+                std::vector<VkDescriptorSetLayoutBinding> justBindings;
+                std::vector<VkDescriptorBindingFlags> bindingFlags;
+                bool useBindingFlags = false;
+                for (auto& dslwm : layoutInfo.bindings)
+                {
+                    justBindings.push_back(dslwm.binding);
+                    if (dslwm.useVariableDescriptorCount)
+                    {
+                        bindingFlags.push_back(VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT);
+                        useBindingFlags = true;
+                    }
+                    else
+                        bindingFlags.push_back(0);
+                }
+
+                VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCI = {
+                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+                    .pNext = nullptr,
+                    .bindingCount = static_cast<uint32_t>(justBindings.size()),
+                    .pBindings = justBindings.data(),
+                };
+                VkDescriptorSetLayoutBindingFlagsCreateInfo descriptorSetLayoutBindingFlagsCI = {
+                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
+                    .bindingCount = (uint32_t)bindingFlags.size(),
+                    .pBindingFlags = bindingFlags.data(),
+                };
+
+                if (useBindingFlags)
+                    descriptorSetLayoutCI.pNext = &descriptorSetLayoutBindingFlagsCI;
+
                 VkDescriptorSetLayout layout;
-                vkCreateDescriptorSetLayout(device, info, nullptr, &layout);
+                vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCI, nullptr, &layout);
 
                 layoutCache[layoutInfo] = layout;
                 return layout;
@@ -211,13 +260,15 @@ namespace vkutil
             // Bindings are pre-sorted, so just zip compare
             for (size_t i = 0; i < bindings.size(); i++)
             {
-                if (other.bindings[i].binding != bindings[i].binding)
+                if (other.bindings[i].binding.binding != bindings[i].binding.binding)
                     return false;
-                if (other.bindings[i].descriptorType != bindings[i].descriptorType)
+                if (other.bindings[i].binding.descriptorType != bindings[i].binding.descriptorType)
                     return false;
-                if (other.bindings[i].descriptorCount != bindings[i].descriptorCount)
+                if (other.bindings[i].binding.descriptorCount != bindings[i].binding.descriptorCount)
                     return false;
-                if (other.bindings[i].stageFlags != bindings[i].stageFlags)
+                if (other.bindings[i].binding.stageFlags != bindings[i].binding.stageFlags)
+                    return false;
+                if (other.bindings[i].useVariableDescriptorCount != bindings[i].useVariableDescriptorCount)
                     return false;
             }
 
@@ -228,10 +279,11 @@ namespace vkutil
         {
             size_t result = std::hash<size_t>()(bindings.size());
 
-            for (const VkDescriptorSetLayoutBinding& b : bindings)
+            for (const DescriptorSetLayoutBindingWithMetadata& b : bindings)
             {
                 // Pack the binding data into a single int64. Not fully correct but it's ok
-                size_t binding_hash = b.binding | b.descriptorType << 8 | b.descriptorCount << 16 | b.stageFlags << 24;
+                // @TODO: update this hashing function to include the metadata.
+                size_t binding_hash = b.binding.binding | b.binding.descriptorType << 8 | b.binding.descriptorCount << 16 | b.binding.stageFlags << 24;
 
                 // Shuffle the packed binding data and xor it with the main hash
                 result ^= std::hash<size_t>()(binding_hash);
@@ -261,7 +313,10 @@ namespace vkutil
             .pImmutableSamplers = nullptr,
         };
 
-		bindings.push_back(newBinding);
+		bindings.push_back({
+            .binding = newBinding,
+            .useVariableDescriptorCount = false,
+        });
 
 		// Create the descriptor write
 		VkWriteDescriptorSet newWrite = {
@@ -287,7 +342,10 @@ namespace vkutil
             .pImmutableSamplers = nullptr,
         };
 
-		bindings.push_back(newBinding);
+		bindings.push_back({
+            .binding = newBinding,
+            .useVariableDescriptorCount = false,
+        });
 
 		VkWriteDescriptorSet newWrite = {
             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
@@ -305,6 +363,7 @@ namespace vkutil
     DescriptorBuilder& DescriptorBuilder::bindImageArray(uint32_t binding, uint32_t imageCount, VkDescriptorImageInfo* imageInfos, VkDescriptorType type, VkShaderStageFlags stageFlags)
     {
         // See for how to use this: http://kylehalladay.com/blog/tutorial/vulkan/2018/01/28/Textue-Arrays-Vulkan.html
+        // @NOTE: changed this to use variable descriptor count. (See `descriptorindexing` Vulkan Example (Sascha Willems))
 
         VkDescriptorSetLayoutBinding newBinding = {
             .binding = binding,
@@ -314,12 +373,16 @@ namespace vkutil
             .pImmutableSamplers = nullptr,
         };
 
-		bindings.push_back(newBinding);
+		bindings.push_back({
+            .binding = newBinding,
+            .useVariableDescriptorCount = true,
+        });
 
 		VkWriteDescriptorSet newWrite = {
             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
             .pNext = nullptr,
             .dstBinding = binding,
+            .dstArrayElement = 0,
             .descriptorCount = imageCount,
             .descriptorType = type,
             .pImageInfo = imageInfos,
@@ -331,18 +394,11 @@ namespace vkutil
 
     bool DescriptorBuilder::build(VkDescriptorSet& set, VkDescriptorSetLayout& layout)
     {
-        // Build layout first
-        VkDescriptorSetLayoutCreateInfo layoutInfo = {
-            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-            .pNext = nullptr,
-            .bindingCount = static_cast<uint32_t>(bindings.size()),
-            .pBindings = bindings.data(),
-        };
-
-        layout = vkutil::descriptorlayoutcache::createDescriptorLayout(&layoutInfo);
+        std::vector<uint32_t> variableDescriptorCounts;
+        layout = vkutil::descriptorlayoutcache::createDescriptorLayout(bindings, variableDescriptorCounts);
 
         // Allocate descriptor
-        bool success = vkutil::descriptorallocator::allocate(&set, layout);
+        bool success = vkutil::descriptorallocator::allocate(&set, layout, variableDescriptorCounts);
         if (!success)
             return false;
 
