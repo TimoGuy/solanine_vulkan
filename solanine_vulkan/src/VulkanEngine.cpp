@@ -574,7 +574,7 @@ void VulkanEngine::renderMainRenderpass(const FrameData& currentFrame, VkCommand
 	vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_INLINE);
 
 	// Render skybox //
-	if (_currentEditorMode == EditorModes::LEVEL_EDITOR)
+	// if (_currentEditorMode == EditorModes::LEVEL_EDITOR)
 	{
 		// @TODO: put this into its own function!
 		Material& skyboxMaterial = *getMaterial("skyboxMaterial");
@@ -5469,7 +5469,8 @@ void VulkanEngine::loadMaterials()
 
 void VulkanEngine::loadMeshes()
 {
-#define MULTITHREAD_MESH_LOADING 1
+	// @NOTE: `MULTITHREAD_MESH_LOADING` cannot be used if rapidjson is the json parser for tiny_gltf.h
+#define MULTITHREAD_MESH_LOADING 0
 #if MULTITHREAD_MESH_LOADING
 	tf::Executor e;
 	tf::Taskflow taskflow;

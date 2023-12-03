@@ -1615,6 +1615,10 @@ namespace vkglTF
 		if (extpos != std::string::npos)
 			binary = (filename.substr(extpos + 1, filename.length() - extpos) == "glb");
 
+		// if (filename == "res/models/SlimeGirl.glb")
+		if (filename == "res/models/slime_girl_base.glb")
+			int jj = 0x333;
+
 		PERF_TSTART(8);
 		bool fileLoaded = binary ? gltfContext.LoadBinaryFromFile(&gltfModel, &error, &warning, filename.c_str()) : gltfContext.LoadASCIIFromFile(&gltfModel, &error, &warning, filename.c_str());
 		PERF_TEND(8);
