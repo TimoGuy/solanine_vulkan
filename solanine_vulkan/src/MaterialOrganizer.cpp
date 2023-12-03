@@ -530,17 +530,8 @@ namespace materialorganizer
 
     void cookTextureIndices()
     {
-        // Delete previous textures.
-        for (auto& texture : texturesInOrder)
-        {
-            if (texture.map.sampler)
-                vkDestroySampler(engineRef->_device, texture.map.sampler, nullptr);
-            if (texture.map.imageView)
-                vkDestroyImageView(engineRef->_device, texture.map.imageView, nullptr);
-        }
-        texturesInOrder.clear();
-
         // Put together unique set of textures.
+        texturesInOrder.clear();
         for (auto& dmps : existingDMPSs)
         for (auto& param : dmps.params)
             if (param.valueType == DerivedMaterialParamSet::Param::ValueType::TEXTURE_NAME)
@@ -563,15 +554,20 @@ namespace materialorganizer
         // Load textures.
         for (auto& texture : texturesInOrder)
         {
-           vkutil::loadKTXImageFromFile(*engineRef, ("res/texture_cooked/" + texture.name + ".hdelicious").c_str(), VK_FORMAT_R8G8B8A8_UNORM, texture.map.image);
+            vkutil::loadKTXImageFromFile(*engineRef, ("res/texture_cooked/" + texture.name + ".hdelicious").c_str(), VK_FORMAT_R8G8B8A8_UNORM, texture.map.image);
 
-           VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_UNORM, texture.map.image._image, VK_IMAGE_ASPECT_COLOR_BIT, texture.map.image._mipLevels);
-           vkCreateImageView(engineRef->_device, &imageInfo, nullptr, &texture.map.imageView);
+            VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_UNORM, texture.map.image._image, VK_IMAGE_ASPECT_COLOR_BIT, texture.map.image._mipLevels);
+            vkCreateImageView(engineRef->_device, &imageInfo, nullptr, &texture.map.imageView);
 
-           VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(texture.map.image._mipLevels), VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
-           vkCreateSampler(engineRef->_device, &samplerInfo, nullptr, &texture.map.sampler);
+            VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(texture.map.image._mipLevels), VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
+            vkCreateSampler(engineRef->_device, &samplerInfo, nullptr, &texture.map.sampler);
+
+            engineRef->_swapchainDependentDeletionQueue.pushFunction([=]() {
+                vkDestroyImageView(engineRef->_device, texture.map.imageView, nullptr);
+                vkDestroySampler(engineRef->_device, texture.map.sampler, nullptr);
+            });
         }
-        
+
         // Build descriptor sets for materials.
         for (auto& umb : existingUMBs)
         {
@@ -585,10 +581,6 @@ namespace materialorganizer
                     shadowSpecialMat ||
                     existingDMPSs[i].humbaFname == umbHumba)
                     dmpsIndices.push_back(i);
-
-            // Delete previously cooked.
-            if (umb.compiled.cooked)
-                vmaDestroyBuffer(engineRef->_allocator, umb.compiled.materialParamsBuffer._buffer, umb.compiled.materialParamsBuffer._allocation);
 
             // Load in struct size and offsets for `MaterialCollection.MaterialParam` struct.
             spv_reflect::ShaderModule umbSM;
@@ -679,6 +671,10 @@ namespace materialorganizer
 
             size_t materialParamsBufferSize = materialParamArrayOffset + materialParamsTotalSize * dmpsIndices.size();  // @HACK: first `uint materialIDOffset` is only 4 bytes, but since the `params` array is next, the `params` array has an offset of 16 bytes. Include these extra bytes in the buffer, so don't use the size of `uint materialIDOffset` in the calc for size of buffer.  -Timo 2023/11/30
             umb.compiled.materialParamsBuffer = engineRef->createBuffer(materialParamsBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+            engineRef->_swapchainDependentDeletionQueue.pushFunction([=]() {
+                vmaDestroyBuffer(engineRef->_allocator, umb.compiled.materialParamsBuffer._buffer, umb.compiled.materialParamsBuffer._allocation);
+            });
+
             VkDescriptorBufferInfo materialParamsBufferInfo = {
                 .buffer = umb.compiled.materialParamsBuffer._buffer,
                 .offset = 0,

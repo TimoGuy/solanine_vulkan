@@ -78,6 +78,7 @@
                 - [x] Turns out I'm looking for descriptor indexing.
                 - [x] Enable extensions.
                 - [x] Mark descriptor binding as using a variable count.
+        - [x] Fix that pesky error when exiting the program.
         - [ ] Migrate to material system.
             - [ ] Add different materials (group by humba) in `compactRenderObjectsIntoDraws`
             - [ ] Load in correct material IDs instead of using material ids from vkgltf

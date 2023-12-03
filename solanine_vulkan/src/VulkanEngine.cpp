@@ -5434,6 +5434,7 @@ void VulkanEngine::recreateSwapchain()
 	initPickingRenderpass();
 	initFramebuffers();
 	initPipelines();
+	loadMaterials();
 
 	_camera->sceneCamera.recalculateSceneCamera(_pbrRendering.gpuSceneShadingProps);
 

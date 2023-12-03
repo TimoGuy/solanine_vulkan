@@ -155,7 +155,7 @@ bool vkutil::loadKTXImageFromBuffer(VulkanEngine& engine, int32_t texWidth, int3
 	auto engineAllocator = engine._allocator;
 	engine._mainDeletionQueue.pushFunction([=]() {
 		vmaDestroyImage(engineAllocator, newImage._image, newImage._allocation);
-		});
+	});
 	vmaDestroyBuffer(engine._allocator, stagingBuffer._buffer, stagingBuffer._allocation);
 
 	outImage = newImage;
