@@ -122,7 +122,6 @@ struct FreeCamMode
 struct OrbitSubjectCamMode
 {
 	bool moving = false;
-	ivec2 savedMousePosition;
 	vec3 focusPosition;
 	float_t focusLength;
 	vec2 orbitAngles;

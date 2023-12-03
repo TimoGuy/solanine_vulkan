@@ -730,16 +730,6 @@ void Camera::updateOrbitSubjectCam(float_t deltaTime, CameraModeChangeEvent chan
 		orbitSubjectCamMode.moving = input::editorInputSet().orbitCamDrag.onAction;
 		if (forceDragRelease)
 			orbitSubjectCamMode.moving = false;
-
-		SDL_SetRelativeMouseMode(orbitSubjectCamMode.moving ? SDL_TRUE : SDL_FALSE);
-					
-		if (orbitSubjectCamMode.moving)
-			SDL_GetMouseState(
-				&orbitSubjectCamMode.savedMousePosition[0],
-				&orbitSubjectCamMode.savedMousePosition[1]
-			);
-		else
-			SDL_WarpMouseInWindow(_engine->_window, orbitSubjectCamMode.savedMousePosition[0], orbitSubjectCamMode.savedMousePosition[1]);
 	}
 
 	bool recalculateCamera = false;
