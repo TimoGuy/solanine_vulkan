@@ -80,6 +80,7 @@
                 - [x] Mark descriptor binding as using a variable count.
         - [x] Fix that pesky error when exiting the program.
         - [ ] Migrate to material system.
+            - [ ] CREATE MATERIAL VIEWER.
             - [ ] Add different materials (group by humba) in `compactRenderObjectsIntoDraws`
             - [ ] Load in correct material IDs instead of using material ids from vkgltf
             - [ ] Connect material to render object's palette. When loading in the model, it will also return a palette, and the programmer can insert that palette or insert a loaded palette swap file into the render object.
@@ -91,4 +92,21 @@
         - [x] Orbit camera view
         - [ ] Sphere material inspector.
             - [x] Draw sphere with as the subject for the orbit view.
+        - [x] Directly change the EDITORTextureViewer model's assigned dmps and its renderobj's umb.
 
+- [ ] "Reflection" imgui panel.
+    - [ ] Install https://github.com/Csabix/imgui/tree/master/auto
+    - [ ] Setup the struct, then run `ImGui::auto(...)` on the struct!
+    - [ ] Check to see if cglm types are supported
+    - [ ] Add support to them if not!
+
+- [ ] Rename "Character" to something else
+    - [ ] Then, import all of the jolt physics stuff into pch! That way "JPH::Character" doesn't need a differentiation!
+
+- [ ] UI Editor
+
+    - [ ] Small animations of how UI elements will come in and move out.
+
+    - [ ] Entity that loads and displays a UI file.
+
+- [ ] 

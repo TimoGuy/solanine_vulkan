@@ -19,4 +19,6 @@ namespace materialorganizer
     size_t derivedMaterialNameToUMBIdx(std::string derivedMatName);
     size_t derivedMaterialNameToDMPSIdx(std::string derivedMatName);
     std::string umbIdxToUniqueMaterialName(size_t umbIdx);
+
+    std::vector<std::string> getListOfDerivedMaterials();
 }

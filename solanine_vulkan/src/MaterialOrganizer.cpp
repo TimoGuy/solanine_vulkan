@@ -18,6 +18,7 @@ namespace materialorganizer
 {
     VulkanEngine* engineRef;
 
+
     void init(VulkanEngine* engine)
     {
         engineRef = engine;
@@ -554,7 +555,7 @@ namespace materialorganizer
         // Load textures.
         for (auto& texture : texturesInOrder)
         {
-            vkutil::loadKTXImageFromFile(*engineRef, ("res/texture_cooked/" + texture.name + ".hdelicious").c_str(), VK_FORMAT_R8G8B8A8_UNORM, texture.map.image);
+            vkutil::loadKTXImageFromFile(*engineRef, ("res/texture_cooked/" + texture.name + ".hdelicious").c_str(), /*VK_FORMAT_ASTC_4x4_UNORM_BLOCK*/VK_FORMAT_R8G8B8A8_UNORM, texture.map.image);
 
             VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_UNORM, texture.map.image._image, VK_IMAGE_ASPECT_COLOR_BIT, texture.map.image._mipLevels);
             vkCreateImageView(engineRef->_device, &imageInfo, nullptr, &texture.map.imageView);
@@ -896,7 +897,6 @@ namespace materialorganizer
 
     size_t derivedMaterialNameToUMBIdx(std::string derivedMatName)
     {
-        derivedMatName += ".hderriere";
         for (auto& dmps : existingDMPSs)
             if (dmps.dmpsPath.filename().string() == derivedMatName)
                 for (size_t i = 0; i < existingUMBs.size(); i++)
@@ -910,7 +910,6 @@ namespace materialorganizer
 
     size_t derivedMaterialNameToDMPSIdx(std::string derivedMatName)
     {
-        derivedMatName += ".hderriere";
         for (size_t i = 0; i < existingDMPSs.size(); i++)
             if (existingDMPSs[i].dmpsPath.filename().string() == derivedMatName)
                 return i;
@@ -923,5 +922,22 @@ namespace materialorganizer
     std::string umbIdxToUniqueMaterialName(size_t umbIdx)
     {
         return existingUMBs[umbIdx].umbPath.filename().string();
+    }
+
+    std::vector<std::string> getListOfDerivedMaterials()
+    {
+        const std::string MATERIALS_DIRECTORY_PATH = "res/materials/";
+        std::vector<std::string> materials;
+        for (const auto& entry : std::filesystem::recursive_directory_iterator(MATERIALS_DIRECTORY_PATH))
+        {
+            const auto& path = entry.path();
+            if (std::filesystem::is_directory(path))
+                continue;
+            if (!path.has_extension() || path.extension().compare(".hderriere") != 0)
+                continue;
+            auto relativePath = std::filesystem::relative(path, MATERIALS_DIRECTORY_PATH);
+            materials.push_back(relativePath.string());  // @NOTE: that this line could be dangerous if there are any filenames or directory names that have utf8 chars or wchars in it
+        }
+        return materials;
     }
 }

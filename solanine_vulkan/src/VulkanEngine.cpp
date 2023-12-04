@@ -25,6 +25,10 @@
 #include "GlobalState.h"
 #include "GondolaSystem.h"
 
+#ifdef _DEVELOP
+#include "EDITORTextureViewer.h"
+#endif
+
 
 constexpr uint64_t TIMEOUT_1_SEC = 1000000000;
 
@@ -76,6 +80,7 @@ void VulkanEngine::init()
 	initVulkan();
 	initSwapchain();
 	initCommands();
+	vkutil::initKTX(*this);
 	initShadowRenderpass();
 	initShadowImages();  // @NOTE: this isn't screen space, so no need to recreate images on swapchain recreation
 	initMainRenderpass();
@@ -344,6 +349,8 @@ void VulkanEngine::cleanup()
 		vkutil::descriptorlayoutcache::cleanup();
 		vkutil::descriptorallocator::cleanup();
 
+		vkutil::cleanupKTX(*this);
+
 		vmaDestroyAllocator(_allocator);
 		vkDestroySurfaceKHR(_instance, _surface, nullptr);
 		vkb::destroy_debug_utils_messenger(_instance, _debugMessenger);
@@ -574,7 +581,8 @@ void VulkanEngine::renderMainRenderpass(const FrameData& currentFrame, VkCommand
 	vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_INLINE);
 
 	// Render skybox //
-	// if (_currentEditorMode == EditorModes::LEVEL_EDITOR)
+	if (_currentEditorMode == EditorModes::LEVEL_EDITOR ||
+		_currentEditorMode == EditorModes::MATERIAL_EDITOR)
 	{
 		// @TODO: put this into its own function!
 		Material& skyboxMaterial = *getMaterial("skyboxMaterial");
@@ -5991,14 +5999,9 @@ void VulkanEngine::changeEditorMode(EditorModes newEditorMode)
 
 		} break;
 
-		case EditorModes::TEXTURE_EDITOR:
-		{
-
-		} break;
-
 		case EditorModes::MATERIAL_EDITOR:
 		{
-
+			EDITORTextureViewer::setAssignedMaterial(0, 0);
 		} break;
 	}
 
@@ -6013,16 +6016,10 @@ void VulkanEngine::changeEditorMode(EditorModes newEditorMode)
 			scene::loadScene(globalState::savedActiveScene, true);
 		} break;
 
-		case EditorModes::TEXTURE_EDITOR:
-		{
-			_camera->requestCameraMode(_camera->_cameraMode_orbitSubjectCamMode);
-			scene::loadScene("EDITOR_texture_editor.hentais", true);
-		} break;
-
 		case EditorModes::MATERIAL_EDITOR:
 		{
 			_camera->requestCameraMode(_camera->_cameraMode_orbitSubjectCamMode);
-
+			scene::loadScene("EDITOR_material_editor.hentais", true);
 		} break;
 	}
 }
@@ -6044,14 +6041,13 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 		if (ImGui::BeginMenu("Mode"))
 		{
 			if (ImGui::MenuItem("Level Editor", "", (_currentEditorMode == EditorModes::LEVEL_EDITOR)) && _currentEditorMode != EditorModes::LEVEL_EDITOR) changeEditorMode(EditorModes::LEVEL_EDITOR);
-			if (ImGui::MenuItem("Texture Editor", "", (_currentEditorMode == EditorModes::TEXTURE_EDITOR)) && _currentEditorMode != EditorModes::TEXTURE_EDITOR) changeEditorMode(EditorModes::TEXTURE_EDITOR);
 			if (ImGui::MenuItem("Material Editor", "", (_currentEditorMode == EditorModes::MATERIAL_EDITOR)) && _currentEditorMode != EditorModes::MATERIAL_EDITOR) changeEditorMode(EditorModes::MATERIAL_EDITOR);
 			ImGui::EndMenu();
 		}
 		if (ImGui::BeginMenu("Window"))
 		{
-			ImGui::MenuItem("Demo Windows", "", &showDemoWindows);
 			ImGui::MenuItem("Performance Window", "", &showPerfWindow);
+			ImGui::MenuItem("Demo Windows", "", &showDemoWindows);
 			ImGui::EndMenu();
 		}
 		ImGui::EndMainMenuBar();
@@ -6625,41 +6621,60 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 			ImGui::End();
 		} break;
 
-		case EditorModes::TEXTURE_EDITOR:
+		case EditorModes::MATERIAL_EDITOR:
 		{
 			ImGui::SetNextWindowPos(ImVec2(0.0f, MAIN_MENU_PADDING), ImGuiCond_Always);
 			ImGui::SetNextWindowSizeConstraints(ImVec2(-1.0f, 0.0f), ImVec2(-1.0f, _windowExtent.height - MAIN_MENU_PADDING));
-			ImGui::Begin("TEXTURE EDITOR##Texture editor window.", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
+			ImGui::Begin("MATERIAL EDITOR##Material editor window.", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
 			{
-				if (ImGui::Button("New texture.."))
-					ImGui::OpenPopup("new_texture_popup");
+				if (ImGui::Button("New material.."))
+					ImGui::OpenPopup("new_material_popup");
 				ImGui::SameLine();
-				if (ImGui::Button("Edit texture.."))
-					ImGui::OpenPopup("edit_texture_popup");
+
+				static std::vector<std::string> listOfMaterials;
+				if (ImGui::Button("Edit material.."))
+				{
+					listOfMaterials = materialorganizer::getListOfDerivedMaterials();
+					ImGui::OpenPopup("edit_material_popup");
+				}
 				if (true)
 				{
 					ImGui::SameLine();
 					ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0.0f, 0.5f, 0.6f));
 					ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0.0f, 0.7f, 0.7f));
 					ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0.0f, 0.8f, 0.8f));
-					bool doIt = ImGui::Button("Delete texture!");
+					bool doIt = ImGui::Button("Delete material!");
 					ImGui::PopStyleColor(3);
 					if (doIt)
 					{
-						// TODO
+						ImGui::OpenPopup("delete_material_popup");
 					}
 				}
 
 				// Popups.
-				if (ImGui::BeginPopup("new_texture_popup"))
+				if (ImGui::BeginPopup("new_material_popup"))
 				{
 					ImGui::Text("NEW TTTTT");
 					ImGui::EndPopup();
 				}
 
-				if (ImGui::BeginPopup("edit_texture_popup"))
+				if (ImGui::BeginPopup("edit_material_popup"))
 				{
-					ImGui::Text("EDIT TTTTT");
+					for (auto& path : listOfMaterials)
+						if (ImGui::Button(("Open \"" + path + "\"").c_str()))
+						{
+							EDITORTextureViewer::setAssignedMaterial(
+								materialorganizer::derivedMaterialNameToUMBIdx(path),
+								materialorganizer::derivedMaterialNameToDMPSIdx(path)
+							);
+							ImGui::CloseCurrentPopup();
+						}
+					ImGui::EndPopup();
+				}
+
+				if (ImGui::BeginPopup("delete_material_popup"))
+				{
+					ImGui::Text("Hi, personal message from Dmitri.... this program doesn't have the authority to delete material. Please navigate to the `res/materials/` folder to delete a material");
 					ImGui::EndPopup();
 				}
 			}

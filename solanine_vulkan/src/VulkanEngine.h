@@ -487,10 +487,9 @@ private:
 	enum class EditorModes
 	{
 		LEVEL_EDITOR,
-		TEXTURE_EDITOR,
 		MATERIAL_EDITOR,
 	};
-	EditorModes _currentEditorMode = EditorModes::TEXTURE_EDITOR;
+	EditorModes _currentEditorMode = EditorModes::MATERIAL_EDITOR;
 	void changeEditorMode(EditorModes newEditorMode);
 
 	//

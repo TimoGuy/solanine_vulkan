@@ -55,7 +55,7 @@ bool RenderObjectManager::registerRenderObjects(std::vector<RenderObject> inRend
 
 			renderObjectData.calculatedModelInstances.push_back({
 				.objectID = (uint32_t)registerIndex,
-				.materialID = (uint32_t)materialorganizer::derivedMaterialNameToDMPSIdx(derivedMatName),
+				.materialID = (uint32_t)materialorganizer::derivedMaterialNameToDMPSIdx(derivedMatName + ".hderriere"),
 				.animatorNodeID =
 					(uint32_t)(renderObjectData.animator == nullptr ?
 					0 :
@@ -64,7 +64,7 @@ bool RenderObjectManager::registerRenderObjects(std::vector<RenderObject> inRend
 			});
 
 			renderObjectData.perPrimitiveUniqueMaterialBaseIndices.push_back(
-				materialorganizer::derivedMaterialNameToUMBIdx(derivedMatName)
+				materialorganizer::derivedMaterialNameToUMBIdx(derivedMatName + ".hderriere")
 			);
 		}
 

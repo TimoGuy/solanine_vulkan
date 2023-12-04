@@ -7,16 +7,93 @@
 #include "VulkanEngine.h"
 
 
+namespace vkutil
+{
+	ktxVulkanDeviceInfo kvdi;
+}
+
+void vkutil::initKTX(VulkanEngine& engine)
+{
+	ktxVulkanDeviceInfo_Construct(&kvdi, engine._chosenGPU, engine._device, engine._graphicsQueue, engine._uploadContext.commandPool, nullptr);
+}
+
+void vkutil::cleanupKTX(VulkanEngine& engine)
+{
+	ktxVulkanDeviceInfo_Destruct(&kvdi);
+}
+
 bool vkutil::loadKTXImageFromFile(VulkanEngine& engine, const char* fname, VkFormat imageFormat, AllocatedImage& outImage)
 {
 	ktxTexture* ktxTexture;
-	ktxResult result = ktxTexture_CreateFromNamedFile(fname, KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &ktxTexture);
+	ktxResult result = ktxTexture_CreateFromNamedFile(fname, KTX_TEXTURE_CREATE_NO_FLAGS, &ktxTexture);
 	assert(result == KTX_SUCCESS);
 
-	bool ret = loadKTXImageFromBuffer(engine, ktxTexture->baseWidth, ktxTexture->baseHeight, ktxTexture->dataSize, imageFormat, ktxTexture->pData, ktxTexture->numLayers, ktxTexture->numLevels, ktxTexture, outImage);
+	ktxVulkanTexture ktxVkTexture;
+	result = ktxTexture_VkUploadEx(ktxTexture, &kvdi, &ktxVkTexture, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);  // @TODO: port this over to vma.
+	assert(result == KTX_SUCCESS);
+
+	/*size_t uncompressedDataSize = ktxTexture_GetDataSizeUncompressed(ktxTexture);
+	VkFormat imageFormat2 = ktxTexture_GetVkFormat(ktxTexture);
+	bool ret = loadKTXImageFromBuffer(engine, ktxTexture->baseWidth, ktxTexture->baseHeight, ktxTexture->dataSize, imageFormat, ktxTexture->pData, ktxTexture->numLayers, ktxTexture->numLevels, ktxTexture, outImage);*/
 	ktxTexture_Destroy(ktxTexture);
 
-	return false;
+	outImage._image = ktxVkTexture.image;
+	outImage._mipLevels = ktxVkTexture.levelCount;
+
+	return true;
+
+
+
+
+
+
+
+	/*ktxresult = ktxTexture_CreateFromNamedFile(
+		(getAssetPath() + ktxfile).c_str(),
+		KTX_TEXTURE_CREATE_NO_FLAGS,
+		&kTexture);
+	if (KTX_SUCCESS != ktxresult) {
+		std::stringstream message;
+
+		message << "Creation of ktxTexture from \"" << getAssetPath()
+			<< ktxfile << "\" failed: " << ktxErrorString(ktxresult);
+		throw std::runtime_error(message.str());
+	}
+	ktxresult = ktxTexture_VkUploadEx(kTexture, &kvdi, &texture,
+		VK_IMAGE_TILING_OPTIMAL,
+		VK_IMAGE_USAGE_SAMPLED_BIT,
+		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	if (KTX_SUCCESS != ktxresult) {
+		std::stringstream message;
+
+		message << "ktxTexture_VkUpload failed: " << ktxErrorString(ktxresult);
+		throw std::runtime_error(message.str());
+	}
+
+	char* pValue;
+	uint32_t valueLen;
+	if (KTX_SUCCESS == ktxHashTable_FindValue(&kTexture->kvDataHead,
+		KTX_ORIENTATION_KEY,
+		&valueLen, (void**)&pValue))
+	{
+		char s, t;
+
+		if (sscanf(pValue, KTX_ORIENTATION2_FMT, &s, &t) == 2) {
+			if (s == 'l') sign_s = -1;
+			if (t == 'u') sign_t = -1;
+		}
+	}
+
+	ktxTexture_Destroy(kTexture);
+
+
+
+
+
+
+
+
+	return false;*/
 }
 
 bool vkutil::loadKTXImageFromBuffer(VulkanEngine& engine, int32_t texWidth, int32_t texHeight, VkDeviceSize imageSize, VkFormat imageFormat, void* pixels, uint32_t numLayers, uint32_t mipLevels, ktxTexture* ktxTexture, AllocatedImage& outImage)
@@ -90,18 +167,16 @@ bool vkutil::loadKTXImageFromBuffer(VulkanEngine& engine, int32_t texWidth, int3
 
 			VkBufferImageCopy bufferCopyRegion = {
 				.bufferOffset = offset,
-				.bufferRowLength = 0,
-				.bufferImageHeight = 0,
 				.imageSubresource = {
 					.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-					.mipLevel = 0,
-					.baseArrayLayer = 0,
+					.mipLevel = level,
+					.baseArrayLayer = layer,
 					.layerCount = 1,
 				},
 				.imageExtent = {
 					.width = imageExtent.width >> level,
 					.height = imageExtent.height >> level,
-					.depth = imageExtent.depth,
+					.depth = 1,  // @NOTE: assume 2d texture... //imageExtent.depth,
 				},
 			};
 			bufferCopyRegions.push_back(bufferCopyRegion);

@@ -11,15 +11,19 @@ class EDITORTextureViewer : public Entity
 {
 public:
     static const std::string TYPE_NAME;
+    std::string getTypeName() { return TYPE_NAME; };
 
     EDITORTextureViewer(EntityManager* em, RenderObjectManager* rom, DataSerialized* ds);
     ~EDITORTextureViewer();
 
+    void simulationUpdate(float_t simDeltaTime) override;
+
     void dump(DataSerializer& ds);
     void load(DataSerialized& ds);
-    std::string getTypeName() { return TYPE_NAME; };
 
-    void renderImGui();
+    void renderImGui() { }
+
+    static void setAssignedMaterial(size_t uniqueMatBaseId, size_t derivedMatId);
 
 private:
     EDITORTextureViewer_XData* d;

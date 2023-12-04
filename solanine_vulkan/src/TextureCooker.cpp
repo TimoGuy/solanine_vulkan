@@ -9,7 +9,7 @@ namespace texturecooker
 {
     stbi_uc* loadUCharImage(const std::filesystem::path& path, int32_t& outWidth, int32_t& outHeight, int32_t& outNumChannels)
     {
-        stbi_uc* pixels = stbi_load(path.string().c_str(), &outWidth, &outHeight, &outNumChannels, STBI_default);
+        stbi_uc* pixels = stbi_load(path.string().c_str(), &outWidth, &outHeight, &outNumChannels, STBI_default);  // @NOTE: bc we're not putting this image data into vulkan, we can use however many channels instead of having to force 4.  -Timo 2023/12/4
         if (!pixels)
         {
             std::cerr << "ERROR: failed to load texture " << path << std::endl;
@@ -185,6 +185,7 @@ namespace texturecooker
 
         bool loadAndCookFile()
         {
+            bool force4Channels = true;  // @HACK: it seems like the toktx.exe tool doesn't really like 24-bit png files, among other things... either way, forcing 4 channel output from the halfstep cooker just makes things run smoother.  -Timo 2023/12/4
             stbi_uc* rUC = nullptr;
             int32_t  rChan;
             stbi_uc* gUC = nullptr;
@@ -260,7 +261,7 @@ namespace texturecooker
             }
 
             // Write image.
-            int32_t channels = a.used ? 4 : 3;
+            int32_t channels = (force4Channels || a.used ? 4 : 3);
             stbi_uc* imgData = new stbi_uc[channels * masterW * masterH];
             for (size_t i = 0; i < masterW * masterH; i++)
             {
@@ -290,12 +291,17 @@ namespace texturecooker
                 if (channels < 4)
                     continue;  // Exit early if no alpha channel.
 
-                stbi_uc aVal = (a.scale >= 0.0f ? 255 : 0);
-                if (aUC != nullptr)
-                    aVal = aUC[i * aChan + 0];
-                if (a.scale >= 0.0f)
-                    aVal *= a.scale;
-                imgData[pos + 3] = aVal;
+                if (a.used)
+                {
+                    stbi_uc aVal = (a.scale >= 0.0f ? 255 : 0);
+                    if (aUC != nullptr)
+                        aVal = aUC[i * aChan + 0];
+                    if (a.scale >= 0.0f)
+                        aVal *= a.scale;
+                    imgData[pos + 3] = aVal;
+                }
+                else
+                    imgData[pos + 3] = 255;
             }
 
             if (rUC != nullptr)
@@ -357,12 +363,11 @@ namespace texturecooker
         } textureType;
         std::vector<std::filesystem::path> inputPaths;
         bool genMipmaps;
-        enum class EncodingFormat
+        enum class ColorSpace
         {
-            NONE,
-            UASTC,
-            ETC1S,
-        } encodingFormat;
+            LINEAR,
+            SRGB,
+        } colorSpace;
         uint32_t compressionLevel;
     };
 
@@ -441,15 +446,10 @@ namespace texturecooker
                     break;
 
                 case 5:
-                    if (line == "none")
-                        r.encodingFormat = Recipe::EncodingFormat::NONE;
-                    else if (line == "uastc")
-                        r.encodingFormat = Recipe::EncodingFormat::UASTC;
-                    else if (line == "etc1s")
-                    {
-                        r.encodingFormat = Recipe::EncodingFormat::ETC1S;
-                        stage++;  // Increment `stage` twice to skip over compression level.
-                    }
+                    if (line == "linear")
+                        r.colorSpace = Recipe::ColorSpace::LINEAR;
+                    else if (line == "srgb")
+                        r.colorSpace = Recipe::ColorSpace::SRGB;
                     else
                         return Recipe{};
                     stage++;
@@ -498,6 +498,12 @@ namespace texturecooker
             return false;
         }
 
+        int32_t numChannels;
+        {
+            int32_t w, h;
+            stbi_info(r.inputPaths[0].string().c_str(), &w, &h, &numChannels);
+        }
+
         const static std::string toolPath = std::filesystem::absolute("../helper_tools/toktx.exe").string();
 
         std::string typeArg = "";
@@ -527,23 +533,50 @@ namespace texturecooker
         if (r.genMipmaps)
             genMipmapArg = "--genmipmap";
 
-        std::string encodingArg = "";
-        switch (r.encodingFormat)
+        // @NOTE: Gaming GPUs support (generally... circa 2023)
+        //          - R8_SRGB/_UNORM
+        //          - R8G8_UNORM
+        //          - R8G8B8A8_SRGB/_UNORM
+        //
+        //        Therefore, push the target output type to these things:
+        //          - R -> R
+        //          - RG -> RG if unorm, RGBA if srgb
+        //          - RGB -> RGBA
+        //          - RGBA -> RGBA
+        std::string fourChannelArg = "";
+        switch (numChannels)
         {
-            case Recipe::EncodingFormat::NONE:
+            case 1:
+                fourChannelArg = "--target_type R";
                 break;
 
-            case Recipe::EncodingFormat::UASTC:
-                encodingArg = "--encode uastc";
+            case 2:
+                if (r.colorSpace == Recipe::ColorSpace::LINEAR)
+                    fourChannelArg = "--target_type RG";
+                else
+                    fourChannelArg = "--target_type RGBA";
                 break;
 
-            case Recipe::EncodingFormat::ETC1S:
-                encodingArg = "--encode etc1s";
+            case 3:
+            case 4:
+                fourChannelArg = "--target_type RGBA";
+                break;
+        }
+
+        std::string colorSpaceArg = "";
+        switch (r.colorSpace)
+        {
+            case Recipe::ColorSpace::LINEAR:
+                colorSpaceArg = "--assign_oetf linear";
+                break;
+
+            case Recipe::ColorSpace::SRGB:
+                colorSpaceArg = "--assign_oetf srgb";
                 break;
         }
 
         std::string compressionArg = "";
-        if (r.encodingFormat != Recipe::EncodingFormat::ETC1S && r.compressionLevel > 0)
+        if (r.compressionLevel > 0)
             compressionArg = "--zcmp " + std::to_string(r.compressionLevel);
 
         std::string inputPaths = "";
@@ -560,14 +593,16 @@ namespace texturecooker
             toolPath + " " +
             typeArg + " " +
             genMipmapArg + " " +
-            encodingArg + " " +
+            fourChannelArg + " " +
+            colorSpaceArg + " " +
             compressionArg + " " +
             r.outputPath.string() + " " +
             inputPaths;
         int returnBit = system(script.c_str());  // @NOTE: errors and output get routed to the console anyways! Yay!
         if (returnBit != 0)
         {
-            std::cout << "FAILURE" << std::endl;
+            std::cout << "FAILURE" << std::endl
+                << "\tCOMMAND: " << script << std::endl;
             return false;
         }
 
