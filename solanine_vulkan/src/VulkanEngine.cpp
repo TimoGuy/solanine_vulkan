@@ -80,7 +80,6 @@ void VulkanEngine::init()
 	initVulkan();
 	initSwapchain();
 	initCommands();
-	vkutil::initKTX(*this);
 	initShadowRenderpass();
 	initShadowImages();  // @NOTE: this isn't screen space, so no need to recreate images on swapchain recreation
 	initMainRenderpass();
@@ -348,8 +347,6 @@ void VulkanEngine::cleanup()
 		vkutil::pipelinelayoutcache::cleanup();
 		vkutil::descriptorlayoutcache::cleanup();
 		vkutil::descriptorallocator::cleanup();
-
-		vkutil::cleanupKTX(*this);
 
 		vmaDestroyAllocator(_allocator);
 		vkDestroySurfaceKHR(_instance, _surface, nullptr);
