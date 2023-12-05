@@ -22,23 +22,23 @@ void vkutil::cleanupKTX(VulkanEngine& engine)
 	ktxVulkanDeviceInfo_Destruct(&kvdi);
 }
 
-bool vkutil::loadKTXImageFromFile(VulkanEngine& engine, const char* fname, VkFormat imageFormat, AllocatedImage& outImage)
+bool vkutil::loadKTXImageFromFile(VulkanEngine& engine, const char* fname, VkFormat& outImageFormat, AllocatedImage& outImage)
 {
 	ktxTexture* ktxTexture;
-	ktxResult result = ktxTexture_CreateFromNamedFile(fname, KTX_TEXTURE_CREATE_NO_FLAGS, &ktxTexture);
+	ktxResult result = ktxTexture_CreateFromNamedFile(fname, KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT/*KTX_TEXTURE_CREATE_NO_FLAGS*/, &ktxTexture);
 	assert(result == KTX_SUCCESS);
 
-	ktxVulkanTexture ktxVkTexture;
-	result = ktxTexture_VkUploadEx(ktxTexture, &kvdi, &ktxVkTexture, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);  // @TODO: port this over to vma.
-	assert(result == KTX_SUCCESS);
+	//ktxVulkanTexture ktxVkTexture;
+	//result = ktxTexture_VkUploadEx(ktxTexture, &kvdi, &ktxVkTexture, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);  // @TODO: port this over to vma.
+	//assert(result == KTX_SUCCESS);
 
-	/*size_t uncompressedDataSize = ktxTexture_GetDataSizeUncompressed(ktxTexture);
-	VkFormat imageFormat2 = ktxTexture_GetVkFormat(ktxTexture);
-	bool ret = loadKTXImageFromBuffer(engine, ktxTexture->baseWidth, ktxTexture->baseHeight, ktxTexture->dataSize, imageFormat, ktxTexture->pData, ktxTexture->numLayers, ktxTexture->numLevels, ktxTexture, outImage);*/
+	size_t uncompressedDataSize = ktxTexture_GetDataSizeUncompressed(ktxTexture);
+	outImageFormat = ktxTexture_GetVkFormat(ktxTexture);
+	bool ret = loadKTXImageFromBuffer(engine, ktxTexture->baseWidth, ktxTexture->baseHeight, uncompressedDataSize, outImageFormat, ktxTexture->pData, ktxTexture->numLayers, ktxTexture->numLevels, ktxTexture, outImage);
 	ktxTexture_Destroy(ktxTexture);
 
-	outImage._image = ktxVkTexture.image;
-	outImage._mipLevels = ktxVkTexture.levelCount;
+	//outImage._image = ktxVkTexture.image;
+	//outImage._mipLevels = ktxVkTexture.levelCount;
 
 	return true;
 

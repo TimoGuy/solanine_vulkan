@@ -5,7 +5,7 @@ HUMBA                           pbr.humba               # Name of the Material B
 colorMapIndex                   woodfloor_color
 physicalDescriptorMapIndex      woodfloor_pd
 normalMapIndex                  woodfloor_norm
-aoMapIndex                      woodfloor_ao
+aoMapIndex                      empty#woodfloor_ao
 emissiveMapIndex                empty
 baseColorFactor                 0.8,0.8,0.8,1.0
 emissiveFactor                  1.0,1.0,1.0,1.0

@@ -452,7 +452,10 @@ void VulkanEngine::renderPickingRenderpass(const FrameData& currentFrame)
 	// Submit work to gpu
 	VkResult result = vkQueueSubmit(_graphicsQueue, 1, &submit, currentFrame.pickingRenderFence);
 	if (result == VK_ERROR_DEVICE_LOST)
+	{
+		std::cerr << "ERROR: VULKAN DEVICE LOST." << std::endl;
 		return;
+	}
 
 	//
 	// Read from GPU to the CPU (the actual picking part eh!)
@@ -1353,7 +1356,10 @@ void VulkanEngine::render()
 	// Wait until GPU finishes rendering the previous frame
 	result = vkWaitForFences(_device, 1, &currentFrame.renderFence, true, TIMEOUT_1_SEC);
 	if (result == VK_ERROR_DEVICE_LOST)
+	{
+		std::cerr << "ERROR: VULKAN DEVICE LOST." << std::endl;
 		return;
+	}
 
 	VK_CHECK(vkResetFences(_device, 1, &currentFrame.renderFence));
 
@@ -1431,7 +1437,10 @@ void VulkanEngine::render()
 	// Submit work to gpu
 	result = vkQueueSubmit(_graphicsQueue, 1, &submit, currentFrame.renderFence);
 	if (result == VK_ERROR_DEVICE_LOST)
+	{
+		std::cerr << "ERROR: VULKAN DEVICE LOST." << std::endl;
 		return;
+	}
 
 	//
 	// Picking Render Pass (OPTIONAL AND SEPARATE)
@@ -1518,9 +1527,10 @@ void VulkanEngine::loadImages()
 	for (auto& fn : fnameNames)
 	{
 		Texture tex;
-		vkutil::loadKTXImageFromFile(*this, ("res/texture_cooked/" + fn.fname).c_str(), VK_FORMAT_R8G8B8A8_UNORM, tex.image);
+		VkFormat format;
+		vkutil::loadKTXImageFromFile(*this, ("res/texture_cooked/" + fn.fname).c_str(), /*VK_FORMAT_R8G8B8A8_UNORM*/format, tex.image);
 
-		VkImageViewCreateInfo imageInfo = vkinit::imageview3DCreateInfo(VK_FORMAT_R8G8B8A8_UNORM, tex.image._image, VK_IMAGE_ASPECT_COLOR_BIT, tex.image._mipLevels);
+		VkImageViewCreateInfo imageInfo = vkinit::imageview3DCreateInfo(/*VK_FORMAT_R8G8B8A8_UNORM*/format, tex.image._image, VK_IMAGE_ASPECT_COLOR_BIT, tex.image._mipLevels);
 		vkCreateImageView(_device, &imageInfo, nullptr, &tex.imageView);
 
 		VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(tex.image._mipLevels), VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);

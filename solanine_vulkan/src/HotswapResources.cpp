@@ -196,8 +196,12 @@ namespace hotswapres
         else if (stageName == "materialPropagation")
         {
             // @TODO: propagate the materials!
-            materialorganizer::cookTextureIndices();
+            //materialorganizer::cookTextureIndices();
             // executedHotswap = true;
+
+            // @NOTE: for now, this is how we'll trigger propagation of materials! (bc recreating swapchain path deletes and recreates materials).
+            *recreateSwapchain = true;
+            executedHotswap = true;
         }
         else
         {
@@ -402,6 +406,14 @@ namespace hotswapres
                         .resources = { rth },
                     });
             }
+
+            // Insert in special job stages to allow kicking off these stages.
+            jobStages.push_back({
+                .stageName = "materialPropagation"
+            });
+            jobStages.push_back({
+                .stageName = "rebuildPipelines"
+            });
 
             // Connect dependencies of stages.
             for (auto& jobStage : jobStages)

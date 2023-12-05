@@ -468,10 +468,10 @@ namespace materialorganizer
                 return true;
             if (std::filesystem::last_write_time(dmpsPath) >= lastLoadTime)
                 return true;
-            for (auto param : params)
+            for (auto& param : params)
                 if (param.valueType == DerivedMaterialParamSet::Param::ValueType::TEXTURE_NAME &&
                     !param.stringValue.empty() &&
-                    std::filesystem::last_write_time("res/texture_cooked/" + param.stringValue) >= lastLoadTime)
+                    std::filesystem::last_write_time("res/texture_cooked/" + param.stringValue + ".hdelicious") >= lastLoadTime)
                     return true;
             return false;
         }
@@ -555,9 +555,10 @@ namespace materialorganizer
         // Load textures.
         for (auto& texture : texturesInOrder)
         {
-            vkutil::loadKTXImageFromFile(*engineRef, ("res/texture_cooked/" + texture.name + ".hdelicious").c_str(), /*VK_FORMAT_ASTC_4x4_UNORM_BLOCK*/VK_FORMAT_R8G8B8A8_UNORM, texture.map.image);
+            VkFormat format;
+            vkutil::loadKTXImageFromFile(*engineRef, ("res/texture_cooked/" + texture.name + ".hdelicious").c_str(), /*VK_FORMAT_ASTC_4x4_UNORM_BLOCK*//*VK_FORMAT_R8G8B8A8_UNORM*/format, texture.map.image);
 
-            VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_UNORM, texture.map.image._image, VK_IMAGE_ASPECT_COLOR_BIT, texture.map.image._mipLevels);
+            VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(format, texture.map.image._image, VK_IMAGE_ASPECT_COLOR_BIT, texture.map.image._mipLevels);
             vkCreateImageView(engineRef->_device, &imageInfo, nullptr, &texture.map.imageView);
 
             VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(texture.map.image._mipLevels), VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
