@@ -974,6 +974,16 @@ namespace materialorganizer
                     ImGui::BeginDisabled();
                     ImGui::InputText(param.scopedName.c_str(), &param.stringValue);
                     ImGui::EndDisabled();
+                    ImGui::SameLine();
+                    ImGui::TextDisabled("(?)");
+                    if (ImGui::IsItemHovered())
+                    {
+                        ImGui::BeginTooltip();
+                        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
+                        ImGui::TextUnformatted(("Edit this property in " + dmps.dmpsPath.filename().string() + " and then save to trigger new texture and material propagation.").c_str());
+                        ImGui::PopTextWrapPos();
+                        ImGui::EndTooltip();
+                    }
                     break;
 
                 case DerivedMaterialParamSet::Param::ValueType::FLOAT:
