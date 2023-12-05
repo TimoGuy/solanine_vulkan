@@ -5994,6 +5994,9 @@ void VulkanEngine::submitSelectedRenderObjectId(int32_t poolIndex)
 		<< "Selected object " << poolIndex << std::endl;
 }
 
+size_t INTERNALVULKANENGINEASSIGNEDMATERIAL_umbIdx;
+size_t INTERNALVULKANENGINEASSIGNEDMATERIAL_dmpsIdx;
+
 void VulkanEngine::changeEditorMode(EditorModes newEditorMode)
 {
 	_movingMatrix.matrixToMove = nullptr;
@@ -6008,7 +6011,12 @@ void VulkanEngine::changeEditorMode(EditorModes newEditorMode)
 
 		case EditorModes::MATERIAL_EDITOR:
 		{
-			EDITORTextureViewer::setAssignedMaterial(0, 0);
+			INTERNALVULKANENGINEASSIGNEDMATERIAL_umbIdx = 0;
+			INTERNALVULKANENGINEASSIGNEDMATERIAL_dmpsIdx = 0;
+			EDITORTextureViewer::setAssignedMaterial(
+				INTERNALVULKANENGINEASSIGNEDMATERIAL_umbIdx,
+				INTERNALVULKANENGINEASSIGNEDMATERIAL_dmpsIdx
+			);
 		} break;
 	}
 
@@ -6670,9 +6678,11 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 					for (auto& path : listOfMaterials)
 						if (ImGui::Button(("Open \"" + path + "\"").c_str()))
 						{
+							INTERNALVULKANENGINEASSIGNEDMATERIAL_umbIdx = materialorganizer::derivedMaterialNameToUMBIdx(path);
+							INTERNALVULKANENGINEASSIGNEDMATERIAL_dmpsIdx = materialorganizer::derivedMaterialNameToDMPSIdx(path);
 							EDITORTextureViewer::setAssignedMaterial(
-								materialorganizer::derivedMaterialNameToUMBIdx(path),
-								materialorganizer::derivedMaterialNameToDMPSIdx(path)
+								INTERNALVULKANENGINEASSIGNEDMATERIAL_umbIdx,
+								INTERNALVULKANENGINEASSIGNEDMATERIAL_dmpsIdx
 							);
 							ImGui::CloseCurrentPopup();
 						}
@@ -6684,6 +6694,14 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 					ImGui::Text("Hi, personal message from Dmitri.... this program doesn't have the authority to delete material. Please navigate to the `res/materials/` folder to delete a material");
 					ImGui::EndPopup();
 				}
+
+				// Selected material properties.
+				ImGui::Separator();
+
+				materialorganizer::renderImGuiForMaterial(
+					INTERNALVULKANENGINEASSIGNEDMATERIAL_umbIdx,
+					INTERNALVULKANENGINEASSIGNEDMATERIAL_dmpsIdx
+				);
 			}
 			ImGui::End();
 		} break;

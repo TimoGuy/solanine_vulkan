@@ -318,6 +318,8 @@ namespace materialorganizer
 
             std::string stringValue;
             vec4 numericalValue;
+
+            size_t cookedBufferOffset;  // @NOTE: for editing properties of a DMPS
         };
         std::vector<Param> params;
 
@@ -578,11 +580,16 @@ namespace materialorganizer
             std::vector<size_t> dmpsIndices;
             bool zprepassSpecialMat = (umbHumba == "zprepass.special.humba");
             bool shadowSpecialMat = (umbHumba == "shadowdepthpass.special.humba");
+            bool isNativeMaterial = false;
             for (size_t i = 0; i < existingDMPSs.size(); i++)
-                if (zprepassSpecialMat ||
-                    shadowSpecialMat ||
-                    existingDMPSs[i].humbaFname == umbHumba)
+            {
+                isNativeMaterial = (existingDMPSs[i].humbaFname == umbHumba);
+                if (isNativeMaterial ||
+                    zprepassSpecialMat ||
+                    shadowSpecialMat)
                     dmpsIndices.push_back(i);
+            }
+            
 
             // Load in struct size and offsets for `MaterialCollection.MaterialParam` struct.
             spv_reflect::ShaderModule umbSM;
@@ -700,6 +707,8 @@ namespace materialorganizer
                         dmpsParam.scopedName == umbParam.scopedName)
                     {
                         size_t offset = materialParamArrayOffset + materialParamsTotalSize * i + (size_t)matParam.relativeOffset;
+                        if (isNativeMaterial)
+                            dmpsParam.cookedBufferOffset = offset;  // @NOTE: this exists only to be editable. By editing a buffer value, it will not change the corresponding value for the special pipelines (i.e. zprepass and shadowpass). This is only used for @DEVELOPMENT purposes.  -Timo 2023/12/5
                         switch (umbParam.type)
                         {
                             case UniqueMaterialBase::ShaderStage::Variable::Type::SAMPLER_1D:
@@ -940,5 +949,86 @@ namespace materialorganizer
             materials.push_back(relativePath.string());  // @NOTE: that this line could be dangerous if there are any filenames or directory names that have utf8 chars or wchars in it
         }
         return materials;
+    }
+
+    void editUMBBufferAtPoint(UniqueMaterialBase& umb, void* copyData, size_t offset, size_t size)
+    {
+        uint8_t* data;
+        vmaMapMemory(engineRef->_allocator, umb.compiled.materialParamsBuffer._allocation, (void**)&data);
+        memcpy(data + offset, copyData, size);
+        vmaUnmapMemory(engineRef->_allocator, umb.compiled.materialParamsBuffer._allocation);
+    }
+
+    void renderImGuiForMaterial(size_t umbIdx, size_t dmpsIdx)
+    {
+        // Gather UMB and DMPS.
+        auto& umb = existingUMBs[umbIdx];
+        auto& dmps = existingDMPSs[dmpsIdx];
+
+        // Display each param.
+        for (auto& param : dmps.params)
+        {
+            switch (param.valueType)
+            {
+                case DerivedMaterialParamSet::Param::ValueType::TEXTURE_NAME:
+                    ImGui::BeginDisabled();
+                    ImGui::InputText(param.scopedName.c_str(), &param.stringValue);
+                    ImGui::EndDisabled();
+                    break;
+
+                case DerivedMaterialParamSet::Param::ValueType::FLOAT:
+                    if (ImGui::DragFloat(param.scopedName.c_str(), param.numericalValue, 0.05f))
+                        editUMBBufferAtPoint(umb, &param.numericalValue, param.cookedBufferOffset, sizeof(float_t));
+                    break;
+
+                case DerivedMaterialParamSet::Param::ValueType::VEC2:
+                    if (ImGui::DragFloat2(param.scopedName.c_str(), param.numericalValue, 0.05f))
+                        editUMBBufferAtPoint(umb, &param.numericalValue, param.cookedBufferOffset, sizeof(vec2));
+                    break;
+
+                case DerivedMaterialParamSet::Param::ValueType::VEC3:
+                    if (ImGui::DragFloat3(param.scopedName.c_str(), param.numericalValue, 0.05f))
+                        editUMBBufferAtPoint(umb, &param.numericalValue, param.cookedBufferOffset, sizeof(vec3));
+                    break;
+
+                case DerivedMaterialParamSet::Param::ValueType::VEC4:
+                    if (ImGui::DragFloat4(param.scopedName.c_str(), param.numericalValue, 0.05f))
+                        editUMBBufferAtPoint(umb, &param.numericalValue, param.cookedBufferOffset, sizeof(vec4));
+                    break;
+
+                case DerivedMaterialParamSet::Param::ValueType::BOOL:
+                {
+                    bool asBool = (param.numericalValue[0] > 0.0f);
+                    if (ImGui::Checkbox(param.scopedName.c_str(), &asBool))
+                    {
+                        param.numericalValue[0] = (asBool ? 1.0f : 0.0f);
+                        editUMBBufferAtPoint(umb, &param.numericalValue[0], param.cookedBufferOffset, sizeof(float_t));
+                    }
+                } break;
+
+                case DerivedMaterialParamSet::Param::ValueType::INT:
+                {
+                    int32_t asInt = (int32_t)param.numericalValue[0];
+                    if (ImGui::InputInt(param.scopedName.c_str(), &asInt))
+                    {
+                        param.numericalValue[0] = (float_t)asInt;
+                        editUMBBufferAtPoint(umb, &asInt, param.cookedBufferOffset, sizeof(int32_t));
+                    }
+                } break;
+
+                case DerivedMaterialParamSet::Param::ValueType::UINT:
+                {
+                    int32_t asInt = (int32_t)param.numericalValue[0];
+                    if (ImGui::InputInt(param.scopedName.c_str(), &asInt))
+                    {
+                        asInt = std::max(0, asInt);
+                        param.numericalValue[0] = (float_t)asInt;
+
+                        uint32_t asUint = (uint32_t)asInt;
+                        editUMBBufferAtPoint(umb, &asUint, param.cookedBufferOffset, sizeof(uint32_t));
+                    }
+                } break;
+            }
+        }
     }
 }

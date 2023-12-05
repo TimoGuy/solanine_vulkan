@@ -54,6 +54,9 @@ struct MaterialParam
 layout (std140, set = 3, binding = 0) readonly buffer MaterialCollection
 {
 	uint materialIDOffset;
+	int pad0;
+	int pad1;
+	int pad2;
 	MaterialParam params[MAX_NUM_MATERIALS];
 } materialCollection;
 

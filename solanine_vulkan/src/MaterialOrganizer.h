@@ -21,4 +21,6 @@ namespace materialorganizer
     std::string umbIdxToUniqueMaterialName(size_t umbIdx);
 
     std::vector<std::string> getListOfDerivedMaterials();
+
+    void renderImGuiForMaterial(size_t umbIdx, size_t dmpsIdx);
 }
