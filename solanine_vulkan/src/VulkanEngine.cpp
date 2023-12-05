@@ -6640,10 +6640,14 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 		{
 			ImGui::SetNextWindowPos(ImVec2(0.0f, MAIN_MENU_PADDING), ImGuiCond_Always);
 			ImGui::SetNextWindowSizeConstraints(ImVec2(-1.0f, 0.0f), ImVec2(-1.0f, _windowExtent.height - MAIN_MENU_PADDING));
-			ImGui::Begin("MATERIAL EDITOR##Material editor window.", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
+			ImGui::Begin(("MATERIAL EDITOR (" + materialorganizer::getMaterialName(INTERNALVULKANENGINEASSIGNEDMATERIAL_dmpsIdx) + ")##Material editor window.").c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
 			{
-				if (ImGui::Button("New material.."))
+				static std::string newMaterialName;
+				if (ImGui::Button("Make copy of current material.."))
+				{
+					newMaterialName = "New Material.hderriere";
 					ImGui::OpenPopup("new_material_popup");
+				}
 				ImGui::SameLine();
 
 				static std::vector<std::string> listOfMaterials;
@@ -6669,7 +6673,26 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 				// Popups.
 				if (ImGui::BeginPopup("new_material_popup"))
 				{
-					ImGui::Text("NEW TTTTT");
+					ImGui::InputText("New Material Name", &newMaterialName);
+					if (std::filesystem::exists("res/materials/" + newMaterialName))
+						ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "ERROR: filename exists.");
+
+					static bool showDMPSCopyError = false;
+					if (ImGui::Button("Create material based off of current material"))
+					{
+						showDMPSCopyError =
+							!materialorganizer::makeDMPSFileCopy(
+								INTERNALVULKANENGINEASSIGNEDMATERIAL_dmpsIdx,
+								"res/materials/" + newMaterialName
+							);
+						if (!showDMPSCopyError)
+						{
+							ImGui::CloseCurrentPopup();
+						}
+					}
+					if (showDMPSCopyError)
+						ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "ERROR: copy failed.");
+
 					ImGui::EndPopup();
 				}
 

@@ -95,6 +95,12 @@
             - [x] Draw sphere with as the subject for the orbit view.
         - [x] Directly change the EDITORTextureViewer model's assigned dmps and its renderobj's umb.
         - [x] Have properties you can change 
+        - [ ] Save properties to file.
+            - [x] Mark file as dirty when edited
+            - [ ] Show "save" button when file is dirty.
+            - [ ] Write saving procedure.
+            - [ ] Show "would you like to save your changes?" when making a material copy and when opening a different material to edit.
+                - [ ] Save, discard, cancel.
 
 - [ ] "Reflection" imgui panel.
     - [ ] Install https://github.com/Csabix/imgui/tree/master/auto

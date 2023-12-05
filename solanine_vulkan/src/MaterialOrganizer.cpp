@@ -951,12 +951,54 @@ namespace materialorganizer
         return materials;
     }
 
+    bool makeDMPSFileCopy(size_t dmpsIdx, const std::string& newFile)
+    {
+        return std::filesystem::copy_file(
+            existingDMPSs[dmpsIdx].dmpsPath,
+            newFile
+        );
+    }
+    
+    bool isCurrentFileDirty = false;
+    bool isDMPSDirty(size_t dmpsIdx)
+    {
+        return isCurrentFileDirty;
+    }
+
+    void clearDMPSDirtyFlag()
+    {
+        isCurrentFileDirty = false;
+    }
+
+    bool saveDMPSToFile(size_t dmpsIdx)
+    {
+        // Get longest param length.
+        size_t length = std::string("HUMBA").length();
+        for (auto& param : existingDMPSs[dmpsIdx].params)
+            length = std::max(length, param.scopedName.length());
+        length += 4;  // For spacing.
+
+        // Compile write string.
+
+        // Overwrite file.
+
+        // Finished.
+        clearDMPSDirtyFlag();
+        return true;
+    }
+
+    std::string getMaterialName(size_t dmpsIdx)
+    {
+        return existingDMPSs[dmpsIdx].dmpsPath.stem().string();
+    }
+
     void editUMBBufferAtPoint(UniqueMaterialBase& umb, void* copyData, size_t offset, size_t size)
     {
         uint8_t* data;
         vmaMapMemory(engineRef->_allocator, umb.compiled.materialParamsBuffer._allocation, (void**)&data);
         memcpy(data + offset, copyData, size);
         vmaUnmapMemory(engineRef->_allocator, umb.compiled.materialParamsBuffer._allocation);
+        isCurrentFileDirty = true;
     }
 
     void renderImGuiForMaterial(size_t umbIdx, size_t dmpsIdx)
