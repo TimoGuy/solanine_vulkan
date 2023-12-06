@@ -81,9 +81,9 @@
         - [x] Fix that pesky error when exiting the program.
         - [ ] Migrate to material system.
             - [x] CREATE MATERIAL VIEWER.
-            - [ ] Add different materials (group by humba) in `compactRenderObjectsIntoDraws`
-            - [ ] Load in correct material IDs instead of using material ids from vkgltf
-            - [ ] Connect material to render object's palette. When loading in the model, it will also return a palette, and the programmer can insert that palette or insert a loaded palette swap file into the render object.
+            - [x] Add different materials (group by humba) in `compactRenderObjectsIntoDraws`
+            - [x] Load in correct material IDs instead of using material ids from vkgltf
+            - [f] Connect material to render object's palette. When loading in the model, it will also return a palette, and the programmer can insert that palette or insert a loaded palette swap file into the render object.
                 - [f] Load palette swap file.
             - [ ] Don't load textures with vkgltf. (bandaid... see sub task for real.)
                 - [ ] Re-export all gltf models with "Geometry->Materials->Export" and "Geometry->Images->None" set.
