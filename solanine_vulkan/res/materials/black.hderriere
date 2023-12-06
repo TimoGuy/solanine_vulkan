@@ -1,5 +1,5 @@
-Hawsoo DERived MateRIal parametER Entry                 # File type identifier
-HUMBA                           pbr.humba               # Name of the Material Base (pbr.humba)
+Hawsoo DERived MateRIal parametER Entry
+HUMBA                           pbr.humba
 
 # MaterialCollection :: MaterialParam :: members
 colorMapIndex                   empty
@@ -7,17 +7,17 @@ physicalDescriptorMapIndex      empty
 normalMapIndex                  empty
 aoMapIndex                      empty
 emissiveMapIndex                empty
-baseColorFactor                 0.8,0.8,0.8,1.0
-emissiveFactor                  1.0,1.0,1.0,1.0
-diffuseFactor                   0.0,0.0,0.0,0.0         # Unneeded bc using metallic (0.0) workflow not specular (1.0)
-specularFactor                  0.0,0.0,0.0,0.0
-workflow                        0.0
+baseColorFactor                 0.000000,0.000000,0.000000,1.000000
+emissiveFactor                  1.000000,1.000000,1.000000,1.000000
+diffuseFactor                   0.000000,0.000000,0.000000,0.000000
+specularFactor                  0.000000,0.000000,0.000000,0.000000
+workflow                        0.000000
 baseColorTextureSet             0
 physicalDescriptorTextureSet    -1
 normalTextureSet                -1
 occlusionTextureSet             -1
 emissiveTextureSet              -1
-metallicFactor                  0.0
-roughnessFactor                 0.4
+metallicFactor                  0.000000
+roughnessFactor                 0.400000
 alphaMask                       false
-alphaMaskCutoff                 0.5
+alphaMaskCutoff                 0.500000

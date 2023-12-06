@@ -6669,6 +6669,16 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 						ImGui::OpenPopup("delete_material_popup");
 					}
 				}
+				if (materialorganizer::isDMPSDirty())
+				{
+					ImGui::SameLine();
+					if (ImGui::Button("Save material"))
+					{
+						materialorganizer::saveDMPSToFile(
+							INTERNALVULKANENGINEASSIGNEDMATERIAL_dmpsIdx
+						);
+					}
+				}
 
 				// Popups.
 				if (ImGui::BeginPopup("new_material_popup"))

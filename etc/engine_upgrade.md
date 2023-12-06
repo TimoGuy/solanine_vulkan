@@ -97,8 +97,8 @@
         - [x] Have properties you can change 
         - [ ] Save properties to file.
             - [x] Mark file as dirty when edited
-            - [ ] Show "save" button when file is dirty.
-            - [ ] Write saving procedure.
+            - [x] Show "save" button when file is dirty.
+            - [x] Write saving procedure.
             - [ ] Show "would you like to save your changes?" when making a material copy and when opening a different material to edit.
                 - [ ] Save, discard, cancel.
 

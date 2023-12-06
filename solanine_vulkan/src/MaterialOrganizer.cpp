@@ -960,7 +960,7 @@ namespace materialorganizer
     }
     
     bool isCurrentFileDirty = false;
-    bool isDMPSDirty(size_t dmpsIdx)
+    bool isDMPSDirty()
     {
         return isCurrentFileDirty;
     }
@@ -970,17 +970,84 @@ namespace materialorganizer
         isCurrentFileDirty = false;
     }
 
+    std::string stringExtended(std::string inString, size_t desiredLength)
+    {
+        for (size_t l = inString.length(); l < desiredLength; l++)
+            inString += " ";
+        return inString;
+    }
+
     bool saveDMPSToFile(size_t dmpsIdx)
     {
+        auto& dmps = existingDMPSs[dmpsIdx];
+
         // Get longest param length.
         size_t length = std::string("HUMBA").length();
-        for (auto& param : existingDMPSs[dmpsIdx].params)
+        for (auto& param : dmps.params)
             length = std::max(length, param.scopedName.length());
         length += 4;  // For spacing.
 
         // Compile write string.
+        std::string writeString =
+            std::string("Hawsoo DERived MateRIal parametER Entry") + "\n" +
+            stringExtended("HUMBA", length) + dmps.humbaFname + "\n" +
+            "\n" +
+            "# MaterialCollection :: MaterialParam :: members" + "\n";
+        for (auto& param : dmps.params)
+        {
+            writeString += stringExtended(param.scopedName, length);
+            switch (param.valueType)
+            {
+                case DerivedMaterialParamSet::Param::ValueType::TEXTURE_NAME:
+                    writeString += param.stringValue;
+                    break;
+
+                case DerivedMaterialParamSet::Param::ValueType::FLOAT:
+                    writeString += std::to_string(param.numericalValue[0]);
+                    break;
+
+                case DerivedMaterialParamSet::Param::ValueType::VEC2:
+                    writeString +=
+                        std::to_string(param.numericalValue[0]) + "," +
+                        std::to_string(param.numericalValue[1]);
+                    break;
+
+                case DerivedMaterialParamSet::Param::ValueType::VEC3:
+                    writeString +=
+                        std::to_string(param.numericalValue[0]) + "," +
+                        std::to_string(param.numericalValue[1]) + "," +
+                        std::to_string(param.numericalValue[2]);
+                    break;
+
+                case DerivedMaterialParamSet::Param::ValueType::VEC4:
+                    writeString +=
+                        std::to_string(param.numericalValue[0]) + "," +
+                        std::to_string(param.numericalValue[1]) + "," +
+                        std::to_string(param.numericalValue[2]) + "," +
+                        std::to_string(param.numericalValue[3]);
+                    break;
+
+                case DerivedMaterialParamSet::Param::ValueType::BOOL:
+                    writeString += (param.numericalValue[0] > 0.0f ? "true" : "false");
+                    break;
+
+                case DerivedMaterialParamSet::Param::ValueType::INT:
+                    writeString += std::to_string((int32_t)param.numericalValue[0]);
+                    break;
+
+                case DerivedMaterialParamSet::Param::ValueType::UINT:
+                    writeString += std::to_string((uint32_t)param.numericalValue[0]);
+                    break;
+
+            }
+            writeString += "\n";
+        }
 
         // Overwrite file.
+        std::ofstream outfile(dmps.dmpsPath);
+        if (!outfile.is_open())
+            return false;
+        outfile << writeString;
 
         // Finished.
         clearDMPSDirtyFlag();
