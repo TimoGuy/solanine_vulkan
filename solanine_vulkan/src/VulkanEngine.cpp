@@ -6642,6 +6642,10 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 			ImGui::SetNextWindowSizeConstraints(ImVec2(-1.0f, 0.0f), ImVec2(-1.0f, _windowExtent.height - MAIN_MENU_PADDING));
 			ImGui::Begin(("MATERIAL EDITOR (" + materialorganizer::getMaterialName(INTERNALVULKANENGINEASSIGNEDMATERIAL_dmpsIdx) + ")##Material editor window.").c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
 			{
+				bool disableNormalControls = materialorganizer::isDMPSDirty();
+				if (disableNormalControls)
+					ImGui::BeginDisabled();
+
 				static std::string newMaterialName;
 				if (ImGui::Button("Make copy of current material.."))
 				{
@@ -6669,16 +6673,26 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 						ImGui::OpenPopup("delete_material_popup");
 					}
 				}
-				if (materialorganizer::isDMPSDirty())
+				if (disableNormalControls)
+					ImGui::EndDisabled();
+				
+				// Controls only when the material is dirty (i.e. saving or discarding material changes).
+				if (!disableNormalControls)
+					ImGui::BeginDisabled();
+				if (ImGui::Button("Save material changes"))
 				{
-					ImGui::SameLine();
-					if (ImGui::Button("Save material"))
-					{
-						materialorganizer::saveDMPSToFile(
-							INTERNALVULKANENGINEASSIGNEDMATERIAL_dmpsIdx
-						);
-					}
+					materialorganizer::saveDMPSToFile(
+						INTERNALVULKANENGINEASSIGNEDMATERIAL_dmpsIdx
+					);
 				}
+				ImGui::SameLine();
+				if (ImGui::Button("Discard material changes"))
+				{
+					_recreateSwapchain = true;
+					materialorganizer::clearDMPSDirtyFlag();
+				}
+				if (!disableNormalControls)
+					ImGui::EndDisabled();
 
 				// Popups.
 				if (ImGui::BeginPopup("new_material_popup"))

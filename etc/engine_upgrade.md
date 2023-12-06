@@ -80,7 +80,7 @@
                 - [x] Mark descriptor binding as using a variable count.
         - [x] Fix that pesky error when exiting the program.
         - [ ] Migrate to material system.
-            - [ ] CREATE MATERIAL VIEWER.
+            - [x] CREATE MATERIAL VIEWER.
             - [ ] Add different materials (group by humba) in `compactRenderObjectsIntoDraws`
             - [ ] Load in correct material IDs instead of using material ids from vkgltf
             - [ ] Connect material to render object's palette. When loading in the model, it will also return a palette, and the programmer can insert that palette or insert a loaded palette swap file into the render object.
@@ -89,18 +89,18 @@
                 - [ ] Re-export all gltf models with "Geometry->Materials->Export" and "Geometry->Images->None" set.
                     - [f] @NOTE: "Geometry->Materials->Placeholder" doesn't export the material name and we're matching on name. However, in the future it might be good just to match on primitive id, which would just be using "Placeholder".
             - [ ] Turn off the "pbrmaterial" material.
-    - [ ] Material viewer
+    - [x] Material viewer
         - [x] Orbit camera view
-        - [ ] Sphere material inspector.
+        - [x] Sphere material inspector.
             - [x] Draw sphere with as the subject for the orbit view.
         - [x] Directly change the EDITORTextureViewer model's assigned dmps and its renderobj's umb.
         - [x] Have properties you can change 
-        - [ ] Save properties to file.
+        - [x] Save properties to file.
             - [x] Mark file as dirty when edited
             - [x] Show "save" button when file is dirty.
             - [x] Write saving procedure.
-            - [ ] Show "would you like to save your changes?" when making a material copy and when opening a different material to edit.
-                - [ ] Save, discard, cancel.
+            - [x] ~~Show "would you like to save your changes?" when making a material copy and when opening a different material to edit.~~
+            - [x] Prevent changing or copying materials if the material params are dirty.
 
 - [ ] "Reflection" imgui panel.
     - [ ] Install https://github.com/Csabix/imgui/tree/master/auto
