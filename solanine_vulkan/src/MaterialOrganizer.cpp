@@ -557,10 +557,14 @@ namespace materialorganizer
         // Load textures.
         for (auto& texture : texturesInOrder)
         {
+            uint32_t dimensions;
             VkFormat format;
-            vkutil::loadKTXImageFromFile(*engineRef, ("res/texture_cooked/" + texture.name + ".hdelicious").c_str(), /*VK_FORMAT_ASTC_4x4_UNORM_BLOCK*//*VK_FORMAT_R8G8B8A8_UNORM*/format, texture.map.image);
+            vkutil::loadKTXImageFromFile(*engineRef, ("res/texture_cooked/" + texture.name + ".hdelicious").c_str(), dimensions, /*VK_FORMAT_ASTC_4x4_UNORM_BLOCK*//*VK_FORMAT_R8G8B8A8_UNORM*/format, texture.map.image);
 
-            VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(format, texture.map.image._image, VK_IMAGE_ASPECT_COLOR_BIT, texture.map.image._mipLevels);
+            VkImageViewCreateInfo imageInfo =
+                (dimensions == 3 ?
+                vkinit::imageview3DCreateInfo(format, texture.map.image._image, VK_IMAGE_ASPECT_COLOR_BIT, texture.map.image._mipLevels) :
+                vkinit::imageviewCreateInfo(format, texture.map.image._image, VK_IMAGE_ASPECT_COLOR_BIT, texture.map.image._mipLevels));
             vkCreateImageView(engineRef->_device, &imageInfo, nullptr, &texture.map.imageView);
 
             VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(texture.map.image._mipLevels), VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
@@ -927,6 +931,14 @@ namespace materialorganizer
         std::cerr << "[DERIVED MATERIAL NAME TO DMPS IDX]" << std::endl
             << "ERROR: derived material name " << derivedMatName << " not connected to a DMPS." << std::endl;
         return (size_t)-1;
+    }
+    
+    bool checkDerivedMaterialNameExists(std::string derivedMatName)
+    {
+        for (size_t i = 0; i < existingDMPSs.size(); i++)
+            if (existingDMPSs[i].dmpsPath.filename().string() == derivedMatName)
+                return true;
+        return false;
     }
 
     std::string umbIdxToUniqueMaterialName(size_t umbIdx)

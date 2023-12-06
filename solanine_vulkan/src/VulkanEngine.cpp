@@ -306,6 +306,7 @@ void VulkanEngine::run()
 			std::cout << "Performance:";
 			for (size_t i = 0; i < numPerfs; i++)
 				std::cout << "\t" << (perfs[i] * 100 / totalPerf) << "% (" << perfs[i] << ")";
+			std::cout << "\tCPS: " << SDL_GetPerformanceFrequency();
 			std::cout << std::endl;
 		}
 	}
@@ -1391,7 +1392,6 @@ void VulkanEngine::render()
 	//
 	// Upload current frame to GPU and compact into draw calls
 	//
-	perfs[14] = SDL_GetPerformanceCounter();
 	recreateVoxelLightingDescriptor();
 	uploadCurrentFrameToGPU(currentFrame);
 	textmesh::uploadUICameraDataToGPU();
@@ -1401,6 +1401,7 @@ void VulkanEngine::render()
 		pickedPoolIndices.clear();
 	std::vector<ModelWithIndirectDrawId> pickingIndirectDrawCommandIds;
 #endif
+	perfs[14] = SDL_GetPerformanceCounter();
 	compactRenderObjectsIntoDraws(currentFrame, pickedPoolIndices, pickingIndirectDrawCommandIds);  // @TODO: this only needs to be run once if the renderobject situation gets chagned!!!!!
 	perfs[14] = SDL_GetPerformanceCounter() - perfs[14];
 
@@ -1523,11 +1524,15 @@ void VulkanEngine::loadImages()
 	};
 	for (auto& fn : fnameNames)
 	{
+		uint32_t dimensions;
 		Texture tex;
 		VkFormat format;
-		vkutil::loadKTXImageFromFile(*this, ("res/texture_cooked/" + fn.fname).c_str(), /*VK_FORMAT_R8G8B8A8_UNORM*/format, tex.image);
+		vkutil::loadKTXImageFromFile(*this, ("res/texture_cooked/" + fn.fname).c_str(), dimensions, /*VK_FORMAT_R8G8B8A8_UNORM*/format, tex.image);
 
-		VkImageViewCreateInfo imageInfo = vkinit::imageview3DCreateInfo(/*VK_FORMAT_R8G8B8A8_UNORM*/format, tex.image._image, VK_IMAGE_ASPECT_COLOR_BIT, tex.image._mipLevels);
+		VkImageViewCreateInfo imageInfo =
+			(dimensions == 3 ?
+			vkinit::imageview3DCreateInfo(format, tex.image._image, VK_IMAGE_ASPECT_COLOR_BIT, tex.image._mipLevels) :
+			vkinit::imageviewCreateInfo(format, tex.image._image, VK_IMAGE_ASPECT_COLOR_BIT, tex.image._mipLevels));
 		vkCreateImageView(_device, &imageInfo, nullptr, &tex.imageView);
 
 		VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(tex.image._mipLevels), VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
@@ -5610,6 +5615,7 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, 
 
 	// Group by materials used, then by model used, then by mesh index, then by render object index.
 	// @NOTE: this is to reduce the number of times to rebind materials and models.
+	// @PERFORMANCE: this runs at 18ms about (for main level scene)... make this faster... bc we don't want 18ms hitches every time a new render object is switched out.
 	std::sort(
 		meshesASDFASDF.begin(),
 		meshesASDFASDF.end(),

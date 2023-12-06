@@ -1,7 +1,3 @@
-// PBR shader based on the Khronos WebGL PBR implementation
-// See https://github.com/KhronosGroup/glTF-WebGL-PBR
-// Supports both metallic roughness and specular glossiness inputs
-
 #version 460
 #extension GL_EXT_nonuniform_qualifier : require
 
@@ -352,6 +348,8 @@ float smoothShadow(vec4 shadowCoord, uint cascadeIndex)
 
 void main()
 {
+	outFragColor = vec4(1, 0, 0, 1);
+	return;
 	// outFragColor = vec4(vec3(inViewPos.z / uboParams.cascadeSplits.w), 1.0);
 	// return;
 

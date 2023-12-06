@@ -1,0 +1,23 @@
+Hawsoo DERived MateRIal parametER Entry
+HUMBA                           pbr.humba
+
+# MaterialCollection :: MaterialParam :: members
+colorMapIndex                   empty
+physicalDescriptorMapIndex      empty
+normalMapIndex                  empty
+aoMapIndex                      empty
+emissiveMapIndex                empty
+baseColorFactor                 0.000000,0.000000,0.000000,1.000000
+emissiveFactor                  1.000000,0.000000,1.000000,1000.000000
+diffuseFactor                   0.000000,0.000000,0.000000,0.000000
+specularFactor                  0.000000,0.000000,0.000000,0.000000
+workflow                        0.000000
+baseColorTextureSet             -1
+physicalDescriptorTextureSet    -1
+normalTextureSet                -1
+occlusionTextureSet             -1
+emissiveTextureSet              0
+metallicFactor                  0.000000
+roughnessFactor                 0.000000
+alphaMask                       false
+alphaMaskCutoff                 0.500000

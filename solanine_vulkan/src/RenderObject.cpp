@@ -51,7 +51,11 @@ bool RenderObjectManager::registerRenderObjects(std::vector<RenderObject> inRend
 			//        does not have a proper material. Go back to the model and re-export with the settings
 			//        Geometry>Materials set to "Placeholder", and Geometry>Images set to "None". Also, make sure
 			//        there is actually a material assigned to all the faces. Thanks!  -Timo 2023/12/2
-			std::string derivedMatName = renderObjectData.model->materials[primitive->materialID].name;
+			std::string derivedMatName = "missing_material";
+			if (primitive->materialID != (uint32_t)-1 &&
+				primitive->materialID < renderObjectData.model->materials.size() &&
+				materialorganizer::checkDerivedMaterialNameExists(renderObjectData.model->materials[primitive->materialID].name + ".hderriere"))
+				derivedMatName = renderObjectData.model->materials[primitive->materialID].name;
 
 			renderObjectData.calculatedModelInstances.push_back({
 				.objectID = (uint32_t)registerIndex,

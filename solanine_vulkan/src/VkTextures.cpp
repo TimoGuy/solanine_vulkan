@@ -7,12 +7,13 @@
 #include "VulkanEngine.h"
 
 
-bool vkutil::loadKTXImageFromFile(VulkanEngine& engine, const char* fname, VkFormat& outImageFormat, AllocatedImage& outImage)
+bool vkutil::loadKTXImageFromFile(VulkanEngine& engine, const char* fname, uint32_t& outNumDimensions, VkFormat& outImageFormat, AllocatedImage& outImage)
 {
 	ktxTexture* ktxTexture;
 	ktxResult result = ktxTexture_CreateFromNamedFile(fname, KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT/*KTX_TEXTURE_CREATE_NO_FLAGS*/, &ktxTexture);
 	assert(result == KTX_SUCCESS);
 
+	outNumDimensions = ktxTexture->numDimensions;
 	size_t uncompressedDataSize = ktxTexture_GetDataSizeUncompressed(ktxTexture);
 	outImageFormat = ktxTexture_GetVkFormat(ktxTexture);
 	bool ret = loadKTXImageFromBuffer(engine, ktxTexture->baseWidth, ktxTexture->baseHeight, uncompressedDataSize, outImageFormat, ktxTexture->pData, ktxTexture->numLayers, ktxTexture->numLevels, ktxTexture, outImage);

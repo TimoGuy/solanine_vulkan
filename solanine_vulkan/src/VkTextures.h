@@ -7,7 +7,7 @@ struct AllocatedImage;
 namespace vkutil
 {
 	// @NOTE: mipLevels set to 0 will generate all mipmaps
-	bool loadKTXImageFromFile(VulkanEngine& engine, const char* fname, VkFormat& outImageFormat, AllocatedImage& outImage);
+	bool loadKTXImageFromFile(VulkanEngine& engine, const char* fname, uint32_t& outNumDimensions, VkFormat& outImageFormat, AllocatedImage& outImage);
 	bool loadKTXImageFromBuffer(VulkanEngine& engine, int32_t texWidth, int32_t texHeight, VkDeviceSize imageSize, VkFormat imageFormat, void* pixels, uint32_t numLayers, uint32_t mipLevels, ktxTexture* ktxTexture, AllocatedImage& outImage);
 	bool loadImageFromFile(VulkanEngine& engine, const char* fname, VkFormat imageFormat, uint32_t mipLevels, AllocatedImage& outImage);
 	bool loadImageFromFile(VulkanEngine& engine, const char* fname, VkFormat imageFormat, uint32_t mipLevels, int32_t& outWidth, int32_t& outHeight, AllocatedImage& outImage);
