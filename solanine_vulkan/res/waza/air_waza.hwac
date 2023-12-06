@@ -1,311 +1,677 @@
-# Enter into 1st Waza.
+########## NEW STYLE??????
 
-:WazaAir1st_KneelAndPosture
-  entrance           idle    hold_x
-  animation_state    StateAirWaza1stFormEntrance
-  stamina_cost       5
-  duration           34
-  chain              WazaAir1st_SwingDownGust    17    34    press_x
-  on_duration_passed WazaAir1st_KneelAndPosture_ReturnToKamae
+# @TODO: the biggest thing that would make this work is making `press_@` be immediate, instead of the motion of a press/release before the hold window.
+# @TODO: remove ONHOLDCANCEL
 
-:WazaAir1st_KneelAndPosture_ReturnToKamae
-  animation_state    StateAirWaza1stFormEntranceExit
-  stamina_cost       0
-  duration           22
-  on_duration_passed NULL
+# @Entrances
+#   twohanded    grounded    press_x    AirWaza_Start_GustWall_Hold    # @NOTE: entrance inputs should be able to switch from each other at will until something is held or some release is fulfilled.
+#   twohanded    grounded    press_x_a    AirWaza_Start_LeapForward_Hold
+#   twohanded    grounded    press_a    AirWaza_Start_Updraft_Hold
 
 
-# Execute 1st Waza.
+# @NOTE: default duration is -1 (infinite).  -Timo 2023/09/21
+# @NOTE: after the duration goes up, it goes to NULL, bc `on_duration_passed`'s default state is NULL.  -Timo 2023/09/21
 
-:WazaAir1st_SwingDownGust
-  animation_state    StateAirWaza1stFormPart1
-  stamina_cost       25
+:AirWaza_Start_GustWall_Hold
+  entrance           twohanded    grounded    press_x
+  #
+  chain              AirWaza_GustWallS_01    0    12    release_x
+  chain              AirWaza_GustWall_01    13    -1    release_x
+  chain              AirWaza_Start_Updraft_Hold    0    4    press_x_a  # @TODO: THIS FEELS REDUNDANT... see todo below.
+  #
+  animation_state    AirWaza_Start_GustWall_Hold
+  stamina_cost_hold  15    13    -1
+
+:AirWaza_GustWallS_01
+  chain              AirWaza_GustWallS_02_Hold    5    15    press_x
+  ######chain              AirWaza_Start_LeapForward_Hold    5    15    press_a  # @TODO: figure out a way to easier switch combo chains in the middle of a combo!!!!!!  @REPLY: maybe just making `interruptable` just mean that you can do another entrance, not necessarily that you can jump and move.
+  ######chain              AirWaza_Start_Updraft_Hold    5    15    press_x_a  # @TODO: THIS FEELS REDUNDANT... see todo above.
+  #
   duration           25
-  hitscan            -0.003310,1.627699,0.081011    -0.012294,2.826591,0.030216
-  hitscan            0.009867,1.540883,0.393170    0.091263,2.669127,0.793724    4
-  hitscan            -0.052393,1.287112,0.508141    -0.063725,2.242840,1.233714    5
-  hitscan            -0.077162,0.960373,0.912426    0.024092,1.309631,2.056004    6
-  hitscan            -0.177291,0.607920,0.880886    -0.189415,0.478069,2.073778    7
-  hitscan            -0.236201,0.454443,0.768883    -0.259243,0.158105,1.931490    8
-  hs_launch_velocity 0.000000,0.000000,29.000000
-  hs_rel_position    0.000000,0.000000,1.000000
-  chain              WazaAir1st_To2nd_LandAndStart    10     25    press_x
-  on_duration_passed WazaAir1st_SwingDownGust_ReturnToKamae
-
-:WazaAir1st_SwingDownGust_ReturnToKamae
-  animation_state    StateAirWaza1stFormPart1Exit
-  stamina_cost       0
-  duration           9
-  on_duration_passed NULL
-
-
-# Enter into 2nd Waza.
-
-:WazaAir1st_To2nd_LandAndStart
-  animation_state    StateAirWaza1stFormTo2ndForm
-  stamina_cost       0
-  duration           17
-  chain              WazaAir2nd_LeapForwardRaimei    5    17    press_a
-  on_duration_passed WazaAir2nd_LandAndStart_ReturnToKamae
-
-:WazaAir2nd_LandAndStart
-  animation_state    StateAirWaza2ndFormEntrance
-  stamina_cost       0
-  duration           20
-  chain              WazaAir2nd_LeapForwardRaimei    9    20    press_a
-  on_duration_passed WazaAir2nd_LandAndStart_ReturnToKamae
-
-:WazaAir2nd_LandAndStart_ReturnToKamae
-  animation_state    StateAirWaza2ndFormEntranceExit
-  stamina_cost       0
-  duration           9
-  on_duration_passed NULL
-
-
-# Execute 2nd Waza.
-
-:WazaAir2nd_LeapForwardRaimei                        # @NOTE: I don't know if having hitscans be allowed on this is the best choice. I took it out so that timing the `WazaAir2nd_TwistingUpdraft` is required.  -Timo 2023/08/11
-  animation_state    StateAirWaza2ndFormPart1
-  stamina_cost       0
-  duration           30
-  gravity_multiplier 0.25
+  interruptable      15    -1
+  #
+  animation_state    AirWaza_GustWallS_01
+  stamina_cost       10
+  velocity           -0.25,0.0,3.0    0
   velocity_decay     0.5    0
-  velocity           0.0,2.0,50.0    0
-  chain              WazaAir2nd_TwistingUpdraft    2    30    press_x
-  on_duration_passed WazaAir2nd_LeapForwardRaimei_ReturnToKamae
+  hs_launch_velocity 0.000000,0.000000,3.000000
+  hs_rel_position    0.000000,0.000000,1.000000    ignore_y
+  #
+  hitscan            0.420380,0.535411,0.140395    1.235070,1.134408,-0.505736
+  hitscan            0.248846,0.353427,0.579996    1.141359,0.980333,1.080406    3
+  hitscan            -0.103063,-0.006143,0.757945    0.120247,-0.025140,1.936831    4
+  hitscan            -0.460478,-0.310596,0.590176    -1.105188,-0.980177,1.349130    5
+  hitscan            -0.461754,-0.314993,0.588742    -1.109778,-0.990669,1.339428    6
 
-:WazaAir2nd_LeapForwardRaimei_ReturnToKamae
-  animation_state    StateAirWaza2ndFormPart1Exit
-  stamina_cost       0
+:AirWaza_GustWallS_02_Hold
+  chain              AirWaza_GustWallS_02    0    12    release_x
+  chain              AirWaza_GustWall_01    13    -1    release_x
+  #
+  animation_state    AirWaza_GustWallS_02_Hold
+  stamina_cost_hold  15    13    -1
+  
+:AirWaza_GustWallS_02
+  chain              AirWaza_GustWallS_03_Hold    5    15    press_x
+  #
   duration           25
-  velocity_decay     4.545455    0
-  velocity           0.0,0.0,50.0    0
-  on_duration_passed NULL
-
-:WazaAir2nd_TwistingUpdraft
-  animation_state    StateAirWaza2ndFormPart2
-  stamina_cost       0
-  duration           33
+  interruptable      15    -1
+  #
+  animation_state    AirWaza_GustWallS_02
+  stamina_cost       10
+  velocity           0.1,0.0,2.0    0
   velocity_decay     0.5    0
-  velocity_decay     2.5    9
-  velocity           0.0,0.0,40.0    0
-  hitscan            0.225242,0.349497,0.485912    1.139608,0.062835,-0.236419
-  hitscan            -0.181953,0.518282,0.957660    -0.024692,-0.414504,1.696022    1
-  hitscan            -0.040625,0.916365,1.131541    0.034257,1.050343,2.321686    2
-  hitscan            -0.094607,1.025702,1.063682    -0.279103,1.357524,2.202039    3
-  hitscan            -0.132177,1.087434,0.987824    -0.417190,1.531415,2.065623    4
-  hitscan            -0.168266,1.119174,0.906551    -0.507530,1.628910,1.938575    5
-  hitscan            -0.105764,1.214570,0.382422    -0.883886,1.783818,1.096903    6
-  hitscan            0.157066,1.150531,0.191402    -0.377322,2.145203,0.597679    7
-  hitscan            0.372118,1.098555,-0.108270    -0.092877,2.198807,-0.223297    8
-  hitscan            0.525303,0.968081,-0.291023    0.143518,1.985842,-0.799357    9
-  hitscan            0.686164,0.839175,-0.393454    0.536875,1.707156,-1.208515    10
-  hitscan            0.782951,0.736952,-0.408686    0.768124,1.491708,-1.341490    11
-  #hs_launch_velocity 0.000000,15.000000,22.500000   # This one works sometimes
-  hs_launch_velocity 0.000000,18.000000,20.500000    # This one also works... sometimes
-  hs_rel_position    0.000000,1.000000,1.000000
-  chain              WazaAir3rd_ShoulderLift    9    33    press_a
-  on_duration_passed WazaAir3rd_ReadyForLiftoff_ReturnToKamae
+  hs_launch_velocity 0.000000,0.000000,12.000000
+  hs_rel_position    0.000000,0.000000,1.000000    ignore_y
+  #
+  hitscan            -0.343394,0.505620,0.215008    -1.058334,1.382165,-0.185653
+  hitscan            -0.222253,0.376902,0.513094    -0.728369,1.217136,1.204365    3
+  hitscan            0.048694,0.069904,0.667717    0.247432,0.155626,1.848038    4
+  hitscan            0.246678,-0.252146,0.557188    0.932723,-0.995538,1.202721    5
+  hitscan            0.247281,-0.257604,0.555597    0.939498,-1.007413,1.186964    6
 
+:AirWaza_GustWallS_03_Hold
+  chain              AirWaza_GustWallS_03    0    12    release_x
+  chain              AirWaza_GustWall_01    13    -1    release_x
+  #
+  animation_state    AirWaza_Start_GustWall_Hold    # @NOTE: this is a repeat; it's close enough to what I want.  -Timo 2023/09/22
+  stamina_cost_hold  15    13    -1
+  
+:AirWaza_GustWallS_03    # @NOTE: there are no chains, but bc it's interruptable after X time, you can start doing a gustwall hold if you wanted. The reason why _01 and _02 doesn't do this is so that there is a different animation for   -Timo 2023/09/21
+  duration           40
+  interruptable      31    -1
+  #
+  animation_state    AirWaza_GustWallS_03
+  stamina_cost       10
+  velocity           0.0,6.0,12.0    0
+  velocity_decay     0.5    0
+  hs_launch_velocity 0.000000,0.000000,13.000000
+  hs_rel_position    0.000000,0.000000,1.000000    ignore_y
+  #
+  hitscan            0.031297,0.937927,0.610377    0.034765,0.770532,-0.577886
+  hitscan            0.060914,0.362397,1.283921    0.057880,1.558048,1.181883    11
+  hitscan            0.044313,-0.305724,1.164261    0.149226,0.192079,2.251086    12
+  hitscan            0.050574,-0.626031,1.193428    0.152088,-0.694736,2.387152    13
+  hitscan            0.031809,-0.727186,1.190649    0.034567,-0.985431,2.362529    14
 
-# Enter into 3rd Waza.
-
-:WazaAir3rd_ReadyForLiftoff
-  animation_state    StateAirWaza3rdFormEntrance
-  stamina_cost       0
-  duration           31
-  chain              WazaAir3rd_ShoulderLift    14    31    press_a
-  on_duration_passed WazaAir3rd_ReadyForLiftoff_ReturnToKamae
-
-:WazaAir3rd_ReadyForLiftoff_ReturnToKamae
-  animation_state    StateAirWaza2ndFormPart2Exit
-  stamina_cost       0
-  duration           14
-  on_duration_passed NULL
-
-:WazaAir3rd_ShoulderLift
-  animation_state    StateAirWaza3rdFormPart1
-  stamina_cost       0
-  duration           48
-  velocity           0.0,30.0,4.0    3
-  hitscan            0.179830,1.341760,-0.598141    0.492761,1.266228,0.557874
-  hitscan            0.079800,1.519862,-0.567718    0.379748,1.433126,0.590950    3
-  hitscan            0.594687,1.593790,-0.028229    -0.594687,1.438473,0.007387    4
-  hitscan            0.052313,1.698043,-0.559384    0.344724,1.594725,0.599849    5
-  hitscan            0.060294,1.744036,-0.560471    0.346700,1.624650,0.598718    6
-  hitscan            0.068398,1.782172,-0.561468    0.348578,1.646812,0.597488    7
-  hitscan            0.076600,1.804757,-0.562352    0.350339,1.653515,0.596179    8
-  hitscan            0.081886,1.816244,-0.562871    0.351418,1.654950,0.595291    9
-  hitscan            0.085692,1.822210,-0.563218    0.352167,1.653761,0.594633    10
-  hitscan            0.085692,1.822210,-0.563218    0.352167,1.653761,0.594633    11
-  hitscan            0.085692,1.822210,-0.563218    0.352167,1.653761,0.594633    12
-  hitscan            0.085692,1.822210,-0.563218    0.352167,1.653761,0.594633    13
-  hitscan            0.594698,1.593728,-0.028163    -0.594698,1.438578,0.007404    14
-  hitscan            0.085692,1.822210,-0.563218    0.352167,1.653761,0.594633    15
-  hitscan            0.085692,1.822210,-0.563218    0.352167,1.653761,0.594633    16
-  hitscan            0.085692,1.822210,-0.563218    0.352167,1.653761,0.594633    17
-  hitscan            0.085692,1.822210,-0.563218    0.352167,1.653761,0.594633    18
-  hitscan            0.085692,1.822210,-0.563218    0.352167,1.653761,0.594633    19
-  hitscan            0.085692,1.822210,-0.563218    0.352167,1.653761,0.594633    20
-  hitscan            0.085692,1.822210,-0.563218    0.352167,1.653761,0.594633    21
-  hitscan            0.085692,1.822210,-0.563218    0.352167,1.653761,0.594633    22
-  hitscan            0.085692,1.822210,-0.563218    0.352167,1.653761,0.594633    23
-  hitscan            0.085692,1.822210,-0.563218    0.352167,1.653761,0.594633    24
-  hitscan            0.085692,1.822210,-0.563218    0.352167,1.653761,0.594633    25
-  hitscan            0.085692,1.822210,-0.563218    0.352167,1.653761,0.594633    26
-  hs_launch_velocity 0.000000,29.000000,10.500000
-  chain              WazaAir3rd_To4th_ReadySabakiSwing    4    48    press_x
-  on_duration_passed NULL
-
-
-# Enter into 4th Waza.
-
-:WazaAir3rd_To4th_ReadySabakiSwing
-  animation_state    StateAirWaza3rdFormTo4thForm
-  stamina_cost       0
-  duration           27
-  hold_midair
-  chain              WazaAir4th_VacuumCockBack    7    27     press_x
-  on_duration_passed NULL
-
-:WazaAir4th_ReadySabakiSwing
-  entrance           midair    press_x
-  animation_state    StateAirWaza4thFormEntrance
-  stamina_cost       0
-  duration           22
-  hold_midair
-  chain              WazaAir4th_VacuumCockBack    2    22     press_x
-  on_duration_passed NULL
-
-:WazaAir4th_VacuumCockBack
-  animation_state    StateAirWaza4thFormPart1
-  stamina_cost       0
-  duration           33
-  hold_midair
-  vacuum_suck_in     0.000000,0.200000,0.750000    6.000000    4.000000
-  chain              WazaAir4th_SabakiSwing    6    33     press_x
-  on_duration_passed NULL
-
-:WazaAir4th_SabakiSwing
-  animation_state    StateAirWaza4thFormPart2
-  stamina_cost       0
-  duration           32
-  hold_midair
-  velocity           0.0,4.0,1.0    0
-  hitscan            0.032229,1.150742,-0.630750    0.326069,0.049937,-0.254069
-  hitscan            -0.011397,1.344107,-0.684269    0.370991,0.207497,-0.640683    2
-  hitscan            -0.085403,1.595200,-0.768242    0.230313,0.752233,-1.561798    3
-  hitscan            -0.138936,2.159005,-0.089151    -0.198897,2.954918,-0.985214    4
-  hitscan            -0.009162,1.372516,0.687949    -0.024799,1.727519,1.834129    5
-  hitscan            0.006142,1.129247,0.728543    0.076479,0.859397,1.895691    6
-  hitscan            0.010630,0.936213,0.710592    0.095992,0.241766,1.685507    7
-  hitscan            0.006732,0.830382,0.698525    0.050627,-0.040518,1.522907    8
-  hs_launch_velocity 0.000000,-26.000000,6.000000
-  hs_rel_position    0.000000,-0.500000,1.000000
-  chain              WazaAir4th_To5th_ReadyAirDrill    9    32    press_a
-  on_duration_passed NULL
-
-
-# Enter into 5th Waza.
-
-:WazaAir4th_To5th_ReadyAirDrill
-  animation_state    StateAirWaza4thFormTo5thForm
-  stamina_cost       0
+:AirWaza_GustWall_01
   duration           37
-  hold_midair
-  velocity           0.0,2.0,-1.0    0
-  velocity_decay     0.2    0
-  chain              WazaAir5th_AirDrill    11    37    press_a
-  on_duration_passed NULL
+  interruptable      18    -1
+  #
+  animation_state    AirWaza_GustWall_01
+  stamina_cost       20
+  velocity           0.0,8.0,-10.0    4
+  velocity_decay     0.5    0
+  hs_launch_velocity 0.000000,0.000000,20.000000
+  hs_rel_position    0.000000,0.000000,1.000000    ignore_y
+  #
+  hitscan            -0.036131,0.723976,0.180510    -0.037169,1.922389,0.118808
+  hitscan            0.087980,0.752978,0.372410    0.305564,1.918650,0.556440    2
+  hitscan            0.041622,0.065429,0.961339    0.271883,0.466712,2.068566    3
+  hitscan            -0.202655,-0.423722,0.854674    -0.229683,-0.607232,2.040251    4
+  hitscan            -0.271961,-0.569213,0.738284    -0.326227,-0.910025,1.887589    5
+  hitscan            -0.299872,-0.611837,0.674450    -0.339409,-0.975675,1.817280    6
+  hitscan            -0.318634,-0.630546,0.625778    -0.356312,-1.013326,1.762468    7
 
-:WazaAir5th_AirDrill
-  animation_state    StateAirWaza5thFormPart1
-  stamina_cost       0
-  duration           180
-  velocity           0.0,-10.0,4.0    0
-  chain              WazaAir5th_ReadyPressureFan    4    180    press_x
-  on_duration_passed NULL
+:AirWaza_Start_LeapForward_Hold
+  entrance           twohanded    grounded    press_a
+  #
+  chain              AirWaza_LeapForwardS_01    0    13    release_a
+  chain              AirWaza_LeapForward_01    14    -1    release_a
+  chain              AirWaza_Start_Updraft_Hold    0    4    press_x_a  # @TODO: THIS FEELS REDUNDANT... see todo in `:AirWaza_GustWallS_01`.
+  #
+  animation_state    AirWaza_Start_LeapForward_Hold
+  stamina_cost_hold  15    13    -1
 
-:WazaAir5th_ReadyPressureFan
-  animation_state    StateAirWaza5thFormPart2
-  stamina_cost       0
-  duration           42
-  hold_midair        0    9
-  chain              WazaAir5th_PressureFan    5    42    press_x
-  on_duration_passed NULL
-
-:WazaAir5th_PressureFan
-  animation_state    StateAirWaza5thFormPart3
-  stamina_cost       0
-  duration           50
-  velocity           0.0,15.0,0.0    0
-  hitscan            -0.366169,0.330403,0.503000    0.017285,0.713794,1.573502
-  hitscan            -0.378346,0.089591,-0.308586    -1.390556,-0.349444,-0.780475    1
-  hitscan            0.316994,0.235437,-0.436548    0.666570,0.246102,-1.584453    2
-  hitscan            0.687849,0.268983,0.188047    1.856842,0.323337,-0.077477    3
-  hitscan            0.113982,0.319114,0.783751    0.606965,0.497514,1.863169    4
-  hitscan            -0.612935,0.268740,0.276713    -1.687622,0.374931,0.799947    5
-  hitscan            -0.420707,0.253716,-0.457665    -1.295638,0.319982,-1.276264    6
-  hitscan            0.104910,0.296456,-0.706299    0.136058,0.361864,-1.904110    7
-  hitscan            0.282753,0.394472,-0.725200    0.514431,0.277522,-1.896801    8
-  force_zone         0.000000,-5.500000,0.000000    2.250000,6.000000,2.250000    0.000000,-100.000000,0.000000    0    8
-  chain              WazaAir5th_To6th_ReadyWeightShiftCrush    13    50    press_x
-  on_duration_passed NULL
-
-
-# Enter into 6th Waza.
-
-:WazaAir5th_To6th_ReadyWeightShiftCrush
-  animation_state    StateAirWaza5thFormTo6thForm
-  stamina_cost       0
-  duration           50
-  chain              WazaAir6th_FirstSlashPenetration    8    50    press_x
-  on_duration_passed NULL
-
-:WazaAir6th_FirstSlashPenetration
-  animation_state    StateAirWaza6thFormPart1
-  stamina_cost       0
-  duration           50
-  hold_midair
-  hitscan            0.024397,1.884868,0.123193    0.062255,2.598900,-0.840511
-  hitscan            0.030011,1.756374,0.528415    0.128556,2.913772,0.227216    2
-  hitscan            0.011391,1.308537,0.959806    0.023382,1.534112,2.138353    3
-  hitscan            0.019767,0.820049,0.758830    0.024299,-0.146287,1.470289    4
-  hitscan            0.017932,0.687713,0.279456    0.019525,-0.483034,0.016107    5
-  hitscan            0.007860,0.626258,0.284364    -0.004754,-0.544271,0.020344    6
-  hs_rel_position    0.000000,0.000000,0.000000    ignore_y
-  chain              WazaAir6th_WeightShiftReleverage    5    50    press_a
-  on_duration_passed NULL
-
-:WazaAir6th_WeightShiftReleverage
-  animation_state    StateAirWaza6thFormPart2
-  stamina_cost       0
-  duration           50
-  hold_midair
-  velocity           0.0,0.0,6.0    0
-  velocity           0.0,0.0,0.5    6
-  velocity           0.0,0.0,0.0    9
-  chain              WazaAir6th_BreakthruAndLanding    7    50    any
-  on_duration_passed NULL
-
-:WazaAir6th_BreakthruAndLanding
-  animation_state    StateAirWaza6thFormPart3
-  stamina_cost       0
-  duration           83
-  velocity           0.0,4.0,6.0    0
+:AirWaza_LeapForwardS_01
+  chain              AirWaza_Start_HighJump_Hold    0    4    press_a    # Doubleclick to get into `HighJump` (effectively, with the timing of the chains).
+  #
+  duration           61
+  interruptable      48    -1
+  #
+  animation_state    AirWaza_LeapForwardS_01
+  stamina_cost       10
+  velocity           0.0,15.0,15.0    5
   velocity_decay     0.25    0
-  hitscan            0.018277,0.651009,-0.806539    0.022365,-0.516533,-1.083727
-  hitscan            -0.012071,1.308560,-0.777974    0.162830,1.113119,-1.948963    1
-  hitscan            0.081521,1.417593,-0.510169    0.329303,2.142105,-1.434122    2
-  hitscan            0.067988,1.698671,-0.191325    0.275345,2.850611,0.073325    3
-  hitscan            0.017790,1.707948,-0.042715    0.019162,2.714119,0.611211    4
-  hs_launch_velocity 0.0,2.0,-7.0
-  hs_rel_position    0.000000,0.000000,-2.000000    ignore_y
-  chain              WazaAir6th_Chiburi    17    83    any
-  on_duration_passed WazaAir6th_Chiburi
+  velocity_decay     0.5    39
 
-:WazaAir6th_Chiburi
-  animation_state    StateAirWaza6thFormPart3Exit
-  stamina_cost       0
-  duration           8
-  on_duration_passed NULL  
+:AirWaza_LeapForward_01
+  duration           57
+  interruptable      55    -1
+  #
+  animation_state    AirWaza_LeapForward_01
+  stamina_cost       50
+  gravity_multiplier 0.25
+  velocity           0.0,2.0,35.0    0
+  velocity_decay     0.5    0
+  velocity_decay     1.0    17
+  hs_launch_velocity 0.000000,25.000000,15.000000
+  hs_rel_position    0.500000,0.000000,0.000000    ignore_y
+  #
+  hitscan            0.154846,-0.304585,0.627597    1.325388,-0.304569,0.891858
+  hitscan            0.164737,-0.395988,0.803090    1.342782,-0.378376,1.030911    1
+  hitscan            0.154860,-0.505032,0.906005    1.325405,-0.505004,1.170250    2
+  hitscan            0.154860,-0.507460,0.909377    1.325405,-0.507432,1.173623    3
+  hitscan            0.154853,-0.508871,0.911328    1.325396,-0.508852,1.175586    4
+  hitscan            0.154852,-0.509767,0.912570    1.325394,-0.509751,1.176831    5
+  hitscan            0.154852,-0.509895,0.912747    1.325393,-0.509878,1.177008    6
+  hitscan            0.154851,-0.509980,0.912865    1.325392,-0.509963,1.177126    7
+  hitscan            0.154851,-0.509980,0.912865    1.325392,-0.509963,1.177126    8
+  hitscan            0.154851,-0.509980,0.912865    1.325392,-0.509963,1.177126    9
+  hitscan            0.154851,-0.509980,0.912865    1.325392,-0.509963,1.177126    10
+  hitscan            0.154851,-0.509980,0.912865    1.325392,-0.509963,1.177126    11
+  hitscan            0.154851,-0.509980,0.912865    1.325392,-0.509963,1.177126    12
+  hitscan            0.154851,-0.509980,0.912865    1.325392,-0.509963,1.177126    13
+  hitscan            0.154851,-0.509980,0.912865    1.325392,-0.509963,1.177126    14
+  hitscan            0.154851,-0.509980,0.912865    1.325392,-0.509963,1.177126    15
+  hitscan            0.154851,-0.509980,0.912865    1.325392,-0.509963,1.177126    16
+  hitscan            0.197954,-0.713289,0.710089    1.368623,-0.762211,0.969206    17
+
+:AirWaza_Start_HighJump_Hold
+  chain              AirWaza_LeapForwardS_01    0    13    release_a    # Go back to leap forward if not gonna hold it.
+  chain              AirWaza_HighJump_01    14    -1    release_a
+  #
+  animation_state    AirWaza_Start_HighJump_Hold
+  stamina_cost_hold  15    13    -1
+
+:AirWaza_HighJump_01
+  duration           87
+  interruptable      43    -1
+  #
+  animation_state    AirWaza_HighJump_01
+  stamina_cost       50
+  velocity           0.0,30.0,10.0    0
+  velocity_decay     0.25    0
+  velocity_decay     0.5    66
+  hs_launch_velocity 0.000000,29.000000,10.500000
+  #
+  hitscan            0.281816,0.132649,-0.567789    0.166787,-0.228106,0.883633
+  hitscan            0.281816,0.132649,-0.567789    0.166787,-0.228106,0.883633    0
+  hitscan            -0.004991,0.449442,-0.591929    0.214036,0.228072,0.875390    1
+  hitscan            -0.201861,0.597708,-0.558383    0.167771,0.481848,0.890738    2
+  hitscan            -0.198597,0.599423,-0.558735    0.167081,0.477707,0.890908    3
+  hitscan            -0.193623,0.602791,-0.559397    0.167046,0.469483,0.890483    4
+  hitscan            -0.187736,0.606920,-0.560185    0.167284,0.459200,0.889692    5
+  hitscan            -0.181064,0.611796,-0.561082    0.167959,0.446796,0.888387    6
+  hitscan            -0.174710,0.616311,-0.561884    0.168571,0.435017,0.887010    7
+  hitscan            -0.169110,0.620241,-0.562558    0.169170,0.424530,0.885636    8
+  hitscan            -0.165664,0.622613,-0.562954    0.169531,0.418083,0.884739    9
+  hitscan            -0.163308,0.624222,-0.563218    0.169785,0.413661,0.884095    10
+  hitscan            -0.163308,0.624222,-0.563218    0.169785,0.413661,0.884095    11
+  hitscan            -0.163308,0.624222,-0.563218    0.169785,0.413661,0.884095    12
+  hitscan            -0.163308,0.624222,-0.563218    0.169785,0.413661,0.884095    13
+  hitscan            -0.163308,0.624222,-0.563218    0.169785,0.413661,0.884095    14
+  hitscan            -0.163308,0.624222,-0.563218    0.169785,0.413661,0.884095    15
+  hitscan            -0.163308,0.624222,-0.563218    0.169785,0.413661,0.884095    16
+  hitscan            -0.163308,0.624222,-0.563218    0.169785,0.413661,0.884095    17
+  hitscan            -0.163308,0.624222,-0.563218    0.169785,0.413661,0.884095    18
+  hitscan            -0.163308,0.624222,-0.563218    0.169785,0.413661,0.884095    19
+  hitscan            -0.163308,0.624222,-0.563218    0.169785,0.413661,0.884095    20
+  hitscan            -0.163308,0.624222,-0.563218    0.169785,0.413661,0.884095    21
+  hitscan            -0.163308,0.624222,-0.563218    0.169785,0.413661,0.884095    22
+  hitscan            -0.163308,0.624222,-0.563218    0.169785,0.413661,0.884095    23
+  hitscan            -0.163308,0.624222,-0.563218    0.169785,0.413661,0.884095    24
+  hitscan            -0.163308,0.624222,-0.563218    0.169785,0.413661,0.884095    25
+
+:AirWaza_Start_Updraft_Hold
+  entrance           twohanded    grounded    press_x_a
+  #
+  chain              AirWaza_UpdraftS_01    0    17    release_x
+  chain              AirWaza_LeapForwardS_01    0    17    release_a
+  chain              AirWaza_Updraft_02    18    -1    release_x
+  chain              AirWaza_Updraft_01    18    -1    release_a    # @NOTE: user must release the `a` button during the chain, the input doesn't stick until it gets consumed somewhere.  -Timo 2023/09/25
+  #
+  animation_state    AirWaza_Start_Updraft_Hold
+  stamina_cost_hold  15    13    -1
+
+:AirWaza_UpdraftS_01
+  duration           25
+  interruptable      19    -1
+  #
+  animation_state    AirWaza_UpdraftS_01
+  stamina_cost       10
+  velocity           -1.0,0.0,1.5    0
+  velocity           -5.0,0.0,7.5    1
+  velocity           -1.0,0.0,1.5    3
+  velocity           -0.5,0.0,0.8    7
+  velocity           -1.5,0.0,2.0    13
+  velocity           -2.5,0.0,4.0    14
+  velocity           -1.5,0.0,2.0    23
+  velocity_decay     0.25    0
+  velocity_decay     0.5    39
+  #
+  hitscan            0.210882,-0.164149,0.375292    0.909060,-0.991428,-0.142550
+  hitscan            0.180192,0.039938,0.515194    1.160460,-0.636514,0.661791    2
+  hitscan            -0.343230,0.615221,0.344831    -0.732150,1.640913,0.831349    3
+  hitscan            -0.446460,0.623906,0.142578    -1.166375,1.541076,-0.141191    4
+
+:AirWaza_Updraft_01
+  chain              AirWaza_Updraft_02    1    17    release_x
+  #
+  duration           57
+  interruptable      55    -1
+  #
+  animation_state    AirWaza_Updraft_01
+  stamina_cost       50
+  gravity_multiplier 0.25
+  velocity           0.0,2.0,35.0    0
+  velocity_decay     0.5    0
+  velocity_decay     1.0    17
+
+:AirWaza_Updraft_02
+  chain              AirWaza_HighJump_01    15    31    release_a    # @NOTE: since it's release_a, the user has to press and then release `a` within the region of time.
+  #
+  duration           45
+  interruptable      31    -1
+  #
+  animation_state    AirWaza_Updraft_02
+  stamina_cost       10
+  velocity           0.0,0.0,30.0    0
+  velocity_decay     0.5    0
+  velocity_decay     2.5    15
+  hs_launch_velocity 0.000000,18.000000,20.000000
+  hs_rel_position    0.000000,1.000000,1.000000
+  #
+  hitscan            0.225528,-0.625058,0.488348    1.140788,-0.911141,-0.233080
+  hitscan            0.093030,-0.690548,0.632650    0.963235,-1.418427,0.241579    2
+  hitscan            -0.150396,-0.241669,1.076319    -0.150854,-0.668201,2.197956    3
+  hitscan            -0.054121,-0.030162,1.121705    0.002372,0.123111,2.310535    4
+  hitscan            -0.083967,0.073347,1.062117    -0.162243,0.362217,2.224197    5
+  hitscan            -0.099898,0.085766,1.043882    -0.197356,0.389633,2.200674    6
+  hitscan            -0.111448,0.095463,1.029171    -0.223013,0.411339,2.181463    7
+  hitscan            -0.116098,0.099133,1.023250    -0.232814,0.419393,2.173820    8
+  hitscan            -0.123729,0.106061,1.010691    -0.267509,0.448826,2.151673    9
+  hitscan            -0.132298,0.114804,0.994332    -0.313021,0.489966,2.119763    10
+  hitscan            -0.156941,0.132409,0.944050    -0.435528,0.584809,2.020028    11
+  hitscan            -0.237729,0.242664,0.678499    -0.875771,0.773248,1.545324    12
+  hitscan            -0.027146,0.123780,0.286003    -0.842565,0.730940,0.923537    13
+  hitscan            0.198215,0.188408,0.097077    -0.320381,1.228227,0.396806    14
+  hitscan            0.437346,0.041720,-0.189904    -0.023659,1.103506,-0.506275    15
+
+
+
+
+
+# @TODO: For now, just have the new entrances for the twohanded,grounded,press_x/a/x_a and then
+#        the release for the gustwall, updraft, and leapforward (well, release one at a time), respectively.
+#
+#        Have the combo timer (x_a) just be the min of the x and a timers, bc the moment x and a are held down,
+#        then the animation switches to the x and a holding entrance.
+#
+#        Letting go prematurely would trigger one of the three attacks' hold or short attack.
+#        Short Attacks:
+#            - X: over the shoulder swing down
+#            - XA: small leap forward with upwards diagonal (closing in on an enemy with a quick attack)
+#            - A: small jump up and shove (for dodging or parrying a barehanded enemy)
+#        Holding the button again will switch to the same state where the hold versions of the attacks will come in.
+#        But, if you just let go before the hold timing, then you continue into the next attack in the combo.
+#
+# Use `wip_LTTP_Sword_Charge.wav` when hold is held.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+############ OLD FILE THAT WORKS!!!!!
+
+####:AirWaza_GustWall_Hold
+####  entrance           twohanded    grounded    hold_x
+####  animation_state    StateAirWaza1stFormEntrance
+####  stamina_cost_hold  5
+####  duration           -1
+####  chain              AirWaza_GustWall_Waza1_Execute    17    -1    release_x
+####  on_hold_cancel     AirWaza_GustWall_Hold_Cancel
+####
+####:AirWaza_GustWall_Hold_Cancel
+####  animation_state    StateAirWaza1stFormEntranceExit
+####  stamina_cost       0
+####  duration           22
+####  on_duration_passed NULL
+####  interruptable
+####
+####:AirWaza_GustWall_Waza1_Execute
+####  animation_state    StateAirWaza1stFormPart1
+####  stamina_cost       25
+####  duration           25
+####  hitscan            -0.003310,1.627699,0.081011    -0.012294,2.826591,0.030216
+####  hitscan            0.009867,1.540883,0.393170    0.091263,2.669127,0.793724    4
+####  hitscan            -0.052393,1.287112,0.508141    -0.063725,2.242840,1.233714    5
+####  hitscan            -0.077162,0.960373,0.912426    0.024092,1.309631,2.056004    6
+####  hitscan            -0.177291,0.607920,0.880886    -0.189415,0.478069,2.073778    7
+####  hitscan            -0.236201,0.454443,0.768883    -0.259243,0.158105,1.931490    8
+####  hs_launch_velocity 0.000000,0.000000,29.000000
+####  hs_rel_position    0.000000,0.000000,1.000000
+####  chain              AirWaza_Updraft_Hold_From_GustWall    10     25    hold_x_a
+####  on_duration_passed AirWaza_GustWall_Waza1_Finish
+####
+####:AirWaza_GustWall_Waza1_Finish
+####  animation_state    StateAirWaza1stFormPart1Exit
+####  stamina_cost       0
+####  duration           9
+####  on_duration_passed NULL
+####
+####:AirWaza_Updraft_Hold
+####  entrance           twohanded    grounded    hold_x_a
+####  animation_state    StateAirWaza2ndFormEntrance
+####  stamina_cost_hold  5
+####  duration           -1
+####  chain              AirWaza_Updraft_Waza1_Execute    9    -1    release_a
+####  on_hold_cancel     AirWaza_Updraft_Hold_Cancel
+####
+####:AirWaza_Updraft_Hold_From_GustWall
+####  animation_state    StateAirWaza1stFormTo2ndForm  # @TODO: make this hold a lot shorter since you land in this position (if you're holding X,A before landing).
+####  stamina_cost_hold  5
+####  duration           -1
+####  chain              AirWaza_Updraft_Waza1_Execute    5    -1    release_a
+####  on_hold_cancel     AirWaza_Updraft_Hold_Cancel
+####
+####:AirWaza_Updraft_Hold_Cancel
+####  animation_state    StateAirWaza2ndFormEntranceExit
+####  stamina_cost       0
+####  duration           9
+####  on_duration_passed NULL
+####  interruptable
+####
+####:AirWaza_Updraft_Waza1_Execute
+####  animation_state    StateAirWaza2ndFormPart1
+####  stamina_cost       25
+####  stamina_cost_hold  5
+####  duration           30
+####  gravity_multiplier 0.25
+####  velocity_decay     0.5    0
+####  velocity           0.0,2.0,50.0    0
+####  chain              AirWaza_Updraft_Waza2_Execute    2    30    release_x
+####  on_land_cancel     AirWaza_Updraft_Waza1_Land_Cancel
+####
+####:AirWaza_Updraft_Waza1_Land_Cancel
+####  animation_state    StateAirWaza2ndFormPart1Exit
+####  stamina_cost       0
+####  duration           25
+####  velocity_decay     4.545455    0
+####  velocity           0.0,0.0,50.0    0
+####  on_duration_passed NULL
+####
+####:AirWaza_Updraft_Waza2_Execute
+####  animation_state    StateAirWaza2ndFormPart2
+####  stamina_cost       25
+####  duration           33
+####  velocity_decay     0.5    0
+####  velocity_decay     2.5    9
+####  velocity           0.0,0.0,40.0    0
+####  hitscan            0.225242,0.349497,0.485912    1.139608,0.062835,-0.236419
+####  hitscan            -0.181953,0.518282,0.957660    -0.024692,-0.414504,1.696022    1
+####  hitscan            -0.040625,0.916365,1.131541    0.034257,1.050343,2.321686    2
+####  hitscan            -0.094607,1.025702,1.063682    -0.279103,1.357524,2.202039    3
+####  hitscan            -0.132177,1.087434,0.987824    -0.417190,1.531415,2.065623    4
+####  hitscan            -0.168266,1.119174,0.906551    -0.507530,1.628910,1.938575    5
+####  hitscan            -0.105764,1.214570,0.382422    -0.883886,1.783818,1.096903    6
+####  hitscan            0.157066,1.150531,0.191402    -0.377322,2.145203,0.597679    7
+####  hitscan            0.372118,1.098555,-0.108270    -0.092877,2.198807,-0.223297    8
+####  hitscan            0.525303,0.968081,-0.291023    0.143518,1.985842,-0.799357    9
+####  hitscan            0.686164,0.839175,-0.393454    0.536875,1.707156,-1.208515    10
+####  hitscan            0.782951,0.736952,-0.408686    0.768124,1.491708,-1.341490    11
+####  #hs_launch_velocity 0.000000,15.000000,22.500000   # This one works sometimes
+####  hs_launch_velocity 0.000000,18.000000,20.500000    # This one also works... sometimes
+####  hs_rel_position    0.000000,1.000000,1.000000
+####  chain              AirWaza_GiantLeap_Hold_From_Updraft    9    33    doublehold_a
+####  on_duration_passed AirWaza_GiantLeap_Hold_Cancel
+####
+####:AirWaza_GiantLeap_Hold
+####  entrance           twohanded    grounded    doublehold_a
+####  animation_state    StateAirWaza3rdFormEntrance
+####  stamina_cost_hold  5
+####  duration           -1
+####  chain              AirWaza_GiantLeap_Waza1_Execute    14    -1    release_a
+####  on_hold_cancel     AirWaza_GiantLeap_Hold_Cancel
+####
+####:AirWaza_GiantLeap_Hold_From_Updraft
+####  animation_state    StateAirWaza3rdFormEntrance
+####  stamina_cost_hold  5
+####  duration           -1
+####  chain              AirWaza_GiantLeap_Waza1_Execute    14    -1    release_a
+####  on_hold_cancel     AirWaza_GiantLeap_Hold_Cancel
+####
+####:AirWaza_GiantLeap_Hold_Cancel
+####  animation_state    StateAirWaza2ndFormPart2Exit
+####  stamina_cost       0
+####  duration           14
+####  on_duration_passed NULL
+####  interruptable
+####
+####:AirWaza_GiantLeap_Waza1_Execute
+####  animation_state    StateAirWaza3rdFormPart1
+####  stamina_cost       50
+####  duration           48
+####  velocity           0.0,30.0,4.0    3
+####  hitscan            0.179830,1.341760,-0.598141    0.492761,1.266228,0.557874
+####  hitscan            0.079800,1.519862,-0.567718    0.379748,1.433126,0.590950    3
+####  hitscan            0.594687,1.593790,-0.028229    -0.594687,1.438473,0.007387    4
+####  hitscan            0.052313,1.698043,-0.559384    0.344724,1.594725,0.599849    5
+####  hitscan            0.060294,1.744036,-0.560471    0.346700,1.624650,0.598718    6
+####  hitscan            0.068398,1.782172,-0.561468    0.348578,1.646812,0.597488    7
+####  hitscan            0.076600,1.804757,-0.562352    0.350339,1.653515,0.596179    8
+####  hitscan            0.081886,1.816244,-0.562871    0.351418,1.654950,0.595291    9
+####  hitscan            0.085692,1.822210,-0.563218    0.352167,1.653761,0.594633    10
+####  hitscan            0.085692,1.822210,-0.563218    0.352167,1.653761,0.594633    11
+####  hitscan            0.085692,1.822210,-0.563218    0.352167,1.653761,0.594633    12
+####  hitscan            0.085692,1.822210,-0.563218    0.352167,1.653761,0.594633    13
+####  hitscan            0.085692,1.822210,-0.563218    0.352167,1.653761,0.594633    14
+####  hitscan            0.085692,1.822210,-0.563218    0.352167,1.653761,0.594633    15
+####  hitscan            0.085692,1.822210,-0.563218    0.352167,1.653761,0.594633    16
+####  hitscan            0.085692,1.822210,-0.563218    0.352167,1.653761,0.594633    17
+####  hitscan            0.085692,1.822210,-0.563218    0.352167,1.653761,0.594633    18
+####  hitscan            0.085692,1.822210,-0.563218    0.352167,1.653761,0.594633    19
+####  hitscan            0.085692,1.822210,-0.563218    0.352167,1.653761,0.594633    20
+####  hitscan            0.085692,1.822210,-0.563218    0.352167,1.653761,0.594633    21
+####  hitscan            0.085692,1.822210,-0.563218    0.352167,1.653761,0.594633    22
+####  hitscan            0.085692,1.822210,-0.563218    0.352167,1.653761,0.594633    23
+####  hitscan            0.085692,1.822210,-0.563218    0.352167,1.653761,0.594633    24
+####  hitscan            0.085692,1.822210,-0.563218    0.352167,1.653761,0.594633    25
+####  hitscan            0.085692,1.822210,-0.563218    0.352167,1.653761,0.594633    26
+####  hs_launch_velocity 0.000000,29.000000,10.500000
+####  chain              AirWaza_EyeOfTheStorm_Waza1_Execute    4    48    doubleclick_x
+####  on_duration_passed NULL
+####
+####:AirWaza_EyeOfTheStorm_Waza1_Execute
+####  entrance           twohanded    midair    doubleclick_x
+####  animation_state    StateAirWaza4thFormPart1
+####  stamina_cost       25
+####  stamina_cost_hold  10
+####  duration           -1
+####  hold_midair
+####  vacuum_suck_in     0.000000,0.200000,0.750000    6.000000    4.000000
+####  chain              AirWaza_EyeOfTheStorm_Waza2_Execute    6    -1     press_x
+####
+####:AirWaza_EyeOfTheStorm_Waza2_Execute
+####  animation_state    StateAirWaza4thFormPart2
+####  stamina_cost       0
+####  duration           32
+####  hold_midair
+####  velocity           0.0,4.0,1.0    0
+####  hitscan            0.032229,1.150742,-0.630750    0.326069,0.049937,-0.254069
+####  hitscan            -0.011397,1.344107,-0.684269    0.370991,0.207497,-0.640683    2
+####  hitscan            -0.085403,1.595200,-0.768242    0.230313,0.752233,-1.561798    3
+####  hitscan            -0.138936,2.159005,-0.089151    -0.198897,2.954918,-0.985214    4
+####  hitscan            -0.009162,1.372516,0.687949    -0.024799,1.727519,1.834129    5
+####  hitscan            0.006142,1.129247,0.728543    0.076479,0.859397,1.895691    6
+####  hitscan            0.010630,0.936213,0.710592    0.095992,0.241766,1.685507    7
+####  hitscan            0.006732,0.830382,0.698525    0.050627,-0.040518,1.522907    8
+####  hs_launch_velocity 0.000000,-26.000000,6.000000
+####  hs_rel_position    0.000000,-0.500000,1.000000
+####  on_duration_passed NULL
+####
+#####:FlipOver_UpsideDown  # @TODO: maybe this and :FlipOver_RightsideUp should be state changes rather than hwac waza states that're just part of the transformation.
+#####  entrance           twohanded    midair    press_a
+#####  animation_state    StateAirWaza4thFormTo5thForm
+#####  stamina_cost       0
+#####
+#####:FlipOver_RightsideUp
+#####  entrance           twohanded    upsidedown    press_a
+#####  animation_state    StateAirWaza4thFormTo5thForm
+#####  stamina_cost       0
+####
+####:AirWaza_DownwardDive_Hold
+####  entrance           twohanded    upsidedown    doublehold_a
+####  animation_state    StateAirWaza5thFormPart1
+####  stamina_cost_hold  5
+####  duration           -1
+####  hold_midair
+####  chain              AirWaza_DownwardDive_Execute    10    -1    release_a
+####  on_hold_cancel     AirWaza_DownwardDive_Hold_Cancel
+####
+####:AirWaza_DownwardDive_Hold_Cancel
+####  animation_state    StateAirWaza4thFormTo5thForm
+####  stamina_cost       0
+####  duration           10
+####  on_duration_passed NULL
+####  interruptable
+####
+####:AirWaza_DownwardDive_Execute
+####  animation_state    StateAirWaza5thFormPart1
+####  stamina_cost       5
+####  duration           1  # @TODO: @NOTE: I'm thinking this could be the way to define this move. Jump down super fast, and you're upside down, but you should be able to do any other move almost right after, hence the duration.
+####  velocity           0.0,-10.0,4.0    0
+####  on_duration_passed NULL
+####
+####:AirWaza_SpinnyHelicopter_Hold
+####  entrance           twohanded    upsidedown    hold_x
+####  animation_state    StateAirWaza5thFormPart2
+####  stamina_cost_hold  5
+####  duration           -1
+####  hold_midair        0    9
+####  chain              AirWaza_SpinnyHelicopter_Execute    5    -1    release_x
+####  on_hold_cancel     AirWaza_SpinnyHelicopter_Hold_Cancel
+####
+####:AirWaza_SpinnyHelicopter_Hold_Cancel
+####  animation_state    StateAirWaza5thFormPart2Exit
+####  duration           10
+####  on_duration_passed NULL
+####  interruptable
+####
+####:AirWaza_SpinnyHelicopter_Execute
+####  animation_state    StateAirWaza5thFormPart3
+####  stamina_cost       0
+####  duration           50
+####  velocity           0.0,15.0,0.0    0
+####  hitscan            -0.366169,0.330403,0.503000    0.017285,0.713794,1.573502
+####  hitscan            -0.378346,0.089591,-0.308586    -1.390556,-0.349444,-0.780475    1
+####  hitscan            0.316994,0.235437,-0.436548    0.666570,0.246102,-1.584453    2
+####  hitscan            0.687849,0.268983,0.188047    1.856842,0.323337,-0.077477    3
+####  hitscan            0.113982,0.319114,0.783751    0.606965,0.497514,1.863169    4
+####  hitscan            -0.612935,0.268740,0.276713    -1.687622,0.374931,0.799947    5
+####  hitscan            -0.420707,0.253716,-0.457665    -1.295638,0.319982,-1.276264    6
+####  hitscan            0.104910,0.296456,-0.706299    0.136058,0.361864,-1.904110    7
+####  hitscan            0.282753,0.394472,-0.725200    0.514431,0.277522,-1.896801    8
+####  force_zone         0.000000,-5.500000,0.000000    2.250000,6.000000,2.250000    0.000000,-100.000000,0.000000    0    8
+####  on_duration_passed NULL
+####
+####:AirWaza_DerriereCut_Hold
+####  entrance           twohanded    midair    hold_x
+####  animation_state    StateAirWaza5thFormTo6thForm
+####  stamina_cost_hold  5
+####  duration           -1
+####  chain              AirWaza_DerriereCut_Waza1_Execute    8    -1    release_x
+####  on_hold_cancel     AirWaza_DerriereCut_Hold_Cancel
+####
+####:AirWaza_DerriereCut_Hold_Cancel
+####  animation_state    StateAirWaza5thFormTo6thFormExit
+####  duration           10
+####  on_duration_passed NULL
+####  interruptable
+####
+####:AirWaza_DerriereCut_Waza1_Execute
+####  animation_state    StateAirWaza6thFormPart1
+####  stamina_cost       0
+####  duration           100
+####  hold_midair
+####  hitscan            0.024397,1.884868,0.123193    0.062255,2.598900,-0.840511
+####  hitscan            0.030011,1.756374,0.528415    0.128556,2.913772,0.227216    2
+####  hitscan            0.011391,1.308537,0.959806    0.023382,1.534112,2.138353    3
+####  hitscan            0.019767,0.820049,0.758830    0.024299,-0.146287,1.470289    4
+####  hitscan            0.017932,0.687713,0.279456    0.019525,-0.483034,0.016107    5
+####  hitscan            0.007860,0.626258,0.284364    -0.004754,-0.544271,0.020344    6
+####  hs_rel_position    0.000000,0.000000,0.000000    ignore_y
+####  chain              AirWaza_DerriereCut_Waza2_Hold    5    100    hold_x
+####  on_duration_passed NULL
+####
+####:AirWaza_DerriereCut_Waza2_Hold
+####  animation_state    StateAirWaza6thFormPart2
+####  stamina_cost_hold  20
+####  duration           -1
+####  hold_midair
+####  velocity           0.0,0.0,6.0    0
+####  velocity           0.0,0.0,0.5    6
+####  velocity           0.0,0.0,0.0    9
+####  chain              AirWaza_DerriereCut_Waza2_Execute    7    -1    release_x
+####  on_hold_cancel     AirWaza_DerriereCut_Waza2_Hold_Cancel
+####
+####:AirWaza_DerriereCut_Waza2_Hold_Cancel
+####  animation_state    StateAirWaza5thFormTo6thFormExit
+####  duration           10
+####  on_duration_passed NULL
+####  interruptable
+####
+####:AirWaza_DerriereCut_Waza2_Execute  # @NOTE: this is the one where the animation is the same but the game logic has to decide whether to keep the blade on the enemy or on the handle depending on poise and stuff.
+####  animation_state    StateAirWaza6thFormPart3
+####  stamina_cost       0
+####  duration           83
+####  velocity           0.0,4.0,6.0    0
+####  velocity_decay     0.25    0
+####  hitscan            0.018277,0.651009,-0.806539    0.022365,-0.516533,-1.083727
+####  hitscan            -0.012071,1.308560,-0.777974    0.162830,1.113119,-1.948963    1
+####  hitscan            0.081521,1.417593,-0.510169    0.329303,2.142105,-1.434122    2
+####  hitscan            0.067988,1.698671,-0.191325    0.275345,2.850611,0.073325    3
+####  hitscan            0.017790,1.707948,-0.042715    0.019162,2.714119,0.611211    4
+####  hs_launch_velocity 0.0,2.0,-7.0
+####  hs_rel_position    0.000000,0.000000,-2.000000    ignore_y
+####  chain              AirWaza_DerriereCut_Waza2_Finish    17    83    any  # @THOUGHT: I personally feel like something other than a chiburi could be good.
+####  on_duration_passed AirWaza_DerriereCut_Waza2_Finish
+####
+####:AirWaza_DerriereCut_Waza2_Finish
+####  animation_state    StateAirWaza6thFormPart3Exit
+####  stamina_cost       0
+####  duration           8
+####  on_duration_passed NULL  
+####  interruptable
+####

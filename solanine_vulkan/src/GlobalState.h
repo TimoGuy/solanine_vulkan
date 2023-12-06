@@ -54,6 +54,7 @@ namespace globalState
 
         struct WeaponStats  // @NOTE: garbage values if this is not a weapon.
         {
+            std::string weaponType = "NULL";
             int32_t durability;
             int32_t attackPower;
             int32_t attackPowerWhenDulled;  // This is when durability hits 0.

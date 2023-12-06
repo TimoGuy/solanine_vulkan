@@ -2154,7 +2154,7 @@ namespace vkglTF
 		}
 	}
 
-	VkDescriptorSet* Animator::getGlobalAnimatorNodeCollectionDescriptorSet()
+	VkDescriptorSet* Animator::getGlobalAnimatorNodeCollectionDescriptorSet(VulkanEngine* engine)
 	{
 		return &nodeCollectionBuffers[engine->_frameNumber % FRAME_OVERLAP].descriptorSet;
 	}
@@ -2412,10 +2412,12 @@ namespace vkglTF
 		for (size_t i = 0; i < animStateMachineCopy.masks.size(); i++)
 		{
 			auto& mask = animStateMachineCopy.masks[i];
-			for (auto& state : mask.states)
+			for (size_t j = 0; j < mask.states.size(); j++)
 			{
+				auto& state = mask.states[j];
 				if (state.stateName == stateName)
 				{
+					mask.asmStateIndex = j;  // @NOTE: this needs to be set so that the event executor knows what states are being played by the mask players.
 					playAnimation(i, state.animationIndex, state.loop, time);
 					if (forceImmediateUpdate)
 						updateAnimation();
@@ -2478,6 +2480,8 @@ namespace vkglTF
 
 	void Animator::updateAnimation()
 	{
+		std::lock_guard<std::mutex> lg(model->skinNodeDSMutex); // @NOTE: since multiple animators use the same model to temporarily store the skinned channels, there needs to be some kind of guard to prevent overwriting. It feels stupid though, this solution. -Timo 2023/09/26
+
 		bool updated = false;
 		for (size_t i = 0; i < animStateMachineCopy.masks.size(); i++)
 		{

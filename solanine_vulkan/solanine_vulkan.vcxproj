@@ -50,11 +50,11 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;_HAS_EXCEPTIONS=0;BT_THREADSAFE=1;_DEBUG;_DEVELOP;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;_HAS_EXCEPTIONS=0;BT_THREADSAFE=1;JPH_PROFILE_ENABLED;JPH_DEBUG_RENDERER;JPH_FLOATING_POINT_EXCEPTIONS_ENABLED;JPH_USE_AVX2;JPH_USE_AVX;JPH_USE_SSE4_1;JPH_USE_SSE4_2;JPH_USE_LZCNT;JPH_USE_TZCNT;JPH_USE_F16C;JPH_USE_FMADD;_DEBUG;_DEVELOP;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
-      <AdditionalIncludeDirectories>$(VK_SDK_PATH)\Include;$(SolutionDir)libs;$(SolutionDir)libs\fmod_core\inc;$(SolutionDir)libs\fmod_fsbank\inc;$(SolutionDir)libs\fmod_studio\inc;$(SolutionDir)bullet3\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(VK_SDK_PATH)\Include;$(SolutionDir)libs;$(SolutionDir)libs\fmod_core\inc;$(SolutionDir)libs\fmod_fsbank\inc;$(SolutionDir)libs\fmod_studio\inc;$(SolutionDir)libs\jolt_physics\inc;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
@@ -62,14 +62,14 @@
       <WholeProgramOptimization>false</WholeProgramOptimization>
       <EnableEnhancedInstructionSet>NotSet</EnableEnhancedInstructionSet>
       <ExceptionHandling>false</ExceptionHandling>
-      <FloatingPointModel>Fast</FloatingPointModel>
-      <StructMemberAlignment>16Bytes</StructMemberAlignment>
+      <FloatingPointModel>Precise</FloatingPointModel>
+      <StructMemberAlignment>Default</StructMemberAlignment>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>DebugFastLink</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>$(VK_SDK_PATH)\Lib;$(SolutionDir)libs\fmod_core\lib;$(SolutionDir)libs\fmod_fsbank\lib;$(SolutionDir)libs\fmod_studio\lib;$(SolutionDir)bullet3\lib\$(ConfigurationName);$(SolutionDir)libs\cglm;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>SDL2.lib;SDL2main.lib;vulkan-1.lib;fmod$(Suffix)_vc.lib;fmodstudio$(Suffix)_vc.lib;cglm.lib;Bullet3Common_Debug.lib;BulletSoftBody_Debug.lib;BulletDynamics_Debug.lib;BulletCollision_Debug.lib;BulletInverseDynamicsUtils_Debug.lib;BulletInverseDynamics_Debug.lib;LinearMath_Debug.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(VK_SDK_PATH)\Lib;$(SolutionDir)libs\fmod_core\lib;$(SolutionDir)libs\fmod_fsbank\lib;$(SolutionDir)libs\fmod_studio\lib;$(SolutionDir)libs\cglm;$(SolutionDir)libs\jolt_physics\lib_$(ConfigurationName)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>SDL2.lib;SDL2main.lib;vulkan-1.lib;fmod$(Suffix)_vc.lib;fmodstudio$(Suffix)_vc.lib;cglm.lib;Jolt.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <LinkTimeCodeGeneration>Default</LinkTimeCodeGeneration>
     </Link>
     <PostBuildEvent>
@@ -89,27 +89,27 @@ copy $(SolutionDir)libs\cglm\cglm.dll $(OutDirfullPath)cglm.dll</Command>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;_HAS_EXCEPTIONS=0;BT_THREADSAFE=1;NDEBUG;_DEVELOP;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;_HAS_EXCEPTIONS=0;BT_THREADSAFE=1;JPH_PROFILE_ENABLED;JPH_DEBUG_RENDERER;JPH_FLOATING_POINT_EXCEPTIONS_ENABLED;JPH_USE_AVX2;JPH_USE_AVX;JPH_USE_SSE4_1;JPH_USE_SSE4_2;JPH_USE_LZCNT;JPH_USE_TZCNT;JPH_USE_F16C;JPH_USE_FMADD;NDEBUG;_DEVELOP;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
-      <AdditionalIncludeDirectories>$(VK_SDK_PATH)\Include;$(SolutionDir)libs;$(SolutionDir)libs\fmod_core\inc;$(SolutionDir)libs\fmod_fsbank\inc;$(SolutionDir)libs\fmod_studio\inc;$(SolutionDir)bullet3\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(VK_SDK_PATH)\Include;$(SolutionDir)libs;$(SolutionDir)libs\fmod_core\inc;$(SolutionDir)libs\fmod_fsbank\inc;$(SolutionDir)libs\fmod_studio\inc;$(SolutionDir)libs\jolt_physics\inc;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <EnableEnhancedInstructionSet>NotSet</EnableEnhancedInstructionSet>
       <ExceptionHandling>false</ExceptionHandling>
-      <FloatingPointModel>Fast</FloatingPointModel>
-      <StructMemberAlignment>16Bytes</StructMemberAlignment>
+      <FloatingPointModel>Precise</FloatingPointModel>
+      <StructMemberAlignment>Default</StructMemberAlignment>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>$(VK_SDK_PATH)\Lib;$(SolutionDir)libs\fmod_core\lib;$(SolutionDir)libs\fmod_fsbank\lib;$(SolutionDir)libs\fmod_studio\lib;$(SolutionDir)bullet3\lib\$(ConfigurationName);$(SolutionDir)libs\cglm;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>SDL2.lib;SDL2main.lib;vulkan-1.lib;fmod$(Suffix)_vc.lib;fmodstudio$(Suffix)_vc.lib;cglm.lib;Bullet3Common.lib;BulletSoftBody.lib;BulletDynamics.lib;BulletCollision.lib;BulletInverseDynamicsUtils.lib;BulletInverseDynamics.lib;LinearMath.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(VK_SDK_PATH)\Lib;$(SolutionDir)libs\fmod_core\lib;$(SolutionDir)libs\fmod_fsbank\lib;$(SolutionDir)libs\fmod_studio\lib;$(SolutionDir)libs\cglm;$(SolutionDir)libs\jolt_physics\lib_$(ConfigurationName)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>SDL2.lib;SDL2main.lib;vulkan-1.lib;fmod$(Suffix)_vc.lib;fmodstudio$(Suffix)_vc.lib;cglm.lib;Jolt.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
       <Command>set /p BuildNumberForSolanine=&lt;build_number.txt
@@ -198,6 +198,7 @@ copy $(SolutionDir)libs\cglm\cglm.dll $(OutDirfullPath)cglm.dll</Command>
     <ClInclude Include="src\PhysicsEngine.h" />
     <ClInclude Include="src\HotswapResources.h" />
     <ClInclude Include="src\VkDescriptorBuilderUtil.h" />
+    <ClInclude Include="src\GondolaSystem.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\AudioEngine.cpp" />
@@ -246,6 +247,7 @@ copy $(SolutionDir)libs\cglm\cglm.dll $(OutDirfullPath)cglm.dll</Command>
     <ClCompile Include="src\PhysicsEngine.cpp" />
     <ClCompile Include="src\HotswapResources.cpp" />
     <ClCompile Include="src\VkDescriptorBuilderUtil.cpp" />
+    <ClCompile Include="src\GondolaSystem.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\core\core.vcxproj">

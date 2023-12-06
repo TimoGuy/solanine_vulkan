@@ -9,6 +9,7 @@
 #pragma once
 
 #include "ImportGLM.h"
+#include <mutex>
 #include <taskflow/taskflow.hpp>
 #include "VkDataStructures.h"
 #include "Settings.h"
@@ -378,7 +379,7 @@ namespace vkglTF
 	private:
 		VulkanEngine* engine;
 		StateMachine  animStateMachine;
-
+		std::mutex    skinNodeDSMutex;
 
 		friend struct Animator;
 	};
@@ -396,7 +397,7 @@ namespace vkglTF
 
 		static void initializeEmpty(VulkanEngine* engine);
 		static void destroyEmpty(VulkanEngine* engine);
-		static VkDescriptorSet* getGlobalAnimatorNodeCollectionDescriptorSet();  // For binding to represent a non-skinned mesh
+		static VkDescriptorSet* getGlobalAnimatorNodeCollectionDescriptorSet(VulkanEngine* engine);  // For binding to represent a non-skinned mesh
 
 		void playAnimation(size_t maskIndex, uint32_t animationIndex, bool loop, float_t time = 0.0f);  // This is for direct control of the animation index
 		void update(const float_t& deltaTime);

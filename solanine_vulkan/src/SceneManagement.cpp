@@ -4,6 +4,7 @@
 #include <sstream>
 #include "DataSerialization.h"
 #include "VulkanEngine.h"
+#include "PhysicsEngine.h"
 #include "Camera.h"
 #include "Debug.h"
 #include "StringHelper.h"
@@ -14,6 +15,7 @@
 #include "VoxelField.h"
 #include "ScannableItem.h"
 #include "HarvestableItem.h"
+#include "GondolaSystem.h"
 
 
 // @PALETTE: where to add serialized names for the entities
@@ -23,12 +25,14 @@ const std::vector<std::string> ENTITY_TYPE_NAMES = {
     ":voxelfield",
     ":scannableitem",
     ":harvestableitem",
+    ":gondolasystem",
 };
 const std::string Character::TYPE_NAME        = ENTITY_TYPE_NAMES[0];
 const std::string NoteTaker::TYPE_NAME        = ENTITY_TYPE_NAMES[1];
 const std::string VoxelField::TYPE_NAME       = ENTITY_TYPE_NAMES[2];
 const std::string ScannableItem::TYPE_NAME    = ENTITY_TYPE_NAMES[3];
 const std::string HarvestableItem::TYPE_NAME  = ENTITY_TYPE_NAMES[4];
+const std::string GondolaSystem::TYPE_NAME    = ENTITY_TYPE_NAMES[5];
 
 
 namespace scene
@@ -51,6 +55,8 @@ namespace scene
             ent = new ScannableItem(engine->_entityManager, engine->_roManager, ds);
         if (objectName == HarvestableItem::TYPE_NAME)
             ent = new HarvestableItem(engine->_entityManager, engine->_roManager, ds);
+        if (objectName == GondolaSystem::TYPE_NAME)
+            ent = new GondolaSystem(engine->_entityManager, engine->_roManager, engine, ds);
 
         if (ent == nullptr)
         {
@@ -76,15 +82,31 @@ namespace scene
         }
         return scenes;
     }
-    
-    bool loadScene(const std::string& name, VulkanEngine* engine)
+
+    std::vector<std::string> getListOfPrefabs()
+    {
+        std::vector<std::string> prefabs;
+        for (const auto& entry : std::filesystem::recursive_directory_iterator(PREFAB_DIRECTORY_PATH))
+        {
+            const auto& path = entry.path();
+            if (std::filesystem::is_directory(path))
+                continue;
+            if (!path.has_extension() || path.extension().compare(".hunk") != 0)
+                continue;
+            auto relativePath = std::filesystem::relative(path, PREFAB_DIRECTORY_PATH);
+            prefabs.push_back(relativePath.string());  // @NOTE: that this line could be dangerous if there are any filenames or directory names that have utf8 chars or wchars in it
+        }
+        return prefabs;
+    }
+
+    bool loadSerializationFull(const std::string& fullFname, VulkanEngine* engine, bool ownEntities, std::vector<Entity*>& outEntityPtrs)
     {
         bool success = true;
 
         DataSerializer ds;
         std::string newObjectType = "";
 
-        std::ifstream infile(SCENE_DIRECTORY_PATH + name);
+        std::ifstream infile(fullFname);
         std::string line;
         for (size_t lineNum = 1; std::getline(infile, line); lineNum++)
         {
@@ -112,7 +134,10 @@ namespace scene
                 if (!newObjectType.empty())
                 {
                     auto dsCooked = ds.getSerializedData();
-                    success &= (spinupNewObject(newObjectType, engine, &dsCooked) != nullptr);
+                    Entity* newEntity = spinupNewObject(newObjectType, engine, &dsCooked);
+                    newEntity->_isOwned = ownEntities;
+                    outEntityPtrs.push_back(newEntity);
+                    success &= (newEntity != nullptr);
                 }
 
                 // New object
@@ -135,7 +160,7 @@ namespace scene
             {
                 // ERROR
                 std::cerr << "[SCENE MANAGEMENT]" << std::endl
-                    << "ERROR (line " << lineNum << ") (file: " << SCENE_DIRECTORY_PATH << name << "): Headless data" << std::endl
+                    << "ERROR (line " << lineNum << ") (file: " << SCENE_DIRECTORY_PATH << fullFname << "): Headless data" << std::endl
                     << "   Trimmed line: " << line << std::endl
                     << "  Original line: " << line << std::endl;
             }
@@ -145,12 +170,33 @@ namespace scene
         if (!newObjectType.empty())
         {
             auto dsCooked = ds.getSerializedData();
-            success &= (spinupNewObject(newObjectType, engine, &dsCooked) != nullptr);
+            Entity* newEntity = spinupNewObject(newObjectType, engine, &dsCooked);
+            outEntityPtrs.push_back(newEntity);
+            success &= (newEntity != nullptr);
         }
+
+        return success;
+    }
+
+    bool loadPrefab(const std::string& name, VulkanEngine* engine, std::vector<Entity*>& outEntityPtrs)
+    {
+        return loadSerializationFull(PREFAB_DIRECTORY_PATH + name, engine, true, outEntityPtrs);
+    }
+
+    bool loadPrefabNonOwned(const std::string& name, VulkanEngine* engine)
+    {
+        std::vector<Entity*> _;
+        return loadSerializationFull(PREFAB_DIRECTORY_PATH + name, engine, false, _);
+    }
+    
+    bool loadScene(const std::string& name, VulkanEngine* engine)
+    {
+        std::vector<Entity*> _;
+        bool ret = loadSerializationFull(SCENE_DIRECTORY_PATH + name, engine, false, _);
 
         globalState::savedActiveScene = name;
 
-        if (success)
+        if (ret)
             debug::pushDebugMessage({
 			    .message = "Successfully loaded scene \"" + name + "\"",
 			    });
@@ -160,7 +206,10 @@ namespace scene
                 .type = 1,
                 });
 
-        return success;
+        // @DEBUG: save snapshot of physics frame.
+        physengine::savePhysicsWorldSnapshot();
+
+        return ret;
     }
 
     bool saveScene(const std::string& name, const std::vector<Entity*>& entities, VulkanEngine* engine)
@@ -177,6 +226,9 @@ namespace scene
 
         for (auto ent : entities)
         {
+            if (ent->_isOwned)
+                continue;  // Don't save owned entities.
+
             DataSerializer ds;
             ent->dump(ds);
 

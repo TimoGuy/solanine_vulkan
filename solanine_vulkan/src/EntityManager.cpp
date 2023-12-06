@@ -153,3 +153,9 @@ void EntityManager::destroyEntity(Entity* entity)
 {
 	_entitiesToDestroyQueue.push_back(entity);
 }
+
+void EntityManager::destroyOwnedEntity(Entity* entity)
+{
+	if (!_flushEntitiesToDestroyRoutine)
+		destroyEntity(entity);  // Only destroy entity if not in entity manager destruction phase (entity manager will take responsibility to clean up owned entities if it's getting destroyed).
+}
