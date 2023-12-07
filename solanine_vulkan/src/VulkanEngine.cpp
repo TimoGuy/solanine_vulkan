@@ -5569,59 +5569,6 @@ void VulkanEngine::uploadCurrentFrameToGPU(const FrameData& currentFrame)
 
 void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, std::vector<size_t> onlyPoolIndices, std::vector<ModelWithIndirectDrawId>& outIndirectDrawCommandIdsForPoolIndex)
 {
-
-	// /////////////////////////////////////////////////////////
-
-	// // Gather the number of times a model is drawn.
-	// struct ModelDrawCount
-	// {
-	// 	vkglTF::Model* model;
-	// 	size_t drawCount;
-	// 	size_t baseModelRenderObjectIndex;
-	// 	std::vector<size_t> umbIndices;
-	// };
-	// std::vector<ModelDrawCount> mdcs;
-
-	// vkglTF::Model* lastModel = nullptr;
-	// for (size_t roIdx = 0; roIdx < visibleIndices.size(); roIdx++)
-	// {
-	// 	RenderObject& ro = _roManager->_renderObjectPool[visibleIndices[roIdx]];
-	// 	if (ro.model == lastModel)
-	// 	{
-	// 		mdcs.back().drawCount++;
-	// 	}
-	// 	else
-	// 	{
-	// 		mdcs.push_back({
-	// 			.model = ro.model,
-	// 			.drawCount = 1,
-	// 			.baseModelRenderObjectIndex = roIdx,
-	// 			});
-	// 		lastModel = ro.model;
-	// 	}
-	// }
-
-	// //
-	// // Gather each model's meshes and collate them into their own draw commands
-	// // @TODO: @OPTIMIZE: have the gathering and sorting be done when render objects are added and just copy indirect commands from the heap.
-	// //
-	// std::vector<MeshCapturedInfo> meshDraws;
-	// for (ModelDrawCount& mdc : mdcs)
-	// {
-	// 	uint32_t numMeshes = 0;
-	// 	mdc.model->appendPrimitiveDraws(meshDraws, numMeshes);
-
-	// 	for (size_t i = 0; i < numMeshes; i++)
-	// 	{
-	// 		// Tell each mesh to draw as many times as the model exists, thus
-	// 		// collating the mesh draws inside the model drawing window.
-	// 		meshDraws[meshDraws.size() - numMeshes + i].modelDrawCount = mdc.drawCount;
-	// 		meshDraws[meshDraws.size() - numMeshes + i].baseModelRenderObjectIndex = mdc.baseModelRenderObjectIndex;
-	// 		meshDraws[meshDraws.size() - numMeshes + i].meshNumInModel = numMeshes;
-	// 		// meshDraws[meshDraws.size() - numMeshes + i].uniqueMaterialBaseIndex = mdc.;  // @NOCHECKIN
-	// 	}
-	// }
-
 	//
 	// Open up memory map for instance level data
 	//
@@ -5695,73 +5642,6 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, 
 
 		indirectBatches = batches;
 	}
-
-
-
-
-// 	///////////////////////////////////
-
-// 	//
-// 	// Write indirect commands
-// 	//
-// 	std::vector<IndirectBatch> batches;
-// 	lastModel = nullptr;
-// 	size_t instanceID = 0;
-// 	size_t meshIndex = 0;
-// 	size_t baseModelRenderObjectIndex = 0;
-// 	for (MeshCapturedInfo& ib : meshDraws)
-// 	{
-// 		// Combine the mesh-level draw commands into model-level draw commands.
-// 		if (lastModel == ib.model)
-// 		{
-// 			batches.back().count += ib.modelDrawCount;
-// 		}
-// 		else
-// 		{
-// 			batches.push_back({
-// 				.model = ib.model,
-// 				.first = (uint32_t)instanceID,
-// 				.count = ib.modelDrawCount,  // @NOTE: since the meshes are collated, we need to draw each mesh the number of times the model is going to get drawn.
-// 			});
-
-// 			lastModel = ib.model;
-// 			meshIndex = 0;  // New model, so reset the mesh index counter.
-// 			baseModelRenderObjectIndex = ib.baseModelRenderObjectIndex;
-// 		}
-
-// 		// Create draw command for each mesh instance.
-// 		for (size_t modelIndex = 0; modelIndex < ib.modelDrawCount; modelIndex++)
-// 		{
-// 			*indirectDrawCommands = {
-// 				.indexCount = ib.meshIndexCount,
-// 				.instanceCount = 1,
-// 				.firstIndex = ib.meshFirstIndex,
-// 				.vertexOffset = 0,
-// 				.firstInstance = (uint32_t)instanceID,
-// 			};
-// 			indirectDrawCommands++;
-
-// 			// @NOCHECKIN: INDIRECT BUFFER FOR INSTANCE POINTERS.
-// 			GPUInstancePointer& gip = _roManager->_renderObjectPool[visibleIndices[baseModelRenderObjectIndex + modelIndex]].calculatedModelInstances[meshIndex];
-// #ifdef _DEVELOP
-// 			if (!onlyPoolIndices.empty())
-// 				for (size_t index : onlyPoolIndices)
-// 					if (index == gip.objectID)
-// 					{
-// 						// Include this draw indirect command.
-// 						outIndirectDrawCommandIdsForPoolIndex.push_back({ ib.model, (uint32_t)instanceID });
-// 						break;
-// 					}
-// #endif
-// 			*instancePtrSSBO = gip;
-// 			instancePtrSSBO++;
-
-// 			instanceID++;
-// 		}
-
-// 		// Increment to the next mesh
-// 		meshIndex++;
-// 	}
 
 	// Cleanup and return
 	vmaUnmapMemory(_allocator, currentFrame.instancePtrBuffer._allocation);
