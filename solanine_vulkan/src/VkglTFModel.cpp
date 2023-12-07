@@ -1187,7 +1187,7 @@ namespace vkglTF
 
 	void Model::loadAnimationStateMachine(const std::string& filename, tinygltf::Model& gltfModel)
 	{
-		std::string fnameCooked = (filename + ".hasm");
+		std::string fnameCooked = ("res/models_statemachines/" + std::filesystem::path(filename).stem().string() + ".hasm");
 		std::ifstream inFile(fnameCooked);  // .hasm: Hawsoo Animation State Machine
 		if (!inFile.is_open())
 		{
@@ -1588,7 +1588,411 @@ namespace vkglTF
 		animStateMachine.loaded = true;
 	}
 
-	void Model::loadFromFile(VulkanEngine* engine, std::string filename, float scale)
+	bool Model::checkGlTFCookNeeded(const std::filesystem::path& path)
+	{
+		std::filesystem::path cooked3dModelFname = "res/models_cooked/" + path.stem().string() + ".hthrobwoa";
+		std::filesystem::path cookedAnimsFname = "res/models_cooked/" + path.stem().string() + ".henema";
+
+		if (!std::filesystem::exists(cooked3dModelFname) ||
+			std::filesystem::last_write_time(cooked3dModelFname) <= std::filesystem::last_write_time(path))
+			return true;
+
+		if (!std::filesystem::exists(cookedAnimsFname) ||
+			std::filesystem::last_write_time(cookedAnimsFname) <= std::filesystem::last_write_time(path))
+			return true;
+
+		return false;
+	}
+
+	std::vector<int8_t> henemaFileIdentifier = {
+		'\xAB', 'H', 'a', 'w', 's', 'o', 'o', ' ', 'E', 'x', 't', 'r', 'a', 'c', 't', 'e', 'd', ' ', 's', 'k', 'e', 'l', 'e', 't', 'a', 'l', ' ', 'a', 'N', 'i', 'm', 'a', 't', 'i', 'o', 'n', 's', ' ', 'f', 'r', 'o', 'm', ' ', 'a', ' ', 't', 'h', 'r', 'E', 'e', ' ', 'd', 'i', 'M', 'e', 'n', 's', 'i', 'o', 'n', 'A', 'l', ' ', 'g', 'l', 't', 'f', ' ', 'm', 'o', 'd', 'e', 'l', '.', '\xBB', '\r', '\n', '\x1A', '\n'
+	};
+
+	inline void writeUintBinary(std::ofstream& file, uint32_t val)
+	{
+		file.write((char*)&val, sizeof(uint32_t));
+	}
+
+
+	inline void writeIntBinary(std::ofstream& file, int32_t val)
+	{
+		file.write((char*)&val, sizeof(int32_t));
+	}
+
+	inline void writeBoolBinary(std::ofstream& file, bool val)
+	{
+		file.write((char*)&val, sizeof(bool));
+	}
+
+	inline void writeDoubleBinary(std::ofstream& file, double_t val)
+	{
+		file.write((char*)&val, sizeof(double_t));
+	}
+
+	inline void writeStringBinary(std::ofstream& file, const std::string& str)
+	{
+		writeUintBinary(file, (uint32_t)str.length());
+		file.write(str.c_str(), str.length());
+	}
+
+	inline void writeTGValueBinary(std::ofstream& file, const tinygltf::Value& val);
+
+	inline void writeObjectBinary(std::ofstream& file, const tinygltf::Value::Object& val)
+	{
+		writeUintBinary(file, (uint32_t)val.size());
+		for (auto it = val.begin(); it != val.end(); it++)
+		{
+			writeStringBinary(file, it->first);
+			writeTGValueBinary(file, it->second);
+		}
+	}
+
+	inline void writeExtensionMapBinary(std::ofstream& file, const tinygltf::ExtensionMap& val)
+	{
+		writeObjectBinary(file, val);
+	}
+
+	inline void writeTGValueBinary(std::ofstream& file, const tinygltf::Value& val)
+	{
+		writeUintBinary(file, val.Type());
+		switch (val.Type())
+		{
+			case tinygltf::Type::NULL_TYPE:
+				break;
+
+			case tinygltf::Type::REAL_TYPE:
+				writeDoubleBinary(file, val.Get<double_t>());
+				break;
+
+			case tinygltf::Type::INT_TYPE:
+				writeIntBinary(file, val.Get<int32_t>());
+				break;
+
+			case tinygltf::Type::BOOL_TYPE:
+				writeBoolBinary(file, val.Get<bool>());
+				break;
+
+			case tinygltf::Type::STRING_TYPE:
+				writeStringBinary(file, val.Get<std::string>());
+				break;
+
+			case tinygltf::Type::ARRAY_TYPE:
+			{
+				auto x = val.Get<tinygltf::Value::Array>();
+				writeUintBinary(file, (uint32_t)x.size());
+				for (auto& v : x)
+					writeTGValueBinary(file, v);
+			} break;
+
+			case tinygltf::Type::BINARY_TYPE:
+			{
+				auto x = val.Get<std::vector<uint8_t>>();
+				writeUintBinary(file, (uint32_t)x.size());
+				file.write((char*)x.data(), x.size());
+			} break;
+
+			case tinygltf::Type::OBJECT_TYPE:
+			{
+				writeObjectBinary(file, val.Get<tinygltf::Value::Object>());
+			} break;
+		}
+	}
+	
+	bool writeAnimationsFile(const std::filesystem::path& path, const std::vector<tinygltf::Animation>& anims)
+	{
+		if (std::filesystem::exists(path))
+			std::filesystem::remove(path);
+        std::ofstream file(path, std::ios::binary);
+        if (!file.is_open())
+			return false;
+
+		// Write header.
+		file.write((char*)henemaFileIdentifier.data(), henemaFileIdentifier.size());
+
+		// Write data.
+		writeUintBinary(file, (uint32_t)anims.size());
+		for (auto& anim : anims)
+		{
+			writeStringBinary(file, anim.name);
+
+			writeUintBinary(file, (uint32_t)anim.channels.size());
+			for (auto& channel : anim.channels)
+			{
+				writeIntBinary(file, channel.sampler);
+				writeIntBinary(file, channel.target_node);
+				writeStringBinary(file, channel.target_path);
+				writeTGValueBinary(file, channel.extras);
+				writeExtensionMapBinary(file, channel.extensions);
+				writeExtensionMapBinary(file, channel.target_extensions);
+				writeStringBinary(file, channel.extras_json_string);
+				writeStringBinary(file, channel.extensions_json_string);
+				writeStringBinary(file, channel.target_extensions_json_string);
+			}
+
+			writeUintBinary(file, (uint32_t)anim.samplers.size());
+			for (auto& sampler : anim.samplers)
+			{
+				writeIntBinary(file, sampler.input);
+				writeIntBinary(file, sampler.output);
+				writeStringBinary(file, sampler.interpolation);
+				writeTGValueBinary(file, sampler.extras);
+				writeExtensionMapBinary(file, sampler.extensions);
+				writeStringBinary(file, sampler.extras_json_string);
+				writeStringBinary(file, sampler.extensions_json_string);
+			}
+
+			writeTGValueBinary(file, anim.extras);
+			writeExtensionMapBinary(file, anim.extensions);
+			writeStringBinary(file, anim.extras_json_string);
+			writeStringBinary(file, anim.extensions_json_string);
+		}
+
+		return true;
+	}
+
+	inline void loadUintBinary(std::ifstream& file, uint32_t& out)
+	{
+		file.read((char*)&out, sizeof(uint32_t));
+	}
+
+	inline void loadIntBinary(std::ifstream& file, int32_t& out)
+	{
+		file.read((char*)&out, sizeof(int32_t));
+	}
+
+	inline void loadBoolBinary(std::ifstream& file, bool& out)
+	{
+		file.read((char*)&out, sizeof(bool));
+	}
+
+	inline void loadDoubleBinary(std::ifstream& file, double_t& out)
+	{
+		file.read((char*)&out, sizeof(double_t));
+	}
+
+	inline void loadStringBinary(std::ifstream& file, std::string& out)
+	{
+		uint32_t strLength;
+		loadUintBinary(file, strLength);
+		std::vector<char> cStr;
+		cStr.resize(strLength);
+		file.read(cStr.data(), strLength);
+		out = std::string(cStr.data(), cStr.size());
+	}
+
+	inline void loadTGValueBinary(std::ifstream& file, tinygltf::Value& out);
+
+	inline void loadObjectBinary(std::ifstream& file, tinygltf::Value::Object& out)
+	{
+		uint32_t valSize;
+		loadUintBinary(file, valSize);
+		for (size_t i = 0; i < valSize; i++)
+		{
+			std::string key;
+			loadStringBinary(file, key);
+			tinygltf::Value tgValue;
+			loadTGValueBinary(file, tgValue);			
+			out[key] = tgValue;
+		}
+	}
+
+	inline void loadExtensionMapBinary(std::ifstream& file, tinygltf::ExtensionMap& out)
+	{
+		loadObjectBinary(file, out);
+	}
+
+	inline void loadTGValueBinary(std::ifstream& file, tinygltf::Value& out)
+	{
+		uint32_t valType;
+		loadUintBinary(file, valType);
+		switch (valType)
+		{
+			case tinygltf::Type::NULL_TYPE:
+				break;
+
+			case tinygltf::Type::REAL_TYPE:
+			{
+				double_t val;
+				loadDoubleBinary(file, val);
+				out = tinygltf::Value(val);
+			} break;
+
+			case tinygltf::Type::INT_TYPE:
+			{
+				int32_t val;
+				loadIntBinary(file, val);
+				out = tinygltf::Value(val);
+			} break;
+
+			case tinygltf::Type::BOOL_TYPE:
+			{
+				bool val;
+				loadBoolBinary(file, val);
+				out = tinygltf::Value(val);
+			} break;
+
+			case tinygltf::Type::STRING_TYPE:
+			{
+				std::string val;
+				loadStringBinary(file, val);
+				out = tinygltf::Value(val);
+			} break;
+
+			case tinygltf::Type::ARRAY_TYPE:
+			{
+				uint32_t valLength;
+				loadUintBinary(file, valLength);
+				tinygltf::Value::Array val;
+				val.resize(valLength);
+				for (auto& v : val)
+					loadTGValueBinary(file, v);
+				out = tinygltf::Value(val);
+			} break;
+
+			case tinygltf::Type::BINARY_TYPE:
+			{
+				uint32_t valLength;
+				loadUintBinary(file, valLength);
+				std::vector<uint8_t> val;
+				val.resize(valLength);
+				file.read((char*)val.data(), val.size());
+				out = tinygltf::Value(val.data(), val.size());
+			} break;
+
+			case tinygltf::Type::OBJECT_TYPE:
+			{
+				tinygltf::Value::Object val;
+				loadObjectBinary(file, val);
+				out = tinygltf::Value(val);
+			} break;
+		}
+	}
+
+	bool loadAnimationsFile(const std::filesystem::path& path, std::vector<tinygltf::Animation>& outAnims)
+	{
+		if (!std::filesystem::exists(path))
+			return false;
+        std::ifstream file(path, std::ios::binary);
+        if (!file.is_open())
+			return false;
+
+		// Check header.
+		{
+			std::vector<int8_t> identifierCheck(henemaFileIdentifier.size());
+			file.read((char*)identifierCheck.data(), henemaFileIdentifier.size());
+			bool correct = true;
+			for (size_t i = 0; i < henemaFileIdentifier.size(); i++)
+				if (identifierCheck[i] != henemaFileIdentifier[i])
+				{
+					correct = false;
+					break;
+				}
+			if (!correct)
+				return false;
+		}
+
+		// Load data.
+		uint32_t animsSize;
+		loadUintBinary(file, animsSize);
+		outAnims.resize(animsSize);
+
+		for (auto& anim : outAnims)
+		{
+			loadStringBinary(file, anim.name);
+
+			uint32_t animChannelsSize;
+			loadUintBinary(file, animChannelsSize);
+			anim.channels.resize(animChannelsSize);
+
+			for (auto& channel : anim.channels)
+			{
+				loadIntBinary(file, channel.sampler);
+				loadIntBinary(file, channel.target_node);
+				loadStringBinary(file, channel.target_path);
+				loadTGValueBinary(file, channel.extras);
+				loadExtensionMapBinary(file, channel.extensions);
+				loadExtensionMapBinary(file, channel.target_extensions);
+				loadStringBinary(file, channel.extras_json_string);
+				loadStringBinary(file, channel.extensions_json_string);
+				loadStringBinary(file, channel.target_extensions_json_string);
+			}
+
+			uint32_t animSamplersSize;
+			loadUintBinary(file, animSamplersSize);
+			anim.samplers.resize(animSamplersSize);
+
+			for (auto& sampler : anim.samplers)
+			{
+				loadIntBinary(file, sampler.input);
+				loadIntBinary(file, sampler.output);
+				loadStringBinary(file, sampler.interpolation);
+				loadTGValueBinary(file, sampler.extras);
+				loadExtensionMapBinary(file, sampler.extensions);
+				loadStringBinary(file, sampler.extras_json_string);
+				loadStringBinary(file, sampler.extensions_json_string);
+			}
+
+			loadTGValueBinary(file, anim.extras);
+			loadExtensionMapBinary(file, anim.extensions);
+			loadStringBinary(file, anim.extras_json_string);
+			loadStringBinary(file, anim.extensions_json_string);
+		}
+
+		return true;
+	}
+
+	bool Model::cookGlTFModel(const std::filesystem::path& path)
+	{
+		std::filesystem::path cooked3dModelFname = "res/models_cooked/" + path.stem().string() + ".hthrobwoa";
+		std::filesystem::path cookedAnimsFname = "res/models_cooked/" + path.stem().string() + ".henema";
+
+		// Load model.
+		tinygltf::Model gltfModel;
+		tinygltf::TinyGLTF gltfContext;
+
+		std::string error;
+		std::string warning;
+
+		bool binary = false;
+		size_t extpos = path.string().rfind('.', path.string().length());
+		if (extpos != std::string::npos)
+			binary = (path.string().substr(extpos + 1, path.string().length() - extpos) == "glb");
+
+		bool fileLoaded =
+			binary ?
+			gltfContext.LoadBinaryFromFile(&gltfModel, &error, &warning, path.string().c_str()) :
+			gltfContext.LoadASCIIFromFile(&gltfModel, &error, &warning, path.string().c_str());
+		if (!fileLoaded)
+		{
+			std::cerr << "Could not load gltf file: " << error << std::endl;
+			return false;
+		}
+
+		// Extract animations.
+		std::vector<tinygltf::Animation> anims = gltfModel.animations;
+		gltfModel.animations.clear();
+
+		// Write model without animations.
+		bool fileWritten = gltfContext.WriteGltfSceneToFile(&gltfModel, cooked3dModelFname.string(), true, true, false, true);
+		if (!fileWritten)
+		{
+			std::cerr << "Could not write .hthrobwoa file: " << cooked3dModelFname.string() << std::endl;
+			return false;
+		}
+
+		// Write animations file.
+		fileWritten = writeAnimationsFile(cookedAnimsFname, anims);
+		if (!fileWritten)
+		{
+			std::cerr << "Could not write .henema file: " << cookedAnimsFname.string() << std::endl;
+			return false;
+		}
+
+		// Finished.
+		return true;
+	}
+
+	void Model::loadHthrobwoaFromFile(VulkanEngine* engine, std::string filenameHthrobwoa, std::string filenameHenema, float scale)
 	{
 		this->engine = engine;
 
@@ -1610,13 +2014,12 @@ namespace vkglTF
 		std::string error;
 		std::string warning;
 
-		bool binary = false;
-		size_t extpos = filename.rfind('.', filename.length());
-		if (extpos != std::string::npos)
-			binary = (filename.substr(extpos + 1, filename.length() - extpos) == "glb");
-
 		PERF_TSTART(8);
-		bool fileLoaded = binary ? gltfContext.LoadBinaryFromFile(&gltfModel, &error, &warning, filename.c_str()) : gltfContext.LoadASCIIFromFile(&gltfModel, &error, &warning, filename.c_str());
+		if (!gltfContext.LoadBinaryFromFile(&gltfModel, &error, &warning, filenameHthrobwoa.c_str()))
+		{
+			std::cerr << "Could not load hthrobwoa file: " << error << std::endl;
+			return;
+		}
 		PERF_TEND(8);
 
 		// LoaderInfo loaderInfo{ };  @TODO: @IMPROVE: @MEMORY: See below
@@ -1624,12 +2027,6 @@ namespace vkglTF
 
 		size_t vertexCount = 0;
 		size_t indexCount = 0;
-
-		if (!fileLoaded)
-		{
-			std::cerr << "Could not load gltf file: " << error << std::endl;
-			return;
-		}
 
 		//
 		// Load gltf data into data structures
@@ -1672,10 +2069,15 @@ namespace vkglTF
 
 		// Load in animations
 		PERF_TSTART(5);
+		if (!loadAnimationsFile(filenameHenema, gltfModel.animations))
+		{
+			std::cerr << "Could not load henema file: " << filenameHenema << std::endl;
+			return;
+		}
 		if (gltfModel.animations.size() > 0)
 		{
 			loadAnimations(gltfModel);
-			loadAnimationStateMachine(filename, gltfModel);
+			loadAnimationStateMachine(filenameHthrobwoa, gltfModel);
 		}
 		loadSkins(gltfModel);
 
@@ -1792,7 +2194,8 @@ namespace vkglTF
 		static std::mutex reportModelMutex;
 		std::lock_guard<std::mutex> lg(reportModelMutex);
 		std::cout << "[LOAD glTF MODEL FROM FILE]" << std::endl
-			<< "filename:                      " << filename << std::endl
+			<< "filename (.hthrobwoa):         " << filenameHthrobwoa << std::endl
+			<< "filename (.henema):            " << filenameHenema << std::endl
 			<< "meshes:                        " << gltfModel.meshes.size() << std::endl
 			<< "animations:                    " << gltfModel.animations.size() << std::endl
 			<< "materials:                     " << gltfModel.materials.size() << std::endl

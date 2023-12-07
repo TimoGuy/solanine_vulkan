@@ -116,10 +116,14 @@
 - [ ] I want to be able to load up the game near instantly!
     - [ ] Slimegirl.glb's animations take 1.8sec to parse (much better than the former 8sec but seriously sucky).
         > Specifically, reading in the file into json takes 1892.37ms with the animations vs 24.37ms without the animations.
-        - [ ] Create animation cooker, that takes a .glb file and prints out an animation file that contains all the actions and removes all the animations it had formerly.
+        - [x] Create animation cooker, that takes a .glb file and prints out an animation file that contains all the actions and removes all the animations it had formerly.
             - [ ] Read file from tiny_gltf and print out animation data into file.
-            - [ ] Rewrite data from tiny_gltf load (after doing `.clear()` to animations) into another .glb file in `models_cooked`
-        - [ ] Rewrite the glb file without its animations and put into `models_cooked` with the just-animation file.
+            - [x] Rewrite data from tiny_gltf load (after doing `.clear()` to animations) into another .glb file in `models_cooked`
+        - [x] Rewrite the glb file without its animations and put into `models_cooked` with the just-animation file.
+        - [ ] Okay, found out that a lot of this information is stored in the bufferview, so new strategy.
+            - [ ] Store the binary data of the vkgltf animations which copy from the bufferviews and accessors.
+            - [ ] Delete the bufferview and accessor entries that were used during this process.
+            - [x] Bc it's too much work, leave the actual buffer alone.
 
 - [ ] Better level editor.
     - [ ] Update collision box texture for voxel fields.
