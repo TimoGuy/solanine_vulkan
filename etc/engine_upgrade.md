@@ -121,9 +121,9 @@
             - [x] Rewrite data from tiny_gltf load (after doing `.clear()` to animations) into another .glb file in `models_cooked`
         - [x] Rewrite the glb file without its animations and put into `models_cooked` with the just-animation file.
         - [ ] Okay, found out that a lot of this information is stored in the bufferview, so new strategy.
-            - [ ] Store the binary data of the vkgltf animations which copy from the bufferviews and accessors.
+            - [x] Store the binary data of the vkgltf animations which copy from the bufferviews and accessors.
             - [ ] Delete the bufferview and accessor entries that were used during this process.
-            - [x] Bc it's too much work, leave the actual buffer alone.
+            - [x] Bc it's too much work, leave the actual buffer alone. (This loads fairly quickly too, bc it's just one big chunk of bytes.)
 
 - [ ] Better level editor.
     - [ ] Update collision box texture for voxel fields.

@@ -1039,7 +1039,7 @@ namespace vkglTF
 		}
 	}
 
-	void Model::loadAnimations(tinygltf::Model& gltfModel)
+	void Model::loadAnimationsFromGlTFModel(tinygltf::Model& gltfModel, std::vector<size_t>& outAccessorIndicesUsed, std::vector<size_t>& outBufferViewIndicesUsed)
 	{
 		for (tinygltf::Animation& anim : gltfModel.animations)
 		{
@@ -1074,6 +1074,9 @@ namespace vkglTF
 					const tinygltf::BufferView& bufferView = gltfModel.bufferViews[accessor.bufferView];
 					const tinygltf::Buffer& buffer = gltfModel.buffers[bufferView.buffer];
 
+					outAccessorIndicesUsed.push_back(samp.input);
+					outBufferViewIndicesUsed.push_back(accessor.bufferView);
+
 					assert(accessor.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT);
 
 					const void* dataPtr = &buffer.data[accessor.byteOffset + bufferView.byteOffset];
@@ -1096,11 +1099,14 @@ namespace vkglTF
 					}
 				}
 
-				// Read sampler output T/R/S values 
+				// Read sampler output T/R/S values
 				{
 					const tinygltf::Accessor& accessor = gltfModel.accessors[samp.output];
 					const tinygltf::BufferView& bufferView = gltfModel.bufferViews[accessor.bufferView];
 					const tinygltf::Buffer& buffer = gltfModel.buffers[bufferView.buffer];
+
+					outAccessorIndicesUsed.push_back(samp.output);
+					outBufferViewIndicesUsed.push_back(accessor.bufferView);
 
 					assert(accessor.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT);
 
@@ -1172,6 +1178,7 @@ namespace vkglTF
 					continue;
 				}
 				channel.samplerIndex = source.sampler;
+				channel.nodeIdx = source.target_node;
 				channel.node = nodeFromIndex(source.target_node);
 				if (!channel.node)
 				{
@@ -1185,7 +1192,7 @@ namespace vkglTF
 		}
 	}
 
-	void Model::loadAnimationStateMachine(const std::string& filename, tinygltf::Model& gltfModel)
+	void Model::loadAnimationStateMachine(const std::string& filename)
 	{
 		std::string fnameCooked = ("res/models_statemachines/" + std::filesystem::path(filename).stem().string() + ".hasm");
 		std::ifstream inFile(fnameCooked);  // .hasm: Hawsoo Animation State Machine
@@ -1565,9 +1572,9 @@ namespace vkglTF
 			for (auto& state : mask.states)
 			{
 				bool foundIndex = false;
-				for (size_t animInd = 0; animInd < gltfModel.animations.size(); animInd++)
+				for (size_t animInd = 0; animInd < animations.size(); animInd++)
 				{
-					auto& anim = gltfModel.animations[animInd];
+					auto& anim = animations[animInd];
 					if (anim.name == state.animationName)
 					{
 						state.animationIndex = (uint32_t)animInd;
@@ -1613,7 +1620,6 @@ namespace vkglTF
 		file.write((char*)&val, sizeof(uint32_t));
 	}
 
-
 	inline void writeIntBinary(std::ofstream& file, int32_t val)
 	{
 		file.write((char*)&val, sizeof(int32_t));
@@ -1624,9 +1630,17 @@ namespace vkglTF
 		file.write((char*)&val, sizeof(bool));
 	}
 
-	inline void writeDoubleBinary(std::ofstream& file, double_t val)
+	inline void writeFloatBinary(std::ofstream& file, float_t val)
 	{
-		file.write((char*)&val, sizeof(double_t));
+		file.write((char*)&val, sizeof(float_t));
+	}
+
+	inline void writeVec4Binary(std::ofstream& file, vec4s val)
+	{
+		writeFloatBinary(file, val.x);
+		writeFloatBinary(file, val.y);
+		writeFloatBinary(file, val.z);
+		writeFloatBinary(file, val.w);
 	}
 
 	inline void writeStringBinary(std::ofstream& file, const std::string& str)
@@ -1634,71 +1648,8 @@ namespace vkglTF
 		writeUintBinary(file, (uint32_t)str.length());
 		file.write(str.c_str(), str.length());
 	}
-
-	inline void writeTGValueBinary(std::ofstream& file, const tinygltf::Value& val);
-
-	inline void writeObjectBinary(std::ofstream& file, const tinygltf::Value::Object& val)
-	{
-		writeUintBinary(file, (uint32_t)val.size());
-		for (auto it = val.begin(); it != val.end(); it++)
-		{
-			writeStringBinary(file, it->first);
-			writeTGValueBinary(file, it->second);
-		}
-	}
-
-	inline void writeExtensionMapBinary(std::ofstream& file, const tinygltf::ExtensionMap& val)
-	{
-		writeObjectBinary(file, val);
-	}
-
-	inline void writeTGValueBinary(std::ofstream& file, const tinygltf::Value& val)
-	{
-		writeUintBinary(file, val.Type());
-		switch (val.Type())
-		{
-			case tinygltf::Type::NULL_TYPE:
-				break;
-
-			case tinygltf::Type::REAL_TYPE:
-				writeDoubleBinary(file, val.Get<double_t>());
-				break;
-
-			case tinygltf::Type::INT_TYPE:
-				writeIntBinary(file, val.Get<int32_t>());
-				break;
-
-			case tinygltf::Type::BOOL_TYPE:
-				writeBoolBinary(file, val.Get<bool>());
-				break;
-
-			case tinygltf::Type::STRING_TYPE:
-				writeStringBinary(file, val.Get<std::string>());
-				break;
-
-			case tinygltf::Type::ARRAY_TYPE:
-			{
-				auto x = val.Get<tinygltf::Value::Array>();
-				writeUintBinary(file, (uint32_t)x.size());
-				for (auto& v : x)
-					writeTGValueBinary(file, v);
-			} break;
-
-			case tinygltf::Type::BINARY_TYPE:
-			{
-				auto x = val.Get<std::vector<uint8_t>>();
-				writeUintBinary(file, (uint32_t)x.size());
-				file.write((char*)x.data(), x.size());
-			} break;
-
-			case tinygltf::Type::OBJECT_TYPE:
-			{
-				writeObjectBinary(file, val.Get<tinygltf::Value::Object>());
-			} break;
-		}
-	}
 	
-	bool writeAnimationsFile(const std::filesystem::path& path, const std::vector<tinygltf::Animation>& anims)
+	bool writeAnimationsFile(const std::filesystem::path& path, const std::vector<vkglTF::Animation>& anims)
 	{
 		if (std::filesystem::exists(path))
 			std::filesystem::remove(path);
@@ -1715,36 +1666,30 @@ namespace vkglTF
 		{
 			writeStringBinary(file, anim.name);
 
-			writeUintBinary(file, (uint32_t)anim.channels.size());
-			for (auto& channel : anim.channels)
-			{
-				writeIntBinary(file, channel.sampler);
-				writeIntBinary(file, channel.target_node);
-				writeStringBinary(file, channel.target_path);
-				writeTGValueBinary(file, channel.extras);
-				writeExtensionMapBinary(file, channel.extensions);
-				writeExtensionMapBinary(file, channel.target_extensions);
-				writeStringBinary(file, channel.extras_json_string);
-				writeStringBinary(file, channel.extensions_json_string);
-				writeStringBinary(file, channel.target_extensions_json_string);
-			}
-
 			writeUintBinary(file, (uint32_t)anim.samplers.size());
 			for (auto& sampler : anim.samplers)
 			{
-				writeIntBinary(file, sampler.input);
-				writeIntBinary(file, sampler.output);
-				writeStringBinary(file, sampler.interpolation);
-				writeTGValueBinary(file, sampler.extras);
-				writeExtensionMapBinary(file, sampler.extensions);
-				writeStringBinary(file, sampler.extras_json_string);
-				writeStringBinary(file, sampler.extensions_json_string);
+				writeIntBinary(file, (int32_t)sampler.interpolation);
+
+				writeUintBinary(file, (uint32_t)sampler.inputs.size());
+				for (auto& input : sampler.inputs)
+					writeFloatBinary(file, input);
+
+				writeUintBinary(file, (uint32_t)sampler.outputsVec4.size());
+				for (auto& ov4 : sampler.outputsVec4)
+					writeVec4Binary(file, ov4);
 			}
 
-			writeTGValueBinary(file, anim.extras);
-			writeExtensionMapBinary(file, anim.extensions);
-			writeStringBinary(file, anim.extras_json_string);
-			writeStringBinary(file, anim.extensions_json_string);
+			writeUintBinary(file, (uint32_t)anim.channels.size());
+			for (auto& channel : anim.channels)
+			{
+				writeIntBinary(file, (int32_t)channel.path);
+				writeIntBinary(file, channel.nodeIdx);
+				writeUintBinary(file, channel.samplerIndex);
+			}
+
+			writeFloatBinary(file, anim.start);
+			writeFloatBinary(file, anim.end);
 		}
 
 		return true;
@@ -1765,9 +1710,17 @@ namespace vkglTF
 		file.read((char*)&out, sizeof(bool));
 	}
 
-	inline void loadDoubleBinary(std::ifstream& file, double_t& out)
+	inline void loadFloatBinary(std::ifstream& file, float_t& out)
 	{
-		file.read((char*)&out, sizeof(double_t));
+		file.read((char*)&out, sizeof(float_t));
+	}
+
+	inline void loadVec4Binary(std::ifstream& file, vec4s& out)
+	{
+		loadFloatBinary(file, out.x);
+		loadFloatBinary(file, out.y);
+		loadFloatBinary(file, out.z);
+		loadFloatBinary(file, out.w);
 	}
 
 	inline void loadStringBinary(std::ifstream& file, std::string& out)
@@ -1780,95 +1733,7 @@ namespace vkglTF
 		out = std::string(cStr.data(), cStr.size());
 	}
 
-	inline void loadTGValueBinary(std::ifstream& file, tinygltf::Value& out);
-
-	inline void loadObjectBinary(std::ifstream& file, tinygltf::Value::Object& out)
-	{
-		uint32_t valSize;
-		loadUintBinary(file, valSize);
-		for (size_t i = 0; i < valSize; i++)
-		{
-			std::string key;
-			loadStringBinary(file, key);
-			tinygltf::Value tgValue;
-			loadTGValueBinary(file, tgValue);			
-			out[key] = tgValue;
-		}
-	}
-
-	inline void loadExtensionMapBinary(std::ifstream& file, tinygltf::ExtensionMap& out)
-	{
-		loadObjectBinary(file, out);
-	}
-
-	inline void loadTGValueBinary(std::ifstream& file, tinygltf::Value& out)
-	{
-		uint32_t valType;
-		loadUintBinary(file, valType);
-		switch (valType)
-		{
-			case tinygltf::Type::NULL_TYPE:
-				break;
-
-			case tinygltf::Type::REAL_TYPE:
-			{
-				double_t val;
-				loadDoubleBinary(file, val);
-				out = tinygltf::Value(val);
-			} break;
-
-			case tinygltf::Type::INT_TYPE:
-			{
-				int32_t val;
-				loadIntBinary(file, val);
-				out = tinygltf::Value(val);
-			} break;
-
-			case tinygltf::Type::BOOL_TYPE:
-			{
-				bool val;
-				loadBoolBinary(file, val);
-				out = tinygltf::Value(val);
-			} break;
-
-			case tinygltf::Type::STRING_TYPE:
-			{
-				std::string val;
-				loadStringBinary(file, val);
-				out = tinygltf::Value(val);
-			} break;
-
-			case tinygltf::Type::ARRAY_TYPE:
-			{
-				uint32_t valLength;
-				loadUintBinary(file, valLength);
-				tinygltf::Value::Array val;
-				val.resize(valLength);
-				for (auto& v : val)
-					loadTGValueBinary(file, v);
-				out = tinygltf::Value(val);
-			} break;
-
-			case tinygltf::Type::BINARY_TYPE:
-			{
-				uint32_t valLength;
-				loadUintBinary(file, valLength);
-				std::vector<uint8_t> val;
-				val.resize(valLength);
-				file.read((char*)val.data(), val.size());
-				out = tinygltf::Value(val.data(), val.size());
-			} break;
-
-			case tinygltf::Type::OBJECT_TYPE:
-			{
-				tinygltf::Value::Object val;
-				loadObjectBinary(file, val);
-				out = tinygltf::Value(val);
-			} break;
-		}
-	}
-
-	bool loadAnimationsFile(const std::filesystem::path& path, std::vector<tinygltf::Animation>& outAnims)
+	bool loadHenemaAnimationsFile(const std::filesystem::path& path, std::vector<vkglTF::Animation>& outAnims)
 	{
 		if (!std::filesystem::exists(path))
 			return false;
@@ -1900,42 +1765,47 @@ namespace vkglTF
 		{
 			loadStringBinary(file, anim.name);
 
-			uint32_t animChannelsSize;
-			loadUintBinary(file, animChannelsSize);
-			anim.channels.resize(animChannelsSize);
-
-			for (auto& channel : anim.channels)
-			{
-				loadIntBinary(file, channel.sampler);
-				loadIntBinary(file, channel.target_node);
-				loadStringBinary(file, channel.target_path);
-				loadTGValueBinary(file, channel.extras);
-				loadExtensionMapBinary(file, channel.extensions);
-				loadExtensionMapBinary(file, channel.target_extensions);
-				loadStringBinary(file, channel.extras_json_string);
-				loadStringBinary(file, channel.extensions_json_string);
-				loadStringBinary(file, channel.target_extensions_json_string);
-			}
-
 			uint32_t animSamplersSize;
 			loadUintBinary(file, animSamplersSize);
 			anim.samplers.resize(animSamplersSize);
 
 			for (auto& sampler : anim.samplers)
 			{
-				loadIntBinary(file, sampler.input);
-				loadIntBinary(file, sampler.output);
-				loadStringBinary(file, sampler.interpolation);
-				loadTGValueBinary(file, sampler.extras);
-				loadExtensionMapBinary(file, sampler.extensions);
-				loadStringBinary(file, sampler.extras_json_string);
-				loadStringBinary(file, sampler.extensions_json_string);
+				int32_t interpolationInt;
+				loadIntBinary(file, interpolationInt);
+				sampler.interpolation = vkglTF::AnimationSampler::InterpolationType(interpolationInt);
+
+				uint32_t samplerInputsSize;
+				loadUintBinary(file, samplerInputsSize);
+				sampler.inputs.resize(samplerInputsSize);
+
+				for (auto& input : sampler.inputs)
+					loadFloatBinary(file, input);
+
+				uint32_t samplerOutputsVec4Size;
+				loadUintBinary(file, samplerOutputsVec4Size);
+				sampler.outputsVec4.resize(samplerOutputsVec4Size);
+
+				for (auto& ov4 : sampler.outputsVec4)
+					loadVec4Binary(file, ov4);
 			}
 
-			loadTGValueBinary(file, anim.extras);
-			loadExtensionMapBinary(file, anim.extensions);
-			loadStringBinary(file, anim.extras_json_string);
-			loadStringBinary(file, anim.extensions_json_string);
+			uint32_t animChannelsSize;
+			loadUintBinary(file, animChannelsSize);
+			anim.channels.resize(animChannelsSize);
+
+			for (auto& channel : anim.channels)
+			{
+				int32_t channelPathInt;
+				loadIntBinary(file, channelPathInt);
+				channel.path = vkglTF::AnimationChannel::PathType(channelPathInt);
+
+				loadIntBinary(file, channel.nodeIdx);
+				loadUintBinary(file, channel.samplerIndex);
+			}
+
+			loadFloatBinary(file, anim.start);
+			loadFloatBinary(file, anim.end);
 		}
 
 		return true;
@@ -1943,6 +1813,8 @@ namespace vkglTF
 
 	bool Model::cookGlTFModel(const std::filesystem::path& path)
 	{
+		if (path.stem().string() == "SlimeGirl")
+			int mesterius = 1;
 		std::filesystem::path cooked3dModelFname = "res/models_cooked/" + path.stem().string() + ".hthrobwoa";
 		std::filesystem::path cookedAnimsFname = "res/models_cooked/" + path.stem().string() + ".henema";
 
@@ -1969,8 +1841,60 @@ namespace vkglTF
 		}
 
 		// Extract animations.
-		std::vector<tinygltf::Animation> anims = gltfModel.animations;
+		std::vector<Animation> anims;
+		std::vector<size_t> accessorIndicesUsed;
+		std::vector<size_t> bufferViewIndicesUsed;
+		{
+			// Load in nodes to get node indices (@COPYPASTA)
+			Model dummyModel;
+			{
+				dummyModel.loaderInfo = {};
+
+				size_t vertexCount = 0;
+				size_t indexCount = 0;
+
+				const tinygltf::Scene& scene = gltfModel.scenes[gltfModel.defaultScene > -1 ? gltfModel.defaultScene : 0];		// TODO: scene handling with no default scene
+
+				// Get vertex and index buffer sizes
+				for (size_t i = 0; i < scene.nodes.size(); i++)
+					dummyModel.getNodeProps(gltfModel.nodes[scene.nodes[i]], gltfModel, vertexCount, indexCount);
+
+				dummyModel.loaderInfo.indexBuffer = new uint32_t[indexCount];
+				dummyModel.loaderInfo.vertexBuffer = new Vertex[vertexCount];
+				dummyModel.loaderInfo.indexCount = indexCount;
+				dummyModel.loaderInfo.vertexCount = vertexCount;
+
+				// Load in vertices and indices
+				for (size_t i = 0; i < scene.nodes.size(); i++)
+				{
+					const tinygltf::Node node = gltfModel.nodes[scene.nodes[i]];
+					dummyModel.loadNode(nullptr, node, scene.nodes[i], gltfModel, dummyModel.loaderInfo, 1.0f);
+				}
+			}
+
+			// Load in gltf model anims.
+			dummyModel.loadAnimationsFromGlTFModel(gltfModel, accessorIndicesUsed, bufferViewIndicesUsed);
+			anims = dummyModel.animations;
+		}
+
+		// Delete animations and their buffer views/accessors.
 		gltfModel.animations.clear();
+		std::sort(
+			accessorIndicesUsed.rbegin(),
+			accessorIndicesUsed.rend()
+		);
+		for (auto& i : accessorIndicesUsed)
+		{
+
+		}
+		std::sort(
+			bufferViewIndicesUsed.rbegin(),
+			bufferViewIndicesUsed.rend()
+		);
+		for (auto& i : bufferViewIndicesUsed)
+		{
+
+		}
 
 		// Write model without animations.
 		bool fileWritten = gltfContext.WriteGltfSceneToFile(&gltfModel, cooked3dModelFname.string(), true, true, false, true);
@@ -2013,6 +1937,9 @@ namespace vkglTF
 
 		std::string error;
 		std::string warning;
+
+		if (std::filesystem::path(filenameHthrobwoa).stem().string() == "SlimeGirl")
+			int32_t ian = 69420;
 
 		PERF_TSTART(8);
 		if (!gltfContext.LoadBinaryFromFile(&gltfModel, &error, &warning, filenameHthrobwoa.c_str()))
@@ -2069,15 +1996,18 @@ namespace vkglTF
 
 		// Load in animations
 		PERF_TSTART(5);
-		if (!loadAnimationsFile(filenameHenema, gltfModel.animations))
+		if (loadHenemaAnimationsFile(filenameHenema, animations))
+			for (auto& animation : animations)
+				for (auto& channel : animation.channels)
+					channel.node = nodeFromIndex(channel.nodeIdx);
+		else
 		{
 			std::cerr << "Could not load henema file: " << filenameHenema << std::endl;
 			return;
 		}
-		if (gltfModel.animations.size() > 0)
+		if (animations.size() > 0)
 		{
-			loadAnimations(gltfModel);
-			loadAnimationStateMachine(filenameHthrobwoa, gltfModel);
+			loadAnimationStateMachine(filenameHthrobwoa);
 		}
 		loadSkins(gltfModel);
 

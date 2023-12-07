@@ -166,7 +166,8 @@ namespace vkglTF
 	{
 		enum PathType { TRANSLATION, ROTATION, SCALE };
 		PathType path;
-		Node* node;
+		int32_t  nodeIdx;  // This value gets stored in the binary repr, and needs to use it to bake ptr node.
+		Node*    node;
 		uint32_t samplerIndex;
 	};
 
@@ -354,8 +355,8 @@ namespace vkglTF
 		VkSamplerMipmapMode getVkMipmapModeMode(int32_t filterMode);
 		void loadTextureSamplers(tinygltf::Model& gltfModel);
 		void loadMaterials(tinygltf::Model& gltfModel);    // @NOTE: someday it might be beneficial to have some kind of material override for any model.  -Timo
-		void loadAnimations(tinygltf::Model& gltfModel);
-		void loadAnimationStateMachine(const std::string& filename, tinygltf::Model& gltfModel);
+		void loadAnimationsFromGlTFModel(tinygltf::Model& gltfModel, std::vector<size_t>& outAccessorIndicesUsed, std::vector<size_t>& outBufferViewIndicesUsed);
+		void loadAnimationStateMachine(const std::string& filename);
 	public:
 		static bool checkGlTFCookNeeded(const std::filesystem::path& path);
 		static bool cookGlTFModel(const std::filesystem::path& path);
