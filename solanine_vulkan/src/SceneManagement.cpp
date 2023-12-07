@@ -21,22 +21,27 @@
 
 
 // @PALETTE: where to add serialized names for the entities
-const std::vector<std::string> ENTITY_TYPE_NAMES = {
-    ":character",
-    ":notetaker",
-    ":voxelfield",
-    ":scannableitem",
-    ":harvestableitem",
-    ":gondolasystem",
-    ":EDITORtextureviewer",
+struct PaletteElem
+{
+    std::string name;
+    bool showInEntityCreation;
 };
-const std::string SimulationCharacter::TYPE_NAME = ENTITY_TYPE_NAMES[0];
-const std::string NoteTaker::TYPE_NAME           = ENTITY_TYPE_NAMES[1];
-const std::string VoxelField::TYPE_NAME          = ENTITY_TYPE_NAMES[2];
-const std::string ScannableItem::TYPE_NAME       = ENTITY_TYPE_NAMES[3];
-const std::string HarvestableItem::TYPE_NAME     = ENTITY_TYPE_NAMES[4];
-const std::string GondolaSystem::TYPE_NAME       = ENTITY_TYPE_NAMES[5];
-const std::string EDITORTextureViewer::TYPE_NAME = ENTITY_TYPE_NAMES[6];
+const std::vector<PaletteElem> PALETTE_ELEMENTS = {
+    { ":character", false },
+    { ":notetaker", true },
+    { ":voxelfield", true },
+    { ":scannableitem", true },
+    { ":harvestableitem", true },
+    { ":gondolasystem", true },
+    { ":EDITORtextureviewer", true },
+};
+const std::string SimulationCharacter::TYPE_NAME = PALETTE_ELEMENTS[0].name;
+const std::string NoteTaker::TYPE_NAME           = PALETTE_ELEMENTS[1].name;
+const std::string VoxelField::TYPE_NAME          = PALETTE_ELEMENTS[2].name;
+const std::string ScannableItem::TYPE_NAME       = PALETTE_ELEMENTS[3].name;
+const std::string HarvestableItem::TYPE_NAME     = PALETTE_ELEMENTS[4].name;
+const std::string GondolaSystem::TYPE_NAME       = PALETTE_ELEMENTS[5].name;
+const std::string EDITORTextureViewer::TYPE_NAME = PALETTE_ELEMENTS[6].name;
 
 
 namespace scene
@@ -78,7 +83,11 @@ namespace scene
 
     std::vector<std::string> getListOfEntityTypes()
     {
-        return ENTITY_TYPE_NAMES;
+        std::vector<std::string> names;
+        for (auto& elem : PALETTE_ELEMENTS)
+            if (elem.showInEntityCreation)
+                names.push_back(elem.name);
+        return names;
     }
 
     Entity* spinupNewObject(const std::string& objectName, DataSerialized* ds)
