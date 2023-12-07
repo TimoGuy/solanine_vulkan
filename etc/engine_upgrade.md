@@ -126,6 +126,7 @@
             - [x] Bc it's too much work, leave the actual buffer alone. (This loads fairly quickly too, bc it's just one big chunk of bytes.)
             > After these things, the animations get loaded in with the model separately over the course of 232.779ms (slimegirl model) where before it was almost 2000ms! Since we didn't actually chop down the buffer, after cooking the model down, the info in the buffer that contained the animated information was left still. Because of this, it takes 47.638ms to load in the buffer as opposed to the eye-watering 24.37ms
             > Anywho, huge improvement! I think I can sleep well now!
+    > Now, the game loads up in about 5000ms. Not instant, but it feels like it now that the SlimeGirl model loads up super quickly.
 
 - [ ] Better level editor.
     - [ ] Update collision box texture for voxel fields.
