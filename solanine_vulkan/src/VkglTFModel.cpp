@@ -1845,7 +1845,7 @@ namespace vkglTF
 		std::vector<size_t> accessorIndicesUsed;
 		std::vector<size_t> bufferViewIndicesUsed;
 		{
-			// Load in nodes to get node indices (@COPYPASTA)
+			// Load in nodes to get searchable node indices (@COPYPASTA) (@HACK)
 			Model dummyModel;
 			{
 				dummyModel.loaderInfo = {};
@@ -1879,21 +1879,72 @@ namespace vkglTF
 
 		// Delete animations and their buffer views/accessors.
 		gltfModel.animations.clear();
-		std::sort(
-			accessorIndicesUsed.rbegin(),
-			accessorIndicesUsed.rend()
-		);
+		{
+			// Sort desc and get rid of duplicates.
+			// https://stackoverflow.com/questions/1041620/whats-the-most-efficient-way-to-erase-duplicates-and-sort-a-vector
+			std::set<size_t> s(accessorIndicesUsed.begin(), accessorIndicesUsed.end());
+			accessorIndicesUsed.assign(s.rbegin(), s.rend());
+		}
 		for (auto& i : accessorIndicesUsed)
 		{
+			gltfModel.accessors.erase(gltfModel.accessors.begin() + i);
 
+			// Decrement anything using an accessor idx greater than what was just deleted.
+			for (auto& mesh : gltfModel.meshes)
+			for (auto& primitive : mesh.primitives)
+			{
+				assert(primitive.indices != i);
+				if (primitive.indices > i)
+					primitive.indices--;
+				
+				for (auto& attribute : primitive.attributes)
+				{
+					assert(attribute.second != i);
+					if (attribute.second > i)
+						attribute.second--;
+				}
+
+				for (auto& target : primitive.targets)
+				for (auto& attribute : target)
+				{
+					assert(attribute.second != i);
+					if (attribute.second > i)
+						attribute.second--;
+				}
+			}
+
+			for (auto& skin : gltfModel.skins)
+			{
+				assert(skin.inverseBindMatrices != i);
+				if (skin.inverseBindMatrices > i)
+					skin.inverseBindMatrices--;
+			}
 		}
-		std::sort(
-			bufferViewIndicesUsed.rbegin(),
-			bufferViewIndicesUsed.rend()
-		);
+		{
+			// Sort desc and get rid of duplicates.
+			std::set<size_t> s(bufferViewIndicesUsed.begin(), bufferViewIndicesUsed.end());
+			bufferViewIndicesUsed.assign(s.rbegin(), s.rend());
+		}
 		for (auto& i : bufferViewIndicesUsed)
 		{
+			gltfModel.bufferViews.erase(gltfModel.bufferViews.begin() + i);
 
+			// Decrement anything using a bufferview idx greater than what was just deleted.
+			for (auto& accessor : gltfModel.accessors)
+			{
+				assert(accessor.bufferView != i);
+				if (accessor.bufferView > i)
+					accessor.bufferView--;
+			}
+
+			for (auto& image : gltfModel.images)
+			{
+				assert(image.bufferView != i);
+				if (image.bufferView > i)
+					image.bufferView--;
+			}
+
+			// @NOTE: may need to implement Draco bufferview decrementation if you ever use that extension!  -Timo 2023/12/7
 		}
 
 		// Write model without animations.

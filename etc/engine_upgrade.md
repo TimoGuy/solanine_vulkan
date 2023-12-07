@@ -113,17 +113,19 @@
 - [x] Rename "Character" to something else
     - [x] Then, import all of the jolt physics stuff into pch! That way "JPH::Character" doesn't need a differentiation!
 
-- [ ] I want to be able to load up the game near instantly!
-    - [ ] Slimegirl.glb's animations take 1.8sec to parse (much better than the former 8sec but seriously sucky).
+- [x] I want to be able to load up the game near instantly!
+    - [x] Slimegirl.glb's animations take 1.8sec to parse (much better than the former 8sec but seriously sucky).
         > Specifically, reading in the file into json takes 1892.37ms with the animations vs 24.37ms without the animations.
         - [x] Create animation cooker, that takes a .glb file and prints out an animation file that contains all the actions and removes all the animations it had formerly.
-            - [ ] Read file from tiny_gltf and print out animation data into file.
+            - [x] Read file from tiny_gltf and print out animation data into file.
             - [x] Rewrite data from tiny_gltf load (after doing `.clear()` to animations) into another .glb file in `models_cooked`
         - [x] Rewrite the glb file without its animations and put into `models_cooked` with the just-animation file.
-        - [ ] Okay, found out that a lot of this information is stored in the bufferview, so new strategy.
+        - [x] Okay, found out that a lot of this information is stored in the bufferview, so new strategy.
             - [x] Store the binary data of the vkgltf animations which copy from the bufferviews and accessors.
-            - [ ] Delete the bufferview and accessor entries that were used during this process.
+            - [x] Delete the bufferview and accessor entries that were used during this process.
             - [x] Bc it's too much work, leave the actual buffer alone. (This loads fairly quickly too, bc it's just one big chunk of bytes.)
+            > After these things, the animations get loaded in with the model separately over the course of 232.779ms (slimegirl model) where before it was almost 2000ms! Since we didn't actually chop down the buffer, after cooking the model down, the info in the buffer that contained the animated information was left still. Because of this, it takes 47.638ms to load in the buffer as opposed to the eye-watering 24.37ms
+            > Anywho, huge improvement! I think I can sleep well now!
 
 - [ ] Better level editor.
     - [ ] Update collision box texture for voxel fields.
