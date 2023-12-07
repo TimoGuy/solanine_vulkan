@@ -113,6 +113,14 @@
 - [x] Rename "Character" to something else
     - [x] Then, import all of the jolt physics stuff into pch! That way "JPH::Character" doesn't need a differentiation!
 
+- [ ] I want to be able to load up the game near instantly!
+    - [ ] Slimegirl.glb's animations take 1.8sec to parse (much better than the former 8sec but seriously sucky).
+        > Specifically, reading in the file into json takes 1892.37ms with the animations vs 24.37ms without the animations.
+        - [ ] Create animation cooker, that takes a .glb file and prints out an animation file that contains all the actions and removes all the animations it had formerly.
+            - [ ] Read file from tiny_gltf and print out animation data into file.
+            - [ ] Rewrite data from tiny_gltf load (after doing `.clear()` to animations) into another .glb file in `models_cooked`
+        - [ ] Rewrite the glb file without its animations and put into `models_cooked` with the just-animation file.
+
 - [ ] Better level editor.
     - [ ] Update collision box texture for voxel fields.
     - [ ] No physics simulations when the level is in editing mode.
@@ -130,14 +138,6 @@
         - [ ] When pressing F1 (or whatever key will be for starting/stopping play mode), pop up a menu that has a list of the currently available test spawn points. Click on one and the player will be created and spawned at that position.
             - [ ] Press a certain key to reset the player to the position.
         - [x] Disable player being able to be created in palette.
-
-- [ ] I want to be able to load up the game near instantly!
-    - [ ] Slimegirl.glb's animations take 1.8sec to parse (much better than the former 8sec but seriously sucky).
-        > Specifically, reading in the file into json takes 1892.37ms with the animations vs 24.37ms without the animations.
-        - [ ] Create animation cooker, that takes a .glb file and prints out an animation file that contains all the actions and removes all the animations it had formerly.
-            - [ ] Read file from tiny_gltf and print out animation data into file.
-            - [ ] Rewrite data from tiny_gltf load (after doing `.clear()` to animations) into another .glb file in `models_cooked`
-        - [ ] Rewrite the glb file without its animations and put into `models_cooked` with the just-animation file.
 
 - [ ] UI Editor
 
