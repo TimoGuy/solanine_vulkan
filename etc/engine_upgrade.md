@@ -110,8 +110,8 @@
     - [x] Check to see if cglm types are supported
         - [ ] It looks like it's easy to implement, if you just copy the implementation of glm.
 
-- [ ] Rename "Character" to something else
-    - [ ] Then, import all of the jolt physics stuff into pch! That way "JPH::Character" doesn't need a differentiation!
+- [x] Rename "Character" to something else
+    - [x] Then, import all of the jolt physics stuff into pch! That way "JPH::Character" doesn't need a differentiation!
 
 - [ ] UI Editor
 
