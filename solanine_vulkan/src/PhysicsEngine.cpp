@@ -11,29 +11,10 @@
 #include "Camera.h"
 #endif
 
-#include <Jolt/Jolt.h>
-#include <Jolt/RegisterTypes.h>
-#include <Jolt/Core/Factory.h>
-#include <Jolt/Core/TempAllocator.h>
-#include <Jolt/Core/StreamWrapper.h>
-#include <Jolt/Core/JobSystemThreadPool.h>
-#include <Jolt/Physics/PhysicsSettings.h>
-#include <Jolt/Physics/PhysicsSystem.h>
-#include <Jolt/Physics/PhysicsScene.h>
-#include <Jolt/Physics/Collision/RayCast.h>
-#include <Jolt/Physics/Collision/CastResult.h>
-#include <Jolt/Physics/Collision/Shape/BoxShape.h>
-#include <Jolt/Physics/Collision/Shape/SphereShape.h>  // @TODO: don't need this.
-#include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
-#include <Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h>
-#include <Jolt/Physics/Collision/Shape/StaticCompoundShape.h>
-#include <Jolt/Physics/Character/Character.h>
-#include <Jolt/Physics/Body/BodyCreationSettings.h>
-#include <Jolt/Physics/Body/BodyActivationListener.h>
 #include "PhysUtil.h"
 #include "InputManager.h"
 #include "EntityManager.h"
-#include "Character.h"
+#include "SimulationCharacter.h"
 #include "GlobalState.h"
 
 JPH_SUPPRESS_WARNINGS
@@ -613,8 +594,8 @@ namespace physengine
                 case UserDataMeaning::IS_CHARACTER:
                 {
                     uint32_t id = thisBody.GetID().GetIndex();
-                    ::Character* entityAsChar;
-                    if (entityAsChar = dynamic_cast<::Character*>(entityManager->getEntityViaGUID(bodyIdToEntityGuidMap[id])))
+                    SimulationCharacter* entityAsChar;
+                    if (entityAsChar = dynamic_cast<SimulationCharacter*>(entityManager->getEntityViaGUID(bodyIdToEntityGuidMap[id])))
                         entityAsChar->reportPhysicsContact(otherBody, manifold, &ioSettings);
                 } return;
             }

@@ -4,7 +4,7 @@
 class EntityManager;
 class RenderObjectManager;
 struct Camera;
-struct Character_XData;
+struct SimulationCharacter_XData;
 namespace JPH
 {
     class Body;
@@ -13,14 +13,14 @@ namespace JPH
 }
 
 
-class Character : public Entity  // @TODO: rename this `GameCharacter` or something like that. (I for some reason don't like the "game" word used)
+class SimulationCharacter : public Entity
 {
 public:
     static const std::string TYPE_NAME;
     std::string getTypeName() { return TYPE_NAME; };
 
-    Character(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSerialized* ds);
-    ~Character();
+    SimulationCharacter(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSerialized* ds);
+    ~SimulationCharacter();
 
     void simulationUpdate(float_t simDeltaTime) override;
     void update(float_t deltaTime);
@@ -36,5 +36,5 @@ public:
     void reportPhysicsContact(const JPH::Body& otherBody, const JPH::ContactManifold& manifold, JPH::ContactSettings* ioSettings);
 
 private:
-    Character_XData* _data;
+    SimulationCharacter_XData* _data;
 };

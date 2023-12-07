@@ -1,10 +1,5 @@
 #pragma once
 
-#include <Jolt/Jolt.h>
-#include <Jolt/Physics/Body/BodyID.h>
-#include <Jolt/Math/Mat44.h>
-#include <Jolt/Math/Vec3.h>
-#include <Jolt/Math/MathTypes.h>
 class EntityManager;
 struct DeletionQueue;
 namespace JPH { struct Character; }

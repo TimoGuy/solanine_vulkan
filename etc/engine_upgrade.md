@@ -61,7 +61,7 @@
     - [x] Upgrade hotswapper
         - [x] Allow dependency trees. Allow pngs to be gen'd with the halfway cooker, then trigger another check routine to see if any pngs got updated that are reliant upon the hrecipe's.
             > THIS WAS A FREAKTON OF WORK THAT I WILL NOT BE LISTING HERE!
-    - [ ] New material system.
+    - [x] New material system.
         - [x] Connect the hotswap reload to hotswapresources.h/.cpp
         - [x] Load in .hderriere and .humba files into a data structure.
         - [x] Load in pipelines from .humba files.
@@ -104,11 +104,11 @@
             - [x] ~~Show "would you like to save your changes?" when making a material copy and when opening a different material to edit.~~
             - [x] Prevent changing or copying materials if the material params are dirty.
 
-- [ ] "Reflection" imgui panel.
+- [f] "Reflection" imgui panel.
     - [ ] Install https://github.com/Csabix/imgui/tree/master/auto
     - [ ] Setup the struct, then run `ImGui::auto(...)` on the struct!
-    - [ ] Check to see if cglm types are supported
-    - [ ] Add support to them if not!
+    - [x] Check to see if cglm types are supported
+        - [ ] It looks like it's easy to implement, if you just copy the implementation of glm.
 
 - [ ] Rename "Character" to something else
     - [ ] Then, import all of the jolt physics stuff into pch! That way "JPH::Character" doesn't need a differentiation!

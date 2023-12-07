@@ -2,7 +2,6 @@
 
 #include "GondolaSystem.h"
 
-#include <Jolt/Jolt.h>
 #include "EntityManager.h"
 #include "RenderObject.h"
 #include "PhysicsEngine.h"

@@ -1,10 +1,7 @@
 #include "pch.h"
 
-#include "Character.h"
+#include "SimulationCharacter.h"
 
-#include <Jolt/Jolt.h>
-#include <Jolt/Physics/Body/Body.h>
-#include <Jolt/Physics/Collision/ContactListener.h>
 #include "PhysUtil.h"
 #include "PhysicsEngine.h"
 #include "VkglTFModel.h"
@@ -29,7 +26,7 @@
 std::string CHARACTER_TYPE_PLAYER = "PLAYER";
 std::string CHARACTER_TYPE_NPC = "NPC";
 
-struct Character_XData
+struct SimulationCharacter_XData
 {
     std::string characterType = CHARACTER_TYPE_PLAYER;
 
@@ -305,7 +302,7 @@ struct Character_XData
     std::vector<size_t> scannableItemsIdsToSpawnAfterDeath;
 };
 
-void processOutOfHealth(EntityManager* em, Entity* e, Character_XData* d)
+void processOutOfHealth(EntityManager* em, Entity* e, SimulationCharacter_XData* d)
 {
     // Drop off items and then destroy self.
     for (size_t id : d->harvestableItemsIdsToSpawnAfterDeath)
@@ -331,7 +328,7 @@ void processOutOfHealth(EntityManager* em, Entity* e, Character_XData* d)
     em->destroyEntity(e);
 }
 
-void pushPlayerNotification(const std::string& message, Character_XData* d)
+void pushPlayerNotification(const std::string& message, SimulationCharacter_XData* d)
 {
     AudioEngine::getInstance().playSound("res/sfx/wip_bonk.ogg");
     d->notification.showMessageTimer = d->notification.showMessageTime;
@@ -348,7 +345,7 @@ void pushPlayerNotification(const std::string& message, Character_XData* d)
         textmesh::regenerateTextMeshMesh(d->notification.message, message);
 }
 
-std::string getUIMaterializeItemText(Character_XData* d)
+std::string getUIMaterializeItemText(SimulationCharacter_XData* d)
 {
     if (d->materializedItem == nullptr)
     {
@@ -372,12 +369,12 @@ std::string getUIMaterializeItemText(Character_XData* d)
     }
 }
 
-std::string getStaminaText(Character_XData* d)
+std::string getStaminaText(SimulationCharacter_XData* d)
 {
     return "Stamina: " + std::to_string((int32_t)std::round(d->staminaData.currentStamina)) + "/" + std::to_string(d->staminaData.maxStamina);
 }
 
-void changeStamina(Character_XData* d, float_t amount, bool allowDepletionOverflow)
+void changeStamina(SimulationCharacter_XData* d, float_t amount, bool allowDepletionOverflow)
 {
     d->staminaData.currentStamina += amount;
     if (allowDepletionOverflow && d->staminaData.currentStamina < 0.0f)
@@ -405,7 +402,7 @@ void changeStamina(Character_XData* d, float_t amount, bool allowDepletionOverfl
     textmesh::regenerateTextMeshMesh(d->uiStamina, getStaminaText(d));
 }
 
-void processAttack(Character_XData* d)
+void processAttack(SimulationCharacter_XData* d)
 {
     if (d->materializedItem == nullptr)
     {
@@ -477,7 +474,7 @@ void processAttack(Character_XData* d)
     textmesh::regenerateTextMeshMesh(d->uiMaterializeItem, getUIMaterializeItemText(d));
 }
 
-void processRelease(Character_XData* d)
+void processRelease(SimulationCharacter_XData* d)
 {
     if (d->materializedItem == nullptr)
     {
@@ -505,7 +502,7 @@ void parseVec3CommaSeparated(const std::string& vec3Str, vec3& outVec3)
     outVec3[2] = std::stof(strCopy);
 }
 
-void loadDataFromLine(Character_XData::AttackWaza& newWaza, const std::string& command, const std::vector<std::string>& params)
+void loadDataFromLine(SimulationCharacter_XData::AttackWaza& newWaza, const std::string& command, const std::vector<std::string>& params)
 {
     if (command == "entrance")
     {
@@ -549,14 +546,14 @@ void loadDataFromLine(Character_XData::AttackWaza& newWaza, const std::string& c
     }
     else if (command == "velocity_decay")
     {
-        Character_XData::AttackWaza::VelocityDecaySetting newVelocityDecaySetting;
+        SimulationCharacter_XData::AttackWaza::VelocityDecaySetting newVelocityDecaySetting;
         newVelocityDecaySetting.velocityDecay = std::stof(params[0]);
         newVelocityDecaySetting.executeAtTime = std::stoi(params[1]);
         newWaza.velocityDecaySettings.push_back(newVelocityDecaySetting);
     }
     else if (command == "velocity")
     {
-        Character_XData::AttackWaza::VelocitySetting newVelocitySetting;
+        SimulationCharacter_XData::AttackWaza::VelocitySetting newVelocitySetting;
         vec3 velo;
         parseVec3CommaSeparated(params[0], velo);
         glm_vec3_copy(velo, newVelocitySetting.velocity);
@@ -565,7 +562,7 @@ void loadDataFromLine(Character_XData::AttackWaza& newWaza, const std::string& c
     }
     else if (command == "hitscan")
     {
-        Character_XData::AttackWaza::HitscanFlowNode newHitscanNode;
+        SimulationCharacter_XData::AttackWaza::HitscanFlowNode newHitscanNode;
         vec3 end1, end2;
         parseVec3CommaSeparated(params[0], end1);
         parseVec3CommaSeparated(params[1], end2);
@@ -603,7 +600,7 @@ void loadDataFromLine(Character_XData::AttackWaza& newWaza, const std::string& c
     }
     else if (command == "chain")
     {
-        Character_XData::AttackWaza::Chain newChain;
+        SimulationCharacter_XData::AttackWaza::Chain newChain;
         newChain.nextWazaName = params[0];
         newChain.inputTimeWindowStart = std::stoi(params[1]);
         newChain.inputTimeWindowEnd = std::stoi(params[2]);
@@ -634,12 +631,12 @@ void loadDataFromLine(Character_XData::AttackWaza& newWaza, const std::string& c
     }
 }
 
-Character_XData::AttackWaza* getWazaPtrFromName(std::vector<Character_XData::AttackWaza>& wazas, const std::string& wazaName)
+SimulationCharacter_XData::AttackWaza* getWazaPtrFromName(std::vector<SimulationCharacter_XData::AttackWaza>& wazas, const std::string& wazaName)
 {
     if (wazaName == "NULL")  // Special case.
         return nullptr;
 
-    for (Character_XData::AttackWaza& waza : wazas)
+    for (SimulationCharacter_XData::AttackWaza& waza : wazas)
     {
         if (waza.wazaName == wazaName)
             return &waza;
@@ -650,7 +647,7 @@ Character_XData::AttackWaza* getWazaPtrFromName(std::vector<Character_XData::Att
     return nullptr;
 }
 
-Character_XData::AttackWaza::WazaInput getInputEnumFromName(const std::string& inputName)
+SimulationCharacter_XData::AttackWaza::WazaInput getInputEnumFromName(const std::string& inputName)
 {
     int32_t enumValue = -1;
     int32_t x = -1;
@@ -674,13 +671,13 @@ Character_XData::AttackWaza::WazaInput getInputEnumFromName(const std::string& i
     {
         std::cerr << "[WAZA LOADING]" << std::endl
             << "ERROR: Waza input \"" << inputName << "\" was not found (`getInputEnumFromName`)." << std::endl;
-        return Character_XData::AttackWaza::WazaInput(0);
+        return SimulationCharacter_XData::AttackWaza::WazaInput(0);
     }
 
-    return Character_XData::AttackWaza::WazaInput(enumValue);
+    return SimulationCharacter_XData::AttackWaza::WazaInput(enumValue);
 }
 
-void initWazaSetFromFile(std::vector<Character_XData::AttackWaza>& wazas, const std::string& fname)
+void initWazaSetFromFile(std::vector<SimulationCharacter_XData::AttackWaza>& wazas, const std::string& fname)
 {
     std::ifstream wazaFile(fname);
     if (!wazaFile.is_open())
@@ -693,7 +690,7 @@ void initWazaSetFromFile(std::vector<Character_XData::AttackWaza>& wazas, const 
     //
     // Parse the commands
     //
-    Character_XData::AttackWaza newWaza;
+    SimulationCharacter_XData::AttackWaza newWaza;
     std::string line;
     for (size_t lineNum = 1; std::getline(wazaFile, line); lineNum++)  // @COPYPASTA with SceneManagement.cpp
     {
@@ -716,7 +713,7 @@ void initWazaSetFromFile(std::vector<Character_XData::AttackWaza>& wazas, const 
             if (!newWaza.wazaName.empty())
             {
                 wazas.push_back(newWaza);
-                newWaza = Character_XData::AttackWaza();
+                newWaza = SimulationCharacter_XData::AttackWaza();
             }
         }
 
@@ -774,13 +771,13 @@ void initWazaSetFromFile(std::vector<Character_XData::AttackWaza>& wazas, const 
     if (!newWaza.wazaName.empty())
     {
         wazas.push_back(newWaza);
-        newWaza = Character_XData::AttackWaza();
+        newWaza = SimulationCharacter_XData::AttackWaza();
     }
 
     //
     // Bake pointers into string references.
     //
-    for (Character_XData::AttackWaza& waza : wazas)
+    for (SimulationCharacter_XData::AttackWaza& waza : wazas)
     {
         if (waza.wazaName == "NULL")
         {
@@ -792,7 +789,7 @@ void initWazaSetFromFile(std::vector<Character_XData::AttackWaza>& wazas, const 
         if (waza.entranceInputParams.inputName != "NULL")
             waza.entranceInputParams.input = getInputEnumFromName(waza.entranceInputParams.inputName);
 
-        for (Character_XData::AttackWaza::Chain& chain : waza.chains)
+        for (SimulationCharacter_XData::AttackWaza::Chain& chain : waza.chains)
         {
             chain.nextWazaPtr = getWazaPtrFromName(wazas, chain.nextWazaName);
             chain.input = getInputEnumFromName(chain.inputName);
@@ -803,9 +800,9 @@ void initWazaSetFromFile(std::vector<Character_XData::AttackWaza>& wazas, const 
 }
 
 // @TODO: delete this once not needed. Well, it's not needed rn bc it's commented out, but once the knowledge isn't needed anymore, delete this.  -Timo 2023/09/19
-// void processWeaponAttackInput(Character_XData* d)
+// void processWeaponAttackInput(SimulationCharacter_XData* d)
 // {
-//     Character_XData::AttackWaza* nextWaza = nullptr;
+//     SimulationCharacter_XData::AttackWaza* nextWaza = nullptr;
 //     bool attackFailed = false;
 //     int16_t staminaCost;
 
@@ -875,22 +872,22 @@ void initWazaSetFromFile(std::vector<Character_XData::AttackWaza>& wazas, const 
 //     }
 // }
 
-//////////////// Character_XData::AttackWaza::WazaInputType processInputForKey(Character_XData::PressedState currentInput, uint8_t ticksToHold, uint8_t ticksToClearState, uint8_t invalidTicksToClearState, Character_XData::GestureInputState& inoutIS)
+//////////////// SimulationCharacter_XData::AttackWaza::WazaInputType processInputForKey(SimulationCharacter_XData::PressedState currentInput, uint8_t ticksToHold, uint8_t ticksToClearState, uint8_t invalidTicksToClearState, SimulationCharacter_XData::GestureInputState& inoutIS)
 //////////////// {
-////////////////     Character_XData::AttackWaza::WazaInputType wit = Character_XData::AttackWaza::WazaInputType::NONE;
+////////////////     SimulationCharacter_XData::AttackWaza::WazaInputType wit = SimulationCharacter_XData::AttackWaza::WazaInputType::NONE;
 //////////////// 
 ////////////////     // Increment ticks.
 ////////////////     switch (currentInput)
 ////////////////     {
-////////////////         case Character_XData::PressedState::PRESSED:
+////////////////         case SimulationCharacter_XData::PressedState::PRESSED:
 ////////////////             inoutIS.numPressTicks++;
 ////////////////             break;
 //////////////// 
-////////////////         case Character_XData::PressedState::RELEASED:
+////////////////         case SimulationCharacter_XData::PressedState::RELEASED:
 ////////////////             inoutIS.numReleaseTicks++;
 ////////////////             break;
 //////////////// 
-////////////////         case Character_XData::PressedState::INVALID:
+////////////////         case SimulationCharacter_XData::PressedState::INVALID:
 ////////////////             inoutIS.numInvalidTicks++;
 ////////////////             break;
 ////////////////     }
@@ -908,32 +905,32 @@ void initWazaSetFromFile(std::vector<Character_XData::AttackWaza>& wazas, const 
 ////////////////         inoutIS.numInvalidTicks = 0;
 ////////////////         inoutIS.completedPress = false;
 ////////////////     }
-////////////////     else if (currentInput != Character_XData::PressedState::INVALID)
+////////////////     else if (currentInput != SimulationCharacter_XData::PressedState::INVALID)
 ////////////////     {
-////////////////         if (currentInput == Character_XData::PressedState::RELEASED && inoutIS.numPressTicks > 0 && inoutIS.numPressTicks <= ticksToHold)
+////////////////         if (currentInput == SimulationCharacter_XData::PressedState::RELEASED && inoutIS.numPressTicks > 0 && inoutIS.numPressTicks <= ticksToHold)
 ////////////////         {
 ////////////////             // `press` was executed. (This is really a click.)
 ////////////////             if (inoutIS.completedPress)
-////////////////                 wit = Character_XData::AttackWaza::WazaInputType::DOUBLECLICK;
+////////////////                 wit = SimulationCharacter_XData::AttackWaza::WazaInputType::DOUBLECLICK;
 ////////////////             else
 ////////////////             {
 ////////////////                 inoutIS.completedPress = true;
-////////////////                 wit = Character_XData::AttackWaza::WazaInputType::PRESS;
+////////////////                 wit = SimulationCharacter_XData::AttackWaza::WazaInputType::PRESS;
 ////////////////             }
 ////////////////             inoutIS.numPressTicks = 0;
 ////////////////         }
-////////////////         else if (currentInput == Character_XData::PressedState::PRESSED && inoutIS.numPressTicks == ticksToHold)
+////////////////         else if (currentInput == SimulationCharacter_XData::PressedState::PRESSED && inoutIS.numPressTicks == ticksToHold)
 ////////////////         {
 ////////////////             // `hold` was executed.
 ////////////////             if (inoutIS.completedPress)
-////////////////                 wit = Character_XData::AttackWaza::WazaInputType::DOUBLEHOLD;
+////////////////                 wit = SimulationCharacter_XData::AttackWaza::WazaInputType::DOUBLEHOLD;
 ////////////////             else
-////////////////                 wit = Character_XData::AttackWaza::WazaInputType::HOLD;
+////////////////                 wit = SimulationCharacter_XData::AttackWaza::WazaInputType::HOLD;
 ////////////////         }
-////////////////         else if (currentInput == Character_XData::PressedState::RELEASED && inoutIS.numPressTicks > ticksToHold)
+////////////////         else if (currentInput == SimulationCharacter_XData::PressedState::RELEASED && inoutIS.numPressTicks > ticksToHold)
 ////////////////         {
 ////////////////             // `release` was executed.
-////////////////             wit = Character_XData::AttackWaza::WazaInputType::RELEASE;
+////////////////             wit = SimulationCharacter_XData::AttackWaza::WazaInputType::RELEASE;
 ////////////////             inoutIS.numPressTicks = 0;
 ////////////////         }
 ////////////////     }
@@ -941,17 +938,17 @@ void initWazaSetFromFile(std::vector<Character_XData::AttackWaza>& wazas, const 
 ////////////////     // Clear ticks.
 ////////////////     switch (currentInput)
 ////////////////     {
-////////////////         case Character_XData::PressedState::PRESSED:
+////////////////         case SimulationCharacter_XData::PressedState::PRESSED:
 ////////////////             inoutIS.numReleaseTicks = 0;
 ////////////////             inoutIS.numInvalidTicks = 0;
 ////////////////             break;
 //////////////// 
-////////////////         case Character_XData::PressedState::RELEASED:
+////////////////         case SimulationCharacter_XData::PressedState::RELEASED:
 ////////////////             inoutIS.numPressTicks = 0;
 ////////////////             inoutIS.numInvalidTicks = 0;
 ////////////////             break;
 //////////////// 
-////////////////         case Character_XData::PressedState::INVALID:
+////////////////         case SimulationCharacter_XData::PressedState::INVALID:
 ////////////////             // Do nothing.
 ////////////////             break;
 ////////////////     }
@@ -959,31 +956,31 @@ void initWazaSetFromFile(std::vector<Character_XData::AttackWaza>& wazas, const 
 ////////////////     return wit;
 //////////////// }
 
-inline Character_XData::PressedState pressedStateSingle(const bool& isPressed)
+inline SimulationCharacter_XData::PressedState pressedStateSingle(const bool& isPressed)
 {
-    return isPressed ? Character_XData::PressedState::PRESSED : Character_XData::PressedState::RELEASED;
+    return isPressed ? SimulationCharacter_XData::PressedState::PRESSED : SimulationCharacter_XData::PressedState::RELEASED;
 }
 
-inline Character_XData::PressedState pressedStateCombo(const std::vector<Character_XData::PressedState>& singleStates)
+inline SimulationCharacter_XData::PressedState pressedStateCombo(const std::vector<SimulationCharacter_XData::PressedState>& singleStates)
 {
-    Character_XData::PressedState originalState = singleStates[0];
+    SimulationCharacter_XData::PressedState originalState = singleStates[0];
     for (size_t i = 1; i < singleStates.size(); i++)
         if (originalState != singleStates[i])
-            return Character_XData::PressedState::INVALID;
+            return SimulationCharacter_XData::PressedState::INVALID;
     return originalState;
 }
 
 // // @DEBUG
-// std::string totootototNOCHECKIN(Character_XData::AttackWaza::WazaInputType wit)
+// std::string totootototNOCHECKIN(SimulationCharacter_XData::AttackWaza::WazaInputType wit)
 // {
 //     switch (wit)
 //     {
-//         case Character_XData::AttackWaza::WazaInputType::NONE: return "NONE";
-//         case Character_XData::AttackWaza::WazaInputType::PRESS: return "PRESS";
-//         case Character_XData::AttackWaza::WazaInputType::HOLD: return "HOLD";
-//         case Character_XData::AttackWaza::WazaInputType::RELEASE: return "RELEASE";
-//         case Character_XData::AttackWaza::WazaInputType::DOUBLECLICK: return "DOUBLECLICK";
-//         case Character_XData::AttackWaza::WazaInputType::DOUBLEHOLD: return "DOUBLEHOLD";
+//         case SimulationCharacter_XData::AttackWaza::WazaInputType::NONE: return "NONE";
+//         case SimulationCharacter_XData::AttackWaza::WazaInputType::PRESS: return "PRESS";
+//         case SimulationCharacter_XData::AttackWaza::WazaInputType::HOLD: return "HOLD";
+//         case SimulationCharacter_XData::AttackWaza::WazaInputType::RELEASE: return "RELEASE";
+//         case SimulationCharacter_XData::AttackWaza::WazaInputType::DOUBLECLICK: return "DOUBLECLICK";
+//         case SimulationCharacter_XData::AttackWaza::WazaInputType::DOUBLEHOLD: return "DOUBLEHOLD";
 //     }
 
 //     return "INVALID (UNKNOWN): " + (int32_t)wit;
@@ -992,17 +989,17 @@ inline Character_XData::PressedState pressedStateCombo(const std::vector<Charact
 // size_t jal = 0;
 // ////////
 
-inline Character_XData::AttackWaza::WazaInput inputTypeToWazaInput(int32_t keyType, Character_XData::PressedState inputType)
+inline SimulationCharacter_XData::AttackWaza::WazaInput inputTypeToWazaInput(int32_t keyType, SimulationCharacter_XData::PressedState inputType)
 {
     // @NOTE: this function assumes that `inputType` is >=1.
-    return Character_XData::AttackWaza::WazaInput(
+    return SimulationCharacter_XData::AttackWaza::WazaInput(
         3 * ((int32_t)inputType - 1) + keyType + 1  // @COPYPASTA
     );
 }
 
 #define MAX_SIMULTANEOUS_WAZA_INPUTS 8
 
-void processInputForWaza(Character_XData* d, Character_XData::AttackWaza::WazaInput* outWazaInputs, size_t& outNumInputs)
+void processInputForWaza(SimulationCharacter_XData* d, SimulationCharacter_XData::AttackWaza::WazaInput* outWazaInputs, size_t& outNumInputs)
 {
     // @NOCHECKIN: I don't like this system for doing the key combinations. `release` events don't work.
     //             Figure out some way for the key combination press, release, and hold, etc. to work.
@@ -1012,19 +1009,19 @@ void processInputForWaza(Character_XData* d, Character_XData::AttackWaza::WazaIn
     //             the only event needing to have priority in combo inputs.  -Timo 2023/09/17
     // @REPLY: I think that this new system is what is needed.  -Timo 2023/09/17
     // @REPLY: I think that the previous new system sucked and now I'm implementing a new system i like (have HWAC file take care of timing).  -Timo 2023/09/22
-    Character_XData::PressedState input_x = pressedStateSingle(input::simInputSet().attack.holding);
-    Character_XData::PressedState input_a = pressedStateSingle(input::simInputSet().jump.holding);
-    Character_XData::PressedState input_xa = pressedStateCombo({ input_x, input_a });
+    SimulationCharacter_XData::PressedState input_x = pressedStateSingle(input::simInputSet().attack.holding);
+    SimulationCharacter_XData::PressedState input_a = pressedStateSingle(input::simInputSet().jump.holding);
+    SimulationCharacter_XData::PressedState input_xa = pressedStateCombo({ input_x, input_a });
 
     // Fill in all the waza inputs. (@NOTE: start with key combinations and check inputs that are highest priority first)
     outNumInputs = 0;
-    if (input_xa > Character_XData::PressedState::INVALID &&
+    if (input_xa > SimulationCharacter_XData::PressedState::INVALID &&
         input_xa != d->prevInput_xa)
         outWazaInputs[outNumInputs++] = inputTypeToWazaInput(2, input_xa);
-    if (input_x > Character_XData::PressedState::INVALID &&
+    if (input_x > SimulationCharacter_XData::PressedState::INVALID &&
         input_x != d->prevInput_x)
         outWazaInputs[outNumInputs++] = inputTypeToWazaInput(0, input_x);
-    if (input_a > Character_XData::PressedState::INVALID &&
+    if (input_a > SimulationCharacter_XData::PressedState::INVALID &&
         input_a != d->prevInput_a)
         outWazaInputs[outNumInputs++] = inputTypeToWazaInput(1, input_a);
 
@@ -1035,11 +1032,11 @@ void processInputForWaza(Character_XData* d, Character_XData::AttackWaza::WazaIn
 
 struct NextWazaPtr
 {
-    Character_XData::AttackWaza* nextWaza = nullptr;
+    SimulationCharacter_XData::AttackWaza* nextWaza = nullptr;
     bool set = false;
 };
 
-void processWazaInput(Character_XData* d, Character_XData::AttackWaza::WazaInput* wazaInputs, size_t numInputs, NextWazaPtr& inoutNextWaza)
+void processWazaInput(SimulationCharacter_XData* d, SimulationCharacter_XData::AttackWaza::WazaInput* wazaInputs, size_t numInputs, NextWazaPtr& inoutNextWaza)
 {
     std::string movementState = d->prevIsGrounded ? "grounded" : (d->isMidairUpsideDown ? "upsidedown" : "midair");
 
@@ -1061,8 +1058,8 @@ void processWazaInput(Character_XData* d, Character_XData::AttackWaza::WazaInput
     bool chainingIntoHoldRelease = false;
     for (size_t i = 0; i < numInputs; i++)
     {
-        Character_XData::AttackWaza::WazaInput wazaInput = wazaInputs[i];
-        if (wazaInput == Character_XData::AttackWaza::WazaInput::NONE)
+        SimulationCharacter_XData::AttackWaza::WazaInput wazaInput = wazaInputs[i];
+        if (wazaInput == SimulationCharacter_XData::AttackWaza::WazaInput::NONE)
         {
             std::cerr << "[PROCESS WAZA INPUT]" << std::endl
                 << "ERROR: NONE type waza input came into the function `processWazaInput`" << std::endl;
@@ -1086,9 +1083,9 @@ void processWazaInput(Character_XData* d, Character_XData::AttackWaza::WazaInput
                             chainingIntoHoldRelease = true;
                         break;
                     }
-                    // else if (chain.input == Character_XData::AttackWaza::WazaInput::HOLD_X ||
-                    //     chain.input == Character_XData::AttackWaza::WazaInput::HOLD_A ||
-                    //     chain.input == Character_XData::AttackWaza::WazaInput::HOLD_X_A)
+                    // else if (chain.input == SimulationCharacter_XData::AttackWaza::WazaInput::HOLD_X ||
+                    //     chain.input == SimulationCharacter_XData::AttackWaza::WazaInput::HOLD_A ||
+                    //     chain.input == SimulationCharacter_XData::AttackWaza::WazaInput::HOLD_X_A)
                     // {
                     //     // The correct chain input for a release was done, however,
                     //     // since it was in the wrong window of timing, it needs to be a hold cancel.
@@ -1139,7 +1136,7 @@ void processWazaInput(Character_XData* d, Character_XData::AttackWaza::WazaInput
     }
 }
 
-void processWazaUpdate(Character_XData* d, EntityManager* em, float_t simDeltaTime, const std::string& myGuid, NextWazaPtr& inoutNextWaza, bool& inoutTurnOnAura)
+void processWazaUpdate(SimulationCharacter_XData* d, EntityManager* em, float_t simDeltaTime, const std::string& myGuid, NextWazaPtr& inoutNextWaza, bool& inoutTurnOnAura)
 {
     //
     // Deplete stamina
@@ -1155,7 +1152,7 @@ void processWazaUpdate(Character_XData* d, EntityManager* em, float_t simDeltaTi
     //
     // Execute all velocity decay settings.
     //
-    for (Character_XData::AttackWaza::VelocityDecaySetting& vds : d->currentWaza->velocityDecaySettings)
+    for (SimulationCharacter_XData::AttackWaza::VelocityDecaySetting& vds : d->currentWaza->velocityDecaySettings)
         if (vds.executeAtTime == d->wazaTimer)
         {
             d->wazaVelocityDecay = vds.velocityDecay;
@@ -1165,7 +1162,7 @@ void processWazaUpdate(Character_XData* d, EntityManager* em, float_t simDeltaTi
     //
     // Execute all velocity settings corresponding to the timer.
     //
-    for (Character_XData::AttackWaza::VelocitySetting& velocitySetting : d->currentWaza->velocitySettings)
+    for (SimulationCharacter_XData::AttackWaza::VelocitySetting& velocitySetting : d->currentWaza->velocitySettings)
         if (velocitySetting.executeAtTime == d->wazaTimer)
         {
             glm_vec3_copy(velocitySetting.velocity, d->wazaVelocity);
@@ -1373,7 +1370,7 @@ void processWazaUpdate(Character_XData* d, EntityManager* em, float_t simDeltaTi
     }
 }
 
-void setWazaToCurrent(Character_XData* d, Character_XData::AttackWaza* nextWaza)
+void setWazaToCurrent(SimulationCharacter_XData* d, SimulationCharacter_XData::AttackWaza* nextWaza)
 {
     std::cout << "[SET WAZA STATE]" << std::endl
         << "New state: " << (nextWaza != nullptr ? nextWaza->wazaName : "NULL") << std::endl;
@@ -1388,7 +1385,7 @@ void setWazaToCurrent(Character_XData* d, Character_XData::AttackWaza* nextWaza)
     d->characterRenderObj->animator->setMask("MaskCombatMode", (d->currentWaza == nullptr));
 }
 
-Character::Character(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSerialized* ds) : Entity(em, ds), _data(new Character_XData())
+SimulationCharacter::SimulationCharacter(EntityManager* em, RenderObjectManager* rom, Camera* camera, DataSerialized* ds) : Entity(em, ds), _data(new SimulationCharacter_XData())
 {
     Entity::_enableSimulationUpdate = true;
 
@@ -1600,7 +1597,7 @@ Character::Character(EntityManager* em, RenderObjectManager* rom, Camera* camera
         inst.voxelFieldLightingGridID = 1;
 }
 
-Character::~Character()
+SimulationCharacter::~SimulationCharacter()
 {
     hotswapres::removeOwnedCallbacks(this);
 
@@ -1624,7 +1621,7 @@ Character::~Character()
     delete _data;
 }
 
-void updateWazaTimescale(float_t simDeltaTime, Character_XData* d)
+void updateWazaTimescale(float_t simDeltaTime, SimulationCharacter_XData* d)
 {
     d->wazaHitTimescale = physutil::lerp(d->wazaHitTimescale, 1.0f, simDeltaTime * d->wazaHitTimescale * d->wazaHitTimescaleReturnToOneSpeed);
     if (d->wazaHitTimescale > 0.999f)
@@ -1642,7 +1639,7 @@ std::vector<GUIDWithVerb> interactionGUIDPriorityQueue;
 textmesh::TextMesh* interactionUIText;
 std::string currentText;
 
-void defaultPhysicsUpdate(float_t simDeltaTime, Character_XData* d, EntityManager* em, const std::string& myGuid)
+void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, EntityManager* em, const std::string& myGuid)
 {
     if (d->characterType == CHARACTER_TYPE_PLAYER)
     {
@@ -1673,7 +1670,7 @@ void defaultPhysicsUpdate(float_t simDeltaTime, Character_XData* d, EntityManage
         if (!textbox::isProcessingMessage())
         {
             // Target an opponent.
-            if (d->knockbackMode == Character_XData::KnockbackStage::NONE &&
+            if (d->knockbackMode == SimulationCharacter_XData::KnockbackStage::NONE &&
                 input::simInputSet().focus.holding)
             {
                 if (!d->isTargetingOpponentObject)
@@ -1724,7 +1721,7 @@ void defaultPhysicsUpdate(float_t simDeltaTime, Character_XData* d, EntityManage
             input[1] = input::simInputSet().flatPlaneMovement.axisY;
         }
 
-        if (d->disableInput || d->knockbackMode > Character_XData::KnockbackStage::NONE)
+        if (d->disableInput || d->knockbackMode > SimulationCharacter_XData::KnockbackStage::NONE)
             input[0] = input[1] = 0.0f;
 
         vec3 flatCameraFacingDirection = {
@@ -1783,7 +1780,7 @@ void defaultPhysicsUpdate(float_t simDeltaTime, Character_XData* d, EntityManage
     if (d->materializedItem != nullptr &&
         d->materializedItem->type == globalState::WEAPON)
     {
-        Character_XData::AttackWaza::WazaInput outWazaInputs[MAX_SIMULTANEOUS_WAZA_INPUTS];
+        SimulationCharacter_XData::AttackWaza::WazaInput outWazaInputs[MAX_SIMULTANEOUS_WAZA_INPUTS];
         size_t outNumWazaInputs = 0;
         if (!d->disableInput && d->characterType == CHARACTER_TYPE_PLAYER)
         {
@@ -1883,8 +1880,8 @@ void defaultPhysicsUpdate(float_t simDeltaTime, Character_XData* d, EntityManage
     vec3 velocity;
     physengine::getLinearVelocity(*d->cpd, velocity);
 
-    Character_XData::MovingPlatformAttachment& mpa = d->movingPlatformAttachment;
-    if (mpa.attachmentStage >= Character_XData::MovingPlatformAttachment::AttachmentStage::RECURRING_ATTACHMENT)
+    SimulationCharacter_XData::MovingPlatformAttachment& mpa = d->movingPlatformAttachment;
+    if (mpa.attachmentStage >= SimulationCharacter_XData::MovingPlatformAttachment::AttachmentStage::RECURRING_ATTACHMENT)
         glm_vec3_muladds(mpa.prevDeltaPosition, -1.0f / simDeltaTime, velocity);  // Subtract previous tick's attachment deltaposition.
 
     physengine::setGravityFactor(*d->cpd, d->currentWaza != nullptr ? d->currentWaza->gravityMultiplier : 1.0f);
@@ -1901,7 +1898,7 @@ void defaultPhysicsUpdate(float_t simDeltaTime, Character_XData* d, EntityManage
     if (d->currentWaza == nullptr)
     {
         vec3 flatVelocity = GLM_VEC3_ZERO_INIT;
-        if (d->prevIsGrounded && d->knockbackMode == Character_XData::KnockbackStage::NONE)
+        if (d->prevIsGrounded && d->knockbackMode == SimulationCharacter_XData::KnockbackStage::NONE)
             glm_vec3_scale(d->worldSpaceInput, d->inputMaxXZSpeed, flatVelocity);
         else
         {
@@ -1926,11 +1923,11 @@ void defaultPhysicsUpdate(float_t simDeltaTime, Character_XData* d, EntityManage
                 // @NOTE: Assumption is that during recovery and knocked back stages, the input is set to 0,0
                 //        thus deceleration is the acceleration method at all times.
                 if (d->prevIsGrounded)
-                    if (d->knockbackMode == Character_XData::KnockbackStage::RECOVERY)
+                    if (d->knockbackMode == SimulationCharacter_XData::KnockbackStage::RECOVERY)
                     {
                         maxAllowedDeltaMagnitude = d->recoveryGroundedXZDeceleration;
                     }
-                    else if (d->knockbackMode == Character_XData::KnockbackStage::KNOCKED_UP)
+                    else if (d->knockbackMode == SimulationCharacter_XData::KnockbackStage::KNOCKED_UP)
                     {
                         maxAllowedDeltaMagnitude = d->knockedbackGroundedXZDeceleration;
                     }
@@ -1946,18 +1943,18 @@ void defaultPhysicsUpdate(float_t simDeltaTime, Character_XData* d, EntityManage
             }
 
             // Process knockback stages. @TODO: put this into its own function/process.
-            if (d->knockbackMode == Character_XData::KnockbackStage::KNOCKED_UP)
+            if (d->knockbackMode == SimulationCharacter_XData::KnockbackStage::KNOCKED_UP)
             {
                 if (d->knockedbackTimer < 0.0f)
-                    d->knockbackMode = Character_XData::KnockbackStage::RECOVERY;
+                    d->knockbackMode = SimulationCharacter_XData::KnockbackStage::RECOVERY;
                 else
                     d->knockedbackTimer -= simDeltaTime;
             }
-            if (d->knockbackMode == Character_XData::KnockbackStage::RECOVERY &&
+            if (d->knockbackMode == SimulationCharacter_XData::KnockbackStage::RECOVERY &&
                 d->prevIsGrounded &&
                 std::abs(flatVelocity[0]) < 0.001f &&
                 std::abs(flatVelocity[2]) < 0.001f)
-                d->knockbackMode = Character_XData::KnockbackStage::NONE;
+                d->knockbackMode = SimulationCharacter_XData::KnockbackStage::NONE;
         }
 
         // Apply X and Z to velocity.
@@ -2026,7 +2023,7 @@ void defaultPhysicsUpdate(float_t simDeltaTime, Character_XData* d, EntityManage
             d->prevIsGrounded = false;
 
         d->iframesTimer = d->iframesTime;
-        d->knockbackMode = Character_XData::KnockbackStage::KNOCKED_UP;
+        d->knockbackMode = SimulationCharacter_XData::KnockbackStage::KNOCKED_UP;
         d->knockedbackTimer = d->knockedbackTime;
         setWazaToCurrent(d, nullptr);
 
@@ -2073,10 +2070,10 @@ void defaultPhysicsUpdate(float_t simDeltaTime, Character_XData* d, EntityManage
     if (mpa.attachmentIsStale)
     {
         // Reset attachment.
-        mpa.attachmentStage = Character_XData::MovingPlatformAttachment::AttachmentStage::NO_ATTACHMENT;
+        mpa.attachmentStage = SimulationCharacter_XData::MovingPlatformAttachment::AttachmentStage::NO_ATTACHMENT;
         mpa.attachedBodyId = JPH::BodyID();  // Invalidate body id.
     }
-    if (mpa.attachmentStage >= Character_XData::MovingPlatformAttachment::AttachmentStage::FIRST_DELTA_ATTACHMENT)
+    if (mpa.attachmentStage >= SimulationCharacter_XData::MovingPlatformAttachment::AttachmentStage::FIRST_DELTA_ATTACHMENT)
     {
         glm_vec3_muladds(mpa.nextDeltaPosition, 1.0f / simDeltaTime, velocity);  // Apply attachment delta position.
         glm_vec3_copy(mpa.nextDeltaPosition, mpa.prevDeltaPosition);
@@ -2098,7 +2095,7 @@ void defaultPhysicsUpdate(float_t simDeltaTime, Character_XData* d, EntityManage
     physengine::updateSimulationTransformRotation(d->cpd->simTransformId, rotationV);
 }
 
-void calculateBladeStartEndFromHandAttachment(Character_XData* d, vec3& bladeStart, vec3& bladeEnd)
+void calculateBladeStartEndFromHandAttachment(SimulationCharacter_XData* d, vec3& bladeStart, vec3& bladeEnd)
 {
     mat4 offsetMat = GLM_MAT4_IDENTITY_INIT;
     glm_translate(offsetMat, vec3{ 0.0f, -physengine::getLengthOffsetToBase(*d->cpd) / d->modelSize, 0.0f });
@@ -2111,11 +2108,11 @@ void calculateBladeStartEndFromHandAttachment(Character_XData* d, vec3& bladeSta
     glm_mat4_mulv3(attachmentJointMat, vec3{ 0.0f, d->attackWazaEditor.bladeDistanceStartEnd[1], 0.0f }, 1.0f, bladeEnd);
 }
 
-void attackWazaEditorPhysicsUpdate(float_t simDeltaTime, Character_XData* d)
+void attackWazaEditorPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d)
 {
     if (d->attackWazaEditor.triggerRecalcWazaCache)
     {
-        Character_XData::AttackWaza& aw = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex];
+        SimulationCharacter_XData::AttackWaza& aw = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex];
 
         d->attackWazaEditor.minTick = 0;
         d->attackWazaEditor.maxTick = aw.duration >= 0 ? aw.duration : 100;  // @HARDCODE: if duration is infinite, just cap it at 100.  -Timo 2023/09/22
@@ -2127,7 +2124,7 @@ void attackWazaEditorPhysicsUpdate(float_t simDeltaTime, Character_XData* d)
 
     if (d->attackWazaEditor.triggerRecalcHitscanLaunchVelocityCache)
     {
-        Character_XData::AttackWaza& aw = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex];
+        SimulationCharacter_XData::AttackWaza& aw = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex];
 
         d->attackWazaEditor.hitscanLaunchVelocitySimCache.clear();
         vec3s currentPosition;
@@ -2136,7 +2133,7 @@ void attackWazaEditorPhysicsUpdate(float_t simDeltaTime, Character_XData* d)
         glm_vec3_copy(aw.hitscanLaunchVelocity, launchVelocityCopy);
 
         float_t knockedbackTimer = d->knockedbackTime;
-        Character_XData::KnockbackStage knockbackMode = Character_XData::KnockbackStage::KNOCKED_UP;
+        SimulationCharacter_XData::KnockbackStage knockbackMode = SimulationCharacter_XData::KnockbackStage::KNOCKED_UP;
 
         for (size_t i = 0; i < 100; i++)
         {
@@ -2157,11 +2154,11 @@ void attackWazaEditorPhysicsUpdate(float_t simDeltaTime, Character_XData* d)
             float_t maxAllowedDeltaMagnitude = d->midairXZDeceleration;
             bool prevIsGrounded = (currentPosition.y <= 0.0f);
             if (prevIsGrounded)  // @COPYPASTA
-                    if (knockbackMode == Character_XData::KnockbackStage::RECOVERY)
+                    if (knockbackMode == SimulationCharacter_XData::KnockbackStage::RECOVERY)
                     {
                         maxAllowedDeltaMagnitude = d->recoveryGroundedXZDeceleration;
                     }
-                    else if (knockbackMode == Character_XData::KnockbackStage::KNOCKED_UP)
+                    else if (knockbackMode == SimulationCharacter_XData::KnockbackStage::KNOCKED_UP)
                     {
                         maxAllowedDeltaMagnitude = d->knockedbackGroundedXZDeceleration;
                     }
@@ -2171,11 +2168,11 @@ void attackWazaEditorPhysicsUpdate(float_t simDeltaTime, Character_XData* d)
             glm_vec3_add(launchVelocityCopy, xzVelocityDampen, launchVelocityCopy);
 
             // @COPYPASTA
-            if (knockbackMode == Character_XData::KnockbackStage::KNOCKED_UP)
+            if (knockbackMode == SimulationCharacter_XData::KnockbackStage::KNOCKED_UP)
             {
                 if (knockedbackTimer < 0.0f)
                 {
-                    knockbackMode = Character_XData::KnockbackStage::RECOVERY;
+                    knockbackMode = SimulationCharacter_XData::KnockbackStage::RECOVERY;
                 }
                 else
                     knockedbackTimer -= simDeltaTime;
@@ -2188,7 +2185,7 @@ void attackWazaEditorPhysicsUpdate(float_t simDeltaTime, Character_XData* d)
 
     if (d->attackWazaEditor.triggerRecalcSelfVelocitySimCache)
     {
-        Character_XData::AttackWaza& aw = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex];
+        SimulationCharacter_XData::AttackWaza& aw = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex];
 
         d->attackWazaEditor.selfVelocitySimCache.clear();
         vec3s   currentPosition = GLM_VEC3_ZERO_INIT;
@@ -2238,7 +2235,7 @@ void attackWazaEditorPhysicsUpdate(float_t simDeltaTime, Character_XData* d)
 
     if (d->attackWazaEditor.triggerBakeHitscans)
     {
-        Character_XData::AttackWaza& aw = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex];
+        SimulationCharacter_XData::AttackWaza& aw = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex];
 
         // Fill in hitscan flow nodes according to baked range.
         aw.hitscanNodes.clear();
@@ -2246,7 +2243,7 @@ void attackWazaEditorPhysicsUpdate(float_t simDeltaTime, Character_XData* d)
         {
             d->characterRenderObj->animator->setState(aw.animationState, i * simDeltaTime, true);
 
-            Character_XData::AttackWaza::HitscanFlowNode hfn;
+            SimulationCharacter_XData::AttackWaza::HitscanFlowNode hfn;
             calculateBladeStartEndFromHandAttachment(d, hfn.nodeEnd1, hfn.nodeEnd2);
             glm_vec3_scale(hfn.nodeEnd1, d->modelSize, hfn.nodeEnd1);
             glm_vec3_scale(hfn.nodeEnd2, d->modelSize, hfn.nodeEnd2);
@@ -2276,7 +2273,7 @@ void attackWazaEditorPhysicsUpdate(float_t simDeltaTime, Character_XData* d)
     }
 
     // Draw flow node lines
-    std::vector<Character_XData::AttackWaza::HitscanFlowNode>& hnodes = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].hitscanNodes;
+    std::vector<SimulationCharacter_XData::AttackWaza::HitscanFlowNode>& hnodes = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].hitscanNodes;
     for (size_t i = 1; i < hnodes.size(); i++)
     {
         vec3 nodeEnd1_i, nodeEnd1_i1, nodeEnd2_i, nodeEnd2_i1;
@@ -2314,7 +2311,7 @@ void attackWazaEditorPhysicsUpdate(float_t simDeltaTime, Character_XData* d)
     }
 
     // Draw suck in lines.
-    Character_XData::AttackWaza::VacuumSuckIn& vsi = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].vacuumSuckIn;
+    SimulationCharacter_XData::AttackWaza::VacuumSuckIn& vsi = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].vacuumSuckIn;
     if (vsi.enabled)
     {
         static vec3s line1[] = {
@@ -2347,7 +2344,7 @@ void attackWazaEditorPhysicsUpdate(float_t simDeltaTime, Character_XData* d)
     }
 
     // Draw force zone.
-    Character_XData::AttackWaza::ForceZone& fz = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].forceZone;
+    SimulationCharacter_XData::AttackWaza::ForceZone& fz = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].forceZone;
     if (fz.enabled)
     {
         // Force zone aabb
@@ -2403,7 +2400,7 @@ void attackWazaEditorPhysicsUpdate(float_t simDeltaTime, Character_XData* d)
     physengine::drawDebugVisLine(bladeStart, bladeEnd, physengine::DebugVisLineType::YUUJUUFUDAN);
 }
 
-void Character::simulationUpdate(float_t simDeltaTime)
+void SimulationCharacter::simulationUpdate(float_t simDeltaTime)
 {
     // @DEBUG: for level editor
     _data->disableInput = (_data->camera->freeCamMode.enabled || ImGui::GetIO().WantTextInput);
@@ -2434,7 +2431,7 @@ void Character::simulationUpdate(float_t simDeltaTime)
         defaultPhysicsUpdate(simDeltaTime, _data, _em, getGUID());
 }
 
-void Character::update(float_t deltaTime)
+void SimulationCharacter::update(float_t deltaTime)
 {
     // @DEBUG: for level editor
     _data->disableInput = (_data->camera->freeCamMode.enabled || ImGui::GetIO().WantTextInput);
@@ -2444,7 +2441,7 @@ void Character::update(float_t deltaTime)
     _data->attackTwitchAngle = glm_lerp(_data->attackTwitchAngle, 0.0f, std::abs(_data->attackTwitchAngle) * _data->attackTwitchAngleReturnSpeed * 60.0f * deltaTime);
 }
 
-void Character::lateUpdate(float_t deltaTime)
+void SimulationCharacter::lateUpdate(float_t deltaTime)
 {
     if (_data->attackWazaEditor.isEditingMode)
         _data->facingDirection = 0.0f;  // @NOTE: this needs to be facing in the default facing direction so that the hitscan node positions are facing in the default direction when baked.
@@ -2452,7 +2449,7 @@ void Character::lateUpdate(float_t deltaTime)
     //
     // Update position of character and weapon
     //
-    if (_data->movingPlatformAttachment.attachmentStage >= Character_XData::MovingPlatformAttachment::AttachmentStage::FIRST_DELTA_ATTACHMENT)
+    if (_data->movingPlatformAttachment.attachmentStage >= SimulationCharacter_XData::MovingPlatformAttachment::AttachmentStage::FIRST_DELTA_ATTACHMENT)
         _data->facingDirection += _data->movingPlatformAttachment.attachmentYAxisAngularVelocity * deltaTime;
 
     vec3 offset(0.0f, -physengine::getLengthOffsetToBase(*_data->cpd), 0.0f);
@@ -2475,7 +2472,7 @@ void Character::lateUpdate(float_t deltaTime)
     glm_mat4_copy(_data->weaponRenderObj->transformMatrix, _data->handleRenderObj->transformMatrix);
 }
 
-void Character::dump(DataSerializer& ds)
+void SimulationCharacter::dump(DataSerializer& ds)
 {
     Entity::dump(ds);
     ds.dumpString(_data->characterType);
@@ -2504,7 +2501,7 @@ void Character::dump(DataSerializer& ds)
     }
 }
 
-void Character::load(DataSerialized& ds)
+void SimulationCharacter::load(DataSerialized& ds)
 {
     Entity::load(ds);
     ds.loadString(_data->characterType);
@@ -2561,7 +2558,7 @@ void updateInteractionUI()
     interactionUIText->excludeFromBulkRender = currentText.empty();
 }
 
-bool Character::processMessage(DataSerialized& message)
+bool SimulationCharacter::processMessage(DataSerialized& message)
 {
     std::string messageType;
     message.loadString(messageType);
@@ -2679,7 +2676,7 @@ bool Character::processMessage(DataSerialized& message)
     return false;
 }
 
-void Character::reportMoved(mat4* matrixMoved)
+void SimulationCharacter::reportMoved(mat4* matrixMoved)
 {
     vec4 pos;
     mat4 rot;
@@ -2710,7 +2707,7 @@ std::vector<std::string> getListOfWazaFnames()
     return wazaFnames;
 }
 
-void defaultRenderImGui(Character_XData* d)
+void defaultRenderImGui(SimulationCharacter_XData* d)
 {
     if (ImGui::CollapsingHeader("Tweak Props", ImGuiTreeNodeFlags_DefaultOpen))
     {
@@ -2839,7 +2836,7 @@ void defaultRenderImGui(Character_XData* d)
     }
 }
 
-void updateHitscanLaunchVeloRelPosExportString(Character_XData* d)
+void updateHitscanLaunchVeloRelPosExportString(SimulationCharacter_XData* d)
 {
     auto& lv = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].hitscanLaunchVelocity;
     auto& rp = d->attackWazaEditor.editingWazaSet[d->attackWazaEditor.wazaIndex].hitscanLaunchRelPosition;
@@ -2858,7 +2855,7 @@ void updateHitscanLaunchVeloRelPosExportString(Character_XData* d)
     d->attackWazaEditor.triggerRecalcHitscanLaunchVelocityCache = true;
 }
 
-void attackWazaEditorRenderImGui(Character_XData* d)
+void attackWazaEditorRenderImGui(SimulationCharacter_XData* d)
 {
     if (ImGui::Button("Exit Waza Editor"))
     {
@@ -2875,7 +2872,7 @@ void attackWazaEditorRenderImGui(Character_XData* d)
     {
         for (size_t i = 0; i < d->attackWazaEditor.editingWazaSet.size(); i++)
         {
-            Character_XData::AttackWaza& aw = d->attackWazaEditor.editingWazaSet[i];
+            SimulationCharacter_XData::AttackWaza& aw = d->attackWazaEditor.editingWazaSet[i];
             if (ImGui::Button(aw.wazaName.c_str()))
             {
                 // Change waza within set to edit.
@@ -3035,7 +3032,7 @@ void attackWazaEditorRenderImGui(Character_XData* d)
     }
 }
 
-void Character::renderImGui()
+void SimulationCharacter::renderImGui()
 {
     if (_data->attackWazaEditor.isEditingMode)
         attackWazaEditorRenderImGui(_data);
@@ -3043,37 +3040,37 @@ void Character::renderImGui()
         defaultRenderImGui(_data);
 }
 
-void Character::reportPhysicsContact(const JPH::Body& otherBody, const JPH::ContactManifold& manifold, JPH::ContactSettings* ioSettings)
+void SimulationCharacter::reportPhysicsContact(const JPH::Body& otherBody, const JPH::ContactManifold& manifold, JPH::ContactSettings* ioSettings)
 {
-    Character_XData::MovingPlatformAttachment& mpa = _data->movingPlatformAttachment;
+    SimulationCharacter_XData::MovingPlatformAttachment& mpa = _data->movingPlatformAttachment;
 
     if (otherBody.IsStatic())
     {
-        mpa.attachmentStage = Character_XData::MovingPlatformAttachment::AttachmentStage::NO_ATTACHMENT;
+        mpa.attachmentStage = SimulationCharacter_XData::MovingPlatformAttachment::AttachmentStage::NO_ATTACHMENT;
         return;
     }
 
     JPH::Vec3 attachmentNormal = -manifold.mWorldSpaceNormal;
     if (physengine::isSlopeTooSteepForCharacter(*_data->cpd, attachmentNormal))
     {
-        mpa.attachmentStage = Character_XData::MovingPlatformAttachment::AttachmentStage::NO_ATTACHMENT;
+        mpa.attachmentStage = SimulationCharacter_XData::MovingPlatformAttachment::AttachmentStage::NO_ATTACHMENT;
         return;
     }
 
     // std::cout << "ATT NORM: " << attachmentNormal.GetX() << ",\t" <<  attachmentNormal.GetY() << ",\t" <<  attachmentNormal.GetZ() << ",\t" << std::endl;
 
-    if (mpa.attachmentStage == Character_XData::MovingPlatformAttachment::AttachmentStage::NO_ATTACHMENT ||
+    if (mpa.attachmentStage == SimulationCharacter_XData::MovingPlatformAttachment::AttachmentStage::NO_ATTACHMENT ||
         mpa.attachedBodyId != otherBody.GetID())
     {
         // Initial attachment.
-        mpa.attachmentStage = Character_XData::MovingPlatformAttachment::AttachmentStage::INITIAL_ATTACHMENT;
+        mpa.attachmentStage = SimulationCharacter_XData::MovingPlatformAttachment::AttachmentStage::INITIAL_ATTACHMENT;
         mpa.attachedBodyId = otherBody.GetID();
     }
     else
     {
         // Calc where in the attachment amortization chain.
-        if (mpa.attachmentStage != Character_XData::MovingPlatformAttachment::AttachmentStage::RECURRING_ATTACHMENT)
-            mpa.attachmentStage = Character_XData::MovingPlatformAttachment::AttachmentStage((int32_t)mpa.attachmentStage + 1);
+        if (mpa.attachmentStage != SimulationCharacter_XData::MovingPlatformAttachment::AttachmentStage::RECURRING_ATTACHMENT)
+            mpa.attachmentStage = SimulationCharacter_XData::MovingPlatformAttachment::AttachmentStage((int32_t)mpa.attachmentStage + 1);
 
         // This is past the initial attachment! Calculate how much has moved.
         JPH::RVec3 attachmentDeltaPos = otherBody.GetWorldTransform() * mpa.attachmentPositionLocal - mpa.attachmentPositionWorld;

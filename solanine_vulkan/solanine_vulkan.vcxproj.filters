@@ -161,7 +161,7 @@
     <ClInclude Include="src\Entity.h">
       <Filter>Header Files\entity</Filter>
     </ClInclude>
-    <ClInclude Include="src\Character.h">
+    <ClInclude Include="src\SimulationCharacter.h">
       <Filter>Header Files\entity</Filter>
     </ClInclude>
     <ClInclude Include="src\VkDataStructures.h">
@@ -331,7 +331,7 @@
     <ClCompile Include="src\Entity.cpp">
       <Filter>Source Files\entity</Filter>
     </ClCompile>
-    <ClCompile Include="src\Character.cpp">
+    <ClCompile Include="src\SimulationCharacter.cpp">
       <Filter>Source Files\entity</Filter>
     </ClCompile>
     <ClCompile Include="src\Debug.cpp">

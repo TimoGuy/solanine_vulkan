@@ -188,7 +188,7 @@ copy $(SolutionDir)libs\ktx\lib_$(ConfigurationName)\ktx.dll $(OutDirfullPath)kt
     <ClInclude Include="src\imgui\imstb_textedit.h" />
     <ClInclude Include="src\imgui\imstb_truetype.h" />
     <ClInclude Include="src\InputManager.h" />
-    <ClInclude Include="src\Character.h" />
+    <ClInclude Include="src\SimulationCharacter.h" />
     <ClInclude Include="src\Settings.h" />
     <ClInclude Include="src\UIQuad.h" />
     <ClInclude Include="src\Textbox.h" />
@@ -240,7 +240,7 @@ copy $(SolutionDir)libs\ktx\lib_$(ConfigurationName)\ktx.dll $(OutDirfullPath)kt
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\Character.cpp" />
+    <ClCompile Include="src\SimulationCharacter.cpp" />
     <ClCompile Include="src\DataSerialization.cpp" />
     <ClCompile Include="src\GLSLToSPIRVHelper.cpp" />
     <ClCompile Include="src\TextureCooker.cpp" />

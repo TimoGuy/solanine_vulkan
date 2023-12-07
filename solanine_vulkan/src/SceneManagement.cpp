@@ -11,7 +11,7 @@
 #include "StringHelper.h"
 #include "GlobalState.h"
 
-#include "Character.h"
+#include "SimulationCharacter.h"
 #include "NoteTaker.h"
 #include "VoxelField.h"
 #include "ScannableItem.h"
@@ -30,7 +30,7 @@ const std::vector<std::string> ENTITY_TYPE_NAMES = {
     ":gondolasystem",
     ":EDITORtextureviewer",
 };
-const std::string Character::TYPE_NAME           = ENTITY_TYPE_NAMES[0];
+const std::string SimulationCharacter::TYPE_NAME = ENTITY_TYPE_NAMES[0];
 const std::string NoteTaker::TYPE_NAME           = ENTITY_TYPE_NAMES[1];
 const std::string VoxelField::TYPE_NAME          = ENTITY_TYPE_NAMES[2];
 const std::string ScannableItem::TYPE_NAME       = ENTITY_TYPE_NAMES[3];
@@ -84,8 +84,8 @@ namespace scene
     Entity* spinupNewObject(const std::string& objectName, DataSerialized* ds)
     {
         Entity* ent = nullptr;
-        if (objectName == Character::TYPE_NAME)
-            ent = new Character(engine->_entityManager, engine->_roManager, engine->_camera, ds);
+        if (objectName == SimulationCharacter::TYPE_NAME)
+            ent = new SimulationCharacter(engine->_entityManager, engine->_roManager, engine->_camera, ds);
         if (objectName == NoteTaker::TYPE_NAME)
             ent = new NoteTaker(engine->_entityManager, engine->_roManager, ds);
         if (objectName == VoxelField::TYPE_NAME)
