@@ -5616,6 +5616,83 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, 
 	// Group by materials used, then by model used, then by mesh index, then by render object index.
 	// @NOTE: this is to reduce the number of times to rebind materials and models.
 	// @PERFORMANCE: this runs at 18ms about (for main level scene)... make this faster... bc we don't want 18ms hitches every time a new render object is switched out.
+	static uint64_t count = 0;
+	static float_t avgTime = 0.0f;
+	if (input::editorInputSet().actionC.onAction)
+	{
+		std::cout << "RESET!" << std::endl;
+		count = 0;
+		avgTime = 0.0f;
+	}
+	uint64_t time = SDL_GetPerformanceCounter();
+	{
+		// @DEBUG: see how the meshes are sorted.
+		std::string groups[] = {
+			"metaMeshes     ",
+			"uniqueMatId    ",
+			"modelId        ",
+			"meshIdx        ",
+			"renderObjIdx[0]",
+		};
+
+		std::string myStr = "\n\n\n";
+
+		myStr += groups[0] + "\t";
+		for (size_t i = 0; i < meshesASDFASDF.size(); i++)
+			myStr += std::to_string(i) + "\t\t\t\t";
+		myStr += "\n";
+
+		for (size_t i = 0; i < meshesASDFASDF.size(); i++)
+			myStr += "================";
+		myStr += "\n";
+
+		myStr += groups[1] + "\t";
+		for (auto& maa : meshesASDFASDF)
+		{
+			myStr += std::to_string(maa.uniqueMaterialBaseId) + "\t\t\t\t";
+		}
+		myStr += "\n";
+
+		myStr += groups[2] + "\t";
+		std::vector<void*> foundModels;
+		for (auto& maa : meshesASDFASDF)
+		{
+			bool found = false;
+			for (size_t i = 0; i < foundModels.size(); i++)
+				if (foundModels[i] == (void*)maa.model)
+				{
+					myStr += std::to_string(i) + "\t\t\t\t";
+					found = true;
+					break;
+				}
+			if (!found)
+			{
+				foundModels.push_back((void*)maa.model);
+				myStr += std::to_string(foundModels.size() - 1) + "\t\t\t\t";
+			}
+		}
+		myStr += "\n";
+
+		myStr += groups[3] + "\t";
+		for (auto& maa : meshesASDFASDF)
+		{
+			myStr += std::to_string((uint64_t)(void*)maa.meshIdx) + "\t\t\t\t";
+		}
+		myStr += "\n";
+
+		myStr += groups[4] + "\t";
+		for (auto& maa : meshesASDFASDF)
+		{
+			myStr += std::to_string((uint64_t)(void*)maa.renderObjectIndices[0]) + "\t\t\t\t";
+		}
+		myStr += "\n";
+
+		myStr += "\n\n\n";
+
+		std::ofstream outfile("hello_debug.txt");
+        if (outfile.is_open())
+			outfile << myStr;
+	}
 	std::sort(
 		meshesASDFASDF.begin(),
 		meshesASDFASDF.end(),
@@ -5626,9 +5703,15 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, 
 				return a.model < b.model;
 			if (a.meshIdx != b.meshIdx)
 				return a.meshIdx < b.meshIdx;
-			return a.renderObjectIndices[0] < b.renderObjectIndices[0];
+			if (a.renderObjectIndices[0] != b.renderObjectIndices[0])
+				return a.renderObjectIndices[0] < b.renderObjectIndices[0];
+			return false;
 		}
 	);
+	time = SDL_GetPerformanceCounter() - time;
+	count++;
+	avgTime = avgTime * ((float_t)count - 1.0f) / (float_t)count + time / (float_t)count;
+	std::cout << "Sort time: " << time << "\tAvg: " << avgTime << std::endl;
 
 	// Smoosh meshes together.
 	for (size_t i = 0; i < meshesASDFASDF.size(); i++)
@@ -5659,6 +5742,12 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, 
 			}
 		}
 	}
+	std::erase_if(
+		meshesASDFASDF,
+		[](MeshASDFASDF mm) {
+			return mm.renderObjectIndices.empty();
+		}
+	);
 
 	// Capture mesh info.
 	std::vector<MeshCapturedInfo> meshDraws;
