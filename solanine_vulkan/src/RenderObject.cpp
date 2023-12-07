@@ -94,6 +94,7 @@ bool RenderObjectManager::registerRenderObjects(std::vector<RenderObject> inRend
 
 	// Recalculate what indices animated render objects are at
 	recalculateSpecialCaseIndices();
+	_isMetaMeshListUnoptimized = true;
 
 	return true;
 }
@@ -121,6 +122,7 @@ void RenderObjectManager::unregisterRenderObjects(std::vector<RenderObject*> obj
 
 				// Recalculate what indices animated render objects are at
 				recalculateSpecialCaseIndices();
+				_isMetaMeshListUnoptimized = true;
 
 				found = true;
 				break;
@@ -133,6 +135,211 @@ void RenderObjectManager::unregisterRenderObjects(std::vector<RenderObject*> obj
 			std::cerr << "[UNREGISTER RENDER OBJECT]" << std::endl
 				<< "ERROR: render object " << objRegistration << " was not found. Nothing unregistered." << std::endl;
 	}
+}
+
+bool RenderObjectManager::checkIsMetaMeshListUnoptimized()
+{
+	return _isMetaMeshListUnoptimized;
+}
+
+void RenderObjectManager::flagMetaMeshListAsUnoptimized()
+{
+	_isMetaMeshListUnoptimized = true;
+}
+
+void RenderObjectManager::optimizeMetaMeshList()
+{
+	std::lock_guard<std::mutex> lg(renderObjectIndicesAndPoolMutex);
+
+	//
+	// Cull out render object indices that are not marked as visible
+	//
+	std::vector<size_t> visibleIndices;
+	for (size_t i = 0; i < _renderObjectsIndices.size(); i++)
+	{
+		size_t poolIndex = _renderObjectsIndices[i];
+		RenderObject& object = _renderObjectPool[poolIndex];
+
+		// See if render object itself is visible
+		if (!_renderObjectLayersEnabled[(size_t)object.renderLayer])
+			continue;
+		if (object.model == nullptr)
+			continue;
+
+		// It's visible!!!!
+		visibleIndices.push_back(poolIndex);
+	}
+
+	// Decompose render objects into meshes.
+	_metaMeshes.clear();
+	std::vector<vkglTF::Model*> uniqueModels;
+
+	for (size_t roIdx = 0; roIdx < visibleIndices.size(); roIdx++)
+	{
+		RenderObject& ro = _renderObjectPool[visibleIndices[roIdx]];
+		for (size_t mi = 0; mi < ro.perPrimitiveUniqueMaterialBaseIndices.size(); mi++)
+			_metaMeshes.push_back({
+				.model = ro.model,
+				.meshIdx = mi,
+				.uniqueMaterialBaseId = ro.perPrimitiveUniqueMaterialBaseIndices[mi],
+				.renderObjectIndices = { visibleIndices[roIdx] },
+			});
+		if (std::find(uniqueModels.begin(), uniqueModels.end(), ro.model) == uniqueModels.end())
+			uniqueModels.push_back(ro.model);
+	}
+
+	// // Group by materials used, then by model used, then by mesh index, then by render object index.
+	// // @NOTE: this is to reduce the number of times to rebind materials and models.
+	// // @PERFORMANCE: this runs at 18ms about (for main level scene)... make this faster... bc we don't want 18ms hitches every time a new render object is switched out.
+	// static uint64_t count = 0;
+	// static float_t avgTime = 0.0f;
+	// if (input::editorInputSet().actionC.onAction)
+	// {
+	// 	std::cout << "RESET!" << std::endl;
+	// 	count = 0;
+	// 	avgTime = 0.0f;
+	// }
+	// uint64_t time = SDL_GetPerformanceCounter();
+	// {
+	// 	// @DEBUG: see how the meshes are sorted.
+	// 	std::string groups[] = {
+	// 		"metaMeshes     ",
+	// 		"uniqueMatId    ",
+	// 		"modelId        ",
+	// 		"meshIdx        ",
+	// 		"renderObjIdx[0]",
+	// 	};
+
+	// 	std::string myStr = "\n\n\n";
+
+	// 	myStr += groups[0] + "\t\t";
+	// 	for (size_t i = 0; i < _metaMeshes.size(); i++)
+	// 		myStr += std::to_string(i) + "\t\t\t\t";
+	// 	myStr += "\n";
+
+	// 	for (size_t i = 0; i < _metaMeshes.size(); i++)
+	// 		myStr += "================";
+	// 	myStr += "\n";
+
+	// 	myStr += groups[1] + "\t\t";
+	// 	for (auto& maa : _metaMeshes)
+	// 	{
+	// 		myStr += std::to_string(maa.uniqueMaterialBaseId) + "\t\t\t\t";
+	// 	}
+	// 	myStr += "\n";
+
+	// 	myStr += groups[2] + "\t\t";
+	// 	std::vector<void*> foundModels;
+	// 	for (auto& maa : _metaMeshes)
+	// 	{
+	// 		bool found = false;
+	// 		for (size_t i = 0; i < foundModels.size(); i++)
+	// 			if (foundModels[i] == (void*)maa.model)
+	// 			{
+	// 				myStr += std::to_string(i) + "\t\t\t\t";
+	// 				found = true;
+	// 				break;
+	// 			}
+	// 		if (!found)
+	// 		{
+	// 			foundModels.push_back((void*)maa.model);
+	// 			myStr += std::to_string(foundModels.size() - 1) + "\t\t\t\t";
+	// 		}
+	// 	}
+	// 	myStr += "\n";
+
+	// 	myStr += groups[3] + "\t\t";
+	// 	for (auto& maa : _metaMeshes)
+	// 	{
+	// 		myStr += std::to_string((uint64_t)(void*)maa.meshIdx) + "\t\t\t\t";
+	// 	}
+	// 	myStr += "\n";
+
+	// 	myStr += groups[4] + "\t\t";
+	// 	for (auto& maa : _metaMeshes)
+	// 	{
+	// 		myStr += std::to_string((uint64_t)(void*)maa.renderObjectIndices[0]) + "\t\t\t\t";
+	// 	}
+	// 	myStr += "\n";
+
+	// 	myStr += "\n\n\n";
+
+	// 	std::ofstream outfile("hello_debug.txt");
+    //     if (outfile.is_open())
+	// 		outfile << myStr;
+	// }
+	std::sort(
+		_metaMeshes.begin(),
+		_metaMeshes.end(),
+		[&](MetaMesh& a, MetaMesh& b) {
+			if (a.uniqueMaterialBaseId != b.uniqueMaterialBaseId)
+				return a.uniqueMaterialBaseId < b.uniqueMaterialBaseId;
+			if (a.model != b.model)
+				return a.model < b.model;
+			if (a.meshIdx != b.meshIdx)
+				return a.meshIdx < b.meshIdx;
+			if (a.renderObjectIndices[0] != b.renderObjectIndices[0])
+				return a.renderObjectIndices[0] < b.renderObjectIndices[0];
+			return false;
+		}
+	);
+	// time = SDL_GetPerformanceCounter() - time;
+	// count++;
+	// avgTime = avgTime * ((float_t)count - 1.0f) / (float_t)count + time / (float_t)count;
+	// std::cout << "Sort time: " << time << "\tAvg: " << avgTime << std::endl;
+	// // @DEBUG: end debug timing.
+
+	// Smoosh meshes together.
+	for (size_t i = 0; i < _metaMeshes.size(); i++)
+	{
+		auto& parentMesh = _metaMeshes[i];
+		if (parentMesh.renderObjectIndices.empty())
+			continue;  // Already consumed.
+		
+		for (size_t j = i + 1; j < _metaMeshes.size(); j++)
+		{
+			auto& siblingMesh = _metaMeshes[j];
+			if (siblingMesh.renderObjectIndices.size() != 1)
+				continue;  // Already consumed... or this is a parent mesh... Though neither should happen at this stage bc of sorting previously.
+
+			bool sameAsParent =
+				(parentMesh.model == siblingMesh.model &&
+				parentMesh.meshIdx == siblingMesh.meshIdx &&
+				parentMesh.uniqueMaterialBaseId == siblingMesh.uniqueMaterialBaseId);
+			if (sameAsParent)
+			{
+				parentMesh.renderObjectIndices.push_back(siblingMesh.renderObjectIndices[0]);
+				siblingMesh.renderObjectIndices.clear();
+			}
+			else
+			{
+				i = j - 1;  // Speed up parent mesh seeker to where new mesh is (minus 1 so that the iterator can increment for it!).
+				break;  // Bc of sorting, there shouldn't be any other sibling meshes to find.
+			}
+		}
+	}
+	std::erase_if(
+		_metaMeshes,
+		[](MetaMesh mm) {
+			return mm.renderObjectIndices.empty();
+		}
+	);
+
+	// Capture mesh info.
+	_cookedMeshDraws.clear();
+	for (vkglTF::Model* um : uniqueModels)
+	{
+		size_t baseMeshIndex = _cookedMeshDraws.size();
+		uint32_t numMeshes = 0;
+		um->appendPrimitiveDraws(_cookedMeshDraws, numMeshes);
+		for (auto& metaMesh : _metaMeshes)
+			if (metaMesh.model == um)
+			{
+				metaMesh.cookedMeshDrawIdx = baseMeshIndex + metaMesh.meshIdx;
+			}
+	}
+
+	_isMetaMeshListUnoptimized = false;
 }
 
 #ifdef _DEVELOP

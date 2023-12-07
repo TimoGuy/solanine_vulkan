@@ -70,16 +70,14 @@ namespace vkutil
                 .pSetLayouts = &layout,
             };
 
+            // Add variable descriptor count info.
+            VkDescriptorSetVariableDescriptorCountAllocateInfo variableDescriptorCountAllocInfo = {
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO,
+                .descriptorSetCount = 1,
+                .pDescriptorCounts = variableDescriptorCounts.data(),
+            };
             if (!variableDescriptorCounts.empty())
-            {
-                // Add variable descriptor count info.
-                VkDescriptorSetVariableDescriptorCountAllocateInfo variableDescriptorCountAllocInfo = {
-                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO,
-                    .descriptorSetCount = 1,
-                    .pDescriptorCounts = variableDescriptorCounts.data(),
-                };
                 allocInfo.pNext = &variableDescriptorCountAllocInfo;
-            }
 
             VkResult allocResult = vkAllocateDescriptorSets(device, &allocInfo, set);
             bool needReallocate = false;

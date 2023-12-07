@@ -1402,7 +1402,9 @@ void VulkanEngine::render()
 	std::vector<ModelWithIndirectDrawId> pickingIndirectDrawCommandIds;
 #endif
 	perfs[14] = SDL_GetPerformanceCounter();
-	compactRenderObjectsIntoDraws(currentFrame, pickedPoolIndices, pickingIndirectDrawCommandIds);  // @TODO: this only needs to be run once if the renderobject situation gets chagned!!!!!
+	if (_roManager->checkIsMetaMeshListUnoptimized())
+		_roManager->optimizeMetaMeshList();
+	compactRenderObjectsIntoDraws(currentFrame, pickedPoolIndices, pickingIndirectDrawCommandIds);
 	perfs[14] = SDL_GetPerformanceCounter() - perfs[14];
 
 	// Render render passes.
@@ -5547,222 +5549,26 @@ void VulkanEngine::uploadCurrentFrameToGPU(const FrameData& currentFrame)
 	vmaMapMemory(_allocator, currentFrame.pbrShadingPropsBuffer._allocation, &data);
 	memcpy(data, &_pbrRendering.gpuSceneShadingProps, sizeof(GPUPBRShadingProps));
 	vmaUnmapMemory(_allocator, currentFrame.pbrShadingPropsBuffer._allocation);
+
+	//
+	// Fill in object data into current frame object buffer
+	//
+	{
+		std::lock_guard<std::mutex> lg(_roManager->renderObjectIndicesAndPoolMutex);
+		void* objectData;
+		vmaMapMemory(_allocator, currentFrame.objectBuffer._allocation, &objectData);
+		GPUObjectData* objectSSBO = (GPUObjectData*)objectData;    // @IMPROVE: perhaps multithread this? Or only update when the object moves?
+		for (size_t poolIndex : _roManager->_renderObjectsIndices)  // @NOTE: bc of the pool system these indices will be scattered, but that should work just fine
+			glm_mat4_copy(
+				_roManager->_renderObjectPool[poolIndex].transformMatrix,
+				objectSSBO[poolIndex].modelMatrix
+			);		// Another evil pointer trick I love... call me Dmitri the Evil
+		vmaUnmapMemory(_allocator, currentFrame.objectBuffer._allocation);
+	}
 }
 
 void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, std::vector<size_t> onlyPoolIndices, std::vector<ModelWithIndirectDrawId>& outIndirectDrawCommandIdsForPoolIndex)
 {
-	std::lock_guard<std::mutex> lg(_roManager->renderObjectIndicesAndPoolMutex);
-
-	//
-	// Fill in object data into current frame object buffer
-	// @NOTE: this kinda makes more sense to do this in `uploadCurrentFrameToGPU()`,
-	//        however, that would require applying multiple lock guards, and would make the program slower.
-	//
-	void* objectData;
-	vmaMapMemory(_allocator, currentFrame.objectBuffer._allocation, &objectData);
-	GPUObjectData* objectSSBO = (GPUObjectData*)objectData;    // @IMPROVE: perhaps multithread this? Or only update when the object moves?
-	for (size_t poolIndex : _roManager->_renderObjectsIndices)  // @NOTE: bc of the pool system these indices will be scattered, but that should work just fine
-		glm_mat4_copy(
-			_roManager->_renderObjectPool[poolIndex].transformMatrix,
-			objectSSBO[poolIndex].modelMatrix
-		);		// Another evil pointer trick I love... call me Dmitri the Evil
-	vmaUnmapMemory(_allocator, currentFrame.objectBuffer._allocation);
-
-	//
-	// Cull out render object indices that are not marked as visible
-	//
-	std::vector<size_t> visibleIndices;
-	for (size_t i = 0; i < _roManager->_renderObjectsIndices.size(); i++)
-	{
-		size_t poolIndex = _roManager->_renderObjectsIndices[i];
-		RenderObject& object = _roManager->_renderObjectPool[poolIndex];
-
-		// See if render object itself is visible
-		if (!_roManager->_renderObjectLayersEnabled[(size_t)object.renderLayer])
-			continue;
-		if (object.model == nullptr)
-			continue;
-
-		// It's visible!!!!
-		visibleIndices.push_back(poolIndex);
-	}
-
-	// Decompose render objects into meshes.
-	struct MeshASDFASDF
-	{
-		vkglTF::Model* model;
-		size_t meshIdx;
-		size_t uniqueMaterialBaseId;
-		std::vector<size_t> renderObjectIndices;
-		size_t cookedMeshDrawIdx;
-	};
-	std::vector<MeshASDFASDF> meshesASDFASDF;
-	std::vector<vkglTF::Model*> uniqueModels;
-
-	for (size_t roIdx = 0; roIdx < visibleIndices.size(); roIdx++)
-	{
-		RenderObject& ro = _roManager->_renderObjectPool[visibleIndices[roIdx]];
-		for (size_t mi = 0; mi < ro.perPrimitiveUniqueMaterialBaseIndices.size(); mi++)
-			meshesASDFASDF.push_back({
-				.model = ro.model,
-				.meshIdx = mi,
-				.uniqueMaterialBaseId = ro.perPrimitiveUniqueMaterialBaseIndices[mi],
-				.renderObjectIndices = { visibleIndices[roIdx] },
-			});
-		if (std::find(uniqueModels.begin(), uniqueModels.end(), ro.model) == uniqueModels.end())
-			uniqueModels.push_back(ro.model);
-	}
-
-	// Group by materials used, then by model used, then by mesh index, then by render object index.
-	// @NOTE: this is to reduce the number of times to rebind materials and models.
-	// @PERFORMANCE: this runs at 18ms about (for main level scene)... make this faster... bc we don't want 18ms hitches every time a new render object is switched out.
-	static uint64_t count = 0;
-	static float_t avgTime = 0.0f;
-	if (input::editorInputSet().actionC.onAction)
-	{
-		std::cout << "RESET!" << std::endl;
-		count = 0;
-		avgTime = 0.0f;
-	}
-	uint64_t time = SDL_GetPerformanceCounter();
-	{
-		// @DEBUG: see how the meshes are sorted.
-		std::string groups[] = {
-			"metaMeshes     ",
-			"uniqueMatId    ",
-			"modelId        ",
-			"meshIdx        ",
-			"renderObjIdx[0]",
-		};
-
-		std::string myStr = "\n\n\n";
-
-		myStr += groups[0] + "\t";
-		for (size_t i = 0; i < meshesASDFASDF.size(); i++)
-			myStr += std::to_string(i) + "\t\t\t\t";
-		myStr += "\n";
-
-		for (size_t i = 0; i < meshesASDFASDF.size(); i++)
-			myStr += "================";
-		myStr += "\n";
-
-		myStr += groups[1] + "\t";
-		for (auto& maa : meshesASDFASDF)
-		{
-			myStr += std::to_string(maa.uniqueMaterialBaseId) + "\t\t\t\t";
-		}
-		myStr += "\n";
-
-		myStr += groups[2] + "\t";
-		std::vector<void*> foundModels;
-		for (auto& maa : meshesASDFASDF)
-		{
-			bool found = false;
-			for (size_t i = 0; i < foundModels.size(); i++)
-				if (foundModels[i] == (void*)maa.model)
-				{
-					myStr += std::to_string(i) + "\t\t\t\t";
-					found = true;
-					break;
-				}
-			if (!found)
-			{
-				foundModels.push_back((void*)maa.model);
-				myStr += std::to_string(foundModels.size() - 1) + "\t\t\t\t";
-			}
-		}
-		myStr += "\n";
-
-		myStr += groups[3] + "\t";
-		for (auto& maa : meshesASDFASDF)
-		{
-			myStr += std::to_string((uint64_t)(void*)maa.meshIdx) + "\t\t\t\t";
-		}
-		myStr += "\n";
-
-		myStr += groups[4] + "\t";
-		for (auto& maa : meshesASDFASDF)
-		{
-			myStr += std::to_string((uint64_t)(void*)maa.renderObjectIndices[0]) + "\t\t\t\t";
-		}
-		myStr += "\n";
-
-		myStr += "\n\n\n";
-
-		std::ofstream outfile("hello_debug.txt");
-        if (outfile.is_open())
-			outfile << myStr;
-	}
-	std::sort(
-		meshesASDFASDF.begin(),
-		meshesASDFASDF.end(),
-		[&](MeshASDFASDF a, MeshASDFASDF b) {
-			if (a.uniqueMaterialBaseId != b.uniqueMaterialBaseId)
-				return a.uniqueMaterialBaseId < b.uniqueMaterialBaseId;
-			if (a.model != b.model)
-				return a.model < b.model;
-			if (a.meshIdx != b.meshIdx)
-				return a.meshIdx < b.meshIdx;
-			if (a.renderObjectIndices[0] != b.renderObjectIndices[0])
-				return a.renderObjectIndices[0] < b.renderObjectIndices[0];
-			return false;
-		}
-	);
-	time = SDL_GetPerformanceCounter() - time;
-	count++;
-	avgTime = avgTime * ((float_t)count - 1.0f) / (float_t)count + time / (float_t)count;
-	std::cout << "Sort time: " << time << "\tAvg: " << avgTime << std::endl;
-
-	// Smoosh meshes together.
-	for (size_t i = 0; i < meshesASDFASDF.size(); i++)
-	{
-		auto& parentMesh = meshesASDFASDF[i];
-		if (parentMesh.renderObjectIndices.empty())
-			continue;  // Already consumed.
-		
-		for (size_t j = i + 1; j < meshesASDFASDF.size(); j++)
-		{
-			auto& siblingMesh = meshesASDFASDF[j];
-			if (siblingMesh.renderObjectIndices.size() != 1)
-				continue;  // Already consumed... or this is a parent mesh... Though neither should happen at this stage bc of sorting previously.
-
-			bool sameAsParent =
-				(parentMesh.model == siblingMesh.model &&
-				parentMesh.meshIdx == siblingMesh.meshIdx &&
-				parentMesh.uniqueMaterialBaseId == siblingMesh.uniqueMaterialBaseId);
-			if (sameAsParent)
-			{
-				parentMesh.renderObjectIndices.push_back(siblingMesh.renderObjectIndices[0]);
-				siblingMesh.renderObjectIndices.clear();
-			}
-			else
-			{
-				i = j - 1;  // Speed up parent mesh seeker to where new mesh is (minus 1 so that the iterator can increment for it!).
-				break;  // Bc of sorting, there shouldn't be any other sibling meshes to find.
-			}
-		}
-	}
-	std::erase_if(
-		meshesASDFASDF,
-		[](MeshASDFASDF mm) {
-			return mm.renderObjectIndices.empty();
-		}
-	);
-
-	// Capture mesh info.
-	std::vector<MeshCapturedInfo> meshDraws;
-	for (vkglTF::Model* um : uniqueModels)
-	{
-		size_t baseMeshIndex = meshDraws.size();
-		uint32_t numMeshes = 0;
-		um->appendPrimitiveDraws(meshDraws, numMeshes);
-		for (auto& metaMesh : meshesASDFASDF)
-			if (metaMesh.model == um)
-			{
-				metaMesh.cookedMeshDrawIdx = baseMeshIndex + metaMesh.meshIdx;
-			}
-	}
-
 
 	// /////////////////////////////////////////////////////////
 
@@ -5828,59 +5634,66 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, 
 	VkDrawIndexedIndirectCommand* indirectDrawCommands = (VkDrawIndexedIndirectCommand*)indirectDrawCommandsData;
 
 	// Write indirect commands.
-	std::vector<IndirectBatch> batches;
-	vkglTF::Model* lastModel = nullptr;
-	size_t lastUMBId = (size_t)-1;
-	size_t instanceID = 0;
-	for (auto& metaMesh : meshesASDFASDF)
 	{
-		if (metaMesh.model == lastModel &&
-			metaMesh.uniqueMaterialBaseId == lastUMBId)
-		{
-			batches.back().count += metaMesh.renderObjectIndices.size();
-		}
-		else
-		{
-			batches.push_back({
-				.model = metaMesh.model,
-				.uniqueMaterialBaseId = metaMesh.uniqueMaterialBaseId,
-				.first = (uint32_t)instanceID,
-				.count = (uint32_t)metaMesh.renderObjectIndices.size(),
-			});
-			lastModel = metaMesh.model;
-			lastUMBId = metaMesh.uniqueMaterialBaseId;
-		}
+		std::vector<IndirectBatch> batches;
+		vkglTF::Model* lastModel = nullptr;
+		size_t lastUMBId = (size_t)-1;
+		size_t instanceID = 0;
 
-		// Create draw command for each mesh instance.
-		for (size_t roIndex = 0; roIndex < metaMesh.renderObjectIndices.size(); roIndex++)
-		{
-			auto& ib = meshDraws[metaMesh.cookedMeshDrawIdx];
-			*indirectDrawCommands = {
-				.indexCount = ib.meshIndexCount,
-				.instanceCount = 1,
-				.firstIndex = ib.meshFirstIndex,
-				.vertexOffset = 0,
-				.firstInstance = (uint32_t)instanceID,
-			};
+		std::lock_guard<std::mutex> lg(_roManager->renderObjectIndicesAndPoolMutex);
 
-			// @NOCHECKIN: INDIRECT BUFFER FOR INSTANCE POINTERS.
-			GPUInstancePointer& gip = _roManager->_renderObjectPool[metaMesh.renderObjectIndices[roIndex]].calculatedModelInstances[metaMesh.meshIdx];
+		for (auto& metaMesh : _roManager->_metaMeshes)
+		{
+			if (metaMesh.model == lastModel &&
+				metaMesh.uniqueMaterialBaseId == lastUMBId)
+			{
+				batches.back().count += metaMesh.renderObjectIndices.size();
+			}
+			else
+			{
+				batches.push_back({
+					.model = metaMesh.model,
+					.uniqueMaterialBaseId = metaMesh.uniqueMaterialBaseId,
+					.first = (uint32_t)instanceID,
+					.count = (uint32_t)metaMesh.renderObjectIndices.size(),
+				});
+				lastModel = metaMesh.model;
+				lastUMBId = metaMesh.uniqueMaterialBaseId;
+			}
+
+			// Create draw command for each mesh instance.
+			for (size_t roIndex = 0; roIndex < metaMesh.renderObjectIndices.size(); roIndex++)
+			{
+				auto& ib = _roManager->_cookedMeshDraws[metaMesh.cookedMeshDrawIdx];
+				*indirectDrawCommands = {
+					.indexCount = ib.meshIndexCount,
+					.instanceCount = 1,
+					.firstIndex = ib.meshFirstIndex,
+					.vertexOffset = 0,
+					.firstInstance = (uint32_t)instanceID,
+				};
+
+				// @NOCHECKIN: INDIRECT BUFFER FOR INSTANCE POINTERS.
+				GPUInstancePointer& gip = _roManager->_renderObjectPool[metaMesh.renderObjectIndices[roIndex]].calculatedModelInstances[metaMesh.meshIdx];
 #ifdef _DEVELOP
-			if (!onlyPoolIndices.empty())
-				for (size_t index : onlyPoolIndices)
-					if (index == gip.objectID)
-					{
-						// Include this draw indirect command.
-						outIndirectDrawCommandIdsForPoolIndex.push_back({ ib.model, (uint32_t)instanceID });
-						break;
-					}
+				if (!onlyPoolIndices.empty())
+					for (size_t index : onlyPoolIndices)
+						if (index == gip.objectID)
+						{
+							// Include this draw indirect command.
+							outIndirectDrawCommandIdsForPoolIndex.push_back({ ib.model, (uint32_t)instanceID });
+							break;
+						}
 #endif
-			*instancePtrSSBO = gip;
+				*instancePtrSSBO = gip;
 
-			indirectDrawCommands++;
-			instancePtrSSBO++;
-			instanceID++;
+				indirectDrawCommands++;
+				instancePtrSSBO++;
+				instanceID++;
+			}
 		}
+
+		indirectBatches = batches;
 	}
 
 
@@ -5953,7 +5766,6 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, 
 	// Cleanup and return
 	vmaUnmapMemory(_allocator, currentFrame.instancePtrBuffer._allocation);
 	vmaUnmapMemory(_allocator, currentFrame.indirectDrawCommandBuffer._allocation);
-	indirectBatches = batches;
 }
 
 void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, bool materialOverride)
@@ -6356,6 +6168,7 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 							{
 								// Toggle render layer
 								_roManager->_renderObjectLayersEnabled[i] = !_roManager->_renderObjectLayersEnabled[i];
+								_roManager->flagMetaMeshListAsUnoptimized();
 								if (!_roManager->_renderObjectLayersEnabled[i])
 								{
 									// Find object that matrixToMove is pulling from (if any)

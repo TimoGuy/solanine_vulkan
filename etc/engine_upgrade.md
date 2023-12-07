@@ -20,14 +20,14 @@
 - [x] At the beginning of every frame right before uploading the positions of the renderobjects' transforms an object interpolation step is put.
     - [x] This, as well as where the simulation position pointers are getting swapped are where multithreaded locks are placed.
     > This results in a massive speedup since the render thread can run almost lock free! (250 -> 600 fps (saving 2.333333ms))
-- [ ] Material maker
-    - [ ] Main Engine Changes
+- [x] Material maker
+    - [x] Main Engine Changes
         - [f] Change `VulkanEngine` to `VulkanRenderer`.
             - [ ] Set up main engine. It manages the window, selects the renderer/starts the render engine, starts the simulation engine, then polls for input and keeps the input state up to date. Upon shutting down it takes care of shutting down the render engine and simulation engine.
-        - [ ] Separate things out into editor modes
+        - [x] Separate things out into editor modes
             - [x] Level Editor (everything created up to this point with a loaded in scene)
-            - [x] Texture Editor
-            - [ ] Material Editor (what we're gonna create. Just no objects except for the `MaterialViewer` object type to render the textures and a bunch of imgui stuff)
+            - [f] Texture Editor
+            - [x] Material Editor (what we're gonna create. Just no objects except for the `MaterialViewer` object type to render the textures and a bunch of imgui stuff)
     - [x] Texture cooker
         - [x] Textures to mid gen textures.
         - [x] Run all mid gen then run texture cooking.
@@ -79,18 +79,18 @@
                 - [x] Enable extensions.
                 - [x] Mark descriptor binding as using a variable count.
         - [x] Fix that pesky error when exiting the program.
-        - [ ] Migrate to material system.
+        - [x] Migrate to material system.
             - [x] CREATE MATERIAL VIEWER.
             - [x] Add different materials (group by humba) in `compactRenderObjectsIntoDraws`
             - [x] Load in correct material IDs instead of using material ids from vkgltf
             - [f] Connect material to render object's palette. When loading in the model, it will also return a palette, and the programmer can insert that palette or insert a loaded palette swap file into the render object.
                 - [f] Load palette swap file.
-            - [ ] Try to come up with a better sorting for compacting render meshes
-                > RESULTS: 
-            - [ ] Don't load textures with vkgltf. (bandaid... see sub task for real.)
-                - [ ] Re-export all gltf models with "Geometry->Materials->Export" and "Geometry->Images->None" set.
+            - [x] Try to come up with a better sorting for compacting render meshes
+                > RESULTS: Ummmmmm, I couldn't really find anything very useful, but just creating a cache that gets managed by renderobjectmanager was my solution.
+            - [f] ~~Don't load textures with vkgltf. (bandaid... see sub task for real.)~~ I'll just mark this as future, bc material palettes should do this solution.
+                - [f] Re-export all gltf models with "Geometry->Materials->Export" and "Geometry->Images->None" set.
                     - [f] @NOTE: "Geometry->Materials->Placeholder" doesn't export the material name and we're matching on name. However, in the future it might be good just to match on primitive id, which would just be using "Placeholder".
-            - [ ] Turn off the "pbrmaterial" material.
+            - [f] ~~Turn off the "pbrmaterial" material.~~ Use material palettes that compare on the primitive id.
     - [x] Material viewer
         - [x] Orbit camera view
         - [x] Sphere material inspector.

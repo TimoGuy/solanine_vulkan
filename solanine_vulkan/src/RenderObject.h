@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Settings.h"
+#include "VkDataStructures.h"
 
 namespace vkglTF { struct Model; struct Animator; }
 
@@ -41,6 +42,10 @@ public:
 	bool registerRenderObjects(std::vector<RenderObject> inRenderObjectDatas, std::vector<RenderObject**> outRenderObjectDatas);
 	void unregisterRenderObjects(std::vector<RenderObject*> objRegistrations);
 
+	bool checkIsMetaMeshListUnoptimized();
+	void flagMetaMeshListAsUnoptimized();
+	void optimizeMetaMeshList();
+
 #ifdef _DEVELOP
 	vkglTF::Model* getModel(const std::string& name, void* owner, std::function<void()>&& reloadCallback);  // This is to support model hot-reloading via a callback lambda
 	void           removeModelCallbacks(void* owner);
@@ -78,6 +83,18 @@ private:
 	std::unordered_map<std::string, std::vector<ReloadCallback>> _renderObjectModelCallbacks;
 #endif
 	vkglTF::Model* createModel(vkglTF::Model* model, const std::string& name);
+
+	struct MetaMesh
+	{
+		vkglTF::Model* model;
+		size_t meshIdx;
+		size_t uniqueMaterialBaseId;
+		std::vector<size_t> renderObjectIndices;
+		size_t cookedMeshDrawIdx;
+	};
+	std::vector<MetaMesh> _metaMeshes;
+	std::vector<MeshCapturedInfo> _cookedMeshDraws;
+	bool _isMetaMeshListUnoptimized = true;
 
 	VmaAllocator& _allocator;
 
