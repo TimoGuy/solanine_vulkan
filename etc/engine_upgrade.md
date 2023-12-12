@@ -134,6 +134,7 @@
     - [x] Write compute shader.
     - [x] @NOTE: happens after compute based culling pass.
     - [x] Compact and sort skinned meshes into buffer entries and instance id offsets (separated by just the umb idx).
+        - [ ] The offsets should be configured such that when the indirect draw command is compiled/run normally, it should all just line up to the correct instance data.
     - [ ] Create buffer that matches the size of all the skinned meshes, with the below attributes:
         - Position
         - Normal
