@@ -128,6 +128,31 @@
             > Anywho, huge improvement! I think I can sleep well now!
     > Now, the game loads up in about 5000ms. Not instant, but it feels like it now that the SlimeGirl model loads up super quickly.
 
+- [ ] Compute based skinning.
+    - [x] Setup vkdevice context to allow for compute shaders.
+        > Afaik using the graphics queue should support compute shaders too. Using another compute shader queue is only necessary if async compute is desired.
+    - [x] Write compute shader.
+    - [x] @NOTE: happens after compute based culling pass.
+    - [x] Compact and sort skinned meshes into buffer entries and instance id offsets (separated by just the umb idx).
+    - [ ] Create buffer that matches the size of all the skinned meshes, with the below attributes:
+        - Position
+        - Normal
+        - UV0*
+        - UV1*
+        - Color0*
+        - animatorNodeID  @TODO: take it out of the InstancePointer struct!
+        - BaseInstanceID*
+            * For passing thru.
+    - [ ] Make sure to multiply the skeletal animation node matrix with the pos/norm
+    - [ ] Output to buffer that has these attributes:
+        - Position
+        - Normal
+        - UV0
+        - UV1
+        - Color0
+        - InstanceIDOffset
+            > This is set to 0 for unskinned meshes, but it's so that skinned meshes can be drawn with one model bind and set `gl_BaseInstance` to 0 and have the actual instance ids tied to their indices.
+
 - [ ] Better level editor.
     - [ ] Update collision box texture for voxel fields.
     - [ ] No physics simulations when the level is in editing mode.

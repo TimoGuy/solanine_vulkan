@@ -45,7 +45,7 @@ struct InstancePointer
 {
 	uint objectID;
 	uint materialID;
-	uint animatorNodeID;
+	uint animatorNodeID;  // @TODO: take out! This will be used by the compute skinning process.
 	uint voxelFieldLightingGridID;
 };
 

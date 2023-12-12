@@ -369,6 +369,37 @@ void VulkanEngine::setWindowFullscreen(bool isFullscreen)
 	SDL_SetWindowFullscreen(_window, _windowFullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
 }
 
+void VulkanEngine::computeCulling(const FrameData& currentFrame, VkCommandBuffer cmd)
+{
+	return;  // @TODO @STUB.
+}
+
+void VulkanEngine::computeSkinnedMeshes(const FrameData& currentFrame, VkCommandBuffer cmd)
+{
+	if (_roManager->_renderObjectsWithAnimatorIndices.empty())
+		return;  // Omit skinning meshes if no meshes to skin.
+
+	Material& skinMaterial = *getMaterial("computeSkinMaterial");
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, skinMaterial.pipeline);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, skinMaterial.pipelineLayout, 0, 1, &currentFrame.skinning.inputIndicesDescriptor, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, skinMaterial.pipelineLayout, 1, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(this), 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, skinMaterial.pipelineLayout, 2, 1, &currentFrame.skinning.outputDescriptor, 0, nullptr);
+	vkCmdDispatch(cmd, std::ceil(_roManager->_renderObjectsIndices.size() / 256.0f), 1, 1);
+
+	// Block vertex shaders from running until the dispatched job is finished.
+	VkBufferMemoryBarrier barrier = {
+		.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+		.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
+		.dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+		.srcQueueFamilyIndex = _graphicsQueueFamily,
+		.dstQueueFamilyIndex = _graphicsQueueFamily,
+		.buffer = currentFrame.skinning.outputBuffer._buffer,
+		.offset = 0,
+		.size = currentFrame.skinning.outputBufferSize,
+	};
+	vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, 0, 0, nullptr, 1, &barrier, 0, nullptr);
+}
+
 void VulkanEngine::renderPickingRenderpass(const FrameData& currentFrame)
 {
 	VK_CHECK(vkResetFences(_device, 1, &currentFrame.pickingRenderFence));
@@ -1395,12 +1426,14 @@ void VulkanEngine::render()
 	recreateVoxelLightingDescriptor();
 	uploadCurrentFrameToGPU(currentFrame);
 	textmesh::uploadUICameraDataToGPU();
+
 #ifdef _DEVELOP
 	std::vector<size_t> pickedPoolIndices = { 0 };
 	if (!searchForPickedObjectPoolIndex(pickedPoolIndices[0]))
 		pickedPoolIndices.clear();
 	std::vector<ModelWithIndirectDrawId> pickingIndirectDrawCommandIds;
 #endif
+
 	perfs[14] = SDL_GetPerformanceCounter();
 	if (_roManager->checkIsMetaMeshListUnoptimized())
 		_roManager->optimizeMetaMeshList();
@@ -1408,6 +1441,8 @@ void VulkanEngine::render()
 	perfs[14] = SDL_GetPerformanceCounter() - perfs[14];
 
 	// Render render passes.
+	computeCulling(currentFrame, cmd);
+	computeSkinnedMeshes(currentFrame, cmd);
 	renderShadowRenderpass(currentFrame, cmd);
 	renderMainRenderpass(currentFrame, cmd, pickingIndirectDrawCommandIds);
 	renderUIRenderpass(cmd);
@@ -3906,62 +3941,6 @@ void VulkanEngine::initPipelines()
 		};
 	}
 
-	// // Mesh ZPrepass Pipeline
-	// VkPipeline meshZPrepassPipeline;
-	// VkPipelineLayout meshZPrepassPipelineLayout;
-	// vkutil::pipelinebuilder::build(
-	// 	{},
-	// 	{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _pbrTexturesSetLayout, _skeletalAnimationSetLayout },
-	// 	{
-	// 		{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/pbr_zprepass.vert.spv" },
-	// 		{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/pbr_khr_zprepass.frag.spv" },
-	// 	},
-	// 	modelVertexDescription.attributes,
-	// 	modelVertexDescription.bindings,
-	// 	vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
-	// 	screenspaceViewport,
-	// 	screenspaceScissor,
-	// 	vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT),
-	// 	{}, // No color attachment for the z prepass pipeline; only writing to depth!
-	// 	vkinit::multisamplingStateCreateInfo(),
-	// 	vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS),
-	// 	{},
-	// 	_mainRenderPass,
-	// 	0,
-	// 	meshZPrepassPipeline,
-	// 	meshZPrepassPipelineLayout,
-	// 	_swapchainDependentDeletionQueue
-	// );
-	// attachPipelineToMaterial(meshZPrepassPipeline, meshZPrepassPipelineLayout, "pbrZPrepassMaterial");
-
-	// // Mesh Pipeline
-	// VkPipeline meshPipeline;
-	// VkPipelineLayout meshPipelineLayout;
-	// vkutil::pipelinebuilder::build(
-	// 	{},
-	// 	{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _pbrTexturesSetLayout, _skeletalAnimationSetLayout, _voxelFieldLightingGridTextureSet.layout },
-	// 	{
-	// 		{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/pbr.vert.spv" },
-	// 		{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/pbr_khr.frag.spv" },
-	// 	},
-	// 	modelVertexDescription.attributes,
-	// 	modelVertexDescription.bindings,
-	// 	vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
-	// 	screenspaceViewport,
-	// 	screenspaceScissor,
-	// 	vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT),
-	// 	{ vkinit::colorBlendAttachmentState() },
-	// 	vkinit::multisamplingStateCreateInfo(),
-	// 	vkinit::depthStencilCreateInfo(true, false, VK_COMPARE_OP_EQUAL),
-	// 	{},
-	// 	_mainRenderPass,
-	// 	1,
-	// 	meshPipeline,
-	// 	meshPipelineLayout,
-	// 	_swapchainDependentDeletionQueue
-	// );
-	// attachPipelineToMaterial(meshPipeline, meshPipelineLayout, "pbrMaterial");
-
 	// Snapshot image pipeline
 	VkPipeline snapshotImagePipeline;
 	VkPipelineLayout snapshotImagePipelineLayout;
@@ -4111,50 +4090,6 @@ void VulkanEngine::initPipelines()
 		_swapchainDependentDeletionQueue
 	);
 	attachPipelineToMaterial(wireframeBehindPipeline, wireframePipelineLayout, "wireframeColorBehindMaterial");
-
-	// // Shadow Depth Pass pipeline
-	// auto shadowRasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE);
-	// shadowRasterizer.depthClampEnable = VK_TRUE;
-
-	// VkPipeline shadowDepthPassPipeline;
-	// VkPipelineLayout shadowDepthPassPipelineLayout;
-	// vkutil::pipelinebuilder::build(
-	// 	{
-	// 		VkPushConstantRange{
-	// 			.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-	// 			.offset = 0,
-	// 			.size = sizeof(CascadeIndexPushConstBlock)
-	// 		}
-	// 	},
-	// 	{ _cascadeViewProjsSetLayout, _objectSetLayout, _instancePtrSetLayout, _pbrTexturesSetLayout, _skeletalAnimationSetLayout },
-	// 	{
-	// 		{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/shadow_depthpass.vert.spv" },
-	// 		{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/shadow_depthpass.frag.spv" },
-	// 	},
-	// 	modelVertexDescription.attributes,
-	// 	modelVertexDescription.bindings,
-	// 	vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
-	// 	VkViewport{
-	// 		0.0f, 0.0f,
-	// 		(float_t)SHADOWMAP_DIMENSION, (float_t)SHADOWMAP_DIMENSION,
-	// 		0.0f, 1.0f,
-	// 	},
-	// 	VkRect2D{
-	// 		{ 0, 0 },
-	// 		VkExtent2D{ SHADOWMAP_DIMENSION, SHADOWMAP_DIMENSION },
-	// 	},
-	// 	shadowRasterizer,
-	// 	{},  // No color attachment for this pipeline
-	// 	vkinit::multisamplingStateCreateInfo(),
-	// 	vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL),
-	// 	{},
-	// 	_shadowRenderPass,
-	// 	0,
-	// 	shadowDepthPassPipeline,
-	// 	shadowDepthPassPipelineLayout,
-	// 	_swapchainDependentDeletionQueue
-	// );
-	// attachPipelineToMaterial(shadowDepthPassPipeline, shadowDepthPassPipelineLayout, "shadowDepthPassMaterial");
 
 	// Postprocess pipeline
 	VkPipeline postprocessPipeline;
@@ -5611,16 +5546,27 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, 
 			// Create draw command for each mesh instance.
 			for (size_t roIndex = 0; roIndex < metaMesh.renderObjectIndices.size(); roIndex++)
 			{
-				auto& ib = _roManager->_cookedMeshDraws[metaMesh.cookedMeshDrawIdx];
-				*indirectDrawCommands = {
-					.indexCount = ib.meshIndexCount,
-					.instanceCount = 1,
-					.firstIndex = ib.meshFirstIndex,
-					.vertexOffset = 0,
-					.firstInstance = (uint32_t)instanceID,
-				};
+				if (metaMesh.isSkinned)
+				{
+					if (roIndex == 0)
+					{
+						// @STUB.
+						// Use the captured mesh information
 
-				// @NOCHECKIN: INDIRECT BUFFER FOR INSTANCE POINTERS.
+					}
+				}
+				else
+				{
+					auto& ib = _roManager->_cookedMeshDraws[metaMesh.cookedMeshDrawIdx];
+					*indirectDrawCommands = {
+						.indexCount = ib.meshIndexCount,
+						.instanceCount = 1,
+						.firstIndex = ib.meshFirstIndex,
+						.vertexOffset = 0,
+						.firstInstance = (uint32_t)instanceID,
+					};
+				}
+
 				GPUInstancePointer& gip = _roManager->_renderObjectPool[metaMesh.renderObjectIndices[roIndex]].calculatedModelInstances[metaMesh.meshIdx];
 #ifdef _DEVELOP
 				if (!onlyPoolIndices.empty())
@@ -5628,7 +5574,16 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, 
 						if (index == gip.objectID)
 						{
 							// Include this draw indirect command.
-							outIndirectDrawCommandIdsForPoolIndex.push_back({ ib.model, (uint32_t)instanceID });
+							if (metaMesh.isSkinned)
+							{
+								// @TODO: @STUB.
+								// Idk what to do here. I think a new system needs to get put in place.
+							}
+							else
+								outIndirectDrawCommandIdsForPoolIndex.push_back({
+									_roManager->_cookedMeshDraws[metaMesh.cookedMeshDrawIdx].model,
+									(uint32_t)instanceID
+								});
 							break;
 						}
 #endif

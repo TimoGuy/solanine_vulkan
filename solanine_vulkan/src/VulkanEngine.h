@@ -92,6 +92,29 @@ struct GPUPostProcessParams
 	bool pad2;  // Vulkan spec requires multiple of 4 bytes for push constants.
 };
 
+struct GPUInputSkinningMeshData
+{
+	vec3 pos;
+    vec3 normal;
+    vec2 UV0;
+    vec2 UV1;
+    vec4 joint0;
+    vec4 weight0;
+    vec4 color0;
+    uint32_t animatorNodeID;
+    uint32_t baseInstanceID;
+};
+
+struct GPUOutputSkinningMeshData
+{
+	vec3 pos;
+    vec3 normal;
+    vec2 UV0;
+    vec2 UV1;
+    vec4 color0;
+    uint32_t instanceIDOffset;
+};
+
 struct FrameData
 {
 	VkSemaphore presentSemaphore, renderSemaphore;
@@ -117,6 +140,15 @@ struct FrameData
 
 	AllocatedBuffer pickingSelectedIdBuffer;
 	VkDescriptorSet pickingReturnValueDescriptor;
+
+	struct ComputeSkinning
+	{
+		AllocatedBuffer inputIndicesBuffer;
+		VkDescriptorSet inputIndicesDescriptor;
+		AllocatedBuffer outputBuffer;
+		uint64_t        outputBufferSize;
+		VkDescriptorSet outputDescriptor;
+	} skinning;
 };
 
 struct UploadContext
@@ -390,6 +422,8 @@ private:
 	bool searchForPickedObjectPoolIndex(size_t& outPoolIndex);
 	void renderPickedObject(VkCommandBuffer cmd, const FrameData& currentFrame, const std::vector<ModelWithIndirectDrawId>& indirectDrawCommandIds);
 
+	void computeCulling(const FrameData& currentFrame, VkCommandBuffer cmd);
+	void computeSkinnedMeshes(const FrameData& currentFrame, VkCommandBuffer cmd);
 	void renderPickingRenderpass(const FrameData& currentFrame);
 	void renderShadowRenderpass(const FrameData& currentFrame, VkCommandBuffer cmd);
 	void renderMainRenderpass(const FrameData& currentFrame, VkCommandBuffer cmd, const std::vector<ModelWithIndirectDrawId>& pickingIndirectDrawCommandIds);

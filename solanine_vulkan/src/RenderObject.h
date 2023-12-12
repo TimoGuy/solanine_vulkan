@@ -87,6 +87,7 @@ private:
 	struct MetaMesh
 	{
 		vkglTF::Model* model;
+		bool isSkinned;
 		size_t meshIdx;
 		size_t uniqueMaterialBaseId;
 		std::vector<size_t> renderObjectIndices;
@@ -94,6 +95,17 @@ private:
 	};
 	std::vector<MetaMesh> _metaMeshes;
 	std::vector<MeshCapturedInfo> _cookedMeshDraws;
+
+	struct SkinnedMeshEntry
+	{
+		vkglTF::Model* model;
+		size_t meshIdx;
+		size_t animatorNodeID;
+		size_t baseInstanceID;
+	};
+	std::vector<SkinnedMeshEntry> _skinnedMeshEntries;
+	uint8_t _skinnedMeshModelMemAddr;
+
 	bool _isMetaMeshListUnoptimized = true;
 
 	VmaAllocator& _allocator;

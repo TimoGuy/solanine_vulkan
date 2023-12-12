@@ -1,0 +1,83 @@
+#version 460
+
+layout (local_size_x = 256) in;
+
+// All skinned meshes.
+struct InputMeshData
+{
+	vec3 pos;
+    vec3 normal;
+    vec2 UV0;
+    vec2 UV1;
+    vec4 joint0;
+    vec4 weight0;
+    vec4 color0;
+    uint animatorNodeID;
+    uint baseInstanceID;
+};
+
+layout(std140, set = 0, binding = 0) readonly buffer MeshInputBuffer
+{
+    uint numIndices;
+    uint pad0;
+    uint pad1;
+    uint pad2;
+	InputMeshData indices[];
+} inputData;
+
+// Skeletal Animation/Skinning.
+#define MAX_NUM_JOINTS 128
+struct SkeletonAnimationNode
+{
+	mat4 matrix;
+	mat4 jointMatrix[MAX_NUM_JOINTS];
+	float jointCount;
+};
+
+layout (std140, set = 1, binding = 0) readonly buffer SkeletonAnimationNodeCollection
+{
+	SkeletonAnimationNode nodes[];
+} nodeCollection;
+
+// Output skinned meshes.
+struct OutputMeshData
+{
+	vec3 pos;
+    vec3 normal;
+    vec2 UV0;
+    vec2 UV1;
+    vec4 color0;
+    uint instanceIDOffset;
+};
+
+layout(std140, set = 2, binding = 0) buffer OutputBuffer
+{
+    OutputMeshData indices[];
+} outputData;
+
+
+void main()
+{
+    uint gID = gl_GlobalInvocationID.x;
+    if (gID < inputData.numIndices)
+    {
+        uint nodeID = inputData.indices[gID].animatorNodeID;
+        mat4 nodeMatrix = nodeCollection.nodes[nodeID].matrix;
+        vec4 joint = inputData.indices[gID].joint0;  // @NOTE: this vec4 copy may be non-performant.
+        vec4 weight = inputData.indices[gID].weight0;  // @NOTE: this vec4 copy may be non-performant.
+
+        mat4 skinMat =
+            nodeCollection.nodes[nodeID].jointMatrix[int(joint.x)] * weight.x +
+            nodeCollection.nodes[nodeID].jointMatrix[int(joint.y)] * weight.y +
+            nodeCollection.nodes[nodeID].jointMatrix[int(joint.z)] * weight.z +
+            nodeCollection.nodes[nodeID].jointMatrix[int(joint.w)] * weight.w;
+
+        // Spit out the data!
+        outputData.indices[gID].pos = vec3(nodeMatrix * skinMat * vec4(inputData.indices[gID].pos, 1.0));
+        outputData.indices[gID].normal = normalize(transpose(inverse(mat3(nodeMatrix * skinMat))) * inputData.indices[gID].normal);
+        outputData.indices[gID].UV0 = inputData.indices[gID].UV0;
+        outputData.indices[gID].UV1 = inputData.indices[gID].UV1;
+        outputData.indices[gID].color0 = inputData.indices[gID].color0;
+        outputData.indices[gID].instanceIDOffset = inputData.indices[gID].baseInstanceID;
+    }
+}
