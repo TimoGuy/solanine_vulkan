@@ -134,8 +134,8 @@
     - [x] Write compute shader.
     - [x] @NOTE: happens after compute based culling pass.
     - [x] Compact and sort skinned meshes into buffer entries and instance id offsets (separated by just the umb idx).
-        - [ ] The offsets should be configured such that when the indirect draw command is compiled/run normally, it should all just line up to the correct instance data.
-    - [ ] Create buffer that matches the size of all the skinned meshes, with the below attributes:
+        - [x] The offsets should be configured such that when the indirect draw command is compiled/run normally, it should all just line up to the correct instance data.
+    - [x] Create buffer that matches the size of all the skinned meshes, with the below attributes:
         - Position
         - Normal
         - UV0*
@@ -144,8 +144,8 @@
         - animatorNodeID  @TODO: take it out of the InstancePointer struct!
         - BaseInstanceID*
             * For passing thru.
-    - [ ] Make sure to multiply the skeletal animation node matrix with the pos/norm
-    - [ ] Output to buffer that has these attributes:
+    - [x] Make sure to multiply the skeletal animation node matrix with the pos/norm
+    - [x] Output to buffer that has these attributes:
         - Position
         - Normal
         - UV0
@@ -153,6 +153,7 @@
         - Color0
         - InstanceIDOffset
             > This is set to 0 for unskinned meshes, but it's so that skinned meshes can be drawn with one model bind and set `gl_BaseInstance` to 0 and have the actual instance ids tied to their indices.
+    - [ ] It appears that the data is off somehow. The input mesh for the skinning is off for sure.
 
 - [ ] Better level editor.
     - [ ] Update collision box texture for voxel fields.

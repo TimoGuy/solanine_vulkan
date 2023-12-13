@@ -449,7 +449,6 @@ void VulkanEngine::renderPickingRenderpass(const FrameData& currentFrame)
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 3, 1, &currentFrame.pickingReturnValueDescriptor, 0, nullptr);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(this), 0, nullptr);
 
 	// Set dynamic scissor
 	VkRect2D scissor = {};
@@ -557,7 +556,6 @@ void VulkanEngine::renderShadowRenderpass(const FrameData& currentFrame, VkComma
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 3, 1, &shadowDepthPassMaterial.textureSet, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(this), 0, nullptr);
 
 		CascadeIndexPushConstBlock pc = { i };
 		vkCmdPushConstants(cmd, shadowDepthPassMaterial.pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(CascadeIndexPushConstBlock), &pc);
@@ -604,7 +602,6 @@ void VulkanEngine::renderMainRenderpass(const FrameData& currentFrame, VkCommand
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 3, 1, &defaultZPrepassMaterial.textureSet, 0, nullptr);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(this), 0, nullptr);
 	renderRenderObjects(cmd, currentFrame, true);
 	//////////////////////
 
@@ -4033,7 +4030,7 @@ void VulkanEngine::initPipelines()
 	VkPipelineLayout pickingPipelineLayout;
 	vkutil::pipelinebuilder::build(
 		{},
-		{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _pickingReturnValueSetLayout, _skeletalAnimationSetLayout },
+		{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _pickingReturnValueSetLayout },
 		{
 			{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/picking.vert.spv" },
 			{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/picking.frag.spv" },
@@ -4067,7 +4064,7 @@ void VulkanEngine::initPipelines()
 				.size = sizeof(ColorPushConstBlock)
 			}
 		},
-		{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _skeletalAnimationSetLayout },
+		{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout },
 		{
 			{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/wireframe_color.vert.spv" },
 			{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/color.frag.spv" },
@@ -4099,7 +4096,7 @@ void VulkanEngine::initPipelines()
 				.size = sizeof(ColorPushConstBlock)
 			}
 		},
-		{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _skeletalAnimationSetLayout },
+		{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout },
 		{
 			{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/wireframe_color.vert.spv" },
 			{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/color.frag.spv" },
@@ -5626,7 +5623,7 @@ void VulkanEngine::createSkinningBuffers(FrameData& currentFrame)
 	size_t inputVerticesBufferSize = sizeof(GPUInputSkinningMeshPrefixData) + sizeof(GPUInputSkinningMeshData) * s.numVertices;
 	s.inputVerticesBuffer = createBuffer(inputVerticesBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
-	s.outputBufferSize = sizeof(GPUInputSkinningMeshData) * s.numVertices;
+	s.outputBufferSize = sizeof(GPUOutputSkinningMeshData) * s.numVertices;
 	s.outputVerticesBuffer = createBuffer(s.outputBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);  // @NOTE: no staging buffer for this bc all the data is loaded via compute shader on the gpu!
 
 	size_t indicesBufferSize = sizeof(uint32_t) * s.numIndices;
@@ -5650,7 +5647,7 @@ void VulkanEngine::createSkinningBuffers(FrameData& currentFrame)
 			auto& mdi = modelToMeshDetailedInfosMap[sme.model][sme.meshIdx];
 			for (auto it = mdi.uniqueVertexIndices.begin(); it != mdi.uniqueVertexIndices.end(); it++)
 			{
-				auto& vert = sme.model->loaderInfo.vertexBuffer[*it];
+				auto& vert = sme.model->loaderInfo.vertexWithWeightsBuffer[*it];
 				GPUInputSkinningMeshData ismd = {};
 				glm_vec3_copy(vert.pos, ismd.pos);
 				glm_vec3_copy(vert.normal, ismd.normal);
@@ -5712,6 +5709,7 @@ void VulkanEngine::createSkinningBuffers(FrameData& currentFrame)
 
 	// Finish.
 	s.created = true;
+	s.recalculateSkinningBuffers = false;
 }
 
 void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, std::vector<size_t> onlyPoolIndices, std::vector<ModelWithIndirectDrawId>& outIndirectDrawCommandIdsForPoolIndex)
@@ -5845,8 +5843,7 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, uMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
 			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, uMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
 			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, uMaterial.pipelineLayout, 3, 1, &uMaterial.textureSet, 0, nullptr);
-			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, uMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(this), 0, nullptr);
-			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, uMaterial.pipelineLayout, 5, 1, &_voxelFieldLightingGridTextureSet.descriptor, 0, nullptr);
+			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, uMaterial.pipelineLayout, 4, 1, &_voxelFieldLightingGridTextureSet.descriptor, 0, nullptr);
 			////////////////
 			
 			lastUMBIdx = batch.uniqueMaterialBaseId;
@@ -5895,7 +5892,6 @@ void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& curr
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, material.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, material.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, material.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, material.pipelineLayout, 3, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(this), 0, nullptr);
 
 		// Push constants
 		ColorPushConstBlock pc = {};

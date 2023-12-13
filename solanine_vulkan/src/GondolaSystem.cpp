@@ -811,7 +811,7 @@ void updateStation(GondolaSystem_XData* d)
     d->triggerBakeSplineCache = true;  // Assumption is that the station moved.
 }
 
-bool showCurvePaths = true;
+bool showCurvePaths = false;//true;  @NOCHECKIN
 
 void GondolaSystem::simulationUpdate(float_t simDeltaTime)
 {

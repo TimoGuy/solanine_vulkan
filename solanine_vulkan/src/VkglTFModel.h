@@ -296,10 +296,20 @@ namespace vkglTF
 			vec3 normal;
 			vec2 uv0;
 			vec2 uv1;
+			vec4 color;
+			uint32_t instanceIDOffset;
+			static VertexInputDescription getVertexDescription();
+		};
+
+		struct VertexWithWeights
+		{
+			vec3 pos;
+			vec3 normal;
+			vec2 uv0;
+			vec2 uv1;
 			vec4 joint0;
 			vec4 weight0;
 			vec4 color;
-			static VertexInputDescription getVertexDescription();
 		};
 
 		struct Vertices
@@ -338,6 +348,7 @@ namespace vkglTF
 		{
 			uint32_t* indexBuffer;
 			Vertex* vertexBuffer;
+			VertexWithWeights* vertexWithWeightsBuffer;
 			size_t indexCount;
 			size_t vertexCount;
 			size_t indexPos = 0;
