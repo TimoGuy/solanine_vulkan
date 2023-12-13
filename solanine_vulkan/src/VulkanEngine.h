@@ -92,6 +92,14 @@ struct GPUPostProcessParams
 	bool pad2;  // Vulkan spec requires multiple of 4 bytes for push constants.
 };
 
+struct GPUInputSkinningMeshPrefixData
+{
+	uint32_t numVertices;
+    uint32_t pad0;
+    uint32_t pad1;
+    uint32_t pad2;
+};
+
 struct GPUInputSkinningMeshData
 {
 	vec3 pos;
@@ -143,11 +151,15 @@ struct FrameData
 
 	struct ComputeSkinning
 	{
-		AllocatedBuffer inputIndicesBuffer;
-		VkDescriptorSet inputIndicesDescriptor;
-		AllocatedBuffer outputBuffer;
+		uint64_t        numVertices;
+		uint64_t        numIndices;
+		AllocatedBuffer inputVerticesBuffer;
+		AllocatedBuffer outputVerticesBuffer;
 		uint64_t        outputBufferSize;
-		VkDescriptorSet outputDescriptor;
+		AllocatedBuffer indicesBuffer;
+		VkDescriptorSet inoutVerticesDescriptor;
+		bool created                    = false;
+		bool recalculateSkinningBuffers = true;
 	} skinning;
 };
 
@@ -330,6 +342,9 @@ public:
 	void initVoxelLightingDescriptor();
 	void recreateVoxelLightingDescriptor();
 
+	// Compute skinning.
+	void initSkinningPipeline();
+
 	//
 	// Render Objects
 	//
@@ -361,6 +376,7 @@ public:
 	VkDescriptorSetLayout _pickingReturnValueSetLayout;
 	VkDescriptorSetLayout _skeletalAnimationSetLayout;    // @NOTE: for this one, descriptor sets are created inside of the vkglTFModels themselves, they're not global
 	VkDescriptorSetLayout _postprocessSetLayout;
+	VkDescriptorSetLayout _computeSkinningInoutVerticesSetLayout;
 
 	AllocatedBuffer createBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
 	size_t padUniformBufferSize(size_t originalSize);    // @NOTE: this is unused, but it's useful for dynamic uniform buffers
@@ -401,6 +417,7 @@ private:
 	void loadMeshes();
 
 	void uploadCurrentFrameToGPU(const FrameData& currentFrame);
+	void createSkinningBuffers(FrameData& currentFrame);
 	
 	std::vector<IndirectBatch> indirectBatches;
 

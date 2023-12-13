@@ -2507,7 +2507,7 @@ namespace vkglTF
 			};
 
 			vkutil::DescriptorBuilder::begin()
-				.bindBuffer(0, &nodeCollectionBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_VERTEX_BIT)
+				.bindBuffer(0, &nodeCollectionBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, /*VK_SHADER_STAGE_VERTEX_BIT @NOCHECKIN*/ VK_SHADER_STAGE_COMPUTE_BIT)
 				.build(nodeCollectionBuffers[i].descriptorSet, engine->_skeletalAnimationSetLayout);
 
 			// Copy non-skinned default animator

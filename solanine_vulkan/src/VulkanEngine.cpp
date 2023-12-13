@@ -381,10 +381,9 @@ void VulkanEngine::computeSkinnedMeshes(const FrameData& currentFrame, VkCommand
 
 	Material& skinMaterial = *getMaterial("computeSkinMaterial");
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, skinMaterial.pipeline);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, skinMaterial.pipelineLayout, 0, 1, &currentFrame.skinning.inputIndicesDescriptor, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, skinMaterial.pipelineLayout, 0, 1, &currentFrame.skinning.inoutVerticesDescriptor, 0, nullptr);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, skinMaterial.pipelineLayout, 1, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(this), 0, nullptr);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, skinMaterial.pipelineLayout, 2, 1, &currentFrame.skinning.outputDescriptor, 0, nullptr);
-	vkCmdDispatch(cmd, std::ceil(_roManager->_renderObjectsIndices.size() / 256.0f), 1, 1);
+	vkCmdDispatch(cmd, std::ceil(currentFrame.skinning.numVertices / 256.0f), 1, 1);
 
 	// Block vertex shaders from running until the dispatched job is finished.
 	VkBufferMemoryBarrier barrier = {
@@ -393,7 +392,7 @@ void VulkanEngine::computeSkinnedMeshes(const FrameData& currentFrame, VkCommand
 		.dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
 		.srcQueueFamilyIndex = _graphicsQueueFamily,
 		.dstQueueFamilyIndex = _graphicsQueueFamily,
-		.buffer = currentFrame.skinning.outputBuffer._buffer,
+		.buffer = currentFrame.skinning.outputVerticesBuffer._buffer,
 		.offset = 0,
 		.size = currentFrame.skinning.outputBufferSize,
 	};
@@ -1436,7 +1435,23 @@ void VulkanEngine::render()
 
 	perfs[14] = SDL_GetPerformanceCounter();
 	if (_roManager->checkIsMetaMeshListUnoptimized())
+	{
 		_roManager->optimizeMetaMeshList();
+		for (size_t i = 0; i < FRAME_OVERLAP; i++)
+			_frames[i].skinning.recalculateSkinningBuffers = true;
+	}
+	if (currentFrame.skinning.recalculateSkinningBuffers)
+		createSkinningBuffers(getCurrentFrame());
+
+	// @HACK
+	static bool heyhy = true;
+	if (heyhy && currentFrame.skinning.created)
+	{
+		initSkinningPipeline();
+		heyhy = false;
+	}
+	////////
+
 	compactRenderObjectsIntoDraws(currentFrame, pickedPoolIndices, pickingIndirectDrawCommandIds);
 	perfs[14] = SDL_GetPerformanceCounter() - perfs[14];
 
@@ -1776,6 +1791,22 @@ void VulkanEngine::recreateVoxelLightingDescriptor()
 		.build(_voxelFieldLightingGridTextureSet.descriptor, _voxelFieldLightingGridTextureSet.layout);
 
 	_voxelFieldLightingGridTextureSet.flagRecreateTextureSet = false;
+}
+
+void VulkanEngine::initSkinningPipeline()
+{
+	// Compute skinning pipeline.
+	VkPipeline computeSkinningPipeline;
+	VkPipelineLayout computeSkinningPipelineLayout;
+	vkutil::pipelinebuilder::buildCompute(
+		{},
+		{ _computeSkinningInoutVerticesSetLayout, _skeletalAnimationSetLayout },
+		{ VK_SHADER_STAGE_COMPUTE_BIT, "res/shaders/skinned_mesh.comp.spv" },
+		computeSkinningPipeline,
+		computeSkinningPipelineLayout,
+		_mainDeletionQueue
+	);
+	attachPipelineToMaterial(computeSkinningPipeline, computeSkinningPipelineLayout, "computeSkinMaterial");
 }
 
 Material* VulkanEngine::attachPipelineToMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name)
@@ -5502,6 +5533,187 @@ void VulkanEngine::uploadCurrentFrameToGPU(const FrameData& currentFrame)
 	}
 }
 
+void VulkanEngine::createSkinningBuffers(FrameData& currentFrame)
+{
+	auto& s = currentFrame.skinning;
+
+	if (s.created)
+	{
+		vmaDestroyBuffer(_allocator, s.inputVerticesBuffer._buffer, s.inputVerticesBuffer._allocation);
+		vmaDestroyBuffer(_allocator, s.outputVerticesBuffer._buffer, s.outputVerticesBuffer._allocation);
+		vmaDestroyBuffer(_allocator, s.indicesBuffer._buffer, s.indicesBuffer._allocation);
+		s.created = false;
+	}
+
+	if (_roManager->_skinnedMeshEntries.empty())
+		return;  // Exit early bc buffers will be initialized to be empty.
+
+	// Calculate number of vertices and indices.
+	std::map<vkglTF::Model*, std::vector<MeshCapturedInfo>> modelToMeshCapturedInfosMap;
+	struct MeshDetailedInfo
+	{
+		size_t vertexCount;
+		size_t indexCount;
+		std::unordered_set<uint32_t> uniqueVertexIndices;
+		std::vector<uint32_t> indicesNormalized;
+	};
+	std::map<vkglTF::Model*, std::vector<MeshDetailedInfo>> modelToMeshDetailedInfosMap;
+
+	s.numVertices = 0;
+	s.numIndices = 0;
+	for (auto& sme : _roManager->_skinnedMeshEntries)
+	{
+		if (modelToMeshCapturedInfosMap.find(sme.model) == modelToMeshCapturedInfosMap.end())
+		{
+			modelToMeshCapturedInfosMap[sme.model] = {};
+			uint32_t count = 0;
+			sme.model->appendPrimitiveDraws(modelToMeshCapturedInfosMap[sme.model], count);
+
+			modelToMeshDetailedInfosMap[sme.model] = {};
+			modelToMeshDetailedInfosMap[sme.model].resize(count, {});
+
+			for (size_t c = 0; c < count; c++)
+			{
+				auto& mci = modelToMeshCapturedInfosMap[sme.model][c];
+				auto& mdi = modelToMeshDetailedInfosMap[sme.model][c];
+
+				// Get unique vertex indices.
+				std::vector<uint32_t> vertexIndices;
+				for (size_t i = 0; i < mci.meshIndexCount; i++)
+				{
+					size_t index = mci.meshFirstIndex + i;
+					uint32_t vertexIdx = sme.model->loaderInfo.indexBuffer[index];
+					vertexIndices.push_back(vertexIdx);
+					mdi.indicesNormalized.push_back(vertexIdx);
+				}
+				mdi.uniqueVertexIndices = std::unordered_set<uint32_t>(vertexIndices.begin(), vertexIndices.end());
+				mdi.vertexCount = mdi.uniqueVertexIndices.size();
+				mdi.indexCount = mci.meshIndexCount;
+
+				// Normalize indices to the unique set of vertex indices.
+				int64_t prevFoundIndex = -1;
+				uint32_t currentAssigningIndex = 0;
+				for (size_t i = 0; i < mci.meshIndexCount; i++)
+				{
+					// Find lowest index that wasn't an already mutated index.
+					int64_t foundIndex = std::numeric_limits<int64_t>::max();
+					for (auto& idx : mdi.indicesNormalized)
+						if (idx > prevFoundIndex)
+							foundIndex = std::min(foundIndex, (int64_t)idx);
+					
+					if (foundIndex == std::numeric_limits<int64_t>::max())
+						break;  // Exit early bc all indices are now normalized.
+
+					// Assign new index.
+					for (auto& idx : mdi.indicesNormalized)
+						if (idx == (uint32_t)foundIndex)
+							idx = currentAssigningIndex;
+
+					currentAssigningIndex++;
+					prevFoundIndex = foundIndex;
+				}
+			}
+		}
+
+		// Add up counts.
+		auto& mdi = modelToMeshDetailedInfosMap[sme.model][sme.meshIdx];
+		s.numVertices += mdi.vertexCount;
+		s.numIndices += mdi.indexCount;
+	}
+
+	// Create buffers.
+	// @TODO: turn these into transfer/staging buffers.
+	size_t inputVerticesBufferSize = sizeof(GPUInputSkinningMeshPrefixData) + sizeof(GPUInputSkinningMeshData) * s.numVertices;
+	s.inputVerticesBuffer = createBuffer(inputVerticesBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+
+	s.outputBufferSize = sizeof(GPUInputSkinningMeshData) * s.numVertices;
+	s.outputVerticesBuffer = createBuffer(s.outputBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);  // @NOTE: no staging buffer for this bc all the data is loaded via compute shader on the gpu!
+
+	size_t indicesBufferSize = sizeof(uint32_t) * s.numIndices;
+	s.indicesBuffer = createBuffer(indicesBufferSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+
+	// Upload input vertices.
+	{
+		uint8_t* data;
+		vmaMapMemory(_allocator, s.inputVerticesBuffer._allocation, (void**)&data);
+
+		// Insert prefix data.
+		GPUInputSkinningMeshPrefixData ismpd = {
+			.numVertices = (uint32_t)s.numVertices,
+		};
+		memcpy(data, &ismpd, sizeof(GPUInputSkinningMeshPrefixData));
+		data += sizeof(GPUInputSkinningMeshPrefixData);
+
+		// Insert remaining data.
+		for (auto& sme : _roManager->_skinnedMeshEntries)
+		{
+			auto& mdi = modelToMeshDetailedInfosMap[sme.model][sme.meshIdx];
+			for (auto it = mdi.uniqueVertexIndices.begin(); it != mdi.uniqueVertexIndices.end(); it++)
+			{
+				auto& vert = sme.model->loaderInfo.vertexBuffer[*it];
+				GPUInputSkinningMeshData ismd = {};
+				glm_vec3_copy(vert.pos, ismd.pos);
+				glm_vec3_copy(vert.normal, ismd.normal);
+				glm_vec2_copy(vert.uv0, ismd.UV0);
+				glm_vec2_copy(vert.uv1, ismd.UV1);
+				glm_vec4_copy(vert.joint0, ismd.joint0);
+				glm_vec4_copy(vert.weight0, ismd.weight0);
+				glm_vec4_copy(vert.color, ismd.color0);
+				ismd.animatorNodeID = sme.animatorNodeID;
+				ismd.baseInstanceID = sme.baseInstanceID;
+
+				memcpy(data, &ismd, sizeof(GPUInputSkinningMeshData));
+				data += sizeof(GPUInputSkinningMeshData);
+			}
+		}
+
+		vmaUnmapMemory(_allocator, s.inputVerticesBuffer._allocation);
+	}
+
+	// Upload indices.
+	{
+		uint8_t* data;
+		vmaMapMemory(_allocator, s.indicesBuffer._allocation, (void**)&data);
+
+		// Insert data.
+		uint32_t indexOffset = 0;
+		for (auto& sme : _roManager->_skinnedMeshEntries)
+		{
+			auto& mdi = modelToMeshDetailedInfosMap[sme.model][sme.meshIdx];
+			for (auto& idx : mdi.indicesNormalized)
+			{
+				uint32_t indexCooked = idx + indexOffset;
+				memcpy(data, &indexCooked, sizeof(uint32_t));
+				data += sizeof(uint32_t);
+			}
+			indexOffset += mdi.vertexCount;  // Offset by num vertices bc that's the max index.
+		}
+
+		vmaUnmapMemory(_allocator, s.indicesBuffer._allocation);
+	}
+
+	// Create descriptors.
+	VkDescriptorBufferInfo inputVerticesBufferInfo = {
+		.buffer = s.inputVerticesBuffer._buffer,
+		.offset = 0,
+		.range = inputVerticesBufferSize,
+	};
+	VkDescriptorBufferInfo outputVerticesBufferInfo = {
+		.buffer = s.outputVerticesBuffer._buffer,
+		.offset = 0,
+		.range = s.outputBufferSize,
+	};
+	vkutil::DescriptorBuilder::begin()
+		.bindBuffer(0, &inputVerticesBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT)
+		.bindBuffer(1, &outputVerticesBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT)
+		.build(s.inoutVerticesDescriptor, _computeSkinningInoutVerticesSetLayout);
+
+	// @TODO: delete the created set layout.
+
+	// Finish.
+	s.created = true;
+}
+
 void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, std::vector<size_t> onlyPoolIndices, std::vector<ModelWithIndirectDrawId>& outIndirectDrawCommandIdsForPoolIndex)
 {
 	//
@@ -5613,7 +5825,14 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 	{
 		if (lastModel != batch.model)
 		{
-			batch.model->bind(cmd);
+			if (batch.model == (vkglTF::Model*)&_roManager->_skinnedMeshModelMemAddr)
+			{
+				const VkDeviceSize offsets[1] = { 0 };
+				vkCmdBindVertexBuffers(cmd, 0, 1, &currentFrame.skinning.outputVerticesBuffer._buffer, offsets);
+				vkCmdBindIndexBuffer(cmd, currentFrame.skinning.indicesBuffer._buffer, 0, VK_INDEX_TYPE_UINT32);
+			}
+			else
+				batch.model->bind(cmd);
 			lastModel = batch.model;
 		}
 		if (!materialOverride && lastUMBIdx != batch.uniqueMaterialBaseId)

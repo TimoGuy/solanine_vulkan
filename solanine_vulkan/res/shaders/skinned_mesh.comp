@@ -18,12 +18,28 @@ struct InputMeshData
 
 layout(std140, set = 0, binding = 0) readonly buffer MeshInputBuffer
 {
-    uint numIndices;
+    uint numVertices;
     uint pad0;
     uint pad1;
     uint pad2;
 	InputMeshData indices[];
 } inputData;
+
+// Output skinned meshes.
+struct OutputMeshData
+{
+	vec3 pos;
+    vec3 normal;
+    vec2 UV0;
+    vec2 UV1;
+    vec4 color0;
+    uint instanceIDOffset;
+};
+
+layout(std140, set = 0, binding = 1) buffer OutputBuffer
+{
+    OutputMeshData indices[];
+} outputData;
 
 // Skeletal Animation/Skinning.
 #define MAX_NUM_JOINTS 128
@@ -39,27 +55,11 @@ layout (std140, set = 1, binding = 0) readonly buffer SkeletonAnimationNodeColle
 	SkeletonAnimationNode nodes[];
 } nodeCollection;
 
-// Output skinned meshes.
-struct OutputMeshData
-{
-	vec3 pos;
-    vec3 normal;
-    vec2 UV0;
-    vec2 UV1;
-    vec4 color0;
-    uint instanceIDOffset;
-};
-
-layout(std140, set = 2, binding = 0) buffer OutputBuffer
-{
-    OutputMeshData indices[];
-} outputData;
-
 
 void main()
 {
     uint gID = gl_GlobalInvocationID.x;
-    if (gID < inputData.numIndices)
+    if (gID < inputData.numVertices)
     {
         uint nodeID = inputData.indices[gID].animatorNodeID;
         mat4 nodeMatrix = nodeCollection.nodes[nodeID].matrix;
