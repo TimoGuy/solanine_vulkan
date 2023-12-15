@@ -100,6 +100,7 @@ private:
 	{
 		vkglTF::Model* model;
 		size_t meshIdx;
+		size_t uniqueMaterialBaseID;
 		size_t animatorNodeID;
 		size_t baseInstanceID;
 	};

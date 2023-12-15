@@ -5556,6 +5556,10 @@ void VulkanEngine::createSkinningBuffers(FrameData& currentFrame)
 	};
 	std::map<vkglTF::Model*, std::vector<MeshDetailedInfo>> modelToMeshDetailedInfosMap;
 
+	s.indexGroups.clear();
+	size_t lastUMBIdx = (size_t)-1;
+	size_t indexGroupOffset = 0;
+
 	s.numVertices = 0;
 	s.numIndices = 0;
 	for (auto& sme : _roManager->_skinnedMeshEntries)
@@ -5615,6 +5619,18 @@ void VulkanEngine::createSkinningBuffers(FrameData& currentFrame)
 
 		// Add up counts.
 		auto& mdi = modelToMeshDetailedInfosMap[sme.model][sme.meshIdx];
+
+		if (lastUMBIdx != sme.uniqueMaterialBaseID)
+		{
+			s.indexGroups.push_back({
+				.first = (uint32_t)indexGroupOffset,
+				.count = 0,
+			});
+			lastUMBIdx = sme.uniqueMaterialBaseID;
+		}
+		s.indexGroups.back().count += mdi.indexCount;
+		indexGroupOffset += mdi.indexCount;
+
 		s.numVertices += mdi.vertexCount;
 		s.numIndices += mdi.indexCount;
 	}
@@ -5730,14 +5746,17 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, 
 	{
 		std::vector<IndirectBatch> batches;
 		vkglTF::Model* lastModel = nullptr;
+		size_t indexGroupIdx = 0;
 		size_t lastUMBId = (size_t)-1;
+		size_t drawCommandID = 0;
 		size_t instanceID = 0;
 
 		std::lock_guard<std::mutex> lg(_roManager->renderObjectIndicesAndPoolMutex);
 
 		for (auto& metaMesh : _roManager->_metaMeshes)
 		{
-			if (metaMesh.model == lastModel &&
+			if (!metaMesh.isSkinned &&
+				metaMesh.model == lastModel &&
 				metaMesh.uniqueMaterialBaseId == lastUMBId)
 			{
 				batches.back().count += metaMesh.renderObjectIndices.size();
@@ -5747,8 +5766,8 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, 
 				batches.push_back({
 					.model = metaMesh.model,
 					.uniqueMaterialBaseId = metaMesh.uniqueMaterialBaseId,
-					.first = (uint32_t)instanceID,
-					.count = (uint32_t)metaMesh.renderObjectIndices.size(),
+					.first = (uint32_t)drawCommandID,
+					.count = (uint32_t)(metaMesh.isSkinned ? 1 : metaMesh.renderObjectIndices.size()),
 				});
 				lastModel = metaMesh.model;
 				lastUMBId = metaMesh.uniqueMaterialBaseId;
@@ -5757,13 +5776,20 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, 
 			// Create draw command for each mesh instance.
 			for (size_t roIndex = 0; roIndex < metaMesh.renderObjectIndices.size(); roIndex++)
 			{
+				bool incrementDrawCommand = false;
 				if (metaMesh.isSkinned)
 				{
 					if (roIndex == 0)
 					{
-						// @STUB.
-						// Use the captured mesh information
-
+						auto& grp = currentFrame.skinning.indexGroups[indexGroupIdx++];
+						*indirectDrawCommands = {
+							.indexCount = grp.count,
+							.instanceCount = 1,  // @NOTE: The vertices contain instance id offsets for the combined skinned meshes, so leave at 1.
+							.firstIndex = grp.first,
+							.vertexOffset = 0,
+							.firstInstance = (uint32_t)instanceID,
+						};
+						incrementDrawCommand = true;
 					}
 				}
 				else
@@ -5776,6 +5802,7 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, 
 						.vertexOffset = 0,
 						.firstInstance = (uint32_t)instanceID,
 					};
+					incrementDrawCommand = true;
 				}
 
 				GPUInstancePointer& gip = _roManager->_renderObjectPool[metaMesh.renderObjectIndices[roIndex]].calculatedModelInstances[metaMesh.meshIdx];
@@ -5793,16 +5820,19 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, 
 							else
 								outIndirectDrawCommandIdsForPoolIndex.push_back({
 									_roManager->_cookedMeshDraws[metaMesh.cookedMeshDrawIdx].model,
-									(uint32_t)instanceID
+									(uint32_t)drawCommandID
 								});
 							break;
 						}
 #endif
 				*instancePtrSSBO = gip;
-
-				indirectDrawCommands++;
 				instancePtrSSBO++;
 				instanceID++;
+				if (incrementDrawCommand)
+				{
+					indirectDrawCommands++;
+					drawCommandID++;
+				}
 			}
 		}
 
@@ -5826,6 +5856,7 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 		{
 			if (batch.model == (vkglTF::Model*)&_roManager->_skinnedMeshModelMemAddr)
 			{
+				// Bind the compute skinned intermediate buffer.
 				const VkDeviceSize offsets[1] = { 0 };
 				vkCmdBindVertexBuffers(cmd, 0, 1, &currentFrame.skinning.outputVerticesBuffer._buffer, offsets);
 				vkCmdBindIndexBuffer(cmd, currentFrame.skinning.indicesBuffer._buffer, 0, VK_INDEX_TYPE_UINT32);

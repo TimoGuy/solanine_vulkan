@@ -153,7 +153,15 @@
         - Color0
         - InstanceIDOffset
             > This is set to 0 for unskinned meshes, but it's so that skinned meshes can be drawn with one model bind and set `gl_BaseInstance` to 0 and have the actual instance ids tied to their indices.
-    - [ ] It appears that the data is off somehow. The input mesh for the skinning is off for sure.
+    - [x] It appears that the data is off somehow. The input mesh for the skinning is off for sure.
+    - [x] The instance ptr is off. @NOTE: turns out the vertex attribute wasn't assigned for instance ID offset and that's why.
+    - [x] It looks like some faces are missing from the 2nd slime girl legs.
+    - [x] It looks like where the models switch are maligned.
+        > The issue was thinking the instance id and the indirect draw command id are the same. They were the same until the giant mesh that combined together 36 of the draws into 1.
+    - [ ] It looks like the material for slimegirl is incorrect (shouldn't be gold right???)
+
+- [ ] Pipeline layout from reflection of the shaders.
+    - [ ] Can fix the weird dependency hack going on with the skinning compute shader.
 
 - [ ] Better level editor.
     - [ ] Update collision box texture for voxel fields.

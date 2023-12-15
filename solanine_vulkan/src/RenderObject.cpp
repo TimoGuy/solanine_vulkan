@@ -354,6 +354,7 @@ void RenderObjectManager::optimizeMetaMeshList()
 			_skinnedMeshEntries.push_back({
 				.model = parentMesh.model,
 				.meshIdx = parentMesh.meshIdx,
+				.uniqueMaterialBaseID = _renderObjectPool[parentMesh.renderObjectIndices[a]].perPrimitiveUniqueMaterialBaseIndices[parentMesh.meshIdx],
 				.animatorNodeID = _renderObjectPool[parentMesh.renderObjectIndices[a]].calculatedModelInstances[parentMesh.meshIdx].animatorNodeID,
 				.baseInstanceID = smeInstanceIDOffset++,
 			});
@@ -375,6 +376,7 @@ void RenderObjectManager::optimizeMetaMeshList()
 					_skinnedMeshEntries.push_back({
 						.model = siblingMesh.model,
 						.meshIdx = siblingMesh.meshIdx,
+						.uniqueMaterialBaseID = _renderObjectPool[siblingMesh.renderObjectIndices[a]].perPrimitiveUniqueMaterialBaseIndices[siblingMesh.meshIdx],
 						.animatorNodeID = _renderObjectPool[siblingMesh.renderObjectIndices[a]].calculatedModelInstances[siblingMesh.meshIdx].animatorNodeID,
 						.baseInstanceID = smeInstanceIDOffset++,
 					});

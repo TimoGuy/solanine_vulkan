@@ -186,7 +186,7 @@ namespace vkglTF
 			.location = 5,
 			.binding = 0,
 			.format = VK_FORMAT_R32_UINT,
-			.offset = offsetof(Vertex, color),
+			.offset = offsetof(Vertex, instanceIDOffset),
 		};
 
 		description.attributes.push_back(posAttribute);
