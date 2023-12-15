@@ -5805,7 +5805,8 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, 
 					incrementDrawCommand = true;
 				}
 
-				GPUInstancePointer& gip = _roManager->_renderObjectPool[metaMesh.renderObjectIndices[roIndex]].calculatedModelInstances[metaMesh.meshIdx];
+				size_t meshIdx = metaMesh.meshIndices[metaMesh.isSkinned ? roIndex : 0];
+				GPUInstancePointer& gip = _roManager->_renderObjectPool[metaMesh.renderObjectIndices[roIndex]].calculatedModelInstances[meshIdx];
 #ifdef _DEVELOP
 				if (!onlyPoolIndices.empty())
 					for (size_t index : onlyPoolIndices)

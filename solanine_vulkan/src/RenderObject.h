@@ -88,7 +88,7 @@ private:
 	{
 		vkglTF::Model* model;
 		bool isSkinned;
-		size_t meshIdx;
+		std::vector<size_t> meshIndices;  // @HACK: this is a vector so that skinned meshes can access all the individual instance references to get the right material etc. THINK OF A BETTER SYSTEM! @TODO.
 		size_t uniqueMaterialBaseId;
 		std::vector<size_t> renderObjectIndices;
 		size_t cookedMeshDrawIdx;

@@ -158,7 +158,10 @@
     - [x] It looks like some faces are missing from the 2nd slime girl legs.
     - [x] It looks like where the models switch are maligned.
         > The issue was thinking the instance id and the indirect draw command id are the same. They were the same until the giant mesh that combined together 36 of the draws into 1.
-    - [ ] It looks like the material for slimegirl is incorrect (shouldn't be gold right???)
+    - [x] It looks like the material for slimegirl is incorrect (shouldn't be gold right???)
+        > It should be gold for the belt buckle and bag buckle (material #5)... but for some reason all of the instances (0-36) for the first group of the skinned meshes are pointing to material #5
+    - [ ] Double check: it looks like the shoes for slimegirl aren't correct.
+    - [ ] It looks like the model matrix for skinned meshes is messed up. Probably inverse transposed matrix operations aren't associative.
 
 - [ ] Pipeline layout from reflection of the shaders.
     - [ ] Can fix the weird dependency hack going on with the skinning compute shader.

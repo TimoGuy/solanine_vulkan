@@ -189,7 +189,7 @@ void RenderObjectManager::optimizeMetaMeshList()
 			_metaMeshes.push_back({
 				.model = ro.model,
 				.isSkinned = (ro.animator != nullptr),
-				.meshIdx = mi,
+				.meshIndices = { mi },
 				.uniqueMaterialBaseId = ro.perPrimitiveUniqueMaterialBaseIndices[mi],
 				.renderObjectIndices = { visibleIndices[roIdx] },
 			});
@@ -287,8 +287,8 @@ void RenderObjectManager::optimizeMetaMeshList()
 				return a.isSkinned;
 			if (a.model != b.model)
 				return a.model < b.model;
-			if (a.meshIdx != b.meshIdx)
-				return a.meshIdx < b.meshIdx;
+			if (a.meshIndices[0] != b.meshIndices[0])
+				return a.meshIndices[0] < b.meshIndices[0];
 			if (a.renderObjectIndices[0] != b.renderObjectIndices[0])
 				return a.renderObjectIndices[0] < b.renderObjectIndices[0];
 			return false;
@@ -316,7 +316,7 @@ void RenderObjectManager::optimizeMetaMeshList()
 			bool sameAsParent =
 				(parentMesh.isSkinned == siblingMesh.isSkinned &&
 				parentMesh.model == siblingMesh.model &&
-				parentMesh.meshIdx == siblingMesh.meshIdx &&
+				parentMesh.meshIndices[0] == siblingMesh.meshIndices[0] &&
 				parentMesh.uniqueMaterialBaseId == siblingMesh.uniqueMaterialBaseId);
 			if (sameAsParent)
 			{
@@ -345,19 +345,23 @@ void RenderObjectManager::optimizeMetaMeshList()
 	{
 		auto& parentMesh = _metaMeshes[i];
 		if (!parentMesh.isSkinned)
-			continue;
+			continue;  // Only process skinned meshes.
 		if (parentMesh.renderObjectIndices.empty())
 			continue;  // Already consumed.
 
 		// Insert mesh entries.
 		for (size_t a = 0; a < parentMesh.renderObjectIndices.size(); a++)
+		{
 			_skinnedMeshEntries.push_back({
 				.model = parentMesh.model,
-				.meshIdx = parentMesh.meshIdx,
-				.uniqueMaterialBaseID = _renderObjectPool[parentMesh.renderObjectIndices[a]].perPrimitiveUniqueMaterialBaseIndices[parentMesh.meshIdx],
-				.animatorNodeID = _renderObjectPool[parentMesh.renderObjectIndices[a]].calculatedModelInstances[parentMesh.meshIdx].animatorNodeID,
+				.meshIdx = parentMesh.meshIndices[0],
+				.uniqueMaterialBaseID = _renderObjectPool[parentMesh.renderObjectIndices[a]].perPrimitiveUniqueMaterialBaseIndices[parentMesh.meshIndices[0]],
+				.animatorNodeID = _renderObjectPool[parentMesh.renderObjectIndices[a]].calculatedModelInstances[parentMesh.meshIndices[0]].animatorNodeID,
 				.baseInstanceID = smeInstanceIDOffset++,
 			});
+			if (a > 0)
+				parentMesh.meshIndices.push_back(parentMesh.meshIndices[0]);  // Copy to fill up number of render objects (unflatten).
+		}
 
 		for (size_t j = i + 1; j < _metaMeshes.size(); j++)
 		{
@@ -375,13 +379,15 @@ void RenderObjectManager::optimizeMetaMeshList()
 				{
 					_skinnedMeshEntries.push_back({
 						.model = siblingMesh.model,
-						.meshIdx = siblingMesh.meshIdx,
-						.uniqueMaterialBaseID = _renderObjectPool[siblingMesh.renderObjectIndices[a]].perPrimitiveUniqueMaterialBaseIndices[siblingMesh.meshIdx],
-						.animatorNodeID = _renderObjectPool[siblingMesh.renderObjectIndices[a]].calculatedModelInstances[siblingMesh.meshIdx].animatorNodeID,
+						.meshIdx = siblingMesh.meshIndices[0],
+						.uniqueMaterialBaseID = _renderObjectPool[siblingMesh.renderObjectIndices[a]].perPrimitiveUniqueMaterialBaseIndices[siblingMesh.meshIndices[0]],
+						.animatorNodeID = _renderObjectPool[siblingMesh.renderObjectIndices[a]].calculatedModelInstances[siblingMesh.meshIndices[0]].animatorNodeID,
 						.baseInstanceID = smeInstanceIDOffset++,
 					});
+					parentMesh.meshIndices.push_back(siblingMesh.meshIndices[0]);  // Only 1 mesh index even if multiple render object indices are present (unflatten).
 					parentMesh.renderObjectIndices.push_back(siblingMesh.renderObjectIndices[a]);
 				}
+				siblingMesh.meshIndices.clear();
 				siblingMesh.renderObjectIndices.clear();
 			}
 			else
@@ -406,7 +412,6 @@ void RenderObjectManager::optimizeMetaMeshList()
 			continue;
 		
 		mm.model = (vkglTF::Model*)&_skinnedMeshModelMemAddr;  // @HACK: @NOTE: marks metamesh as part of the intermediate skinned mesh buffer.
-		mm.meshIdx = 0;
 	}
 
 	// // Sort by material for skinned metameshes. @NOTE: all the indices get combined together into a huge mesh so sorting on other props isn't needed.
@@ -440,7 +445,7 @@ void RenderObjectManager::optimizeMetaMeshList()
 		for (auto& metaMesh : _metaMeshes)
 			if (metaMesh.model == um)
 			{
-				metaMesh.cookedMeshDrawIdx = baseMeshIndex + metaMesh.meshIdx;
+				metaMesh.cookedMeshDrawIdx = baseMeshIndex + metaMesh.meshIndices[0];  // @NOTE: skinned meshes would not be selected since they're not added into `uniqueModels`.
 			}
 	}
 
