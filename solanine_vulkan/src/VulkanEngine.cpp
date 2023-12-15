@@ -5551,7 +5551,7 @@ void VulkanEngine::createSkinningBuffers(FrameData& currentFrame)
 	{
 		size_t vertexCount;
 		size_t indexCount;
-		std::unordered_set<uint32_t> uniqueVertexIndices;
+		std::set<uint32_t> uniqueVertexIndices;  // @NOTE: vertices need to be sorted in the order of the indices accessing them, hence an ordered set.
 		std::vector<uint32_t> indicesNormalized;
 	};
 	std::map<vkglTF::Model*, std::vector<MeshDetailedInfo>> modelToMeshDetailedInfosMap;
@@ -5575,19 +5575,20 @@ void VulkanEngine::createSkinningBuffers(FrameData& currentFrame)
 				auto& mdi = modelToMeshDetailedInfosMap[sme.model][c];
 
 				// Get unique vertex indices.
-				std::vector<uint32_t> vertexIndices;
 				for (size_t i = 0; i < mci.meshIndexCount; i++)
 				{
 					size_t index = mci.meshFirstIndex + i;
 					uint32_t vertexIdx = sme.model->loaderInfo.indexBuffer[index];
-					vertexIndices.push_back(vertexIdx);
+					mdi.uniqueVertexIndices.emplace(vertexIdx);
 					mdi.indicesNormalized.push_back(vertexIdx);
 				}
-				mdi.uniqueVertexIndices = std::unordered_set<uint32_t>(vertexIndices.begin(), vertexIndices.end());
+
+				// Grab unique stats.
 				mdi.vertexCount = mdi.uniqueVertexIndices.size();
 				mdi.indexCount = mci.meshIndexCount;
 
 				// Normalize indices to the unique set of vertex indices.
+				// @NOTE: it looks like this step isn't needed especially if the first index is 0 (i.e. there's no index fragmentation supposedly, but let's just keep this in just in case)  -Timo 2023/12/15
 				int64_t prevFoundIndex = -1;
 				uint32_t currentAssigningIndex = 0;
 				for (size_t i = 0; i < mci.meshIndexCount; i++)
@@ -5645,9 +5646,9 @@ void VulkanEngine::createSkinningBuffers(FrameData& currentFrame)
 		for (auto& sme : _roManager->_skinnedMeshEntries)
 		{
 			auto& mdi = modelToMeshDetailedInfosMap[sme.model][sme.meshIdx];
-			for (auto it = mdi.uniqueVertexIndices.begin(); it != mdi.uniqueVertexIndices.end(); it++)
+			for (auto& idx : mdi.uniqueVertexIndices)
 			{
-				auto& vert = sme.model->loaderInfo.vertexWithWeightsBuffer[*it];
+				auto& vert = sme.model->loaderInfo.vertexWithWeightsBuffer[idx];
 				GPUInputSkinningMeshData ismd = {};
 				glm_vec3_copy(vert.pos, ismd.pos);
 				glm_vec3_copy(vert.normal, ismd.normal);
@@ -6076,7 +6077,7 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 			// Scene Properties window
 			//
 			static float_t scenePropertiesWindowWidth = 0.0f;
-			ImGui::SetNextWindowPos(ImVec2(_windowExtent.width - scenePropertiesWindowWidth, 0.0f), ImGuiCond_Always);
+			ImGui::SetNextWindowPos(ImVec2(_windowExtent.width - scenePropertiesWindowWidth, MAIN_MENU_PADDING), ImGuiCond_Always);
 			ImGui::Begin((globalState::savedActiveScene + " Properties").c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
 			{
 				ImGui::Text(globalState::savedActiveScene.c_str());
