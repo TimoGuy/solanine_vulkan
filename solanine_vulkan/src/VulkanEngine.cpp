@@ -5815,8 +5815,10 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, 
 							// Include this draw indirect command.
 							if (metaMesh.isSkinned)
 							{
-								// @TODO: @STUB.
-								// Idk what to do here. I think a new system needs to get put in place.
+								outIndirectDrawCommandIdsForPoolIndex.push_back({
+									(vkglTF::Model*)&_roManager->_skinnedMeshModelMemAddr,  // @HACK... but it works, does it not?
+									(uint32_t)drawCommandID
+								});
 							}
 							else
 								outIndirectDrawCommandIdsForPoolIndex.push_back({
@@ -5936,7 +5938,15 @@ void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& curr
 		for (const ModelWithIndirectDrawId& mwidid : indirectDrawCommandIds)
 		{
 			VkDeviceSize indirectOffset = mwidid.indirectDrawId * drawStride;
-			mwidid.model->bind(cmd);
+			if (mwidid.model == (vkglTF::Model*)&_roManager->_skinnedMeshModelMemAddr)  // @HACK: getting the right indirect draw command with the combined skinned mesh intermediate buffer!  -Timo 2023/12/16
+			{
+				// Bind the compute skinned intermediate buffer. @COPYPASTA
+				const VkDeviceSize offsets[1] = { 0 };
+				vkCmdBindVertexBuffers(cmd, 0, 1, &currentFrame.skinning.outputVerticesBuffer._buffer, offsets);
+				vkCmdBindIndexBuffer(cmd, currentFrame.skinning.indicesBuffer._buffer, 0, VK_INDEX_TYPE_UINT32);
+			}
+			else
+				mwidid.model->bind(cmd);
 			vkCmdDrawIndexedIndirect(cmd, currentFrame.indirectDrawCommandBuffer._buffer, indirectOffset, 1, drawStride);
 		}
 	}

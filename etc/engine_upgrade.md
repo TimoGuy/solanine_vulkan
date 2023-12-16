@@ -164,6 +164,7 @@
     - [x] It looks like the model matrix for skinned meshes is messed up. Probably inverse transposed matrix operations aren't associative.
         > Normals aren't getting inputted into the vertex shader correctly (ones that got compute skinned). Setting the normal to 1,0,0 causes it to be 0,1,0 when ingested. Likely it's vec4 padding issues.
         > TRY: put instance id offset between inPos and inNormal in the buffer to resolve the vec3/vec4 padding issue.
+    - [x] Get wireframe picking to work with skinned meshes.
 
 - [ ] Pipeline layout from reflection of the shaders.
     - [ ] Can fix the weird dependency hack going on with the skinning compute shader.
