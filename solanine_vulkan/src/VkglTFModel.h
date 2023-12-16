@@ -293,11 +293,12 @@ namespace vkglTF
 		struct Vertex
 		{
 			vec3 pos;
+			uint32_t instanceIDOffset;  // @NOTE: insert offset here so that 16 byte padding can be complete and normal doesn't get garbage values.  -Timo 2023/12/16
 			vec3 normal;
+			uint32_t pad0;  // Here too.
 			vec2 uv0;
 			vec2 uv1;
 			vec4 color;
-			uint32_t instanceIDOffset;
 			static VertexInputDescription getVertexDescription();
 		};
 

@@ -7,7 +7,7 @@ physicalDescriptorMapIndex      empty
 normalMapIndex                  empty
 aoMapIndex                      empty
 emissiveMapIndex                empty
-baseColorFactor                 0.8,0.8,0.8,1.0
+baseColorFactor                 0.2,1.0,0.2,1.0
 emissiveFactor                  1.0,1.0,1.0,1.0
 diffuseFactor                   0.0,0.0,0.0,0.0         # Unneeded bc using metallic (0.0) workflow not specular (1.0)
 specularFactor                  0.0,0.0,0.0,0.0

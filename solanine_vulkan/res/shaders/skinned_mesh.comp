@@ -6,14 +6,14 @@ layout (local_size_x = 256) in;
 struct InputMeshData
 {
 	vec3 pos;
+    uint animatorNodeID;  // @NOTE: insert offset here so that 16 byte padding can be complete and normal doesn't get garbage values.  -Timo 2023/12/16
     vec3 normal;
+    uint baseInstanceID;  // Here too.
     vec2 UV0;
     vec2 UV1;
     vec4 joint0;
     vec4 weight0;
     vec4 color0;
-    uint animatorNodeID;
-    uint baseInstanceID;
 };
 
 layout(std140, set = 0, binding = 0) readonly buffer MeshInputBuffer
@@ -29,11 +29,12 @@ layout(std140, set = 0, binding = 0) readonly buffer MeshInputBuffer
 struct OutputMeshData
 {
 	vec3 pos;
+    uint instanceIDOffset;  // @NOTE: insert offset here so that 16 byte padding can be complete and normal doesn't get garbage values.  -Timo 2023/12/16
     vec3 normal;
+	uint pad0;  // Here too.
     vec2 UV0;
     vec2 UV1;
     vec4 color0;
-    uint instanceIDOffset;
 };
 
 layout(std140, set = 0, binding = 1) buffer OutputBuffer
@@ -75,6 +76,7 @@ void main()
         // Spit out the data!
         // outputData.indices[gID].pos = inputData.indices[gID].pos;  //vec3(nodeMatrix * skinMat * vec4(inputData.indices[gID].pos, 1.0));  @NOCHECKIN
         outputData.indices[gID].pos = vec3(nodeMatrix * skinMat * vec4(inputData.indices[gID].pos, 1.0));
+        // outputData.indices[gID].normal = vec3(1, 2, 3);
         // outputData.indices[gID].normal = inputData.indices[gID].normal;  //normalize(transpose(inverse(mat3(nodeMatrix * skinMat))) * inputData.indices[gID].normal);    @NOCHECKIN
         outputData.indices[gID].normal = normalize(transpose(inverse(mat3(nodeMatrix * skinMat))) * inputData.indices[gID].normal);
         outputData.indices[gID].UV0 = inputData.indices[gID].UV0;

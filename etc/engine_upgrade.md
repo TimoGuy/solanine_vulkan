@@ -160,8 +160,10 @@
         > The issue was thinking the instance id and the indirect draw command id are the same. They were the same until the giant mesh that combined together 36 of the draws into 1.
     - [x] It looks like the material for slimegirl is incorrect (shouldn't be gold right???)
         > It should be gold for the belt buckle and bag buckle (material #5)... but for some reason all of the instances (0-36) for the first group of the skinned meshes are pointing to material #5
-    - [ ] Double check: it looks like the shoes for slimegirl aren't correct.
-    - [ ] It looks like the model matrix for skinned meshes is messed up. Probably inverse transposed matrix operations aren't associative.
+    - [x] Double check: it looks like the shoes for slimegirl aren't correct.
+    - [x] It looks like the model matrix for skinned meshes is messed up. Probably inverse transposed matrix operations aren't associative.
+        > Normals aren't getting inputted into the vertex shader correctly (ones that got compute skinned). Setting the normal to 1,0,0 causes it to be 0,1,0 when ingested. Likely it's vec4 padding issues.
+        > TRY: put instance id offset between inPos and inNormal in the buffer to resolve the vec3/vec4 padding issue.
 
 - [ ] Pipeline layout from reflection of the shaders.
     - [ ] Can fix the weird dependency hack going on with the skinning compute shader.
