@@ -166,8 +166,11 @@
         > TRY: put instance id offset between inPos and inNormal in the buffer to resolve the vec3/vec4 padding issue.
     - [x] Get wireframe picking to work with skinned meshes.
 
-- [ ] Pipeline layout from reflection of the shaders.
-    - [ ] Can fix the weird dependency hack going on with the skinning compute shader.
+- [f] Pipeline layout from reflection of the shaders.
+    - [f] Can fix the weird dependency hack going on with the skinning compute shader.
+        > Bc of the binding flags system with the descriptor indexing.... this feels like too much to bite and chew off. CHANGE TO FUTURE PLAN.
+
+- [ ] Fix hacky compute skinning pipline creation system. (line 1443 of VulkanEngine.cpp)
 
 - [ ] Better level editor.
     - [ ] Update collision box texture for voxel fields.

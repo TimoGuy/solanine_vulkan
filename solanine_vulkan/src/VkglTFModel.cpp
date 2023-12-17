@@ -1824,8 +1824,6 @@ namespace vkglTF
 
 	bool Model::cookGlTFModel(const std::filesystem::path& path)
 	{
-		if (path.stem().string() == "SlimeGirl")
-			int mesterius = 1;
 		std::filesystem::path cooked3dModelFname = "res/models_cooked/" + path.stem().string() + ".hthrobwoa";
 		std::filesystem::path cookedAnimsFname = "res/models_cooked/" + path.stem().string() + ".henema";
 

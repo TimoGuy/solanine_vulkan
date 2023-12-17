@@ -414,27 +414,6 @@ void RenderObjectManager::optimizeMetaMeshList()
 		mm.model = (vkglTF::Model*)&_skinnedMeshModelMemAddr;  // @HACK: @NOTE: marks metamesh as part of the intermediate skinned mesh buffer.
 	}
 
-	// // Sort by material for skinned metameshes. @NOTE: all the indices get combined together into a huge mesh so sorting on other props isn't needed.
-	// std::sort(
-	// 	skinnedMetaMeshes.begin(),
-	// 	skinnedMetaMeshes.end(),
-	// 	[&](MetaMesh& a, MetaMesh& b) {
-	// 		if (a.uniqueMaterialBaseId != b.uniqueMaterialBaseId)
-	// 			return a.uniqueMaterialBaseId < b.uniqueMaterialBaseId;
-	// 		return false;
-	// 	}
-	// );
-
-	// // Smoosh skinned meshes together.
-	// _skinnedMetaMeshCalculatedModelInstances.clear();
-	// for (auto& smm : skinnedMetaMeshes)
-	// {
-	// 	smm.model = (vkglTF::Model*)&_skinnedMeshModelMemAddr;  // @HACK
-	// 	smm.renderObjectIndices
-	// }
-
-	// // Smoosh skinned meshes together.
-
 	// Capture mesh info.
 	_cookedMeshDraws.clear();
 	for (vkglTF::Model* um : uniqueModels)
