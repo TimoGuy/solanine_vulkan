@@ -42,5 +42,13 @@ namespace vkutil
             VkPipeline&                                      outPipeline,
             VkPipelineLayout&                                outPipelineLayout,
             DeletionQueue&                                   deletionQueue);
+
+        bool buildCompute(
+            std::vector<VkPushConstantRange>                 pushConstantRanges,
+            std::vector<VkDescriptorSetLayout>               setLayouts,
+            ShaderStageInfo                     shaderStage,
+            VkPipeline&                                      outPipeline,
+            VkPipelineLayout&                                outPipelineLayout,
+            DeletionQueue&                                   deletionQueue);
     }
 }

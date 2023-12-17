@@ -369,6 +369,36 @@ void VulkanEngine::setWindowFullscreen(bool isFullscreen)
 	SDL_SetWindowFullscreen(_window, _windowFullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
 }
 
+void VulkanEngine::computeCulling(const FrameData& currentFrame, VkCommandBuffer cmd)
+{
+	return;  // @TODO @STUB.
+}
+
+void VulkanEngine::computeSkinnedMeshes(const FrameData& currentFrame, VkCommandBuffer cmd)
+{
+	if (_roManager->_renderObjectsWithAnimatorIndices.empty())
+		return;  // Omit skinning meshes if no meshes to skin.
+
+	Material& skinMaterial = *getMaterial("computeSkinMaterial");
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, skinMaterial.pipeline);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, skinMaterial.pipelineLayout, 0, 1, &currentFrame.skinning.inoutVerticesDescriptor, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, skinMaterial.pipelineLayout, 1, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(this), 0, nullptr);
+	vkCmdDispatch(cmd, std::ceil(currentFrame.skinning.numVertices / 256.0f), 1, 1);
+
+	// Block vertex shaders from running until the dispatched job is finished.
+	VkBufferMemoryBarrier barrier = {
+		.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+		.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
+		.dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+		.srcQueueFamilyIndex = _graphicsQueueFamily,
+		.dstQueueFamilyIndex = _graphicsQueueFamily,
+		.buffer = currentFrame.skinning.outputVerticesBuffer._buffer,
+		.offset = 0,
+		.size = currentFrame.skinning.outputBufferSize,
+	};
+	vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, 0, 0, nullptr, 1, &barrier, 0, nullptr);
+}
+
 void VulkanEngine::renderPickingRenderpass(const FrameData& currentFrame)
 {
 	VK_CHECK(vkResetFences(_device, 1, &currentFrame.pickingRenderFence));
@@ -419,7 +449,6 @@ void VulkanEngine::renderPickingRenderpass(const FrameData& currentFrame)
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 3, 1, &currentFrame.pickingReturnValueDescriptor, 0, nullptr);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(this), 0, nullptr);
 
 	// Set dynamic scissor
 	VkRect2D scissor = {};
@@ -527,7 +556,6 @@ void VulkanEngine::renderShadowRenderpass(const FrameData& currentFrame, VkComma
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 3, 1, &shadowDepthPassMaterial.textureSet, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(this), 0, nullptr);
 
 		CascadeIndexPushConstBlock pc = { i };
 		vkCmdPushConstants(cmd, shadowDepthPassMaterial.pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(CascadeIndexPushConstBlock), &pc);
@@ -574,7 +602,6 @@ void VulkanEngine::renderMainRenderpass(const FrameData& currentFrame, VkCommand
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 3, 1, &defaultZPrepassMaterial.textureSet, 0, nullptr);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(this), 0, nullptr);
 	renderRenderObjects(cmd, currentFrame, true);
 	//////////////////////
 
@@ -1395,19 +1422,39 @@ void VulkanEngine::render()
 	recreateVoxelLightingDescriptor();
 	uploadCurrentFrameToGPU(currentFrame);
 	textmesh::uploadUICameraDataToGPU();
+
 #ifdef _DEVELOP
 	std::vector<size_t> pickedPoolIndices = { 0 };
 	if (!searchForPickedObjectPoolIndex(pickedPoolIndices[0]))
 		pickedPoolIndices.clear();
 	std::vector<ModelWithIndirectDrawId> pickingIndirectDrawCommandIds;
 #endif
+
 	perfs[14] = SDL_GetPerformanceCounter();
 	if (_roManager->checkIsMetaMeshListUnoptimized())
+	{
 		_roManager->optimizeMetaMeshList();
+		for (size_t i = 0; i < FRAME_OVERLAP; i++)
+			_frames[i].skinning.recalculateSkinningBuffers = true;
+	}
+	if (currentFrame.skinning.recalculateSkinningBuffers)
+		createSkinningBuffers(getCurrentFrame());
+
+	// @HACK
+	static bool heyhy = true;
+	if (heyhy && currentFrame.skinning.created)
+	{
+		initSkinningPipeline();
+		heyhy = false;
+	}
+	////////
+
 	compactRenderObjectsIntoDraws(currentFrame, pickedPoolIndices, pickingIndirectDrawCommandIds);
 	perfs[14] = SDL_GetPerformanceCounter() - perfs[14];
 
 	// Render render passes.
+	computeCulling(currentFrame, cmd);
+	computeSkinnedMeshes(currentFrame, cmd);
 	renderShadowRenderpass(currentFrame, cmd);
 	renderMainRenderpass(currentFrame, cmd, pickingIndirectDrawCommandIds);
 	renderUIRenderpass(cmd);
@@ -1741,6 +1788,22 @@ void VulkanEngine::recreateVoxelLightingDescriptor()
 		.build(_voxelFieldLightingGridTextureSet.descriptor, _voxelFieldLightingGridTextureSet.layout);
 
 	_voxelFieldLightingGridTextureSet.flagRecreateTextureSet = false;
+}
+
+void VulkanEngine::initSkinningPipeline()
+{
+	// Compute skinning pipeline.
+	VkPipeline computeSkinningPipeline;
+	VkPipelineLayout computeSkinningPipelineLayout;
+	vkutil::pipelinebuilder::buildCompute(
+		{},
+		{ _computeSkinningInoutVerticesSetLayout, _skeletalAnimationSetLayout },
+		{ VK_SHADER_STAGE_COMPUTE_BIT, "res/shaders/skinned_mesh.comp.spv" },
+		computeSkinningPipeline,
+		computeSkinningPipelineLayout,
+		_mainDeletionQueue
+	);
+	attachPipelineToMaterial(computeSkinningPipeline, computeSkinningPipelineLayout, "computeSkinMaterial");
 }
 
 Material* VulkanEngine::attachPipelineToMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name)
@@ -3906,62 +3969,6 @@ void VulkanEngine::initPipelines()
 		};
 	}
 
-	// // Mesh ZPrepass Pipeline
-	// VkPipeline meshZPrepassPipeline;
-	// VkPipelineLayout meshZPrepassPipelineLayout;
-	// vkutil::pipelinebuilder::build(
-	// 	{},
-	// 	{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _pbrTexturesSetLayout, _skeletalAnimationSetLayout },
-	// 	{
-	// 		{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/pbr_zprepass.vert.spv" },
-	// 		{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/pbr_khr_zprepass.frag.spv" },
-	// 	},
-	// 	modelVertexDescription.attributes,
-	// 	modelVertexDescription.bindings,
-	// 	vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
-	// 	screenspaceViewport,
-	// 	screenspaceScissor,
-	// 	vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT),
-	// 	{}, // No color attachment for the z prepass pipeline; only writing to depth!
-	// 	vkinit::multisamplingStateCreateInfo(),
-	// 	vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS),
-	// 	{},
-	// 	_mainRenderPass,
-	// 	0,
-	// 	meshZPrepassPipeline,
-	// 	meshZPrepassPipelineLayout,
-	// 	_swapchainDependentDeletionQueue
-	// );
-	// attachPipelineToMaterial(meshZPrepassPipeline, meshZPrepassPipelineLayout, "pbrZPrepassMaterial");
-
-	// // Mesh Pipeline
-	// VkPipeline meshPipeline;
-	// VkPipelineLayout meshPipelineLayout;
-	// vkutil::pipelinebuilder::build(
-	// 	{},
-	// 	{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _pbrTexturesSetLayout, _skeletalAnimationSetLayout, _voxelFieldLightingGridTextureSet.layout },
-	// 	{
-	// 		{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/pbr.vert.spv" },
-	// 		{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/pbr_khr.frag.spv" },
-	// 	},
-	// 	modelVertexDescription.attributes,
-	// 	modelVertexDescription.bindings,
-	// 	vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
-	// 	screenspaceViewport,
-	// 	screenspaceScissor,
-	// 	vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT),
-	// 	{ vkinit::colorBlendAttachmentState() },
-	// 	vkinit::multisamplingStateCreateInfo(),
-	// 	vkinit::depthStencilCreateInfo(true, false, VK_COMPARE_OP_EQUAL),
-	// 	{},
-	// 	_mainRenderPass,
-	// 	1,
-	// 	meshPipeline,
-	// 	meshPipelineLayout,
-	// 	_swapchainDependentDeletionQueue
-	// );
-	// attachPipelineToMaterial(meshPipeline, meshPipelineLayout, "pbrMaterial");
-
 	// Snapshot image pipeline
 	VkPipeline snapshotImagePipeline;
 	VkPipelineLayout snapshotImagePipelineLayout;
@@ -4023,7 +4030,7 @@ void VulkanEngine::initPipelines()
 	VkPipelineLayout pickingPipelineLayout;
 	vkutil::pipelinebuilder::build(
 		{},
-		{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _pickingReturnValueSetLayout, _skeletalAnimationSetLayout },
+		{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _pickingReturnValueSetLayout },
 		{
 			{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/picking.vert.spv" },
 			{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/picking.frag.spv" },
@@ -4057,7 +4064,7 @@ void VulkanEngine::initPipelines()
 				.size = sizeof(ColorPushConstBlock)
 			}
 		},
-		{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _skeletalAnimationSetLayout },
+		{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout },
 		{
 			{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/wireframe_color.vert.spv" },
 			{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/color.frag.spv" },
@@ -4089,7 +4096,7 @@ void VulkanEngine::initPipelines()
 				.size = sizeof(ColorPushConstBlock)
 			}
 		},
-		{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _skeletalAnimationSetLayout },
+		{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout },
 		{
 			{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/wireframe_color.vert.spv" },
 			{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/color.frag.spv" },
@@ -4111,50 +4118,6 @@ void VulkanEngine::initPipelines()
 		_swapchainDependentDeletionQueue
 	);
 	attachPipelineToMaterial(wireframeBehindPipeline, wireframePipelineLayout, "wireframeColorBehindMaterial");
-
-	// // Shadow Depth Pass pipeline
-	// auto shadowRasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE);
-	// shadowRasterizer.depthClampEnable = VK_TRUE;
-
-	// VkPipeline shadowDepthPassPipeline;
-	// VkPipelineLayout shadowDepthPassPipelineLayout;
-	// vkutil::pipelinebuilder::build(
-	// 	{
-	// 		VkPushConstantRange{
-	// 			.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-	// 			.offset = 0,
-	// 			.size = sizeof(CascadeIndexPushConstBlock)
-	// 		}
-	// 	},
-	// 	{ _cascadeViewProjsSetLayout, _objectSetLayout, _instancePtrSetLayout, _pbrTexturesSetLayout, _skeletalAnimationSetLayout },
-	// 	{
-	// 		{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/shadow_depthpass.vert.spv" },
-	// 		{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/shadow_depthpass.frag.spv" },
-	// 	},
-	// 	modelVertexDescription.attributes,
-	// 	modelVertexDescription.bindings,
-	// 	vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
-	// 	VkViewport{
-	// 		0.0f, 0.0f,
-	// 		(float_t)SHADOWMAP_DIMENSION, (float_t)SHADOWMAP_DIMENSION,
-	// 		0.0f, 1.0f,
-	// 	},
-	// 	VkRect2D{
-	// 		{ 0, 0 },
-	// 		VkExtent2D{ SHADOWMAP_DIMENSION, SHADOWMAP_DIMENSION },
-	// 	},
-	// 	shadowRasterizer,
-	// 	{},  // No color attachment for this pipeline
-	// 	vkinit::multisamplingStateCreateInfo(),
-	// 	vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL),
-	// 	{},
-	// 	_shadowRenderPass,
-	// 	0,
-	// 	shadowDepthPassPipeline,
-	// 	shadowDepthPassPipelineLayout,
-	// 	_swapchainDependentDeletionQueue
-	// );
-	// attachPipelineToMaterial(shadowDepthPassPipeline, shadowDepthPassPipelineLayout, "shadowDepthPassMaterial");
 
 	// Postprocess pipeline
 	VkPipeline postprocessPipeline;
@@ -5567,6 +5530,205 @@ void VulkanEngine::uploadCurrentFrameToGPU(const FrameData& currentFrame)
 	}
 }
 
+void VulkanEngine::createSkinningBuffers(FrameData& currentFrame)
+{
+	auto& s = currentFrame.skinning;
+
+	if (s.created)
+	{
+		vmaDestroyBuffer(_allocator, s.inputVerticesBuffer._buffer, s.inputVerticesBuffer._allocation);
+		vmaDestroyBuffer(_allocator, s.outputVerticesBuffer._buffer, s.outputVerticesBuffer._allocation);
+		vmaDestroyBuffer(_allocator, s.indicesBuffer._buffer, s.indicesBuffer._allocation);
+		s.created = false;
+	}
+
+	if (_roManager->_skinnedMeshEntries.empty())
+		return;  // Exit early bc buffers will be initialized to be empty.
+
+	// Calculate number of vertices and indices.
+	std::map<vkglTF::Model*, std::vector<MeshCapturedInfo>> modelToMeshCapturedInfosMap;
+	struct MeshDetailedInfo
+	{
+		size_t vertexCount;
+		size_t indexCount;
+		std::set<uint32_t> uniqueVertexIndices;  // @NOTE: vertices need to be sorted in the order of the indices accessing them, hence an ordered set.
+		std::vector<uint32_t> indicesNormalized;
+	};
+	std::map<vkglTF::Model*, std::vector<MeshDetailedInfo>> modelToMeshDetailedInfosMap;
+
+	s.indexGroups.clear();
+	size_t lastUMBIdx = (size_t)-1;
+	size_t indexGroupOffset = 0;
+
+	s.numVertices = 0;
+	s.numIndices = 0;
+	for (auto& sme : _roManager->_skinnedMeshEntries)
+	{
+		if (modelToMeshCapturedInfosMap.find(sme.model) == modelToMeshCapturedInfosMap.end())
+		{
+			modelToMeshCapturedInfosMap[sme.model] = {};
+			uint32_t count = 0;
+			sme.model->appendPrimitiveDraws(modelToMeshCapturedInfosMap[sme.model], count);
+
+			modelToMeshDetailedInfosMap[sme.model] = {};
+			modelToMeshDetailedInfosMap[sme.model].resize(count, {});
+
+			for (size_t c = 0; c < count; c++)
+			{
+				auto& mci = modelToMeshCapturedInfosMap[sme.model][c];
+				auto& mdi = modelToMeshDetailedInfosMap[sme.model][c];
+
+				// Get unique vertex indices.
+				for (size_t i = 0; i < mci.meshIndexCount; i++)
+				{
+					size_t index = mci.meshFirstIndex + i;
+					uint32_t vertexIdx = sme.model->loaderInfo.indexBuffer[index];
+					mdi.uniqueVertexIndices.emplace(vertexIdx);
+					mdi.indicesNormalized.push_back(vertexIdx);
+				}
+
+				// Grab unique stats.
+				mdi.vertexCount = mdi.uniqueVertexIndices.size();
+				mdi.indexCount = mci.meshIndexCount;
+
+				// Normalize indices to the unique set of vertex indices.
+				// @NOTE: it looks like this step isn't needed especially if the first index is 0 (i.e. there's no index fragmentation supposedly, but let's just keep this in just in case)  -Timo 2023/12/15
+				int64_t prevFoundIndex = -1;
+				uint32_t currentAssigningIndex = 0;
+				for (size_t i = 0; i < mci.meshIndexCount; i++)
+				{
+					// Find lowest index that wasn't an already mutated index.
+					int64_t foundIndex = std::numeric_limits<int64_t>::max();
+					for (auto& idx : mdi.indicesNormalized)
+						if (idx > prevFoundIndex)
+							foundIndex = std::min(foundIndex, (int64_t)idx);
+					
+					if (foundIndex == std::numeric_limits<int64_t>::max())
+						break;  // Exit early bc all indices are now normalized.
+
+					// Assign new index.
+					for (auto& idx : mdi.indicesNormalized)
+						if (idx == (uint32_t)foundIndex)
+							idx = currentAssigningIndex;
+
+					currentAssigningIndex++;
+					prevFoundIndex = foundIndex;
+				}
+			}
+		}
+
+		// Add up counts.
+		auto& mdi = modelToMeshDetailedInfosMap[sme.model][sme.meshIdx];
+
+		if (lastUMBIdx != sme.uniqueMaterialBaseID)
+		{
+			s.indexGroups.push_back({
+				.first = (uint32_t)indexGroupOffset,
+				.count = 0,
+			});
+			lastUMBIdx = sme.uniqueMaterialBaseID;
+		}
+		s.indexGroups.back().count += mdi.indexCount;
+		indexGroupOffset += mdi.indexCount;
+
+		s.numVertices += mdi.vertexCount;
+		s.numIndices += mdi.indexCount;
+	}
+
+	// Create buffers.
+	// @TODO: turn these into transfer/staging buffers.
+	size_t inputVerticesBufferSize = sizeof(GPUInputSkinningMeshPrefixData) + sizeof(GPUInputSkinningMeshData) * s.numVertices;
+	s.inputVerticesBuffer = createBuffer(inputVerticesBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+
+	s.outputBufferSize = sizeof(GPUOutputSkinningMeshData) * s.numVertices;
+	s.outputVerticesBuffer = createBuffer(s.outputBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);  // @NOTE: no staging buffer for this bc all the data is loaded via compute shader on the gpu!
+
+	size_t indicesBufferSize = sizeof(uint32_t) * s.numIndices;
+	s.indicesBuffer = createBuffer(indicesBufferSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+
+	// Upload input vertices.
+	{
+		uint8_t* data;
+		vmaMapMemory(_allocator, s.inputVerticesBuffer._allocation, (void**)&data);
+
+		// Insert prefix data.
+		GPUInputSkinningMeshPrefixData ismpd = {
+			.numVertices = (uint32_t)s.numVertices,
+		};
+		memcpy(data, &ismpd, sizeof(GPUInputSkinningMeshPrefixData));
+		data += sizeof(GPUInputSkinningMeshPrefixData);
+
+		// Insert remaining data.
+		for (auto& sme : _roManager->_skinnedMeshEntries)
+		{
+			auto& mdi = modelToMeshDetailedInfosMap[sme.model][sme.meshIdx];
+			for (auto& idx : mdi.uniqueVertexIndices)
+			{
+				auto& vert = sme.model->loaderInfo.vertexWithWeightsBuffer[idx];
+				GPUInputSkinningMeshData ismd = {};
+				glm_vec3_copy(vert.pos, ismd.pos);
+				glm_vec3_copy(vert.normal, ismd.normal);
+				glm_vec2_copy(vert.uv0, ismd.UV0);
+				glm_vec2_copy(vert.uv1, ismd.UV1);
+				glm_vec4_copy(vert.joint0, ismd.joint0);
+				glm_vec4_copy(vert.weight0, ismd.weight0);
+				glm_vec4_copy(vert.color, ismd.color0);
+				ismd.animatorNodeID = sme.animatorNodeID;
+				ismd.baseInstanceID = sme.baseInstanceID;
+
+				memcpy(data, &ismd, sizeof(GPUInputSkinningMeshData));
+				data += sizeof(GPUInputSkinningMeshData);
+			}
+		}
+
+		vmaUnmapMemory(_allocator, s.inputVerticesBuffer._allocation);
+	}
+
+	// Upload indices.
+	{
+		uint8_t* data;
+		vmaMapMemory(_allocator, s.indicesBuffer._allocation, (void**)&data);
+
+		// Insert data.
+		uint32_t indexOffset = 0;
+		for (auto& sme : _roManager->_skinnedMeshEntries)
+		{
+			auto& mdi = modelToMeshDetailedInfosMap[sme.model][sme.meshIdx];
+			for (auto& idx : mdi.indicesNormalized)
+			{
+				uint32_t indexCooked = idx + indexOffset;
+				memcpy(data, &indexCooked, sizeof(uint32_t));
+				data += sizeof(uint32_t);
+			}
+			indexOffset += mdi.vertexCount;  // Offset by num vertices bc that's the max index.
+		}
+
+		vmaUnmapMemory(_allocator, s.indicesBuffer._allocation);
+	}
+
+	// Create descriptors.
+	VkDescriptorBufferInfo inputVerticesBufferInfo = {
+		.buffer = s.inputVerticesBuffer._buffer,
+		.offset = 0,
+		.range = inputVerticesBufferSize,
+	};
+	VkDescriptorBufferInfo outputVerticesBufferInfo = {
+		.buffer = s.outputVerticesBuffer._buffer,
+		.offset = 0,
+		.range = s.outputBufferSize,
+	};
+	vkutil::DescriptorBuilder::begin()
+		.bindBuffer(0, &inputVerticesBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT)
+		.bindBuffer(1, &outputVerticesBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT)
+		.build(s.inoutVerticesDescriptor, _computeSkinningInoutVerticesSetLayout);
+
+	// @TODO: delete the created set layout.
+
+	// Finish.
+	s.created = true;
+	s.recalculateSkinningBuffers = false;
+}
+
 void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, std::vector<size_t> onlyPoolIndices, std::vector<ModelWithIndirectDrawId>& outIndirectDrawCommandIdsForPoolIndex)
 {
 	//
@@ -5584,14 +5746,17 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, 
 	{
 		std::vector<IndirectBatch> batches;
 		vkglTF::Model* lastModel = nullptr;
+		size_t indexGroupIdx = 0;
 		size_t lastUMBId = (size_t)-1;
+		size_t drawCommandID = 0;
 		size_t instanceID = 0;
 
 		std::lock_guard<std::mutex> lg(_roManager->renderObjectIndicesAndPoolMutex);
 
 		for (auto& metaMesh : _roManager->_metaMeshes)
 		{
-			if (metaMesh.model == lastModel &&
+			if (!metaMesh.isSkinned &&
+				metaMesh.model == lastModel &&
 				metaMesh.uniqueMaterialBaseId == lastUMBId)
 			{
 				batches.back().count += metaMesh.renderObjectIndices.size();
@@ -5601,8 +5766,8 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, 
 				batches.push_back({
 					.model = metaMesh.model,
 					.uniqueMaterialBaseId = metaMesh.uniqueMaterialBaseId,
-					.first = (uint32_t)instanceID,
-					.count = (uint32_t)metaMesh.renderObjectIndices.size(),
+					.first = (uint32_t)drawCommandID,
+					.count = (uint32_t)(metaMesh.isSkinned ? 1 : metaMesh.renderObjectIndices.size()),
 				});
 				lastModel = metaMesh.model;
 				lastUMBId = metaMesh.uniqueMaterialBaseId;
@@ -5611,32 +5776,66 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, 
 			// Create draw command for each mesh instance.
 			for (size_t roIndex = 0; roIndex < metaMesh.renderObjectIndices.size(); roIndex++)
 			{
-				auto& ib = _roManager->_cookedMeshDraws[metaMesh.cookedMeshDrawIdx];
-				*indirectDrawCommands = {
-					.indexCount = ib.meshIndexCount,
-					.instanceCount = 1,
-					.firstIndex = ib.meshFirstIndex,
-					.vertexOffset = 0,
-					.firstInstance = (uint32_t)instanceID,
-				};
+				bool incrementDrawCommand = false;
+				if (metaMesh.isSkinned)
+				{
+					if (roIndex == 0)
+					{
+						auto& grp = currentFrame.skinning.indexGroups[indexGroupIdx++];
+						*indirectDrawCommands = {
+							.indexCount = grp.count,
+							.instanceCount = 1,  // @NOTE: The vertices contain instance id offsets for the combined skinned meshes, so leave at 1.
+							.firstIndex = grp.first,
+							.vertexOffset = 0,
+							.firstInstance = (uint32_t)instanceID,
+						};
+						incrementDrawCommand = true;
+					}
+				}
+				else
+				{
+					auto& ib = _roManager->_cookedMeshDraws[metaMesh.cookedMeshDrawIdx];
+					*indirectDrawCommands = {
+						.indexCount = ib.meshIndexCount,
+						.instanceCount = 1,
+						.firstIndex = ib.meshFirstIndex,
+						.vertexOffset = 0,
+						.firstInstance = (uint32_t)instanceID,
+					};
+					incrementDrawCommand = true;
+				}
 
-				// @NOCHECKIN: INDIRECT BUFFER FOR INSTANCE POINTERS.
-				GPUInstancePointer& gip = _roManager->_renderObjectPool[metaMesh.renderObjectIndices[roIndex]].calculatedModelInstances[metaMesh.meshIdx];
+				size_t meshIdx = metaMesh.meshIndices[metaMesh.isSkinned ? roIndex : 0];
+				GPUInstancePointer& gip = _roManager->_renderObjectPool[metaMesh.renderObjectIndices[roIndex]].calculatedModelInstances[meshIdx];
 #ifdef _DEVELOP
 				if (!onlyPoolIndices.empty())
 					for (size_t index : onlyPoolIndices)
 						if (index == gip.objectID)
 						{
 							// Include this draw indirect command.
-							outIndirectDrawCommandIdsForPoolIndex.push_back({ ib.model, (uint32_t)instanceID });
+							if (metaMesh.isSkinned)
+							{
+								outIndirectDrawCommandIdsForPoolIndex.push_back({
+									(vkglTF::Model*)&_roManager->_skinnedMeshModelMemAddr,  // @HACK... but it works, does it not?
+									(uint32_t)drawCommandID
+								});
+							}
+							else
+								outIndirectDrawCommandIdsForPoolIndex.push_back({
+									_roManager->_cookedMeshDraws[metaMesh.cookedMeshDrawIdx].model,
+									(uint32_t)drawCommandID
+								});
 							break;
 						}
 #endif
 				*instancePtrSSBO = gip;
-
-				indirectDrawCommands++;
 				instancePtrSSBO++;
 				instanceID++;
+				if (incrementDrawCommand)
+				{
+					indirectDrawCommands++;
+					drawCommandID++;
+				}
 			}
 		}
 
@@ -5658,7 +5857,15 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 	{
 		if (lastModel != batch.model)
 		{
-			batch.model->bind(cmd);
+			if (batch.model == (vkglTF::Model*)&_roManager->_skinnedMeshModelMemAddr)
+			{
+				// Bind the compute skinned intermediate buffer.
+				const VkDeviceSize offsets[1] = { 0 };
+				vkCmdBindVertexBuffers(cmd, 0, 1, &currentFrame.skinning.outputVerticesBuffer._buffer, offsets);
+				vkCmdBindIndexBuffer(cmd, currentFrame.skinning.indicesBuffer._buffer, 0, VK_INDEX_TYPE_UINT32);
+			}
+			else
+				batch.model->bind(cmd);
 			lastModel = batch.model;
 		}
 		if (!materialOverride && lastUMBIdx != batch.uniqueMaterialBaseId)
@@ -5671,8 +5878,7 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, uMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
 			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, uMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
 			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, uMaterial.pipelineLayout, 3, 1, &uMaterial.textureSet, 0, nullptr);
-			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, uMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(this), 0, nullptr);
-			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, uMaterial.pipelineLayout, 5, 1, &_voxelFieldLightingGridTextureSet.descriptor, 0, nullptr);
+			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, uMaterial.pipelineLayout, 4, 1, &_voxelFieldLightingGridTextureSet.descriptor, 0, nullptr);
 			////////////////
 			
 			lastUMBIdx = batch.uniqueMaterialBaseId;
@@ -5721,7 +5927,6 @@ void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& curr
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, material.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, material.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, material.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, material.pipelineLayout, 3, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(this), 0, nullptr);
 
 		// Push constants
 		ColorPushConstBlock pc = {};
@@ -5733,7 +5938,15 @@ void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& curr
 		for (const ModelWithIndirectDrawId& mwidid : indirectDrawCommandIds)
 		{
 			VkDeviceSize indirectOffset = mwidid.indirectDrawId * drawStride;
-			mwidid.model->bind(cmd);
+			if (mwidid.model == (vkglTF::Model*)&_roManager->_skinnedMeshModelMemAddr)  // @HACK: getting the right indirect draw command with the combined skinned mesh intermediate buffer!  -Timo 2023/12/16
+			{
+				// Bind the compute skinned intermediate buffer. @COPYPASTA
+				const VkDeviceSize offsets[1] = { 0 };
+				vkCmdBindVertexBuffers(cmd, 0, 1, &currentFrame.skinning.outputVerticesBuffer._buffer, offsets);
+				vkCmdBindIndexBuffer(cmd, currentFrame.skinning.indicesBuffer._buffer, 0, VK_INDEX_TYPE_UINT32);
+			}
+			else
+				mwidid.model->bind(cmd);
 			vkCmdDrawIndexedIndirect(cmd, currentFrame.indirectDrawCommandBuffer._buffer, indirectOffset, 1, drawStride);
 		}
 	}
@@ -5906,7 +6119,7 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 			// Scene Properties window
 			//
 			static float_t scenePropertiesWindowWidth = 0.0f;
-			ImGui::SetNextWindowPos(ImVec2(_windowExtent.width - scenePropertiesWindowWidth, 0.0f), ImGuiCond_Always);
+			ImGui::SetNextWindowPos(ImVec2(_windowExtent.width - scenePropertiesWindowWidth, MAIN_MENU_PADDING), ImGuiCond_Always);
 			ImGui::Begin((globalState::savedActiveScene + " Properties").c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
 			{
 				ImGui::Text(globalState::savedActiveScene.c_str());

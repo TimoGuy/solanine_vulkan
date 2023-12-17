@@ -101,7 +101,7 @@ namespace vkutil
             VkPipelineLayout&                                outPipelineLayout,
             DeletionQueue&                                   deletionQueue)
         {
-            // Create pipeline layout
+            // Create pipeline layout  @COPYPASTA
             VkPipelineLayoutCreateInfo layoutInfo = vkinit::pipelineLayoutCreateInfo();
             layoutInfo.pPushConstantRanges = pushConstantRanges.data();
             layoutInfo.pushConstantRangeCount = (uint32_t)pushConstantRanges.size();
@@ -184,6 +184,56 @@ namespace vkutil
                 vkDestroyShaderModule(pipelinelayoutcache::device, shaderStage.module, nullptr);
 
             std::cout << "Cleaned up used shader modules (count: " << compiledShaderStages.size() << ")" << std::endl;
+
+            // Add pipeline to deletion queue.
+            deletionQueue.pushFunction([=]() {
+                vkDestroyPipeline(pipelinelayoutcache::device, outPipeline, nullptr);
+            });
+
+            return true;
+        }
+
+        bool buildCompute(
+            std::vector<VkPushConstantRange>                 pushConstantRanges,
+            std::vector<VkDescriptorSetLayout>               setLayouts,
+            ShaderStageInfo                     shaderStage,
+            VkPipeline&                                      outPipeline,
+            VkPipelineLayout&                                outPipelineLayout,
+            DeletionQueue&                                   deletionQueue)
+        {
+            // Create pipeline layout  @COPYPASTA
+            VkPipelineLayoutCreateInfo layoutInfo = vkinit::pipelineLayoutCreateInfo();
+            layoutInfo.pPushConstantRanges = pushConstantRanges.data();
+            layoutInfo.pushConstantRangeCount = (uint32_t)pushConstantRanges.size();
+            layoutInfo.pSetLayouts = setLayouts.data();
+            layoutInfo.setLayoutCount = (uint32_t)setLayouts.size();
+            outPipelineLayout = pipelinelayoutcache::createPipelineLayout(&layoutInfo);
+
+            // Load shader.
+            VkShaderModule sm;
+            loadShaderModule(shaderStage.filePath, sm);
+            VkPipelineShaderStageCreateInfo compiledShaderStage =
+                vkinit::pipelineShaderStageCreateInfo(shaderStage.stage, sm);
+
+            // Create pipeline.
+            VkComputePipelineCreateInfo pipelineInfo = {
+                .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+                .stage = compiledShaderStage,
+                .layout = outPipelineLayout,
+            };
+
+            // Check for errors while creating gfx pipelines
+            std::cout << "[BUILD COMPUTE PIPELINE]" << std::endl;
+            if (vkCreateComputePipelines(pipelinelayoutcache::device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &outPipeline) != VK_SUCCESS)
+            {
+                std::cout << "FAILED: creating compute pipeline" << std::endl;
+                return false;
+            }
+            std::cout << "Successfully built compute pipeline" << std::endl;
+
+            // Cleanup
+            vkDestroyShaderModule(pipelinelayoutcache::device, compiledShaderStage.module, nullptr);
+            std::cout << "Cleaned up used compute shader module" << std::endl;
 
             // Add pipeline to deletion queue.
             deletionQueue.pushFunction([=]() {

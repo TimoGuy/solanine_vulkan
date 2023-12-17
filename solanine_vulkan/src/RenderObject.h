@@ -87,13 +87,26 @@ private:
 	struct MetaMesh
 	{
 		vkglTF::Model* model;
-		size_t meshIdx;
+		bool isSkinned;
+		std::vector<size_t> meshIndices;  // @HACK: this is a vector so that skinned meshes can access all the individual instance references to get the right material etc. THINK OF A BETTER SYSTEM! @TODO.
 		size_t uniqueMaterialBaseId;
 		std::vector<size_t> renderObjectIndices;
 		size_t cookedMeshDrawIdx;
 	};
 	std::vector<MetaMesh> _metaMeshes;
 	std::vector<MeshCapturedInfo> _cookedMeshDraws;
+
+	struct SkinnedMeshEntry
+	{
+		vkglTF::Model* model;
+		size_t meshIdx;
+		size_t uniqueMaterialBaseID;
+		size_t animatorNodeID;
+		size_t baseInstanceID;
+	};
+	std::vector<SkinnedMeshEntry> _skinnedMeshEntries;
+	uint8_t _skinnedMeshModelMemAddr;
+
 	bool _isMetaMeshListUnoptimized = true;
 
 	VmaAllocator& _allocator;

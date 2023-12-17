@@ -92,6 +92,38 @@ struct GPUPostProcessParams
 	bool pad2;  // Vulkan spec requires multiple of 4 bytes for push constants.
 };
 
+struct GPUInputSkinningMeshPrefixData
+{
+	uint32_t numVertices;
+    uint32_t pad0;
+    uint32_t pad1;
+    uint32_t pad2;
+};
+
+struct GPUInputSkinningMeshData
+{
+	vec3 pos;
+    uint32_t animatorNodeID;  // @NOTE: insert offset here so that 16 byte padding can be complete and normal doesn't get garbage values.  -Timo 2023/12/16
+    vec3 normal;
+    uint32_t baseInstanceID;  // Here too.
+    vec2 UV0;
+    vec2 UV1;
+    vec4 joint0;
+    vec4 weight0;
+    vec4 color0;
+};
+
+struct GPUOutputSkinningMeshData
+{
+	vec3 pos;
+    uint32_t instanceIDOffset;  // @NOTE: insert offset here so that 16 byte padding can be complete and normal doesn't get garbage values.  -Timo 2023/12/16
+    vec3 normal;
+	uint32_t pad0;  // Here too.
+    vec2 UV0;
+    vec2 UV1;
+    vec4 color0;
+};
+
 struct FrameData
 {
 	VkSemaphore presentSemaphore, renderSemaphore;
@@ -117,6 +149,25 @@ struct FrameData
 
 	AllocatedBuffer pickingSelectedIdBuffer;
 	VkDescriptorSet pickingReturnValueDescriptor;
+
+	struct ComputeSkinning
+	{
+		struct IndexGroup
+		{
+			uint32_t first;
+			uint32_t count;
+		};
+		std::vector<IndexGroup> indexGroups;
+		uint64_t        numVertices;
+		uint64_t        numIndices;
+		AllocatedBuffer inputVerticesBuffer;
+		AllocatedBuffer outputVerticesBuffer;
+		uint64_t        outputBufferSize;
+		AllocatedBuffer indicesBuffer;
+		VkDescriptorSet inoutVerticesDescriptor;
+		bool created                    = false;
+		bool recalculateSkinningBuffers = true;
+	} skinning;
 };
 
 struct UploadContext
@@ -298,6 +349,9 @@ public:
 	void initVoxelLightingDescriptor();
 	void recreateVoxelLightingDescriptor();
 
+	// Compute skinning.
+	void initSkinningPipeline();
+
 	//
 	// Render Objects
 	//
@@ -329,6 +383,7 @@ public:
 	VkDescriptorSetLayout _pickingReturnValueSetLayout;
 	VkDescriptorSetLayout _skeletalAnimationSetLayout;    // @NOTE: for this one, descriptor sets are created inside of the vkglTFModels themselves, they're not global
 	VkDescriptorSetLayout _postprocessSetLayout;
+	VkDescriptorSetLayout _computeSkinningInoutVerticesSetLayout;
 
 	AllocatedBuffer createBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
 	size_t padUniformBufferSize(size_t originalSize);    // @NOTE: this is unused, but it's useful for dynamic uniform buffers
@@ -369,6 +424,7 @@ private:
 	void loadMeshes();
 
 	void uploadCurrentFrameToGPU(const FrameData& currentFrame);
+	void createSkinningBuffers(FrameData& currentFrame);
 	
 	std::vector<IndirectBatch> indirectBatches;
 
@@ -390,6 +446,8 @@ private:
 	bool searchForPickedObjectPoolIndex(size_t& outPoolIndex);
 	void renderPickedObject(VkCommandBuffer cmd, const FrameData& currentFrame, const std::vector<ModelWithIndirectDrawId>& indirectDrawCommandIds);
 
+	void computeCulling(const FrameData& currentFrame, VkCommandBuffer cmd);
+	void computeSkinnedMeshes(const FrameData& currentFrame, VkCommandBuffer cmd);
 	void renderPickingRenderpass(const FrameData& currentFrame);
 	void renderShadowRenderpass(const FrameData& currentFrame, VkCommandBuffer cmd);
 	void renderMainRenderpass(const FrameData& currentFrame, VkCommandBuffer cmd, const std::vector<ModelWithIndirectDrawId>& pickingIndirectDrawCommandIds);

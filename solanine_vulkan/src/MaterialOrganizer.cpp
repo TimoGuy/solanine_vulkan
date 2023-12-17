@@ -802,7 +802,6 @@ namespace materialorganizer
                         engineRef->_objectSetLayout,
                         engineRef->_instancePtrSetLayout,
                         umb.compiled.materialParamsDescriptorSetLayout,
-                        engineRef->_skeletalAnimationSetLayout,
                     },
                     {
                         { VK_SHADER_STAGE_VERTEX_BIT, ("res/shaders/" + umb.vertex.fname).c_str() },
@@ -841,7 +840,6 @@ namespace materialorganizer
                         engineRef->_objectSetLayout,
                         engineRef->_instancePtrSetLayout,
                         umb.compiled.materialParamsDescriptorSetLayout,
-                        engineRef->_skeletalAnimationSetLayout,
                     },
                     {
                         { VK_SHADER_STAGE_VERTEX_BIT, ("res/shaders/" + umb.vertex.fname).c_str() },
@@ -879,7 +877,6 @@ namespace materialorganizer
                         engineRef->_objectSetLayout,
                         engineRef->_instancePtrSetLayout,
                         umb.compiled.materialParamsDescriptorSetLayout,
-                        engineRef->_skeletalAnimationSetLayout,
                         engineRef->_voxelFieldLightingGridTextureSet.layout,
                     },
                     {

@@ -149,6 +149,12 @@ void RenderObjectManager::flagMetaMeshListAsUnoptimized()
 
 void RenderObjectManager::optimizeMetaMeshList()
 {
+	// @NOTE: since this is a process-intensive operation, it could be good to compile
+	//        all of the metameshes into a separate list in a separate thread while using
+	//        the stale meta mesh list until this operation finishes. Then, upon finishing,
+	//        just assign the memory address of the finished, new meta mesh list to the pointer
+	//        of the old one. Just a thought, but this would force some renderobjects
+	//        to stay alive but it's not impossible to manage.  -Timo 2023/12/12
 	std::lock_guard<std::mutex> lg(renderObjectIndicesAndPoolMutex);
 
 	//
@@ -177,10 +183,13 @@ void RenderObjectManager::optimizeMetaMeshList()
 	for (size_t roIdx = 0; roIdx < visibleIndices.size(); roIdx++)
 	{
 		RenderObject& ro = _renderObjectPool[visibleIndices[roIdx]];
+		if (ro.animator != nullptr)
+			int ian = 69;
 		for (size_t mi = 0; mi < ro.perPrimitiveUniqueMaterialBaseIndices.size(); mi++)
 			_metaMeshes.push_back({
 				.model = ro.model,
-				.meshIdx = mi,
+				.isSkinned = (ro.animator != nullptr),
+				.meshIndices = { mi },
 				.uniqueMaterialBaseId = ro.perPrimitiveUniqueMaterialBaseIndices[mi],
 				.renderObjectIndices = { visibleIndices[roIdx] },
 			});
@@ -188,7 +197,7 @@ void RenderObjectManager::optimizeMetaMeshList()
 			uniqueModels.push_back(ro.model);
 	}
 
-	// // Group by materials used, then by model used, then by mesh index, then by render object index.
+	// // Group by materials used, then whether skinned or not, then by model used, then by mesh index, then by render object index.
 	// // @NOTE: this is to reduce the number of times to rebind materials and models.
 	// // @PERFORMANCE: this runs at 18ms about (for main level scene)... make this faster... bc we don't want 18ms hitches every time a new render object is switched out.
 	// static uint64_t count = 0;
@@ -274,10 +283,12 @@ void RenderObjectManager::optimizeMetaMeshList()
 		[&](MetaMesh& a, MetaMesh& b) {
 			if (a.uniqueMaterialBaseId != b.uniqueMaterialBaseId)
 				return a.uniqueMaterialBaseId < b.uniqueMaterialBaseId;
+			if (a.isSkinned != b.isSkinned)
+				return a.isSkinned;
 			if (a.model != b.model)
 				return a.model < b.model;
-			if (a.meshIdx != b.meshIdx)
-				return a.meshIdx < b.meshIdx;
+			if (a.meshIndices[0] != b.meshIndices[0])
+				return a.meshIndices[0] < b.meshIndices[0];
 			if (a.renderObjectIndices[0] != b.renderObjectIndices[0])
 				return a.renderObjectIndices[0] < b.renderObjectIndices[0];
 			return false;
@@ -300,15 +311,17 @@ void RenderObjectManager::optimizeMetaMeshList()
 		{
 			auto& siblingMesh = _metaMeshes[j];
 			if (siblingMesh.renderObjectIndices.size() != 1)
-				continue;  // Already consumed... or this is a parent mesh... Though neither should happen at this stage bc of sorting previously.
+				continue;  // Already consumed (<1)... or this is a parent mesh (>1)... Though neither should happen at this stage bc of sorting previously.
 
 			bool sameAsParent =
-				(parentMesh.model == siblingMesh.model &&
-				parentMesh.meshIdx == siblingMesh.meshIdx &&
+				(parentMesh.isSkinned == siblingMesh.isSkinned &&
+				parentMesh.model == siblingMesh.model &&
+				parentMesh.meshIndices[0] == siblingMesh.meshIndices[0] &&
 				parentMesh.uniqueMaterialBaseId == siblingMesh.uniqueMaterialBaseId);
 			if (sameAsParent)
 			{
-				parentMesh.renderObjectIndices.push_back(siblingMesh.renderObjectIndices[0]);
+				for (size_t a = 0; a < siblingMesh.renderObjectIndices.size(); a++)
+					parentMesh.renderObjectIndices.push_back(siblingMesh.renderObjectIndices[a]);
 				siblingMesh.renderObjectIndices.clear();
 			}
 			else
@@ -325,6 +338,103 @@ void RenderObjectManager::optimizeMetaMeshList()
 		}
 	);
 
+	// Smoosh skinned meshes together.
+	_skinnedMeshEntries.clear();
+	size_t smeInstanceIDOffset = 0;
+	for (size_t i = 0; i < _metaMeshes.size(); i++)
+	{
+		auto& parentMesh = _metaMeshes[i];
+		if (!parentMesh.isSkinned)
+			continue;  // Only process skinned meshes.
+		if (parentMesh.renderObjectIndices.empty())
+			continue;  // Already consumed.
+
+		// Insert mesh entries.
+		for (size_t a = 0; a < parentMesh.renderObjectIndices.size(); a++)
+		{
+			_skinnedMeshEntries.push_back({
+				.model = parentMesh.model,
+				.meshIdx = parentMesh.meshIndices[0],
+				.uniqueMaterialBaseID = _renderObjectPool[parentMesh.renderObjectIndices[a]].perPrimitiveUniqueMaterialBaseIndices[parentMesh.meshIndices[0]],
+				.animatorNodeID = _renderObjectPool[parentMesh.renderObjectIndices[a]].calculatedModelInstances[parentMesh.meshIndices[0]].animatorNodeID,
+				.baseInstanceID = smeInstanceIDOffset++,
+			});
+			if (a > 0)
+				parentMesh.meshIndices.push_back(parentMesh.meshIndices[0]);  // Copy to fill up number of render objects (unflatten).
+		}
+
+		for (size_t j = i + 1; j < _metaMeshes.size(); j++)
+		{
+			auto& siblingMesh = _metaMeshes[j];
+			if (siblingMesh.renderObjectIndices.empty())
+				continue;  // Already consumed.
+
+			bool sameAsSkinnedParent =
+				(parentMesh.isSkinned == siblingMesh.isSkinned &&
+				parentMesh.uniqueMaterialBaseId == siblingMesh.uniqueMaterialBaseId);
+			if (sameAsSkinnedParent)
+			{
+				// Insert mesh entries.
+				for (size_t a = 0; a < siblingMesh.renderObjectIndices.size(); a++)
+				{
+					_skinnedMeshEntries.push_back({
+						.model = siblingMesh.model,
+						.meshIdx = siblingMesh.meshIndices[0],
+						.uniqueMaterialBaseID = _renderObjectPool[siblingMesh.renderObjectIndices[a]].perPrimitiveUniqueMaterialBaseIndices[siblingMesh.meshIndices[0]],
+						.animatorNodeID = _renderObjectPool[siblingMesh.renderObjectIndices[a]].calculatedModelInstances[siblingMesh.meshIndices[0]].animatorNodeID,
+						.baseInstanceID = smeInstanceIDOffset++,
+					});
+					parentMesh.meshIndices.push_back(siblingMesh.meshIndices[0]);  // Only 1 mesh index even if multiple render object indices are present (unflatten).
+					parentMesh.renderObjectIndices.push_back(siblingMesh.renderObjectIndices[a]);
+				}
+				siblingMesh.meshIndices.clear();
+				siblingMesh.renderObjectIndices.clear();
+			}
+			else
+			{
+				smeInstanceIDOffset = 0;  // Offset should be relative to the metamesh group, hence resetting it here.
+				i = j - 1;  // Speed up parent mesh seeker to where new mesh is (minus 1 so that the iterator can increment for it!).
+				break;  // Bc of sorting, there shouldn't be any other sibling meshes to find.
+			}
+		}
+	}
+	std::erase_if(
+		_metaMeshes,
+		[](MetaMesh mm) {
+			return mm.renderObjectIndices.empty();
+		}
+	);
+
+	// Mark all skinned meshes.
+	for (auto& mm : _metaMeshes)
+	{
+		if (!mm.isSkinned)
+			continue;
+		
+		mm.model = (vkglTF::Model*)&_skinnedMeshModelMemAddr;  // @HACK: @NOTE: marks metamesh as part of the intermediate skinned mesh buffer.
+	}
+
+	// // Sort by material for skinned metameshes. @NOTE: all the indices get combined together into a huge mesh so sorting on other props isn't needed.
+	// std::sort(
+	// 	skinnedMetaMeshes.begin(),
+	// 	skinnedMetaMeshes.end(),
+	// 	[&](MetaMesh& a, MetaMesh& b) {
+	// 		if (a.uniqueMaterialBaseId != b.uniqueMaterialBaseId)
+	// 			return a.uniqueMaterialBaseId < b.uniqueMaterialBaseId;
+	// 		return false;
+	// 	}
+	// );
+
+	// // Smoosh skinned meshes together.
+	// _skinnedMetaMeshCalculatedModelInstances.clear();
+	// for (auto& smm : skinnedMetaMeshes)
+	// {
+	// 	smm.model = (vkglTF::Model*)&_skinnedMeshModelMemAddr;  // @HACK
+	// 	smm.renderObjectIndices
+	// }
+
+	// // Smoosh skinned meshes together.
+
 	// Capture mesh info.
 	_cookedMeshDraws.clear();
 	for (vkglTF::Model* um : uniqueModels)
@@ -335,7 +445,7 @@ void RenderObjectManager::optimizeMetaMeshList()
 		for (auto& metaMesh : _metaMeshes)
 			if (metaMesh.model == um)
 			{
-				metaMesh.cookedMeshDrawIdx = baseMeshIndex + metaMesh.meshIdx;
+				metaMesh.cookedMeshDrawIdx = baseMeshIndex + metaMesh.meshIndices[0];  // @NOTE: skinned meshes would not be selected since they're not added into `uniqueModels`.
 			}
 	}
 

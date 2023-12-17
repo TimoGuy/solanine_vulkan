@@ -128,6 +128,47 @@
             > Anywho, huge improvement! I think I can sleep well now!
     > Now, the game loads up in about 5000ms. Not instant, but it feels like it now that the SlimeGirl model loads up super quickly.
 
+- [ ] Compute based skinning.
+    - [x] Setup vkdevice context to allow for compute shaders.
+        > Afaik using the graphics queue should support compute shaders too. Using another compute shader queue is only necessary if async compute is desired.
+    - [x] Write compute shader.
+    - [x] @NOTE: happens after compute based culling pass.
+    - [x] Compact and sort skinned meshes into buffer entries and instance id offsets (separated by just the umb idx).
+        - [x] The offsets should be configured such that when the indirect draw command is compiled/run normally, it should all just line up to the correct instance data.
+    - [x] Create buffer that matches the size of all the skinned meshes, with the below attributes:
+        - Position
+        - Normal
+        - UV0*
+        - UV1*
+        - Color0*
+        - animatorNodeID  @TODO: take it out of the InstancePointer struct!
+        - BaseInstanceID*
+            * For passing thru.
+    - [x] Make sure to multiply the skeletal animation node matrix with the pos/norm
+    - [x] Output to buffer that has these attributes:
+        - Position
+        - Normal
+        - UV0
+        - UV1
+        - Color0
+        - InstanceIDOffset
+            > This is set to 0 for unskinned meshes, but it's so that skinned meshes can be drawn with one model bind and set `gl_BaseInstance` to 0 and have the actual instance ids tied to their indices.
+    - [x] It appears that the data is off somehow. The input mesh for the skinning is off for sure.
+    - [x] The instance ptr is off. @NOTE: turns out the vertex attribute wasn't assigned for instance ID offset and that's why.
+    - [x] It looks like some faces are missing from the 2nd slime girl legs.
+    - [x] It looks like where the models switch are maligned.
+        > The issue was thinking the instance id and the indirect draw command id are the same. They were the same until the giant mesh that combined together 36 of the draws into 1.
+    - [x] It looks like the material for slimegirl is incorrect (shouldn't be gold right???)
+        > It should be gold for the belt buckle and bag buckle (material #5)... but for some reason all of the instances (0-36) for the first group of the skinned meshes are pointing to material #5
+    - [x] Double check: it looks like the shoes for slimegirl aren't correct.
+    - [x] It looks like the model matrix for skinned meshes is messed up. Probably inverse transposed matrix operations aren't associative.
+        > Normals aren't getting inputted into the vertex shader correctly (ones that got compute skinned). Setting the normal to 1,0,0 causes it to be 0,1,0 when ingested. Likely it's vec4 padding issues.
+        > TRY: put instance id offset between inPos and inNormal in the buffer to resolve the vec3/vec4 padding issue.
+    - [x] Get wireframe picking to work with skinned meshes.
+
+- [ ] Pipeline layout from reflection of the shaders.
+    - [ ] Can fix the weird dependency hack going on with the skinning compute shader.
+
 - [ ] Better level editor.
     - [ ] Update collision box texture for voxel fields.
     - [ ] No physics simulations when the level is in editing mode.

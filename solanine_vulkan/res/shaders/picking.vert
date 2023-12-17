@@ -4,9 +4,8 @@ layout (location = 0) in vec3 inPos;
 layout (location = 1) in vec3 inNormal;
 layout (location = 2) in vec2 inUV0;
 layout (location = 3) in vec2 inUV1;
-layout (location = 4) in vec4 inJoint0;
-layout (location = 5) in vec4 inWeight0;
-layout (location = 6) in vec4 inColor0;
+layout (location = 4) in vec4 inColor0;
+layout (location = 5) in uint inInstanceIDOffset;
 
 layout (location = 0) out uint outID;
 
@@ -48,46 +47,12 @@ layout(std140, set = 2, binding = 0) readonly buffer InstancePtrBuffer
 } instancePtrBuffer;
 
 
-// Skeletal Animation/Skinning
-#define MAX_NUM_JOINTS 128
-struct SkeletonAnimationNode
-{
-	mat4 matrix;
-	mat4 jointMatrix[MAX_NUM_JOINTS];
-	float jointCount;
-};
-
-layout (std140, set = 4, binding = 0) readonly buffer SkeletonAnimationNodeCollection
-{
-	SkeletonAnimationNode nodes[];
-} nodeCollection;
-
-
 void main()
 {
-	//
-	// Skin mesh @COPYPASTA
-	//
-	mat4 modelMatrix = objectBuffer.objects[instancePtrBuffer.pointers[gl_BaseInstance].objectID].modelMatrix;
-	SkeletonAnimationNode node = nodeCollection.nodes[instancePtrBuffer.pointers[gl_BaseInstance].animatorNodeID];
-	vec4 locPos;
-	if (node.jointCount > 0.0)
-	{
-		// Is skinned
-		mat4 skinMat =
-			inWeight0.x * node.jointMatrix[int(inJoint0.x)] +
-			inWeight0.y * node.jointMatrix[int(inJoint0.y)] +
-			inWeight0.z * node.jointMatrix[int(inJoint0.z)] +
-			inWeight0.w * node.jointMatrix[int(inJoint0.w)];
+	uint instID = gl_BaseInstance + inInstanceIDOffset;
+	mat4 modelMatrix = objectBuffer.objects[instancePtrBuffer.pointers[instID].objectID].modelMatrix;
+	vec4 locPos = modelMatrix * vec4(inPos, 1.0);
 
-		locPos = modelMatrix * node.matrix * skinMat * vec4(inPos, 1.0);
-	}
-	else
-	{
-		// Not skinned
-		locPos = modelMatrix * node.matrix * vec4(inPos, 1.0);
-	}
-
-	outID = uint(instancePtrBuffer.pointers[gl_BaseInstance].objectID);
-	gl_Position =  cameraData.projectionView * vec4(locPos.xyz / locPos.w, 1.0);
+	outID = uint(instancePtrBuffer.pointers[instID].objectID);
+	gl_Position = cameraData.projectionView * vec4(locPos.xyz / locPos.w, 1.0);
 }

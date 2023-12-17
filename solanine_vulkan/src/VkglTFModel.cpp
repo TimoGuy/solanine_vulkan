@@ -176,32 +176,25 @@ namespace vkglTF
 			.format = VK_FORMAT_R32G32_SFLOAT,
 			.offset = offsetof(Vertex, uv1),
 		};
-		VkVertexInputAttributeDescription joint0Attribute = {
+		VkVertexInputAttributeDescription colorAttribute = {
 			.location = 4,
 			.binding = 0,
 			.format = VK_FORMAT_R32G32B32A32_SFLOAT,
-			.offset = offsetof(Vertex, joint0),
+			.offset = offsetof(Vertex, color),
 		};
-		VkVertexInputAttributeDescription weight0Attribute = {
+		VkVertexInputAttributeDescription instanceIDOffsetAttribute = {
 			.location = 5,
 			.binding = 0,
-			.format = VK_FORMAT_R32G32B32A32_SFLOAT,
-			.offset = offsetof(Vertex, weight0),
-		};
-		VkVertexInputAttributeDescription colorAttribute = {
-			.location = 6,
-			.binding = 0,
-			.format = VK_FORMAT_R32G32B32A32_SFLOAT,
-			.offset = offsetof(Vertex, color),
+			.format = VK_FORMAT_R32_UINT,
+			.offset = offsetof(Vertex, instanceIDOffset),
 		};
 
 		description.attributes.push_back(posAttribute);
 		description.attributes.push_back(normalAttribute);
 		description.attributes.push_back(uv0Attribute);
 		description.attributes.push_back(uv1Attribute);
-		description.attributes.push_back(joint0Attribute);
-		description.attributes.push_back(weight0Attribute);
 		description.attributes.push_back(colorAttribute);
+		description.attributes.push_back(instanceIDOffsetAttribute);
 		return description;
 	}
 
@@ -407,10 +400,14 @@ namespace vkglTF
 					for (size_t v = 0; v < posAccessor.count; v++)
 					{
 						Vertex& vert = loaderInfo.vertexBuffer[loaderInfo.vertexPos];
+						VertexWithWeights& vertWithWeights = loaderInfo.vertexWithWeightsBuffer[loaderInfo.vertexPos];
+
+						vert.instanceIDOffset = 0;
 
 						const float_t* bp = &bufferPos[v * posByteStride];
 						vec3 pos = { bp[0], bp[1], bp[2] };
 						glm_vec3_copy(pos, vert.pos);
+						glm_vec3_copy(pos, vertWithWeights.pos);
 
 						if (bufferNormals)
 						{
@@ -418,36 +415,52 @@ namespace vkglTF
 							vec3 normal = { bn[0], bn[1], bn[2] };
 							glm_normalize(normal);
 							glm_vec3_copy(normal, vert.normal);
+							glm_vec3_copy(normal, vertWithWeights.normal);
 						}
 						else
+						{
 							glm_vec3_zero(vert.normal);
+							glm_vec3_zero(vertWithWeights.normal);
+						}
 
 						if (bufferTexCoordSet0)
 						{
 							const float_t* btcs0 = &bufferTexCoordSet0[v * uv0ByteStride];
 							vec2 uv0 = { btcs0[0], btcs0[1] };
 							glm_vec2_copy(uv0, vert.uv0);
+							glm_vec2_copy(uv0, vertWithWeights.uv0);
 						}
 						else
+						{
 							glm_vec2_zero(vert.uv0);
+							glm_vec2_zero(vertWithWeights.uv0);
+						}
 
 						if (bufferTexCoordSet1)
 						{
 							const float_t* btcs1 = &bufferTexCoordSet1[v * uv1ByteStride];
 							vec2 uv1 = { btcs1[0], btcs1[1] };
 							glm_vec2_copy(uv1, vert.uv1);
+							glm_vec2_copy(uv1, vertWithWeights.uv1);
 						}
 						else
+						{
 							glm_vec2_zero(vert.uv1);
+							glm_vec2_zero(vertWithWeights.uv1);
+						}
 
 						if (bufferColorSet0)
 						{
 							const float_t* bcs0 = &bufferColorSet0[v * color0ByteStride];
 							vec4 color = { bcs0[0], bcs0[1], bcs0[2], bcs0[3] };
 							glm_vec4_copy(color, vert.color);
+							glm_vec4_copy(color, vertWithWeights.color);
 						}
 						else
+						{
 							glm_vec4_one(vert.color);
+							glm_vec4_one(vertWithWeights.color);
+						}
 
 						if (hasSkin)
 						{
@@ -460,7 +473,7 @@ namespace vkglTF
 								vec4 joint0 = {
 									b[0], b[1], b[2], b[3],
 								};
-								glm_vec4_copy(joint0, vert.joint0);
+								glm_vec4_copy(joint0, vertWithWeights.joint0);
 								break;
 							}
 							case TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE:
@@ -470,7 +483,7 @@ namespace vkglTF
 								vec4 joint0 = {
 									b[0], b[1], b[2], b[3],
 								};
-								glm_vec4_copy(joint0, vert.joint0);
+								glm_vec4_copy(joint0, vertWithWeights.joint0);
 								break;
 							}
 							default:
@@ -480,9 +493,7 @@ namespace vkglTF
 							}
 						}
 						else
-						{
-							glm_vec4_zero(vert.joint0);
-						}
+							glm_vec4_zero(vertWithWeights.joint0);
 
 						// Add skin weight
 						if (hasSkin)
@@ -494,16 +505,16 @@ namespace vkglTF
 								bw[2],
 								bw[3],
 							};
-							glm_vec4_copy(bufferWeightsV4, vert.weight0);
+							glm_vec4_copy(bufferWeightsV4, vertWithWeights.weight0);
 						}
 						else
-							glm_vec4_zero(vert.weight0);
+							glm_vec4_zero(vertWithWeights.weight0);
 
 						// Fix for all zero weights
-						if (glm_vec3_norm(vert.weight0) == 0.0f)  // @TODO: may wanna use `_norm2` instead
+						if (glm_vec3_norm(vertWithWeights.weight0) == 0.0f)  // @TODO: may wanna use `_norm2` instead
 						{
 							vec4 x1 = { 1.0f, 0.0f, 0.0f, 0.0f };
-							glm_vec4_copy(x1, vert.weight0);
+							glm_vec4_copy(x1, vertWithWeights.weight0);
 						}
 						loaderInfo.vertexPos++;
 					}
@@ -1861,6 +1872,7 @@ namespace vkglTF
 
 				dummyModel.loaderInfo.indexBuffer = new uint32_t[indexCount];
 				dummyModel.loaderInfo.vertexBuffer = new Vertex[vertexCount];
+				dummyModel.loaderInfo.vertexWithWeightsBuffer = new VertexWithWeights[vertexCount];
 				dummyModel.loaderInfo.indexCount = indexCount;
 				dummyModel.loaderInfo.vertexCount = vertexCount;
 
@@ -2032,6 +2044,7 @@ namespace vkglTF
 
 		loaderInfo.indexBuffer = new uint32_t[indexCount];
 		loaderInfo.vertexBuffer = new Vertex[vertexCount];
+		loaderInfo.vertexWithWeightsBuffer = new VertexWithWeights[vertexCount];
 		loaderInfo.indexCount = indexCount;
 		loaderInfo.vertexCount = vertexCount;
 		PERF_TEND(3);
@@ -2507,7 +2520,7 @@ namespace vkglTF
 			};
 
 			vkutil::DescriptorBuilder::begin()
-				.bindBuffer(0, &nodeCollectionBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_VERTEX_BIT)
+				.bindBuffer(0, &nodeCollectionBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, /*VK_SHADER_STAGE_VERTEX_BIT @NOCHECKIN*/ VK_SHADER_STAGE_COMPUTE_BIT)
 				.build(nodeCollectionBuffers[i].descriptorSet, engine->_skeletalAnimationSetLayout);
 
 			// Copy non-skinned default animator

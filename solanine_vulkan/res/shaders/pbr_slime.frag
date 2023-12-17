@@ -133,7 +133,7 @@ layout (set = 3, binding = 1) uniform sampler2D textureMaps[];
 // Voxel field lighting grid lightmaps
 //
 #define MAX_NUM_VOXEL_FIELD_LIGHTMAPS 8
-layout (set = 5, binding = 1) uniform sampler3D voxelFieldLightmaps[MAX_NUM_VOXEL_FIELD_LIGHTMAPS];
+layout (set = 4, binding = 1) uniform sampler3D voxelFieldLightmaps[MAX_NUM_VOXEL_FIELD_LIGHTMAPS];
 
 // Encapsulate the various inputs used by the various functions in the shading equation
 // We store values in this struct to simplify the integration of alternative implementations
