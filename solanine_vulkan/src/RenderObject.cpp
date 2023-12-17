@@ -393,9 +393,10 @@ void RenderObjectManager::reloadModelAndTriggerCallbacks(VulkanEngine* engine, c
 	}
 
 	// Reload model
+	std::string pathStringHenema    = "res/models_cooked/" + std::filesystem::path(modelPath).stem().string() + ".henema";
 	vkglTF::Model* model = _renderObjectModels[name];
 	model->destroy(_allocator);
-	model->loadFromFile(engine, modelPath);
+	model->loadHthrobwoaFromFile(engine, modelPath, pathStringHenema);
 
 	// Trigger Model Callbacks
 	for (auto& rc : _renderObjectModelCallbacks[name])

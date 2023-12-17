@@ -13,6 +13,7 @@
 #include <format>
 #include <filesystem>
 #include <map>
+#include <set>
 #include <unordered_map>
 #include <mutex>
 #include <string>

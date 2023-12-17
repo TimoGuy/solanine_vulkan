@@ -81,7 +81,7 @@ void VulkanEngine::init()
 	initSwapchain();
 	initCommands();
 	initShadowRenderpass();
-	initShadowImages();  // @NOTE: this isn't screen space, so no need to recreate images on swapchain recreation
+	initShadowImages();  // @NOTE: this isn't screen space, so no need to recreate images on swapchain recreation.
 	initMainRenderpass();
 	initUIRenderpass();
 	initPostprocessRenderpass();
@@ -5499,28 +5499,28 @@ void VulkanEngine::loadMeshes()
 #endif
 
 	std::vector<std::pair<std::string, vkglTF::Model*>> modelNameAndModels;
-	for (const auto& entry : std::filesystem::recursive_directory_iterator("res/models/"))
+	for (const auto& entry : std::filesystem::recursive_directory_iterator("res/models_cooked/"))
 	{
 		const auto& path = entry.path();
 		if (std::filesystem::is_directory(path))
 			continue;		// Ignore directories
 		if (!path.has_extension() ||
-			(path.extension().compare(".gltf") != 0 &&
-			path.extension().compare(".glb") != 0))
+			path.extension().compare(".hthrobwoa") != 0)
 			continue;		// @NOTE: ignore non-model files
 
 		modelNameAndModels.push_back(
 			std::make_pair<std::string, vkglTF::Model*>(path.stem().string(), nullptr)
 		);
 
-		size_t      targetIndex = modelNameAndModels.size() - 1;
-		std::string pathString  = path.string();
+		size_t      targetIndex         = modelNameAndModels.size() - 1;
+		std::string pathStringHthrobwoa = path.string();
+		std::string pathStringHenema    = "res/models_cooked/" + path.stem().string() + ".henema";
 
 #if MULTITHREAD_MESH_LOADING
 		taskflow.emplace([&, targetIndex, pathString]() {
 #endif
 			modelNameAndModels[targetIndex].second = new vkglTF::Model();
-			modelNameAndModels[targetIndex].second->loadFromFile(this, pathString);
+			modelNameAndModels[targetIndex].second->loadHthrobwoaFromFile(this, pathStringHthrobwoa, pathStringHenema);
 #if MULTITHREAD_MESH_LOADING
 		});
 #endif

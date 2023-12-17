@@ -166,7 +166,8 @@ namespace vkglTF
 	{
 		enum PathType { TRANSLATION, ROTATION, SCALE };
 		PathType path;
-		Node* node;
+		int32_t  nodeIdx;  // This value gets stored in the binary repr, and needs to use it to bake ptr node.
+		Node*    node;
 		uint32_t samplerIndex;
 	};
 
@@ -345,7 +346,7 @@ namespace vkglTF
 
 		void destroy(VmaAllocator allocator);
 	private:
-		void loadNode(vkglTF::Node* parent, const tinygltf::Node& node, uint32_t nodeIndex, const tinygltf::Model& model, LoaderInfo& loaderInfo, float globalscale);
+		void loadNode(vkglTF::Node* parent, const tinygltf::Node& node, uint32_t nodeIndex, const tinygltf::Model& model, LoaderInfo& loaderInfo, float_t globalscale);
 		void getNodeProps(const tinygltf::Node& node, const tinygltf::Model& model, size_t& vertexCount, size_t& indexCount);
 		void loadSkins(tinygltf::Model& gltfModel);
 		void loadTextures(tinygltf::Model& gltfModel);
@@ -354,10 +355,12 @@ namespace vkglTF
 		VkSamplerMipmapMode getVkMipmapModeMode(int32_t filterMode);
 		void loadTextureSamplers(tinygltf::Model& gltfModel);
 		void loadMaterials(tinygltf::Model& gltfModel);    // @NOTE: someday it might be beneficial to have some kind of material override for any model.  -Timo
-		void loadAnimations(tinygltf::Model& gltfModel);
-		void loadAnimationStateMachine(const std::string& filename, tinygltf::Model& gltfModel);
+		void loadAnimationsFromGlTFModel(tinygltf::Model& gltfModel, std::vector<size_t>& outAccessorIndicesUsed, std::vector<size_t>& outBufferViewIndicesUsed);
+		void loadAnimationStateMachine(const std::string& filename);
 	public:
-		void loadFromFile(VulkanEngine* engine, std::string filename, float scale = 1.0f);
+		static bool checkGlTFCookNeeded(const std::filesystem::path& path);
+		static bool cookGlTFModel(const std::filesystem::path& path);
+		void loadHthrobwoaFromFile(VulkanEngine* engine, std::string filenameHthrobwoa, std::string filenameHenema, float_t scale = 1.0f);
 		void bind(VkCommandBuffer commandBuffer);
 		void draw(VkCommandBuffer commandBuffer);
 		void draw(VkCommandBuffer commandBuffer, uint32_t& inOutInstanceID);

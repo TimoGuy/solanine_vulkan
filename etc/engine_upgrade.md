@@ -113,6 +113,21 @@
 - [x] Rename "Character" to something else
     - [x] Then, import all of the jolt physics stuff into pch! That way "JPH::Character" doesn't need a differentiation!
 
+- [x] I want to be able to load up the game near instantly!
+    - [x] Slimegirl.glb's animations take 1.8sec to parse (much better than the former 8sec but seriously sucky).
+        > Specifically, reading in the file into json takes 1892.37ms with the animations vs 24.37ms without the animations.
+        - [x] Create animation cooker, that takes a .glb file and prints out an animation file that contains all the actions and removes all the animations it had formerly.
+            - [x] Read file from tiny_gltf and print out animation data into file.
+            - [x] Rewrite data from tiny_gltf load (after doing `.clear()` to animations) into another .glb file in `models_cooked`
+        - [x] Rewrite the glb file without its animations and put into `models_cooked` with the just-animation file.
+        - [x] Okay, found out that a lot of this information is stored in the bufferview, so new strategy.
+            - [x] Store the binary data of the vkgltf animations which copy from the bufferviews and accessors.
+            - [x] Delete the bufferview and accessor entries that were used during this process.
+            - [x] Bc it's too much work, leave the actual buffer alone. (This loads fairly quickly too, bc it's just one big chunk of bytes.)
+            > After these things, the animations get loaded in with the model separately over the course of 232.779ms (slimegirl model) where before it was almost 2000ms! Since we didn't actually chop down the buffer, after cooking the model down, the info in the buffer that contained the animated information was left still. Because of this, it takes 47.638ms to load in the buffer as opposed to the eye-watering 24.37ms
+            > Anywho, huge improvement! I think I can sleep well now!
+    > Now, the game loads up in about 5000ms. Not instant, but it feels like it now that the SlimeGirl model loads up super quickly.
+
 - [ ] Better level editor.
     - [ ] Update collision box texture for voxel fields.
     - [ ] No physics simulations when the level is in editing mode.
@@ -130,14 +145,6 @@
         - [ ] When pressing F1 (or whatever key will be for starting/stopping play mode), pop up a menu that has a list of the currently available test spawn points. Click on one and the player will be created and spawned at that position.
             - [ ] Press a certain key to reset the player to the position.
         - [x] Disable player being able to be created in palette.
-
-- [ ] I want to be able to load up the game near instantly!
-    - [ ] Slimegirl.glb's animations take 1.8sec to parse (much better than the former 8sec but seriously sucky).
-        > Specifically, reading in the file into json takes 1892.37ms with the animations vs 24.37ms without the animations.
-        - [ ] Create animation cooker, that takes a .glb file and prints out an animation file that contains all the actions and removes all the animations it had formerly.
-            - [ ] Read file from tiny_gltf and print out animation data into file.
-            - [ ] Rewrite data from tiny_gltf load (after doing `.clear()` to animations) into another .glb file in `models_cooked`
-        - [ ] Rewrite the glb file without its animations and put into `models_cooked` with the just-animation file.
 
 - [ ] UI Editor
 

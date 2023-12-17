@@ -4,6 +4,7 @@
 
 #ifdef _DEVELOP
 
+#include "VkglTFModel.h"
 #include "GLSLToSPIRVHelper.h"
 #include "TextureCooker.h"
 #include "MaterialOrganizer.h"
@@ -43,6 +44,10 @@ namespace hotswapres
         { ".frag", ".humba" },
         { ".humba", ".hderriere" },
         { ".humba", "rebuildPipelines" },
+        { ".glb", ".hthrobwoa" },  // Hawsoo THRee dimensiOnal gltf Binary model With the animations stOred in A different file.
+        { ".gltf", ".hthrobwoa" },
+        { ".glb", ".henema" },  // Hawsoo Extracted skeletal aNimations from a thrEe diMensionAl gltf model.
+        { ".gltf", ".henema" },
     };
 
     void checkIfResourceUpdatedThenHotswapRoutineAsync(VulkanEngine* engine, RenderObjectManager* roManager, bool* recreateSwapchain);
@@ -50,61 +55,6 @@ namespace hotswapres
     bool isFirstRun;
     std::thread* asyncRunner = nullptr;
 	std::mutex hotswapResourcesMutex;
-
-	void buildResourceList()
-    {
-        return;
-
-        for (const auto& entry : std::filesystem::recursive_directory_iterator("res"))
-        {
-            // Add the resource if it should be watched
-            const auto& path = entry.path();
-            if (std::filesystem::is_directory(path))
-                continue;		// Ignore directories
-            if (!path.has_extension())
-                continue;		// @NOTE: only allow resource files if they have an extension!  -Timo
-
-            if (path.extension().compare(".spv") == 0 ||
-                path.extension().compare(".log") == 0)
-                continue;		// @NOTE: ignore compiled SPIRV shader files, logs
-
-            ResourceToWatch resource = {
-                .stale = false,
-                .path = path,
-                .lastWriteTime = std::filesystem::last_write_time(path),
-            };
-            resourcesToWatch.push_back(resource);
-
-            // Compile glsl shader if corresponding .spv file isn't up to date
-            const auto& ext = path.extension();
-            if (ext.compare(".vert") == 0 ||
-                ext.compare(".frag") == 0)		// @COPYPASTA
-            {
-                auto spvPath = path;
-                spvPath += ".spv";
-
-                if (!std::filesystem::exists(spvPath) ||
-                    std::filesystem::last_write_time(spvPath) <= std::filesystem::last_write_time(path))
-                {
-                    glslToSPIRVHelper::compileGLSLShaderToSPIRV(path);
-                }
-            }
-
-            // Cook texture if corresponding cooked texture isn't up to date.
-            if (ext.compare(".halfstep") == 0)
-            {
-                if (texturecooker::checkHalfStepNeeded(resource.path))
-                    texturecooker::cookHalfStepFromRecipe(resource.path);
-            }
-
-            // Cook texture if corresponding cooked texture isn't up to date.
-            if (ext.compare(".hrecipe") == 0)
-            {
-                if (texturecooker::checkTextureCookNeeded(resource.path))
-                    texturecooker::cookTextureFromRecipe(resource.path);
-            }
-        }
-    }
 
     std::unordered_map<std::string, std::vector<ReloadCallback>> resourceReloadCallbackMap;
     
@@ -174,8 +124,28 @@ namespace hotswapres
                     materialorganizer::loadDerivedMaterialParam(r.path))
                     executedHotswap = true;
         }
-        else if (stageName == ".gltf" ||
-                stageName == ".glb")
+        else if (stageName == ".glb" ||
+            stageName == ".gltf")
+        {
+            for (auto& r : resources)
+                if (r.includeInCheck &&
+                    vkglTF::Model::checkGlTFCookNeeded(r.path) &&
+                    vkglTF::Model::cookGlTFModel(r.path))
+                    executedHotswap = true;
+        }
+        else if (stageName == ".hthrobwoa")
+        {
+            for (auto& r : resources)
+            {
+                if (!r.includeInCheck)
+                    continue;
+
+                roManager->reloadModelAndTriggerCallbacks(engine, r.path.stem().string(), r.path.string());
+                std::cout << "Sent message to model \"" << r.path.stem().string() << "\" to reload." << std::endl;
+                executedHotswap = true;
+            }
+        }
+        else if (stageName == ".henema")
         {
             for (auto& r : resources)
             {
