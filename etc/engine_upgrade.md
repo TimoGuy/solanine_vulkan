@@ -128,7 +128,7 @@
             > Anywho, huge improvement! I think I can sleep well now!
     > Now, the game loads up in about 5000ms. Not instant, but it feels like it now that the SlimeGirl model loads up super quickly.
 
-- [ ] Compute based skinning.
+- [x] Compute based skinning.
     - [x] Setup vkdevice context to allow for compute shaders.
         > Afaik using the graphics queue should support compute shaders too. Using another compute shader queue is only necessary if async compute is desired.
     - [x] Write compute shader.
@@ -170,7 +170,12 @@
     - [f] Can fix the weird dependency hack going on with the skinning compute shader.
         > Bc of the binding flags system with the descriptor indexing.... this feels like too much to bite and chew off. CHANGE TO FUTURE PLAN.
 
-- [ ] Fix hacky compute skinning pipline creation system. (line 1443 of VulkanEngine.cpp)
+- [x] Fix hacky compute skinning pipline creation system. (line 1443 of VulkanEngine.cpp)
+    - [x] Be able to create descriptor set layouts at will.
+    - [f] Detect for descriptor indexing using `SpvOpTypeRuntimeArray`.
+        > This would be for the case of pipeline layout reflection. However, this may be something to look into for the future... if it's not gonna hide a bunch of validation errors.
+- [x] Fix deallocation error.
+    > Just had to destroy the buffers for compute skinning.
 
 - [ ] Better level editor.
     - [ ] Update collision box texture for voxel fields.

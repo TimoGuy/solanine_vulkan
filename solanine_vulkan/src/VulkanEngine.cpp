@@ -339,6 +339,8 @@ void VulkanEngine::cleanup()
 
 		delete _roManager;
 		vkglTF::Animator::destroyEmpty(this);
+		for (size_t i = 0; i < FRAME_OVERLAP; i++)
+			destroySkinningBuffersIfCreated(_frames[i]);
 
 		_mainDeletionQueue.flush();
 		_swapchainDependentDeletionQueue.flush();
@@ -1440,15 +1442,6 @@ void VulkanEngine::render()
 	if (currentFrame.skinning.recalculateSkinningBuffers)
 		createSkinningBuffers(getCurrentFrame());
 
-	// @HACK
-	static bool heyhy = true;
-	if (heyhy && currentFrame.skinning.created)
-	{
-		initSkinningPipeline();
-		heyhy = false;
-	}
-	////////
-
 	compactRenderObjectsIntoDraws(currentFrame, pickedPoolIndices, pickingIndirectDrawCommandIds);
 	perfs[14] = SDL_GetPerformanceCounter() - perfs[14];
 
@@ -1788,22 +1781,6 @@ void VulkanEngine::recreateVoxelLightingDescriptor()
 		.build(_voxelFieldLightingGridTextureSet.descriptor, _voxelFieldLightingGridTextureSet.layout);
 
 	_voxelFieldLightingGridTextureSet.flagRecreateTextureSet = false;
-}
-
-void VulkanEngine::initSkinningPipeline()
-{
-	// Compute skinning pipeline.
-	VkPipeline computeSkinningPipeline;
-	VkPipelineLayout computeSkinningPipelineLayout;
-	vkutil::pipelinebuilder::buildCompute(
-		{},
-		{ _computeSkinningInoutVerticesSetLayout, _skeletalAnimationSetLayout },
-		{ VK_SHADER_STAGE_COMPUTE_BIT, "res/shaders/skinned_mesh.comp.spv" },
-		computeSkinningPipeline,
-		computeSkinningPipelineLayout,
-		_mainDeletionQueue
-	);
-	attachPipelineToMaterial(computeSkinningPipeline, computeSkinningPipelineLayout, "computeSkinMaterial");
 }
 
 Material* VulkanEngine::attachPipelineToMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name)
@@ -3928,6 +3905,13 @@ void VulkanEngine::initDescriptors()    // @NOTE: don't destroy and then recreat
 	textmesh::loadFontSDF("res/texture_pool/font_sdf_rgba.png", "res/font.fnt", "defaultFont");
 
 	physengine::initDebugVisDescriptors(this);
+
+	// Descriptor set layouts for compute skinning.
+	_computeSkinningInoutVerticesSetLayout =
+		vkutil::descriptorlayoutcache::createDescriptorLayout({
+			vkutil::descriptorlayoutcache::layoutBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT),
+			vkutil::descriptorlayoutcache::layoutBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT),
+		});
 }
 
 void VulkanEngine::initPipelines()
@@ -4394,6 +4378,19 @@ void VulkanEngine::initPipelines()
 		_swapchainDependentDeletionQueue
 	);
 	attachPipelineToMaterial(dofFloodFillPipeline, dofFloodFillPipelineLayout, "DOFFloodFillMaterial");
+
+	// Compute skinning pipeline.
+	VkPipeline computeSkinningPipeline;
+	VkPipelineLayout computeSkinningPipelineLayout;
+	vkutil::pipelinebuilder::buildCompute(
+		{},
+		{ _computeSkinningInoutVerticesSetLayout, _skeletalAnimationSetLayout },
+		{ VK_SHADER_STAGE_COMPUTE_BIT, "res/shaders/skinned_mesh.comp.spv" },
+		computeSkinningPipeline,
+		computeSkinningPipelineLayout,
+		_swapchainDependentDeletionQueue  // Ultimately this doesn't need to change when the swapchain changes, but this allows for the shader getting reloaded when a swapchain recreation occurs.
+	);
+	attachPipelineToMaterial(computeSkinningPipeline, computeSkinningPipelineLayout, "computeSkinMaterial");
 
 	//
 	// Other pipelines
@@ -5532,15 +5529,7 @@ void VulkanEngine::uploadCurrentFrameToGPU(const FrameData& currentFrame)
 
 void VulkanEngine::createSkinningBuffers(FrameData& currentFrame)
 {
-	auto& s = currentFrame.skinning;
-
-	if (s.created)
-	{
-		vmaDestroyBuffer(_allocator, s.inputVerticesBuffer._buffer, s.inputVerticesBuffer._allocation);
-		vmaDestroyBuffer(_allocator, s.outputVerticesBuffer._buffer, s.outputVerticesBuffer._allocation);
-		vmaDestroyBuffer(_allocator, s.indicesBuffer._buffer, s.indicesBuffer._allocation);
-		s.created = false;
-	}
+	destroySkinningBuffersIfCreated(currentFrame);
 
 	if (_roManager->_skinnedMeshEntries.empty())
 		return;  // Exit early bc buffers will be initialized to be empty.
@@ -5556,6 +5545,7 @@ void VulkanEngine::createSkinningBuffers(FrameData& currentFrame)
 	};
 	std::map<vkglTF::Model*, std::vector<MeshDetailedInfo>> modelToMeshDetailedInfosMap;
 
+	auto& s = currentFrame.skinning;
 	s.indexGroups.clear();
 	size_t lastUMBIdx = (size_t)-1;
 	size_t indexGroupOffset = 0;
@@ -5720,13 +5710,23 @@ void VulkanEngine::createSkinningBuffers(FrameData& currentFrame)
 	vkutil::DescriptorBuilder::begin()
 		.bindBuffer(0, &inputVerticesBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT)
 		.bindBuffer(1, &outputVerticesBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT)
-		.build(s.inoutVerticesDescriptor, _computeSkinningInoutVerticesSetLayout);
-
-	// @TODO: delete the created set layout.
+		.build(s.inoutVerticesDescriptor);
 
 	// Finish.
 	s.created = true;
 	s.recalculateSkinningBuffers = false;
+}
+
+void VulkanEngine::destroySkinningBuffersIfCreated(FrameData& currentFrame)
+{
+	auto& s = currentFrame.skinning;
+	if (s.created)
+	{
+		vmaDestroyBuffer(_allocator, s.inputVerticesBuffer._buffer, s.inputVerticesBuffer._allocation);
+		vmaDestroyBuffer(_allocator, s.outputVerticesBuffer._buffer, s.outputVerticesBuffer._allocation);
+		vmaDestroyBuffer(_allocator, s.indicesBuffer._buffer, s.indicesBuffer._allocation);
+		s.created = false;
+	}
 }
 
 void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, std::vector<size_t> onlyPoolIndices, std::vector<ModelWithIndirectDrawId>& outIndirectDrawCommandIdsForPoolIndex)

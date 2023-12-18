@@ -164,6 +164,40 @@ namespace vkutil
             for (auto pair : layoutCache)
                 vkDestroyDescriptorSetLayout(device, pair.second, nullptr);
         }
+        
+        DescriptorSetLayoutBindingWithMetadata layoutBinding(uint32_t binding, VkDescriptorType type, VkShaderStageFlags stageFlags)
+        {
+            return {
+                .binding = VkDescriptorSetLayoutBinding{
+                    .binding = binding,
+                    .descriptorType = type,
+                    .descriptorCount = 1,
+                    .stageFlags = stageFlags,
+                    .pImmutableSamplers = nullptr,
+                },
+                .useVariableDescriptorCount = false,
+            };
+        }
+
+        DescriptorSetLayoutBindingWithMetadata layoutBindingVariableDescCount(uint32_t binding, VkDescriptorType type, uint32_t descriptorCount, VkShaderStageFlags stageFlags)
+        {
+            return {
+                .binding = VkDescriptorSetLayoutBinding{
+                    .binding = binding,
+                    .descriptorType = type,
+                    .descriptorCount = descriptorCount,
+                    .stageFlags = stageFlags,
+                    .pImmutableSamplers = nullptr,
+                },
+                .useVariableDescriptorCount = true,
+            };
+        }
+        
+        VkDescriptorSetLayout createDescriptorLayout(std::vector<DescriptorSetLayoutBindingWithMetadata> assortedBindings)
+        {
+            std::vector<uint32_t> _;
+            return createDescriptorLayout(assortedBindings, _);
+        }
 
         VkDescriptorSetLayout createDescriptorLayout(std::vector<DescriptorSetLayoutBindingWithMetadata> assortedBindings, std::vector<uint32_t>& outVariableDescriptorCounts)
         {
@@ -303,18 +337,9 @@ namespace vkutil
     DescriptorBuilder& DescriptorBuilder::bindBuffer(uint32_t binding, VkDescriptorBufferInfo* bufferInfo, VkDescriptorType type, VkShaderStageFlags stageFlags)
     {
         // Create the descriptor binding for the layout
-		VkDescriptorSetLayoutBinding newBinding = {
-            .binding = binding,
-            .descriptorType = type,
-            .descriptorCount = 1,
-            .stageFlags = stageFlags,
-            .pImmutableSamplers = nullptr,
-        };
-
-		bindings.push_back({
-            .binding = newBinding,
-            .useVariableDescriptorCount = false,
-        });
+		bindings.push_back(
+            descriptorlayoutcache::layoutBinding(binding, type, stageFlags)
+        );
 
 		// Create the descriptor write
 		VkWriteDescriptorSet newWrite = {
@@ -332,18 +357,9 @@ namespace vkutil
 
     DescriptorBuilder& DescriptorBuilder::bindImage(uint32_t binding, VkDescriptorImageInfo* imageInfo, VkDescriptorType type, VkShaderStageFlags stageFlags)
     {
-        VkDescriptorSetLayoutBinding newBinding = {
-            .binding = binding,
-            .descriptorType = type,
-            .descriptorCount = 1,
-            .stageFlags = stageFlags,
-            .pImmutableSamplers = nullptr,
-        };
-
-		bindings.push_back({
-            .binding = newBinding,
-            .useVariableDescriptorCount = false,
-        });
+		bindings.push_back(
+            descriptorlayoutcache::layoutBinding(binding, type, stageFlags)
+        );
 
 		VkWriteDescriptorSet newWrite = {
             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
@@ -363,18 +379,9 @@ namespace vkutil
         // See for how to use this: http://kylehalladay.com/blog/tutorial/vulkan/2018/01/28/Textue-Arrays-Vulkan.html
         // @NOTE: changed this to use variable descriptor count. (See `descriptorindexing` Vulkan Example (Sascha Willems))
 
-        VkDescriptorSetLayoutBinding newBinding = {
-            .binding = binding,
-            .descriptorType = type,
-            .descriptorCount = imageCount,
-            .stageFlags = stageFlags,
-            .pImmutableSamplers = nullptr,
-        };
-
-		bindings.push_back({
-            .binding = newBinding,
-            .useVariableDescriptorCount = true,
-        });
+		bindings.push_back(
+            descriptorlayoutcache::layoutBindingVariableDescCount(binding, type, imageCount, stageFlags)
+        );
 
 		VkWriteDescriptorSet newWrite = {
             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
