@@ -349,9 +349,6 @@ public:
 	void initVoxelLightingDescriptor();
 	void recreateVoxelLightingDescriptor();
 
-	// Compute skinning.
-	void initSkinningPipeline();
-
 	//
 	// Render Objects
 	//
@@ -425,6 +422,7 @@ private:
 
 	void uploadCurrentFrameToGPU(const FrameData& currentFrame);
 	void createSkinningBuffers(FrameData& currentFrame);
+	void destroySkinningBuffersIfCreated(FrameData& currentFrame);
 	
 	std::vector<IndirectBatch> indirectBatches;
 

@@ -23,6 +23,10 @@ namespace vkutil
         void init(VkDevice newDevice);
         void cleanup();
 
+        DescriptorSetLayoutBindingWithMetadata layoutBinding(uint32_t binding, VkDescriptorType type, VkShaderStageFlags stageFlags);
+        DescriptorSetLayoutBindingWithMetadata layoutBindingVariableDescCount(uint32_t binding, VkDescriptorType type, uint32_t descriptorCount, VkShaderStageFlags stageFlags);
+
+        VkDescriptorSetLayout createDescriptorLayout(std::vector<DescriptorSetLayoutBindingWithMetadata> assortedBindings);
         VkDescriptorSetLayout createDescriptorLayout(std::vector<DescriptorSetLayoutBindingWithMetadata> assortedBindings, std::vector<uint32_t>& outVariableDescriptorCounts);
 
         struct DescriptorLayoutInfo
