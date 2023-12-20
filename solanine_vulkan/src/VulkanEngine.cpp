@@ -5853,6 +5853,7 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 	vkglTF::Model* lastModel = nullptr;
 	size_t lastUMBIdx = (size_t)-1;
 	uint32_t drawStride = sizeof(VkDrawIndexedIndirectCommand);
+	uint32_t countStride = sizeof(uint32_t);
 	for (IndirectBatch& batch : indirectBatches)
 	{
 		if (lastModel != batch.model)
@@ -5884,7 +5885,9 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 			lastUMBIdx = batch.uniqueMaterialBaseId;
 		}
 		VkDeviceSize indirectOffset = batch.first * drawStride;
+		VkDeviceSize countOffset = batch.first * countStride;
 		vkCmdDrawIndexedIndirect(cmd, currentFrame.indirectDrawCommandBuffer._buffer, indirectOffset, batch.count, drawStride);
+		vkCmdDrawIndexedIndirectCount(cmd, currentFrame.indirectDrawCommandBuffer._buffer, indirectOffset, currentFrame.indirectCountBuffer._buffer, countOffset, batch.count, drawStride);
 	}
 }
 

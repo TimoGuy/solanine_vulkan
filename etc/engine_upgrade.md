@@ -177,6 +177,12 @@
 - [x] Fix deallocation error.
     > Just had to destroy the buffers for compute skinning.
 
+- [ ] New mesh organization.
+    - [x] Using buckets instead of sorting.
+    - [ ] 
+- [ ] Compute culling.
+    - [ ] RESEARCH: how to use `vkCmdDrawIndirectIndexedCount` to compact draw commands.
+
 - [ ] Better level editor.
     - [ ] Update collision box texture for voxel fields.
     - [ ] No physics simulations when the level is in editing mode.

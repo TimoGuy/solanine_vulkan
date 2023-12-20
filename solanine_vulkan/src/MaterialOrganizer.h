@@ -20,6 +20,7 @@ namespace materialorganizer
     size_t derivedMaterialNameToDMPSIdx(std::string derivedMatName);
     bool checkDerivedMaterialNameExists(std::string derivedMatName);
     std::string umbIdxToUniqueMaterialName(size_t umbIdx);
+    size_t getNumUniqueMaterialBasesExcludingSpecials();
 
     std::vector<std::string> getListOfDerivedMaterials();
     bool makeDMPSFileCopy(size_t dmpsIdx, const std::string& newFile);

@@ -52,6 +52,7 @@ namespace materialorganizer
     struct UniqueMaterialBase
     {
         bool loaded = false;
+        bool isSpecial = false;
         std::filesystem::file_time_type lastLoadTime;
         std::filesystem::path umbPath;
 
@@ -143,9 +144,10 @@ namespace materialorganizer
         } compiled;
 
 
-        bool loadFromFile(const std::filesystem::path& path)
+        bool loadFromFile(const std::filesystem::path& path, bool paramIsSpecial)
         {
             umbPath = path;
+            isSpecial = paramIsSpecial;
 
             std::ifstream infile(umbPath);
             std::string line;
@@ -274,6 +276,12 @@ namespace materialorganizer
 
     bool loadMaterialBase(const std::filesystem::path& path)
     {
+        static const std::string specialSuffix = ".special.humba";
+        std::string fname = path.filename().string();
+        bool isSpecial =
+            (fname.length() >= specialSuffix.length() &&
+            fname.compare(fname.length() - specialSuffix.length(), specialSuffix.length(), specialSuffix) == 0);
+
         UniqueMaterialBase* umb = nullptr;  // @COPYPASTA
         for (auto& eUMB : existingUMBs)
             if (eUMB.umbPath == path)
@@ -284,11 +292,19 @@ namespace materialorganizer
         if (umb == nullptr)
         {
             UniqueMaterialBase newUMB = {};
-            existingUMBs.push_back(newUMB);
-            umb = &existingUMBs.back();
+            if (isSpecial)
+            {
+                existingUMBs.push_back(newUMB);
+                umb = &existingUMBs.back();
+            }
+            else
+            {
+                existingUMBs.insert(existingUMBs.begin(), newUMB);
+                umb = &existingUMBs.front();
+            }
         }
         *umb = {};  // Clear state.
-        return umb->loadFromFile(path);
+        return umb->loadFromFile(path, isSpecial);
     }
 
     // Derived Material Parameter Set (.hderriere)
@@ -322,7 +338,6 @@ namespace materialorganizer
             size_t cookedBufferOffset;  // @NOTE: for editing properties of a DMPS
         };
         std::vector<Param> params;
-
 
         bool loadFromFile(const std::filesystem::path& path)
         {
@@ -582,15 +597,12 @@ namespace materialorganizer
             // Find derived materials that use this base.
             std::string umbHumba = umb.umbPath.filename().string();
             std::vector<size_t> dmpsIndices;
-            bool zprepassSpecialMat = (umbHumba == "zprepass.special.humba");
-            bool shadowSpecialMat = (umbHumba == "shadowdepthpass.special.humba");
             bool isNativeMaterial = false;
             for (size_t i = 0; i < existingDMPSs.size(); i++)
             {
                 isNativeMaterial = (existingDMPSs[i].humbaFname == umbHumba);
                 if (isNativeMaterial ||
-                    zprepassSpecialMat ||
-                    shadowSpecialMat)
+                    umb.isSpecial)
                     dmpsIndices.push_back(i);
             }
             
@@ -794,7 +806,7 @@ namespace materialorganizer
                 engineRef->_windowExtent,
             };
 
-            if (zprepassSpecialMat)
+            if (umbHumba == "zprepass.special.humba")
                 vkutil::pipelinebuilder::build(
                     {},
                     {
@@ -823,7 +835,7 @@ namespace materialorganizer
                     umb.compiled.pipelineLayout,
                     engineRef->_swapchainDependentDeletionQueue
                 );
-            else if (shadowSpecialMat)
+            else if (umbHumba == "shadowdepthpass.special.humba")
             {
                 auto shadowRasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE);
                 shadowRasterizer.depthClampEnable = VK_TRUE;
@@ -941,6 +953,15 @@ namespace materialorganizer
     std::string umbIdxToUniqueMaterialName(size_t umbIdx)
     {
         return existingUMBs[umbIdx].umbPath.filename().string();
+    }
+
+    size_t getNumUniqueMaterialBasesExcludingSpecials()
+    {
+        size_t total = existingUMBs.size();
+        for (auto& umb : existingUMBs)
+            if (umb.isSpecial)
+                total--;
+        return total;
     }
 
     std::vector<std::string> getListOfDerivedMaterials()

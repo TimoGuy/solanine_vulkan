@@ -109,6 +109,27 @@ private:
 
 	bool _isMetaMeshListUnoptimized = true;
 
+	struct MeshBucket
+	{
+		std::vector<size_t> renderObjectIndices;
+	};
+	struct ModelBucket
+	{
+		MeshBucket* meshBuckets;
+	};
+	struct ModelBucketSet
+	{
+		ModelBucket* modelBuckets;
+	};
+	struct UniqueMaterialBaseBucket
+	{
+		ModelBucketSet modelBucketSets[2];  // First one is skinned, second is unskinned.
+	};
+	UniqueMaterialBaseBucket* umbBuckets = nullptr;
+	size_t numUmbBuckets = 0;
+	size_t numModelBuckets = 0;
+	std::vector<size_t> numMeshBucketsByModelIdx;
+
 	VmaAllocator& _allocator;
 
 	friend class VulkanEngine;

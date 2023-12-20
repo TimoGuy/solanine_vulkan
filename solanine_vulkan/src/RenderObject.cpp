@@ -155,6 +155,66 @@ void RenderObjectManager::optimizeMetaMeshList()
 	//        just assign the memory address of the finished, new meta mesh list to the pointer
 	//        of the old one. Just a thought, but this would force some renderobjects
 	//        to stay alive but it's not impossible to manage.  -Timo 2023/12/12
+
+	// Delete existing bucket hierarchy using previously fetched volumes.
+	if (umbBuckets != nullptr)
+	{
+		for (size_t i = 0; i < numUmbBuckets; i++)
+		{
+			UniqueMaterialBaseBucket& umbBucket = umbBuckets[i];
+			for (size_t j = 0; j < 2; j++)
+			{
+				for (size_t k = 0; k < numModelBuckets; k++)
+				{
+					ModelBucket& modelBucket = umbBucket.modelBucketSets[j].modelBuckets[k];
+					delete[] modelBucket.meshBuckets;
+				}
+				delete[] umbBucket.modelBucketSets[j].modelBuckets;
+			}
+		}
+		delete[] umbBuckets;
+	}
+
+	// Get bucket sizes.
+	numUmbBuckets = materialorganizer::getNumUniqueMaterialBasesExcludingSpecials();
+	numModelBuckets = _renderObjectModels.size();
+	numMeshBucketsByModelIdx.clear();
+	numMeshBucketsByModelIdx.resize(numModelBuckets, 0);
+	size_t idx = 0;
+	for (auto it = _renderObjectModels.begin(); it != _renderObjectModels.end(); it++)
+	{
+		auto model = it->second;
+		model->assignedModelIdx = idx;
+		numMeshBucketsByModelIdx[idx] =
+			model->getAllPrimitivesInOrder().size();
+		idx++;
+	}
+
+	// Create bucket hierarchy.
+	umbBuckets = new UniqueMaterialBaseBucket[numUmbBuckets];
+	for (size_t i = 0; i < numUmbBuckets; i++)
+	{
+		UniqueMaterialBaseBucket& umbBucket = umbBuckets[i];
+		for (size_t j = 0; j < 2; j++)
+		{
+			umbBucket.modelBucketSets[j].modelBuckets = new ModelBucket[numModelBuckets];
+			for (size_t k = 0; k < numModelBuckets; k++)
+			{
+				ModelBucket& modelBucket = umbBucket.modelBucketSets[j].modelBuckets[k];
+				modelBucket.meshBuckets = new MeshBucket[numMeshBucketsByModelIdx[k]];
+			}
+		}
+	}
+	{
+		// @DEBUG show the total size of the allocated bucket hierarchy (of just the containers).
+		size_t totalSize = 0;
+		for (size_t numMeshBuckets : numMeshBucketsByModelIdx)
+			totalSize += numMeshBuckets * 24;  // 24 is the bytes to create std::vector container.
+		totalSize *= 2;
+		totalSize *= numUmbBuckets;
+		std::cout << "Allocated bucket hierarchy is " << totalSize << " bytes without data." << std::endl;
+	}
+
 	std::lock_guard<std::mutex> lg(renderObjectIndicesAndPoolMutex);
 
 	//
@@ -174,6 +234,23 @@ void RenderObjectManager::optimizeMetaMeshList()
 
 		// It's visible!!!!
 		visibleIndices.push_back(poolIndex);
+	}
+
+	// Insert render objects into bucket hierarchy.
+	for (size_t roIdx = 0; roIdx < visibleIndices.size(); roIdx++)
+	{
+		RenderObject& ro = _renderObjectPool[visibleIndices[roIdx]];
+		for (size_t mi = 0; mi < ro.perPrimitiveUniqueMaterialBaseIndices.size(); mi++)
+		{
+			size_t umbIdx = ro.perPrimitiveUniqueMaterialBaseIndices[mi];
+			size_t skinnedIdx = (ro.animator != nullptr ? 0 : 1);
+			size_t modelIdx = ro.model->assignedModelIdx;
+			umbBuckets[umbIdx]
+				.modelBucketSets[skinnedIdx]
+				.modelBuckets[modelIdx]
+				.meshBuckets[mi]
+				.renderObjectIndices.push_back(visibleIndices[roIdx]);
+		}
 	}
 
 	// Decompose render objects into meshes.

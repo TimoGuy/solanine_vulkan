@@ -280,6 +280,8 @@ namespace vkglTF
 
 	struct Model
 	{
+		size_t assignedModelIdx;
+
 		struct PBRTextureCollection
 		{
 			std::vector<Texture*> textures;
