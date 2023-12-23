@@ -84,27 +84,8 @@ private:
 #endif
 	vkglTF::Model* createModel(vkglTF::Model* model, const std::string& name);
 
-	struct MetaMesh
-	{
-		vkglTF::Model* model;
-		bool isSkinned;
-		std::vector<size_t> meshIndices;  // @HACK: this is a vector so that skinned meshes can access all the individual instance references to get the right material etc. THINK OF A BETTER SYSTEM! @TODO.
-		size_t uniqueMaterialBaseId;
-		std::vector<size_t> renderObjectIndices;
-		size_t cookedMeshDrawIdx;
-	};
-	std::vector<MetaMesh> _metaMeshes;
-	std::vector<MeshCapturedInfo> _cookedMeshDraws;
-
-	struct SkinnedMeshEntry
-	{
-		vkglTF::Model* model;
-		size_t meshIdx;
-		size_t uniqueMaterialBaseID;
-		size_t animatorNodeID;
-		size_t baseInstanceID;
-	};
-	std::vector<SkinnedMeshEntry> _skinnedMeshEntries;
+	std::vector<std::vector<MeshCapturedInfo>> _modelMeshDraws;
+	bool _skinnedMeshEntriesExist = false;
 	uint8_t _skinnedMeshModelMemAddr;
 
 	bool _isMetaMeshListUnoptimized = true;
@@ -125,10 +106,10 @@ private:
 	{
 		ModelBucketSet modelBucketSets[2];  // First one is skinned, second is unskinned.
 	};
-	UniqueMaterialBaseBucket* umbBuckets = nullptr;
-	size_t numUmbBuckets = 0;
-	size_t numModelBuckets = 0;
-	std::vector<size_t> numMeshBucketsByModelIdx;
+	UniqueMaterialBaseBucket* _umbBuckets = nullptr;
+	size_t _numUmbBuckets = 0;
+	size_t _numModelBuckets = 0;
+	std::vector<size_t> _numMeshBucketsByModelIdx;
 
 	VmaAllocator& _allocator;
 

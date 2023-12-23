@@ -18,5 +18,5 @@ void main()
 {
 	ssbo.selectedId[inID]    = inID + 1;		// This is only run once due to the dynamic state scissor, so we don't need to read in the texture, just write to the selectedID only once
 	ssbo.selectedDepth[inID] = gl_FragCoord.z;
-	outFragColor = float(inID + 1);   // @NOTE: This doesn't matter.....
+	outFragColor = float(inID + 1);   // @DEBUG
 }

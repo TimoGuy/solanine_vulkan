@@ -47,9 +47,6 @@ struct MeshCapturedInfo
 	vkglTF::Model* model;
 	uint32_t meshIndexCount;
 	uint32_t meshFirstIndex;
-	uint32_t meshNumInModel;
-	uint32_t modelDrawCount;
-	uint32_t baseModelRenderObjectIndex;
 };
 
 struct IndirectBatch

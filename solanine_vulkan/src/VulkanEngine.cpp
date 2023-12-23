@@ -1896,7 +1896,7 @@ void VulkanEngine::initVulkan()
 
 	vkb::PhysicalDeviceSelector selector{ vkbInstance };
 	vkb::PhysicalDevice physicalDevice = selector
-		.set_minimum_version(1, 3)  // For using indirectDrawCount (only available on 1.3+).  @REPLY: Well, if you ever implement it lol. If not, just revert to 1.2  -Timo 2023/12/2
+		.set_minimum_version(1, 3)  // I thought draw indirect count was in 1.3, but it's in 1.2. Idk any other reason to have 1.3 be a requirement.
 		.set_surface(_surface)
 		.set_required_features({
 			// @NOTE: @FEATURES: Enable required features right here
@@ -1922,6 +1922,8 @@ void VulkanEngine::initVulkan()
 	VkPhysicalDeviceVulkan12Features vulkan12Features = {
 		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
 		.pNext = nullptr,
+		// For `vkCmdDrawIndexedIndirectCount`
+		.drawIndirectCount = VK_TRUE,
 		// For non-uniform, dynamic arrays of textures in shaders.
 		.descriptorIndexing = VK_TRUE,
 		.shaderSampledImageArrayNonUniformIndexing = VK_TRUE,
@@ -2058,12 +2060,16 @@ void VulkanEngine::initCommands()
 		VK_CHECK(vkAllocateCommandBuffers(_device, &cmdAllocInfo, &_frames[i].pickingCommandBuffer));
 
 		// Create indirect draw command buffer
-		_frames[i].indirectDrawCommandBuffer = createBuffer(sizeof(VkDrawIndexedIndirectCommand) * INSTANCE_PTR_MAX_CAPACITY, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+		_frames[i].indirectDrawCommandBuffer = createBuffer(sizeof(VkDrawIndexedIndirectCommand) * INSTANCE_PTR_MAX_CAPACITY, /*VK_BUFFER_USAGE_TRANSFER_DST_BIT | */VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+		_frames[i].indirectDrawCommandOffsetsBuffer = createBuffer(sizeof(uint32_t) * INSTANCE_PTR_MAX_CAPACITY, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+		_frames[i].indirectDrawCommandCountsBuffer = createBuffer(sizeof(uint32_t) * INSTANCE_PTR_MAX_CAPACITY, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
 		// Add destroy command for cleanup
 		_mainDeletionQueue.pushFunction([=]() {
 			vkDestroyCommandPool(_device, _frames[i].commandPool, nullptr);
 			vmaDestroyBuffer(_allocator, _frames[i].indirectDrawCommandBuffer._buffer, _frames[i].indirectDrawCommandBuffer._allocation);
+			vmaDestroyBuffer(_allocator, _frames[i].indirectDrawCommandOffsetsBuffer._buffer, _frames[i].indirectDrawCommandOffsetsBuffer._allocation);
+			vmaDestroyBuffer(_allocator, _frames[i].indirectDrawCommandCountsBuffer._buffer, _frames[i].indirectDrawCommandCountsBuffer._allocation);
 			});
 	}
 
@@ -5531,98 +5537,98 @@ void VulkanEngine::createSkinningBuffers(FrameData& currentFrame)
 {
 	destroySkinningBuffersIfCreated(currentFrame);
 
-	if (_roManager->_skinnedMeshEntries.empty())
+	if (!_roManager->_skinnedMeshEntriesExist)
 		return;  // Exit early bc buffers will be initialized to be empty.
 
-	// Calculate number of vertices and indices.
-	std::map<vkglTF::Model*, std::vector<MeshCapturedInfo>> modelToMeshCapturedInfosMap;
-	struct MeshDetailedInfo
+	// Traverse buckets and count up skinned mesh indices.
+	// (While also caching mesh vertices and indices).
+	struct SkinnedMesh
 	{
-		size_t vertexCount;
-		size_t indexCount;
-		std::set<uint32_t> uniqueVertexIndices;  // @NOTE: vertices need to be sorted in the order of the indices accessing them, hence an ordered set.
+		size_t modelIdx;
+		size_t meshIdx;
+		size_t animatorNodeID;
+		vkglTF::Model* model;
+	};
+	struct MeshVerticesIndices
+	{
+		std::set<uint32_t> uniqueVertexIndices;
 		std::vector<uint32_t> indicesNormalized;
 	};
-	std::map<vkglTF::Model*, std::vector<MeshDetailedInfo>> modelToMeshDetailedInfosMap;
 
 	auto& s = currentFrame.skinning;
-	s.indexGroups.clear();
-	size_t lastUMBIdx = (size_t)-1;
-	size_t indexGroupOffset = 0;
-
 	s.numVertices = 0;
 	s.numIndices = 0;
-	for (auto& sme : _roManager->_skinnedMeshEntries)
+	std::vector<SkinnedMesh> skinnedMeshes;
+	std::map<size_t, MeshVerticesIndices> modelMeshHashToVerticesIndices;
+
+	for (size_t i = 0; i < _roManager->_numUmbBuckets; i++)
 	{
-		if (modelToMeshCapturedInfosMap.find(sme.model) == modelToMeshCapturedInfosMap.end())
+		auto& umbBucket = _roManager->_umbBuckets[i];
+		size_t j = 0;  // Only do skinned pass.
 		{
-			modelToMeshCapturedInfosMap[sme.model] = {};
-			uint32_t count = 0;
-			sme.model->appendPrimitiveDraws(modelToMeshCapturedInfosMap[sme.model], count);
-
-			modelToMeshDetailedInfosMap[sme.model] = {};
-			modelToMeshDetailedInfosMap[sme.model].resize(count, {});
-
-			for (size_t c = 0; c < count; c++)
+			bool isSkinnedPass = (j == 0);
+			for (size_t k = 0; k < _roManager->_numModelBuckets; k++)
 			{
-				auto& mci = modelToMeshCapturedInfosMap[sme.model][c];
-				auto& mdi = modelToMeshDetailedInfosMap[sme.model][c];
-
-				// Get unique vertex indices.
-				for (size_t i = 0; i < mci.meshIndexCount; i++)
+				auto& modelBucket = umbBucket.modelBucketSets[j].modelBuckets[k];
+				for (size_t l = 0; l < _roManager->_numMeshBucketsByModelIdx[k]; l++)
 				{
-					size_t index = mci.meshFirstIndex + i;
-					uint32_t vertexIdx = sme.model->loaderInfo.indexBuffer[index];
-					mdi.uniqueVertexIndices.emplace(vertexIdx);
-					mdi.indicesNormalized.push_back(vertexIdx);
-				}
+					auto& meshBucket = modelBucket.meshBuckets[l];
+					if (meshBucket.renderObjectIndices.empty())
+						continue;
 
-				// Grab unique stats.
-				mdi.vertexCount = mdi.uniqueVertexIndices.size();
-				mdi.indexCount = mci.meshIndexCount;
+					auto& meshDraw = _roManager->_modelMeshDraws[k][l];
 
-				// Normalize indices to the unique set of vertex indices.
-				// @NOTE: it looks like this step isn't needed especially if the first index is 0 (i.e. there's no index fragmentation supposedly, but let's just keep this in just in case)  -Timo 2023/12/15
-				int64_t prevFoundIndex = -1;
-				uint32_t currentAssigningIndex = 0;
-				for (size_t i = 0; i < mci.meshIndexCount; i++)
-				{
-					// Find lowest index that wasn't an already mutated index.
-					int64_t foundIndex = std::numeric_limits<int64_t>::max();
-					for (auto& idx : mdi.indicesNormalized)
-						if (idx > prevFoundIndex)
-							foundIndex = std::min(foundIndex, (int64_t)idx);
-					
-					if (foundIndex == std::numeric_limits<int64_t>::max())
-						break;  // Exit early bc all indices are now normalized.
+					// Fetch/calc num vertices in mesh.
+					size_t modelMeshHash = k | l << 32;
+					if (modelMeshHashToVerticesIndices.find(modelMeshHash) == modelMeshHashToVerticesIndices.end())
+					{
+						// Calculate, then add into cache.
+						std::set<uint32_t> uniqueVertexIndices;
+						std::vector<uint32_t> indicesNormalized;
 
-					// Assign new index.
-					for (auto& idx : mdi.indicesNormalized)
-						if (idx == (uint32_t)foundIndex)
-							idx = currentAssigningIndex;
+						// Insert in indices to create sorted, unique set.
+						for (size_t vertex = meshDraw.meshFirstIndex;
+							vertex < meshDraw.meshFirstIndex + meshDraw.meshIndexCount;
+							vertex++)
+						{
+							uint32_t index = meshDraw.model->loaderInfo.indexBuffer[vertex];
+							uniqueVertexIndices.emplace(index);
+							indicesNormalized.push_back(index);
+						}
 
-					currentAssigningIndex++;
-					prevFoundIndex = foundIndex;
+						// Normalize indices using sorted set.
+						uint32_t nextIndex = 0;
+						for (uint32_t uniqueIndex : uniqueVertexIndices)
+						{
+							for (auto& normalizedIndex : indicesNormalized)
+								if (uniqueIndex == normalizedIndex)
+									normalizedIndex = nextIndex;
+							nextIndex++;
+						}
+
+						// Cache.
+						modelMeshHashToVerticesIndices[modelMeshHash] = {
+							.uniqueVertexIndices = uniqueVertexIndices,
+							.indicesNormalized = indicesNormalized,
+						};
+					}
+
+					// Insert stats into skinnedMeshes and counts.
+					size_t meshVertexCount = modelMeshHashToVerticesIndices[modelMeshHash].uniqueVertexIndices.size();
+					for (auto& roIdx : meshBucket.renderObjectIndices)
+					{
+						s.numVertices += meshVertexCount;
+						s.numIndices += meshDraw.meshIndexCount;
+						skinnedMeshes.push_back({
+							.modelIdx = k,
+							.meshIdx = l,
+							.animatorNodeID = _roManager->_renderObjectPool[roIdx].calculatedModelInstances[l].animatorNodeID,
+							.model = meshDraw.model,
+						});
+					}
 				}
 			}
 		}
-
-		// Add up counts.
-		auto& mdi = modelToMeshDetailedInfosMap[sme.model][sme.meshIdx];
-
-		if (lastUMBIdx != sme.uniqueMaterialBaseID)
-		{
-			s.indexGroups.push_back({
-				.first = (uint32_t)indexGroupOffset,
-				.count = 0,
-			});
-			lastUMBIdx = sme.uniqueMaterialBaseID;
-		}
-		s.indexGroups.back().count += mdi.indexCount;
-		indexGroupOffset += mdi.indexCount;
-
-		s.numVertices += mdi.vertexCount;
-		s.numIndices += mdi.indexCount;
 	}
 
 	// Create buffers.
@@ -5649,12 +5655,13 @@ void VulkanEngine::createSkinningBuffers(FrameData& currentFrame)
 		data += sizeof(GPUInputSkinningMeshPrefixData);
 
 		// Insert remaining data.
-		for (auto& sme : _roManager->_skinnedMeshEntries)
+		for (auto& sm : skinnedMeshes)
 		{
-			auto& mdi = modelToMeshDetailedInfosMap[sme.model][sme.meshIdx];
-			for (auto& idx : mdi.uniqueVertexIndices)
+			size_t modelMeshHash = sm.modelIdx | sm.meshIdx << 32;
+			auto& vi = modelMeshHashToVerticesIndices[modelMeshHash];
+			for (auto& idx : vi.uniqueVertexIndices)
 			{
-				auto& vert = sme.model->loaderInfo.vertexWithWeightsBuffer[idx];
+				auto& vert = sm.model->loaderInfo.vertexWithWeightsBuffer[idx];
 				GPUInputSkinningMeshData ismd = {};
 				glm_vec3_copy(vert.pos, ismd.pos);
 				glm_vec3_copy(vert.normal, ismd.normal);
@@ -5663,8 +5670,8 @@ void VulkanEngine::createSkinningBuffers(FrameData& currentFrame)
 				glm_vec4_copy(vert.joint0, ismd.joint0);
 				glm_vec4_copy(vert.weight0, ismd.weight0);
 				glm_vec4_copy(vert.color, ismd.color0);
-				ismd.animatorNodeID = sme.animatorNodeID;
-				ismd.baseInstanceID = sme.baseInstanceID;
+				ismd.animatorNodeID = sm.animatorNodeID;
+				ismd.baseInstanceID = 0;  // @DEPRECATED: base instance id offset is unnecessary now.
 
 				memcpy(data, &ismd, sizeof(GPUInputSkinningMeshData));
 				data += sizeof(GPUInputSkinningMeshData);
@@ -5681,16 +5688,17 @@ void VulkanEngine::createSkinningBuffers(FrameData& currentFrame)
 
 		// Insert data.
 		uint32_t indexOffset = 0;
-		for (auto& sme : _roManager->_skinnedMeshEntries)
+		for (auto& sm : skinnedMeshes)
 		{
-			auto& mdi = modelToMeshDetailedInfosMap[sme.model][sme.meshIdx];
-			for (auto& idx : mdi.indicesNormalized)
+			size_t modelMeshHash = sm.modelIdx | sm.meshIdx << 32;
+			auto& vi = modelMeshHashToVerticesIndices[modelMeshHash];
+			for (auto& idx : vi.indicesNormalized)
 			{
 				uint32_t indexCooked = idx + indexOffset;
 				memcpy(data, &indexCooked, sizeof(uint32_t));
 				data += sizeof(uint32_t);
 			}
-			indexOffset += mdi.vertexCount;  // Offset by num vertices bc that's the max index.
+			indexOffset += vi.uniqueVertexIndices.size();  // Offset by num vertices bc that's the max index.
 		}
 
 		vmaUnmapMemory(_allocator, s.indicesBuffer._allocation);
@@ -5731,110 +5739,92 @@ void VulkanEngine::destroySkinningBuffersIfCreated(FrameData& currentFrame)
 
 void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, std::vector<size_t> onlyPoolIndices, std::vector<ModelWithIndirectDrawId>& outIndirectDrawCommandIdsForPoolIndex)
 {
-	//
-	// Open up memory map for instance level data
-	//
-	void* instancePtrData;
-	vmaMapMemory(_allocator, currentFrame.instancePtrBuffer._allocation, &instancePtrData);
-	GPUInstancePointer* instancePtrSSBO = (GPUInstancePointer*)instancePtrData;
+	GPUInstancePointer* instancePtrSSBO;
+	vmaMapMemory(_allocator, currentFrame.instancePtrBuffer._allocation, (void**)&instancePtrSSBO);
+	VkDrawIndexedIndirectCommand* indirectDrawCommands;
+	vmaMapMemory(_allocator, currentFrame.indirectDrawCommandBuffer._allocation, (void**)&indirectDrawCommands);
+	uint32_t* indirectDrawCommandOffsets;
+	vmaMapMemory(_allocator, currentFrame.indirectDrawCommandOffsetsBuffer._allocation, (void**)&indirectDrawCommandOffsets);
+	uint32_t* indirectDrawCommandCounts;
+	vmaMapMemory(_allocator, currentFrame.indirectDrawCommandCountsBuffer._allocation, (void**)&indirectDrawCommandCounts);
 
-	void* indirectDrawCommandsData;
-	vmaMapMemory(_allocator, currentFrame.indirectDrawCommandBuffer._allocation, &indirectDrawCommandsData);
-	VkDrawIndexedIndirectCommand* indirectDrawCommands = (VkDrawIndexedIndirectCommand*)indirectDrawCommandsData;
-
-	// Write indirect commands.
+	// Traverse thru bucket to write commands.
 	{
 		std::vector<IndirectBatch> batches;
-		vkglTF::Model* lastModel = nullptr;
-		size_t indexGroupIdx = 0;
-		size_t lastUMBId = (size_t)-1;
-		size_t drawCommandID = 0;
+		size_t nextSkinnedIndex = 0;
 		size_t instanceID = 0;
 
 		std::lock_guard<std::mutex> lg(_roManager->renderObjectIndicesAndPoolMutex);
 
-		for (auto& metaMesh : _roManager->_metaMeshes)
+		for (size_t i = 0; i < _roManager->_numUmbBuckets; i++)
 		{
-			if (!metaMesh.isSkinned &&
-				metaMesh.model == lastModel &&
-				metaMesh.uniqueMaterialBaseId == lastUMBId)
+			auto& umbBucket = _roManager->_umbBuckets[i];
+			for (size_t j = 0; j < 2; j++)
 			{
-				batches.back().count += metaMesh.renderObjectIndices.size();
-			}
-			else
-			{
-				batches.push_back({
-					.model = metaMesh.model,
-					.uniqueMaterialBaseId = metaMesh.uniqueMaterialBaseId,
-					.first = (uint32_t)drawCommandID,
-					.count = (uint32_t)(metaMesh.isSkinned ? 1 : metaMesh.renderObjectIndices.size()),
-				});
-				lastModel = metaMesh.model;
-				lastUMBId = metaMesh.uniqueMaterialBaseId;
-			}
+				bool isSkinnedPass = (j == 0);
+				auto modelIter = _roManager->_renderObjectModels.begin();
+				for (size_t k = 0; k < _roManager->_numModelBuckets; k++, modelIter++)
+				{
+					auto& modelBucket = umbBucket.modelBucketSets[j].modelBuckets[k];
 
-			// Create draw command for each mesh instance.
-			for (size_t roIndex = 0; roIndex < metaMesh.renderObjectIndices.size(); roIndex++)
-			{
-				bool incrementDrawCommand = false;
-				if (metaMesh.isSkinned)
-				{
-					if (roIndex == 0)
-					{
-						auto& grp = currentFrame.skinning.indexGroups[indexGroupIdx++];
-						*indirectDrawCommands = {
-							.indexCount = grp.count,
-							.instanceCount = 1,  // @NOTE: The vertices contain instance id offsets for the combined skinned meshes, so leave at 1.
-							.firstIndex = grp.first,
-							.vertexOffset = 0,
-							.firstInstance = (uint32_t)instanceID,
-						};
-						incrementDrawCommand = true;
-					}
-				}
-				else
-				{
-					auto& ib = _roManager->_cookedMeshDraws[metaMesh.cookedMeshDrawIdx];
-					*indirectDrawCommands = {
-						.indexCount = ib.meshIndexCount,
-						.instanceCount = 1,
-						.firstIndex = ib.meshFirstIndex,
-						.vertexOffset = 0,
-						.firstInstance = (uint32_t)instanceID,
+					// Create new batch.
+					IndirectBatch batch = {
+						.model = (isSkinnedPass ? (vkglTF::Model*)&_roManager->_skinnedMeshModelMemAddr : modelIter->second),
+						.uniqueMaterialBaseId = (uint32_t)i,
+						.first = (uint32_t)instanceID,  // @NOTE: This is actually the draw command id.
+						.count = 0,
 					};
-					incrementDrawCommand = true;
-				}
 
-				size_t meshIdx = metaMesh.meshIndices[metaMesh.isSkinned ? roIndex : 0];
-				GPUInstancePointer& gip = _roManager->_renderObjectPool[metaMesh.renderObjectIndices[roIndex]].calculatedModelInstances[meshIdx];
-#ifdef _DEVELOP
-				if (!onlyPoolIndices.empty())
-					for (size_t index : onlyPoolIndices)
-						if (index == gip.objectID)
+					for (size_t l = 0; l < _roManager->_numMeshBucketsByModelIdx[k]; l++)
+					{
+						auto& meshBucket = modelBucket.meshBuckets[l];
+						for (auto& roIdx : meshBucket.renderObjectIndices)
 						{
-							// Include this draw indirect command.
-							if (metaMesh.isSkinned)
-							{
-								outIndirectDrawCommandIdsForPoolIndex.push_back({
-									(vkglTF::Model*)&_roManager->_skinnedMeshModelMemAddr,  // @HACK... but it works, does it not?
-									(uint32_t)drawCommandID
-								});
-							}
-							else
-								outIndirectDrawCommandIdsForPoolIndex.push_back({
-									_roManager->_cookedMeshDraws[metaMesh.cookedMeshDrawIdx].model,
-									(uint32_t)drawCommandID
-								});
-							break;
-						}
+							auto& meshDraw = _roManager->_modelMeshDraws[k][l];
+							*indirectDrawCommands = {
+								.indexCount = meshDraw.meshIndexCount,
+								.instanceCount = 1,
+								.firstIndex = (isSkinnedPass ? (uint32_t)nextSkinnedIndex : meshDraw.meshFirstIndex),
+								.vertexOffset = 0,
+								.firstInstance = (uint32_t)instanceID,
+							};
+
+							*indirectDrawCommandOffsets = batch.first;
+
+							GPUInstancePointer& gip = _roManager->_renderObjectPool[roIdx].calculatedModelInstances[l];
+							*instancePtrSSBO = gip;
+
+#ifdef _DEVELOP
+							if (!onlyPoolIndices.empty())  // Is this line even necessary? I'm doing this bc the for loop setup code could take longer than just checking whether the list is empty.
+								for (size_t index : onlyPoolIndices)
+									if (index == gip.objectID)
+									{
+										// Include this draw indirect command list for picking.
+										outIndirectDrawCommandIdsForPoolIndex.push_back({
+											meshDraw.model,
+											(uint32_t)instanceID
+										});
+										break;
+									}
 #endif
-				*instancePtrSSBO = gip;
-				instancePtrSSBO++;
-				instanceID++;
-				if (incrementDrawCommand)
-				{
-					indirectDrawCommands++;
-					drawCommandID++;
+
+							if (isSkinnedPass)
+								nextSkinnedIndex += meshDraw.meshIndexCount;  // Jump num indices to go to next index group (if wanting to do an offset, use vertex count).
+							indirectDrawCommands++;
+							indirectDrawCommandOffsets++;
+							instancePtrSSBO++;
+							instanceID++;
+							batch.count++;
+						}
+					}
+
+					if (batch.count > 0)
+					{
+						batches.push_back(batch);  // Only add the batch in if there are instances in the batch.
+
+						*indirectDrawCommandCounts = 0;  // Init as count of 0 so that culling can increment this value.
+						indirectDrawCommandCounts++;
+					}
 				}
 			}
 		}
@@ -5842,9 +5832,11 @@ void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, 
 		indirectBatches = batches;
 	}
 
-	// Cleanup and return
+	// Finish.
 	vmaUnmapMemory(_allocator, currentFrame.instancePtrBuffer._allocation);
 	vmaUnmapMemory(_allocator, currentFrame.indirectDrawCommandBuffer._allocation);
+	vmaUnmapMemory(_allocator, currentFrame.indirectDrawCommandOffsetsBuffer._allocation);
+	vmaUnmapMemory(_allocator, currentFrame.indirectDrawCommandCountsBuffer._allocation);
 }
 
 void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, bool materialOverride)
@@ -5854,6 +5846,7 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 	size_t lastUMBIdx = (size_t)-1;
 	uint32_t drawStride = sizeof(VkDrawIndexedIndirectCommand);
 	uint32_t countStride = sizeof(uint32_t);
+	uint32_t countIdx = 0;
 	for (IndirectBatch& batch : indirectBatches)
 	{
 		if (lastModel != batch.model)
@@ -5885,9 +5878,10 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 			lastUMBIdx = batch.uniqueMaterialBaseId;
 		}
 		VkDeviceSize indirectOffset = batch.first * drawStride;
-		VkDeviceSize countOffset = batch.first * countStride;
+		VkDeviceSize countOffset = countIdx * countStride;
 		vkCmdDrawIndexedIndirect(cmd, currentFrame.indirectDrawCommandBuffer._buffer, indirectOffset, batch.count, drawStride);
-		vkCmdDrawIndexedIndirectCount(cmd, currentFrame.indirectDrawCommandBuffer._buffer, indirectOffset, currentFrame.indirectCountBuffer._buffer, countOffset, batch.count, drawStride);
+		// vkCmdDrawIndexedIndirectCount(cmd, currentFrame.indirectDrawCommandBuffer._buffer, indirectOffset, currentFrame.indirectDrawCommandCountsBuffer._buffer, countOffset, batch.count, drawStride);
+		countIdx++;
 	}
 }
 

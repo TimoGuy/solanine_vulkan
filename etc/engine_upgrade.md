@@ -181,7 +181,12 @@
     - [x] Using buckets instead of sorting.
     - [ ] 
 - [ ] Compute culling.
-    - [ ] RESEARCH: how to use `vkCmdDrawIndirectIndexedCount` to compact draw commands.
+    - [x] RESEARCH: how to use `vkCmdDrawIndirectIndexedCount` to compact draw commands.
+        > You don't have to rewrite instance data if you use indexed count.
+        > Also, with the command buffer, instead of having commands compacted to the mesh level (index offset and counts), you can compact commands to the model level.
+    - [x] Fix skinned meshes and how they render (start at the @TODO: start here!!!!!!)
+    - [ ] Use a compute shader to iterate thru all the instances, and if one is visible (for this time just have the `isvisible()` func just return true), atomic add the count of the count buffer, and take the stored offset value + the new count in the count buffer - 1 to get the index in the indirect command buffer to write to. If it's the same index that the shader is working on, then skip writing the command, but if not, copy the whole indirect command into the offset+count-1 position.
+        - [ ] Figure out how the compute shader will figure out which count buffer offset slot to write to. @THOUGHT: maybe just adding that field into the indirect offsets buffer?
 
 - [ ] Better level editor.
     - [ ] Update collision box texture for voxel fields.

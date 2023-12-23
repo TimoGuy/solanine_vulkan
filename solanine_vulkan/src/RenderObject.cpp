@@ -157,14 +157,14 @@ void RenderObjectManager::optimizeMetaMeshList()
 	//        to stay alive but it's not impossible to manage.  -Timo 2023/12/12
 
 	// Delete existing bucket hierarchy using previously fetched volumes.
-	if (umbBuckets != nullptr)
+	if (_umbBuckets != nullptr)
 	{
-		for (size_t i = 0; i < numUmbBuckets; i++)
+		for (size_t i = 0; i < _numUmbBuckets; i++)
 		{
-			UniqueMaterialBaseBucket& umbBucket = umbBuckets[i];
+			UniqueMaterialBaseBucket& umbBucket = _umbBuckets[i];
 			for (size_t j = 0; j < 2; j++)
 			{
-				for (size_t k = 0; k < numModelBuckets; k++)
+				for (size_t k = 0; k < _numModelBuckets; k++)
 				{
 					ModelBucket& modelBucket = umbBucket.modelBucketSets[j].modelBuckets[k];
 					delete[] modelBucket.meshBuckets;
@@ -172,46 +172,46 @@ void RenderObjectManager::optimizeMetaMeshList()
 				delete[] umbBucket.modelBucketSets[j].modelBuckets;
 			}
 		}
-		delete[] umbBuckets;
+		delete[] _umbBuckets;
 	}
 
 	// Get bucket sizes.
-	numUmbBuckets = materialorganizer::getNumUniqueMaterialBasesExcludingSpecials();
-	numModelBuckets = _renderObjectModels.size();
-	numMeshBucketsByModelIdx.clear();
-	numMeshBucketsByModelIdx.resize(numModelBuckets, 0);
+	_numUmbBuckets = materialorganizer::getNumUniqueMaterialBasesExcludingSpecials();
+	_numModelBuckets = _renderObjectModels.size();
+	_numMeshBucketsByModelIdx.clear();
+	_numMeshBucketsByModelIdx.resize(_numModelBuckets, 0);
 	size_t idx = 0;
 	for (auto it = _renderObjectModels.begin(); it != _renderObjectModels.end(); it++)
 	{
 		auto model = it->second;
 		model->assignedModelIdx = idx;
-		numMeshBucketsByModelIdx[idx] =
+		_numMeshBucketsByModelIdx[idx] =
 			model->getAllPrimitivesInOrder().size();
 		idx++;
 	}
 
 	// Create bucket hierarchy.
-	umbBuckets = new UniqueMaterialBaseBucket[numUmbBuckets];
-	for (size_t i = 0; i < numUmbBuckets; i++)
+	_umbBuckets = new UniqueMaterialBaseBucket[_numUmbBuckets];
+	for (size_t i = 0; i < _numUmbBuckets; i++)
 	{
-		UniqueMaterialBaseBucket& umbBucket = umbBuckets[i];
+		UniqueMaterialBaseBucket& umbBucket = _umbBuckets[i];
 		for (size_t j = 0; j < 2; j++)
 		{
-			umbBucket.modelBucketSets[j].modelBuckets = new ModelBucket[numModelBuckets];
-			for (size_t k = 0; k < numModelBuckets; k++)
+			umbBucket.modelBucketSets[j].modelBuckets = new ModelBucket[_numModelBuckets];
+			for (size_t k = 0; k < _numModelBuckets; k++)
 			{
 				ModelBucket& modelBucket = umbBucket.modelBucketSets[j].modelBuckets[k];
-				modelBucket.meshBuckets = new MeshBucket[numMeshBucketsByModelIdx[k]];
+				modelBucket.meshBuckets = new MeshBucket[_numMeshBucketsByModelIdx[k]];
 			}
 		}
 	}
 	{
 		// @DEBUG show the total size of the allocated bucket hierarchy (of just the containers).
 		size_t totalSize = 0;
-		for (size_t numMeshBuckets : numMeshBucketsByModelIdx)
+		for (size_t numMeshBuckets : _numMeshBucketsByModelIdx)
 			totalSize += numMeshBuckets * 24;  // 24 is the bytes to create std::vector container.
 		totalSize *= 2;
-		totalSize *= numUmbBuckets;
+		totalSize *= _numUmbBuckets;
 		std::cout << "Allocated bucket hierarchy is " << totalSize << " bytes without data." << std::endl;
 	}
 
@@ -237,15 +237,18 @@ void RenderObjectManager::optimizeMetaMeshList()
 	}
 
 	// Insert render objects into bucket hierarchy.
+	_skinnedMeshEntriesExist = false;
 	for (size_t roIdx = 0; roIdx < visibleIndices.size(); roIdx++)
 	{
 		RenderObject& ro = _renderObjectPool[visibleIndices[roIdx]];
 		for (size_t mi = 0; mi < ro.perPrimitiveUniqueMaterialBaseIndices.size(); mi++)
 		{
+			if (ro.animator != nullptr)
+				_skinnedMeshEntriesExist = true;
 			size_t umbIdx = ro.perPrimitiveUniqueMaterialBaseIndices[mi];
 			size_t skinnedIdx = (ro.animator != nullptr ? 0 : 1);
 			size_t modelIdx = ro.model->assignedModelIdx;
-			umbBuckets[umbIdx]
+			_umbBuckets[umbIdx]
 				.modelBucketSets[skinnedIdx]
 				.modelBuckets[modelIdx]
 				.meshBuckets[mi]
@@ -253,256 +256,15 @@ void RenderObjectManager::optimizeMetaMeshList()
 		}
 	}
 
-	// Decompose render objects into meshes.
-	_metaMeshes.clear();
-	std::vector<vkglTF::Model*> uniqueModels;
-
-	for (size_t roIdx = 0; roIdx < visibleIndices.size(); roIdx++)
+	// Add mesh draws into data structure.
+	_modelMeshDraws.clear();
+	_modelMeshDraws.resize(_renderObjectModels.size(), {});
+	size_t mmdIdx = 0;
+	for (auto it = _renderObjectModels.begin(); it != _renderObjectModels.end(); it++)
 	{
-		RenderObject& ro = _renderObjectPool[visibleIndices[roIdx]];
-		if (ro.animator != nullptr)
-			int ian = 69;
-		for (size_t mi = 0; mi < ro.perPrimitiveUniqueMaterialBaseIndices.size(); mi++)
-			_metaMeshes.push_back({
-				.model = ro.model,
-				.isSkinned = (ro.animator != nullptr),
-				.meshIndices = { mi },
-				.uniqueMaterialBaseId = ro.perPrimitiveUniqueMaterialBaseIndices[mi],
-				.renderObjectIndices = { visibleIndices[roIdx] },
-			});
-		if (std::find(uniqueModels.begin(), uniqueModels.end(), ro.model) == uniqueModels.end())
-			uniqueModels.push_back(ro.model);
-	}
-
-	// // Group by materials used, then whether skinned or not, then by model used, then by mesh index, then by render object index.
-	// // @NOTE: this is to reduce the number of times to rebind materials and models.
-	// // @PERFORMANCE: this runs at 18ms about (for main level scene)... make this faster... bc we don't want 18ms hitches every time a new render object is switched out.
-	// static uint64_t count = 0;
-	// static float_t avgTime = 0.0f;
-	// if (input::editorInputSet().actionC.onAction)
-	// {
-	// 	std::cout << "RESET!" << std::endl;
-	// 	count = 0;
-	// 	avgTime = 0.0f;
-	// }
-	// uint64_t time = SDL_GetPerformanceCounter();
-	// {
-	// 	// @DEBUG: see how the meshes are sorted.
-	// 	std::string groups[] = {
-	// 		"metaMeshes     ",
-	// 		"uniqueMatId    ",
-	// 		"modelId        ",
-	// 		"meshIdx        ",
-	// 		"renderObjIdx[0]",
-	// 	};
-
-	// 	std::string myStr = "\n\n\n";
-
-	// 	myStr += groups[0] + "\t\t";
-	// 	for (size_t i = 0; i < _metaMeshes.size(); i++)
-	// 		myStr += std::to_string(i) + "\t\t\t\t";
-	// 	myStr += "\n";
-
-	// 	for (size_t i = 0; i < _metaMeshes.size(); i++)
-	// 		myStr += "================";
-	// 	myStr += "\n";
-
-	// 	myStr += groups[1] + "\t\t";
-	// 	for (auto& maa : _metaMeshes)
-	// 	{
-	// 		myStr += std::to_string(maa.uniqueMaterialBaseId) + "\t\t\t\t";
-	// 	}
-	// 	myStr += "\n";
-
-	// 	myStr += groups[2] + "\t\t";
-	// 	std::vector<void*> foundModels;
-	// 	for (auto& maa : _metaMeshes)
-	// 	{
-	// 		bool found = false;
-	// 		for (size_t i = 0; i < foundModels.size(); i++)
-	// 			if (foundModels[i] == (void*)maa.model)
-	// 			{
-	// 				myStr += std::to_string(i) + "\t\t\t\t";
-	// 				found = true;
-	// 				break;
-	// 			}
-	// 		if (!found)
-	// 		{
-	// 			foundModels.push_back((void*)maa.model);
-	// 			myStr += std::to_string(foundModels.size() - 1) + "\t\t\t\t";
-	// 		}
-	// 	}
-	// 	myStr += "\n";
-
-	// 	myStr += groups[3] + "\t\t";
-	// 	for (auto& maa : _metaMeshes)
-	// 	{
-	// 		myStr += std::to_string((uint64_t)(void*)maa.meshIdx) + "\t\t\t\t";
-	// 	}
-	// 	myStr += "\n";
-
-	// 	myStr += groups[4] + "\t\t";
-	// 	for (auto& maa : _metaMeshes)
-	// 	{
-	// 		myStr += std::to_string((uint64_t)(void*)maa.renderObjectIndices[0]) + "\t\t\t\t";
-	// 	}
-	// 	myStr += "\n";
-
-	// 	myStr += "\n\n\n";
-
-	// 	std::ofstream outfile("hello_debug.txt");
-    //     if (outfile.is_open())
-	// 		outfile << myStr;
-	// }
-	std::sort(
-		_metaMeshes.begin(),
-		_metaMeshes.end(),
-		[&](MetaMesh& a, MetaMesh& b) {
-			if (a.uniqueMaterialBaseId != b.uniqueMaterialBaseId)
-				return a.uniqueMaterialBaseId < b.uniqueMaterialBaseId;
-			if (a.isSkinned != b.isSkinned)
-				return a.isSkinned;
-			if (a.model != b.model)
-				return a.model < b.model;
-			if (a.meshIndices[0] != b.meshIndices[0])
-				return a.meshIndices[0] < b.meshIndices[0];
-			if (a.renderObjectIndices[0] != b.renderObjectIndices[0])
-				return a.renderObjectIndices[0] < b.renderObjectIndices[0];
-			return false;
-		}
-	);
-	// time = SDL_GetPerformanceCounter() - time;
-	// count++;
-	// avgTime = avgTime * ((float_t)count - 1.0f) / (float_t)count + time / (float_t)count;
-	// std::cout << "Sort time: " << time << "\tAvg: " << avgTime << std::endl;
-	// // @DEBUG: end debug timing.
-
-	// Smoosh meshes together.
-	for (size_t i = 0; i < _metaMeshes.size(); i++)
-	{
-		auto& parentMesh = _metaMeshes[i];
-		if (parentMesh.renderObjectIndices.empty())
-			continue;  // Already consumed.
-		
-		for (size_t j = i + 1; j < _metaMeshes.size(); j++)
-		{
-			auto& siblingMesh = _metaMeshes[j];
-			if (siblingMesh.renderObjectIndices.size() != 1)
-				continue;  // Already consumed (<1)... or this is a parent mesh (>1)... Though neither should happen at this stage bc of sorting previously.
-
-			bool sameAsParent =
-				(parentMesh.isSkinned == siblingMesh.isSkinned &&
-				parentMesh.model == siblingMesh.model &&
-				parentMesh.meshIndices[0] == siblingMesh.meshIndices[0] &&
-				parentMesh.uniqueMaterialBaseId == siblingMesh.uniqueMaterialBaseId);
-			if (sameAsParent)
-			{
-				for (size_t a = 0; a < siblingMesh.renderObjectIndices.size(); a++)
-					parentMesh.renderObjectIndices.push_back(siblingMesh.renderObjectIndices[a]);
-				siblingMesh.renderObjectIndices.clear();
-			}
-			else
-			{
-				i = j - 1;  // Speed up parent mesh seeker to where new mesh is (minus 1 so that the iterator can increment for it!).
-				break;  // Bc of sorting, there shouldn't be any other sibling meshes to find.
-			}
-		}
-	}
-	std::erase_if(
-		_metaMeshes,
-		[](MetaMesh mm) {
-			return mm.renderObjectIndices.empty();
-		}
-	);
-
-	// Smoosh skinned meshes together.
-	_skinnedMeshEntries.clear();
-	size_t smeInstanceIDOffset = 0;
-	for (size_t i = 0; i < _metaMeshes.size(); i++)
-	{
-		auto& parentMesh = _metaMeshes[i];
-		if (!parentMesh.isSkinned)
-			continue;  // Only process skinned meshes.
-		if (parentMesh.renderObjectIndices.empty())
-			continue;  // Already consumed.
-
-		// Insert mesh entries.
-		for (size_t a = 0; a < parentMesh.renderObjectIndices.size(); a++)
-		{
-			_skinnedMeshEntries.push_back({
-				.model = parentMesh.model,
-				.meshIdx = parentMesh.meshIndices[0],
-				.uniqueMaterialBaseID = _renderObjectPool[parentMesh.renderObjectIndices[a]].perPrimitiveUniqueMaterialBaseIndices[parentMesh.meshIndices[0]],
-				.animatorNodeID = _renderObjectPool[parentMesh.renderObjectIndices[a]].calculatedModelInstances[parentMesh.meshIndices[0]].animatorNodeID,
-				.baseInstanceID = smeInstanceIDOffset++,
-			});
-			if (a > 0)
-				parentMesh.meshIndices.push_back(parentMesh.meshIndices[0]);  // Copy to fill up number of render objects (unflatten).
-		}
-
-		for (size_t j = i + 1; j < _metaMeshes.size(); j++)
-		{
-			auto& siblingMesh = _metaMeshes[j];
-			if (siblingMesh.renderObjectIndices.empty())
-				continue;  // Already consumed.
-
-			bool sameAsSkinnedParent =
-				(parentMesh.isSkinned == siblingMesh.isSkinned &&
-				parentMesh.uniqueMaterialBaseId == siblingMesh.uniqueMaterialBaseId);
-			if (sameAsSkinnedParent)
-			{
-				// Insert mesh entries.
-				for (size_t a = 0; a < siblingMesh.renderObjectIndices.size(); a++)
-				{
-					_skinnedMeshEntries.push_back({
-						.model = siblingMesh.model,
-						.meshIdx = siblingMesh.meshIndices[0],
-						.uniqueMaterialBaseID = _renderObjectPool[siblingMesh.renderObjectIndices[a]].perPrimitiveUniqueMaterialBaseIndices[siblingMesh.meshIndices[0]],
-						.animatorNodeID = _renderObjectPool[siblingMesh.renderObjectIndices[a]].calculatedModelInstances[siblingMesh.meshIndices[0]].animatorNodeID,
-						.baseInstanceID = smeInstanceIDOffset++,
-					});
-					parentMesh.meshIndices.push_back(siblingMesh.meshIndices[0]);  // Only 1 mesh index even if multiple render object indices are present (unflatten).
-					parentMesh.renderObjectIndices.push_back(siblingMesh.renderObjectIndices[a]);
-				}
-				siblingMesh.meshIndices.clear();
-				siblingMesh.renderObjectIndices.clear();
-			}
-			else
-			{
-				smeInstanceIDOffset = 0;  // Offset should be relative to the metamesh group, hence resetting it here.
-				i = j - 1;  // Speed up parent mesh seeker to where new mesh is (minus 1 so that the iterator can increment for it!).
-				break;  // Bc of sorting, there shouldn't be any other sibling meshes to find.
-			}
-		}
-	}
-	std::erase_if(
-		_metaMeshes,
-		[](MetaMesh mm) {
-			return mm.renderObjectIndices.empty();
-		}
-	);
-
-	// Mark all skinned meshes.
-	for (auto& mm : _metaMeshes)
-	{
-		if (!mm.isSkinned)
-			continue;
-		
-		mm.model = (vkglTF::Model*)&_skinnedMeshModelMemAddr;  // @HACK: @NOTE: marks metamesh as part of the intermediate skinned mesh buffer.
-	}
-
-	// Capture mesh info.
-	_cookedMeshDraws.clear();
-	for (vkglTF::Model* um : uniqueModels)
-	{
-		size_t baseMeshIndex = _cookedMeshDraws.size();
-		uint32_t numMeshes = 0;
-		um->appendPrimitiveDraws(_cookedMeshDraws, numMeshes);
-		for (auto& metaMesh : _metaMeshes)
-			if (metaMesh.model == um)
-			{
-				metaMesh.cookedMeshDrawIdx = baseMeshIndex + metaMesh.meshIndices[0];  // @NOTE: skinned meshes would not be selected since they're not added into `uniqueModels`.
-			}
+		uint32_t _ = 0;
+		it->second->appendPrimitiveDraws(_modelMeshDraws[mmdIdx], _);
+		mmdIdx++;
 	}
 
 	_isMetaMeshListUnoptimized = false;

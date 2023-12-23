@@ -133,6 +133,8 @@ struct FrameData
 	VkCommandBuffer mainCommandBuffer;
 	VkCommandBuffer pickingCommandBuffer;
 	AllocatedBuffer indirectDrawCommandBuffer;
+	AllocatedBuffer indirectDrawCommandOffsetsBuffer;
+	AllocatedBuffer indirectDrawCommandCountsBuffer;
 
 	AllocatedBuffer cameraBuffer;
 	AllocatedBuffer pbrShadingPropsBuffer;
@@ -152,12 +154,6 @@ struct FrameData
 
 	struct ComputeSkinning
 	{
-		struct IndexGroup
-		{
-			uint32_t first;
-			uint32_t count;
-		};
-		std::vector<IndexGroup> indexGroups;
 		uint64_t        numVertices;
 		uint64_t        numIndices;
 		AllocatedBuffer inputVerticesBuffer;
