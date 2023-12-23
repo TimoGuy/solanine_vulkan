@@ -24,6 +24,7 @@ layout(set = 0, binding = 0) uniform CameraBuffer
 struct ObjectData
 {
 	mat4 modelMatrix;
+	vec4 boundingSphere;
 };
 
 layout(std140, set = 1, binding = 0) readonly buffer ObjectBuffer

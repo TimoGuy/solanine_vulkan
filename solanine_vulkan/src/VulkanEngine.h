@@ -40,6 +40,7 @@ struct GPUPBRShadingProps
 struct GPUObjectData
 {
 	mat4 modelMatrix;
+	vec4 boundingSphere;
 };
 
 struct GPUPickingSelectedIdData
@@ -92,6 +93,19 @@ struct GPUPostProcessParams
 	bool pad2;  // Vulkan spec requires multiple of 4 bytes for push constants.
 };
 
+struct GPUCullingParams
+{
+	uint32_t numInstances;
+};
+
+struct GPUIndirectDrawCommandOffsetsData
+{
+	uint32_t batchFirstIndex;
+	uint32_t countIndex;
+	uint32_t pad0;
+	uint32_t pad1;
+};
+
 struct GPUInputSkinningMeshPrefixData
 {
 	uint32_t numVertices;
@@ -135,6 +149,8 @@ struct FrameData
 	AllocatedBuffer indirectDrawCommandBuffer;
 	AllocatedBuffer indirectDrawCommandOffsetsBuffer;
 	AllocatedBuffer indirectDrawCommandCountsBuffer;
+	VkDescriptorSet indirectDrawCommandDescriptor;
+	uint32_t        numInstances;
 
 	AllocatedBuffer cameraBuffer;
 	AllocatedBuffer pbrShadingPropsBuffer;
@@ -376,6 +392,7 @@ public:
 	VkDescriptorSetLayout _pickingReturnValueSetLayout;
 	VkDescriptorSetLayout _skeletalAnimationSetLayout;    // @NOTE: for this one, descriptor sets are created inside of the vkglTFModels themselves, they're not global
 	VkDescriptorSetLayout _postprocessSetLayout;
+	VkDescriptorSetLayout _computeCullingIndirectDrawCommandSetLayout;
 	VkDescriptorSetLayout _computeSkinningInoutVerticesSetLayout;
 
 	AllocatedBuffer createBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
@@ -429,7 +446,7 @@ private:
 	};
 
 	void compactRenderObjectsIntoDraws(
-		const FrameData& currentFrame,
+		FrameData& currentFrame,
 #ifdef _DEVELOP
 		std::vector<size_t> onlyPoolIndices,
 		std::vector<ModelWithIndirectDrawId>& outIndirectDrawCommandIdsForPoolIndex
