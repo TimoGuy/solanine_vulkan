@@ -12,10 +12,15 @@ struct IndirectDrawCommandsData
     uint firstInstance;
 };
 
-layout(set = 0, binding = 0) buffer IndirectDrawCommandsBuffer
+layout(set = 0, binding = 0) readonly buffer IndirectDrawCommandsRawBuffer
 {
 	IndirectDrawCommandsData commands[];
-} drawCommands;
+} drawCommandsInput;
+
+layout(set = 0, binding = 1) readonly buffer IndirectDrawCommandsOutputBuffer
+{
+	IndirectDrawCommandsData commands[];
+} drawCommandsOutput;
 
 
 // Indirect Draw Command Offsets.
@@ -27,14 +32,14 @@ struct IndirectDrawCommandOffsetsData
 	uint pad1;
 };
 
-layout(std140, set = 0, binding = 1) readonly buffer IndirectDrawCommandOffsetsBuffer
+layout(std140, set = 0, binding = 2) readonly buffer IndirectDrawCommandOffsetsBuffer
 {
 	IndirectDrawCommandOffsetsData offsets[];
 } drawCommandOffsets;
 
 
 // Indirect Draw Command Counts.
-layout(set = 0, binding = 2) buffer IndirectDrawCommandCountsBuffer
+layout(set = 0, binding = 3) buffer IndirectDrawCommandCountsBuffer
 {
 	uint counts[];
 } drawCommandCounts;
@@ -70,14 +75,41 @@ layout(std140, set = 2, binding = 0) readonly buffer InstancePtrBuffer
 
 // Params.
 layout(push_constant) uniform Params {
-    uint numInstances;
+    mat4  view;
+    float zNear;
+    float zFar;
+    float frustumX_x;
+    float frustumX_z;
+    float frustumY_y;
+    float frustumY_z;
+    uint  cullingEnabled;
+    uint  numInstances;
 } params;
 
 
 bool isVisible(uint objectID)
 {
     // @TODO: add visibility check.
-    return true;
+    bool visible = true;
+
+    vec4 boundingSphere = objectBuffer.objects[objectID].boundingSphere;
+    vec3 bsCenter = (params.view * vec4(boundingSphere.xyz, 1.0)).xyz;
+    float bsRadius = boundingSphere.w;
+
+    // Frustum side planes (right and top using abs).
+    visible = visible && bsCenter.z * params.frustumX_z - abs(bsCenter.x) * params.frustumX_x > -bsRadius;
+    visible = visible && bsCenter.z * params.frustumY_z - abs(bsCenter.y) * params.frustumY_y > -bsRadius;
+
+    // Frustum near and far planes.
+    // @NOTE: center z needs to be inverted bc no reverse projection frustum here.
+    visible = visible && -bsCenter.z + bsRadius > params.zNear && -bsCenter.z - bsRadius < params.zFar;
+
+    // Disable culling via flag (i.e. enable all objects as visible).
+    visible = visible || params.cullingEnabled == 0;
+
+    // @TODO: @FUTURE: Implement occlusion culling using depth pyramid.
+
+    return visible;
 }
 
 
@@ -93,7 +125,7 @@ void main()
 
             // Copy draw command data.
             uint copyTo = drawCommandOffsets.offsets[gID].batchFirstIndex + batchOffset;
-            drawCommands.commands[copyTo] = drawCommands.commands[gID];
+            drawCommandsOutput.commands[copyTo] = drawCommandsInput.commands[gID];
         }
     }
 }

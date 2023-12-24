@@ -347,6 +347,12 @@ namespace vkglTF
 			vec3 max = { -FLT_MAX, -FLT_MAX , -FLT_MAX };
 		} dimensions;
 
+		struct BoundingSphere
+		{
+			vec3 center;
+			float_t radius;
+		} boundingSphere;
+
 		struct LoaderInfo
 		{
 			uint32_t* indexBuffer;

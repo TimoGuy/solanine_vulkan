@@ -95,6 +95,14 @@ struct GPUPostProcessParams
 
 struct GPUCullingParams
 {
+	mat4     view;
+	float_t  zNear;
+	float_t  zFar;
+	float_t  frustumX_x;
+	float_t  frustumX_z;
+	float_t  frustumY_y;
+	float_t  frustumY_z;
+	uint32_t cullingEnabled;
 	uint32_t numInstances;
 };
 
@@ -146,11 +154,18 @@ struct FrameData
 	VkCommandPool commandPool;
 	VkCommandBuffer mainCommandBuffer;
 	VkCommandBuffer pickingCommandBuffer;
-	AllocatedBuffer indirectDrawCommandBuffer;
-	AllocatedBuffer indirectDrawCommandOffsetsBuffer;
-	AllocatedBuffer indirectDrawCommandCountsBuffer;
-	VkDescriptorSet indirectDrawCommandDescriptor;
-	uint32_t        numInstances;
+
+	struct IndirectDrawCommands
+	{
+		AllocatedBuffer indirectDrawCommandsBuffer;
+		AllocatedBuffer indirectDrawCommandOffsetsBuffer;
+		AllocatedBuffer indirectDrawCommandCountsBuffer;
+		VkDescriptorSet indirectDrawCommandDescriptor;
+	};
+	AllocatedBuffer      indirectDrawCommandRawBuffer;
+	IndirectDrawCommands indirectDrawCommandsShadowPass;
+	IndirectDrawCommands indirectDrawCommandsMainPass;
+	uint32_t             numInstances;
 
 	AllocatedBuffer cameraBuffer;
 	AllocatedBuffer pbrShadingPropsBuffer;

@@ -2330,6 +2330,12 @@ namespace vkglTF
 		aabb[3][0] = dimensions.min[0];
 		aabb[3][1] = dimensions.min[1];
 		aabb[3][2] = dimensions.min[2];
+
+		// Calculate scene bounding sphere.
+		vec3 sumMinMax;
+		glm_vec3_add(dimensions.min, dimensions.max, sumMinMax);
+		glm_vec3_scale(sumMinMax, 0.5f, boundingSphere.center);
+		boundingSphere.radius = glm_vec3_distance(boundingSphere.center, dimensions.max);
 	}
 
 	void recurseFetchAllPrimitivesInOrderInNode(std::vector<Primitive*>& collection, Node* node)
