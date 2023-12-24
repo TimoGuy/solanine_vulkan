@@ -89,7 +89,6 @@ layout(push_constant) uniform Params {
 
 bool isVisible(uint objectID)
 {
-    // @TODO: add visibility check.
     bool visible = true;
 
     vec4 boundingSphere = objectBuffer.objects[objectID].boundingSphere;
