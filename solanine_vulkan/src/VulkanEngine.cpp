@@ -381,7 +381,75 @@ void normalizePlane(vec4 a, vec4 w, vec4& outNormalizedPlane)
 }
 
 static bool doCullingStuff = true;
-void VulkanEngine::computeCulling(const FrameData& currentFrame, VkCommandBuffer cmd)
+
+void VulkanEngine::computeShadowCulling(const FrameData& currentFrame, VkCommandBuffer cmd)
+{
+	// Set up frustum culling params.
+	mat4 reverseOrtho;
+	glm_ortho(
+		_camera->sceneCamera.wholeShadowMinExtents[0],
+		_camera->sceneCamera.wholeShadowMaxExtents[0],
+		_camera->sceneCamera.wholeShadowMinExtents[1],
+		_camera->sceneCamera.wholeShadowMaxExtents[1],
+		_camera->sceneCamera.wholeShadowMaxExtents[2],  // @NOTE: Znear and zfar are switched... though it doesn't really matter for anything with ortho projection.
+		_camera->sceneCamera.wholeShadowMinExtents[2],
+		reverseOrtho
+	);
+	mat4 reverseOrthoTransposed;
+	glm_mat4_transpose_to(_camera->sceneCamera.gpuCameraData.projection, reverseOrthoTransposed);
+	vec4 frustumX;
+	vec4 frustumY;
+	normalizePlane(reverseOrthoTransposed[0], reverseOrthoTransposed[3], frustumX);
+	normalizePlane(reverseOrthoTransposed[1], reverseOrthoTransposed[3], frustumY);
+
+	GPUCullingParams pc = {
+		.zNear = std::numeric_limits<float_t>::min(),  // @TODO: add switch to turn off near/far plane comparison in frustum culling.
+		.zFar = std::numeric_limits<float_t>::max(),
+		.frustumX_x = frustumX[0],
+		.frustumX_z = frustumX[2],
+		.frustumY_y = frustumY[1],
+		.frustumY_z = frustumY[2],
+		.cullingEnabled = (uint32_t)true,
+		.numInstances = currentFrame.numInstances,
+	};
+	glm_mat4_copy(_camera->sceneCamera.wholeShadowLightViewMatrix, pc.view);
+
+	// Dispatch compute.
+	Material& computeCulling = *getMaterial("computeCulling");
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, computeCulling.pipeline);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, computeCulling.pipelineLayout, 0, 1, &currentFrame.indirectShadowPass.indirectDrawCommandDescriptor, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, computeCulling.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, computeCulling.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
+	vkCmdPushConstants(cmd, computeCulling.pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(GPUCullingParams), &pc);
+	vkCmdDispatch(cmd, std::ceil(currentFrame.numInstances / 128.0f), 1, 1);
+
+	// Block vertex shaders from running until the dispatched job is finished.
+	VkBufferMemoryBarrier barriers[] = {
+		{
+			.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+			.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
+			.dstAccessMask = VK_ACCESS_INDIRECT_COMMAND_READ_BIT,
+			.srcQueueFamilyIndex = _graphicsQueueFamily,
+			.dstQueueFamilyIndex = _graphicsQueueFamily,
+			.buffer = currentFrame.indirectShadowPass.indirectDrawCommandsBuffer._buffer,
+			.offset = 0,
+			.size = sizeof(VkDrawIndexedIndirectCommand) * INSTANCE_PTR_MAX_CAPACITY,
+		},
+		{
+			.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+			.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
+			.dstAccessMask = VK_ACCESS_INDIRECT_COMMAND_READ_BIT,
+			.srcQueueFamilyIndex = _graphicsQueueFamily,
+			.dstQueueFamilyIndex = _graphicsQueueFamily,
+			.buffer = currentFrame.indirectShadowPass.indirectDrawCommandCountsBuffer._buffer,
+			.offset = 0,
+			.size = sizeof(uint32_t) * INSTANCE_PTR_MAX_CAPACITY,
+		}
+	};
+	vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, 0, 0, nullptr, 2, barriers, 0, nullptr);
+}
+
+void VulkanEngine::computeMainCulling(const FrameData& currentFrame, VkCommandBuffer cmd)
 {
 	// Set up frustum culling params.
 	// Ref: https://github.com/vblanco20-1/vulkan-guide/blob/164c144c4819840a9e59cc955a91b74abea4bd6f/extra-engine/vk_engine_scenerender.cpp#L68
@@ -416,7 +484,7 @@ void VulkanEngine::computeCulling(const FrameData& currentFrame, VkCommandBuffer
 	// Dispatch compute.
 	Material& computeCulling = *getMaterial("computeCulling");
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, computeCulling.pipeline);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, computeCulling.pipelineLayout, 0, 1, &currentFrame.indirectDrawCommandDescriptor, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, computeCulling.pipelineLayout, 0, 1, &currentFrame.indirectMainPass.indirectDrawCommandDescriptor, 0, nullptr);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, computeCulling.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, computeCulling.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
 	vkCmdPushConstants(cmd, computeCulling.pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(GPUCullingParams), &pc);
@@ -430,7 +498,7 @@ void VulkanEngine::computeCulling(const FrameData& currentFrame, VkCommandBuffer
 			.dstAccessMask = VK_ACCESS_INDIRECT_COMMAND_READ_BIT,
 			.srcQueueFamilyIndex = _graphicsQueueFamily,
 			.dstQueueFamilyIndex = _graphicsQueueFamily,
-			.buffer = currentFrame.indirectDrawCommandRawBuffer._buffer,
+			.buffer = currentFrame.indirectMainPass.indirectDrawCommandsBuffer._buffer,
 			.offset = 0,
 			.size = sizeof(VkDrawIndexedIndirectCommand) * INSTANCE_PTR_MAX_CAPACITY,
 		},
@@ -440,14 +508,12 @@ void VulkanEngine::computeCulling(const FrameData& currentFrame, VkCommandBuffer
 			.dstAccessMask = VK_ACCESS_INDIRECT_COMMAND_READ_BIT,
 			.srcQueueFamilyIndex = _graphicsQueueFamily,
 			.dstQueueFamilyIndex = _graphicsQueueFamily,
-			.buffer = currentFrame.indirectDrawCommandCountsBuffer._buffer,
+			.buffer = currentFrame.indirectMainPass.indirectDrawCommandCountsBuffer._buffer,
 			.offset = 0,
 			.size = sizeof(uint32_t) * INSTANCE_PTR_MAX_CAPACITY,
 		}
 	};
 	vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, 0, 0, nullptr, 2, barriers, 0, nullptr);
-
-	return;  // @TODO @STUB.
 }
 
 void VulkanEngine::computeSkinnedMeshes(const FrameData& currentFrame, VkCommandBuffer cmd)
@@ -536,7 +602,7 @@ void VulkanEngine::renderPickingRenderpass(const FrameData& currentFrame)
 	std::cout << "[PICKING]" << std::endl
 		<< "set picking scissor to: x=" << scissor.offset.x << "  y=" << scissor.offset.y << "  w=" << scissor.extent.width << "  h=" << scissor.extent.height << std::endl;
 
-	renderRenderObjects(cmd, currentFrame, true);
+	renderRenderObjects(cmd, currentFrame, true, false);
 
 	// End renderpass
 	vkCmdEndRenderPass(cmd);
@@ -636,7 +702,7 @@ void VulkanEngine::renderShadowRenderpass(const FrameData& currentFrame, VkComma
 		CascadeIndexPushConstBlock pc = { i };
 		vkCmdPushConstants(cmd, shadowDepthPassMaterial.pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(CascadeIndexPushConstBlock), &pc);
 
-		renderRenderObjects(cmd, currentFrame, true);
+		renderRenderObjects(cmd, currentFrame, true, true);
 		
 		vkCmdEndRenderPass(cmd);
 	}
@@ -678,7 +744,7 @@ void VulkanEngine::renderMainRenderpass(const FrameData& currentFrame, VkCommand
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 3, 1, &defaultZPrepassMaterial.textureSet, 0, nullptr);
-	renderRenderObjects(cmd, currentFrame, true);
+	renderRenderObjects(cmd, currentFrame, true, false);
 	//////////////////////
 
 	// Switch from zprepass subpass to main subpass
@@ -700,7 +766,7 @@ void VulkanEngine::renderMainRenderpass(const FrameData& currentFrame, VkCommand
 	}
 	///////////////////
 
-	renderRenderObjects(cmd, currentFrame, false);
+	renderRenderObjects(cmd, currentFrame, false, false);
 	if (!pickingIndirectDrawCommandIds.empty())
 		renderPickedObject(cmd, currentFrame, pickingIndirectDrawCommandIds);
 	physengine::renderDebugVisualization(cmd);
@@ -1522,7 +1588,10 @@ void VulkanEngine::render()
 
 	// Render render passes.
 	if (doCullingStuff)
-		computeCulling(currentFrame, cmd);
+	{
+		computeShadowCulling(currentFrame, cmd);
+		computeMainCulling(currentFrame, cmd);
+	}
 	computeSkinnedMeshes(currentFrame, cmd);
 	renderShadowRenderpass(currentFrame, cmd);
 	renderMainRenderpass(currentFrame, cmd, pickingIndirectDrawCommandIds);
@@ -2136,16 +2205,22 @@ void VulkanEngine::initCommands()
 		VK_CHECK(vkAllocateCommandBuffers(_device, &cmdAllocInfo, &_frames[i].pickingCommandBuffer));
 
 		// Create indirect draw command buffer
-		_frames[i].indirectDrawCommandRawBuffer = createBuffer(sizeof(VkDrawIndexedIndirectCommand) * INSTANCE_PTR_MAX_CAPACITY, /*VK_BUFFER_USAGE_TRANSFER_DST_BIT | */VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+		_frames[i].indirectDrawCommandRawBuffer = createBuffer(sizeof(VkDrawIndexedIndirectCommand) * INSTANCE_PTR_MAX_CAPACITY, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+		_frames[i].indirectShadowPass.indirectDrawCommandsBuffer = createBuffer(sizeof(VkDrawIndexedIndirectCommand) * INSTANCE_PTR_MAX_CAPACITY, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+		_frames[i].indirectMainPass.indirectDrawCommandsBuffer = createBuffer(sizeof(VkDrawIndexedIndirectCommand) * INSTANCE_PTR_MAX_CAPACITY, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
 		_frames[i].indirectDrawCommandOffsetsBuffer = createBuffer(sizeof(GPUIndirectDrawCommandOffsetsData) * INSTANCE_PTR_MAX_CAPACITY, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
-		_frames[i].indirectDrawCommandCountsBuffer = createBuffer(sizeof(uint32_t) * INSTANCE_PTR_MAX_CAPACITY, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+		_frames[i].indirectShadowPass.indirectDrawCommandCountsBuffer = createBuffer(sizeof(uint32_t) * INSTANCE_PTR_MAX_CAPACITY, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+		_frames[i].indirectMainPass.indirectDrawCommandCountsBuffer = createBuffer(sizeof(uint32_t) * INSTANCE_PTR_MAX_CAPACITY, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
 		// Add destroy command for cleanup
 		_mainDeletionQueue.pushFunction([=]() {
 			vkDestroyCommandPool(_device, _frames[i].commandPool, nullptr);
 			vmaDestroyBuffer(_allocator, _frames[i].indirectDrawCommandRawBuffer._buffer, _frames[i].indirectDrawCommandRawBuffer._allocation);
+			vmaDestroyBuffer(_allocator, _frames[i].indirectShadowPass.indirectDrawCommandsBuffer._buffer, _frames[i].indirectShadowPass.indirectDrawCommandsBuffer._allocation);
+			vmaDestroyBuffer(_allocator, _frames[i].indirectMainPass.indirectDrawCommandsBuffer._buffer, _frames[i].indirectMainPass.indirectDrawCommandsBuffer._allocation);
 			vmaDestroyBuffer(_allocator, _frames[i].indirectDrawCommandOffsetsBuffer._buffer, _frames[i].indirectDrawCommandOffsetsBuffer._allocation);
-			vmaDestroyBuffer(_allocator, _frames[i].indirectDrawCommandCountsBuffer._buffer, _frames[i].indirectDrawCommandCountsBuffer._allocation);
+			vmaDestroyBuffer(_allocator, _frames[i].indirectShadowPass.indirectDrawCommandCountsBuffer._buffer, _frames[i].indirectShadowPass.indirectDrawCommandCountsBuffer._allocation);
+			vmaDestroyBuffer(_allocator, _frames[i].indirectMainPass.indirectDrawCommandCountsBuffer._buffer, _frames[i].indirectMainPass.indirectDrawCommandCountsBuffer._allocation);
 			});
 	}
 
@@ -3998,20 +4073,20 @@ void VulkanEngine::initDescriptors()    // @NOTE: don't destroy and then recreat
 			.offset = 0,
 			.range = sizeof(VkDrawIndexedIndirectCommand) * INSTANCE_PTR_MAX_CAPACITY,
 		};
+		VkDescriptorBufferInfo drawCommandOffsetsBufferInfo = {
+			.buffer = currentFrame.indirectDrawCommandOffsetsBuffer._buffer,
+			.offset = 0,
+			.range = sizeof(GPUIndirectDrawCommandOffsetsData) * INSTANCE_PTR_MAX_CAPACITY,
+		};
 		{
 			// Shadow pass.
 			VkDescriptorBufferInfo drawCommandsOutputBufferInfo = {
-				.buffer = currentFrame.indirectDrawCommandsShadowPass.indirectDrawCommandsBuffer._buffer,
+				.buffer = currentFrame.indirectShadowPass.indirectDrawCommandsBuffer._buffer,
 				.offset = 0,
 				.range = sizeof(VkDrawIndexedIndirectCommand) * INSTANCE_PTR_MAX_CAPACITY,
 			};
-			VkDescriptorBufferInfo drawCommandOffsetsBufferInfo = {
-				.buffer = currentFrame.indirectDrawCommandsShadowPass.indirectDrawCommandOffsetsBuffer._buffer,
-				.offset = 0,
-				.range = sizeof(GPUIndirectDrawCommandOffsetsData) * INSTANCE_PTR_MAX_CAPACITY,
-			};
 			VkDescriptorBufferInfo drawCommandCountsBufferInfo = {
-				.buffer = currentFrame.indirectDrawCommandsShadowPass.indirectDrawCommandCountsBuffer._buffer,
+				.buffer = currentFrame.indirectShadowPass.indirectDrawCommandCountsBuffer._buffer,
 				.offset = 0,
 				.range = sizeof(uint32_t) * INSTANCE_PTR_MAX_CAPACITY,
 			};
@@ -4021,22 +4096,17 @@ void VulkanEngine::initDescriptors()    // @NOTE: don't destroy and then recreat
 				.bindBuffer(1, &drawCommandsOutputBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT)
 				.bindBuffer(2, &drawCommandOffsetsBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT)
 				.bindBuffer(3, &drawCommandCountsBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT)
-				.build(currentFrame.indirectDrawCommandsShadowPass.indirectDrawCommandDescriptor, _computeCullingIndirectDrawCommandSetLayout);
+				.build(currentFrame.indirectShadowPass.indirectDrawCommandDescriptor, _computeCullingIndirectDrawCommandSetLayout);
 		}
 		{
 			// Main pass.
 			VkDescriptorBufferInfo drawCommandsOutputBufferInfo = {
-				.buffer = currentFrame.indirectDrawCommandsMainPass.indirectDrawCommandsBuffer._buffer,
+				.buffer = currentFrame.indirectMainPass.indirectDrawCommandsBuffer._buffer,
 				.offset = 0,
 				.range = sizeof(VkDrawIndexedIndirectCommand) * INSTANCE_PTR_MAX_CAPACITY,
 			};
-			VkDescriptorBufferInfo drawCommandOffsetsBufferInfo = {
-				.buffer = currentFrame.indirectDrawCommandsMainPass.indirectDrawCommandOffsetsBuffer._buffer,
-				.offset = 0,
-				.range = sizeof(GPUIndirectDrawCommandOffsetsData) * INSTANCE_PTR_MAX_CAPACITY,
-			};
 			VkDescriptorBufferInfo drawCommandCountsBufferInfo = {
-				.buffer = currentFrame.indirectDrawCommandsMainPass.indirectDrawCommandCountsBuffer._buffer,
+				.buffer = currentFrame.indirectMainPass.indirectDrawCommandCountsBuffer._buffer,
 				.offset = 0,
 				.range = sizeof(uint32_t) * INSTANCE_PTR_MAX_CAPACITY,
 			};
@@ -4046,7 +4116,7 @@ void VulkanEngine::initDescriptors()    // @NOTE: don't destroy and then recreat
 				.bindBuffer(1, &drawCommandsOutputBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT)
 				.bindBuffer(2, &drawCommandOffsetsBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT)
 				.bindBuffer(3, &drawCommandCountsBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT)
-				.build(currentFrame.indirectDrawCommandsMainPass.indirectDrawCommandDescriptor, _computeCullingIndirectDrawCommandSetLayout);
+				.build(currentFrame.indirectMainPass.indirectDrawCommandDescriptor, _computeCullingIndirectDrawCommandSetLayout);
 		}
 	}
 
@@ -5932,8 +6002,10 @@ void VulkanEngine::compactRenderObjectsIntoDraws(FrameData& currentFrame, std::v
 	vmaMapMemory(_allocator, currentFrame.indirectDrawCommandRawBuffer._allocation, (void**)&indirectDrawCommands);
 	GPUIndirectDrawCommandOffsetsData* indirectDrawCommandOffsets;
 	vmaMapMemory(_allocator, currentFrame.indirectDrawCommandOffsetsBuffer._allocation, (void**)&indirectDrawCommandOffsets);
-	uint32_t* indirectDrawCommandCounts;
-	vmaMapMemory(_allocator, currentFrame.indirectDrawCommandCountsBuffer._allocation, (void**)&indirectDrawCommandCounts);
+	uint32_t* indirectDrawCommandCountsShadow;
+	vmaMapMemory(_allocator, currentFrame.indirectShadowPass.indirectDrawCommandCountsBuffer._allocation, (void**)&indirectDrawCommandCountsShadow);
+	uint32_t* indirectDrawCommandCountsMain;
+	vmaMapMemory(_allocator, currentFrame.indirectMainPass.indirectDrawCommandCountsBuffer._allocation, (void**)&indirectDrawCommandCountsMain);
 
 	// Traverse thru bucket to write commands.
 	{
@@ -6012,8 +6084,11 @@ void VulkanEngine::compactRenderObjectsIntoDraws(FrameData& currentFrame, std::v
 					{
 						batches.push_back(batch);  // Only add the batch in if there are instances in the batch.
 
-						*indirectDrawCommandCounts = 0;  // Init as count of 0 so that culling can increment this value.
-						indirectDrawCommandCounts++;
+						// Init as count of 0 so that culling can increment this value.
+						*indirectDrawCommandCountsShadow = 0;
+						indirectDrawCommandCountsShadow++;
+						*indirectDrawCommandCountsMain = 0;
+						indirectDrawCommandCountsMain++;
 					}
 				}
 			}
@@ -6027,11 +6102,14 @@ void VulkanEngine::compactRenderObjectsIntoDraws(FrameData& currentFrame, std::v
 	vmaUnmapMemory(_allocator, currentFrame.instancePtrBuffer._allocation);
 	vmaUnmapMemory(_allocator, currentFrame.indirectDrawCommandRawBuffer._allocation);
 	vmaUnmapMemory(_allocator, currentFrame.indirectDrawCommandOffsetsBuffer._allocation);
-	vmaUnmapMemory(_allocator, currentFrame.indirectDrawCommandCountsBuffer._allocation);
+	vmaUnmapMemory(_allocator, currentFrame.indirectShadowPass.indirectDrawCommandCountsBuffer._allocation);
+	vmaUnmapMemory(_allocator, currentFrame.indirectMainPass.indirectDrawCommandCountsBuffer._allocation);
 }
 
-void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, bool materialOverride)
+void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, bool materialOverride, bool useShadowIndirectPass)
 {
+	auto& pass = useShadowIndirectPass ? currentFrame.indirectShadowPass : currentFrame.indirectMainPass;
+
 	// Iterate thru all the batches
 	vkglTF::Model* lastModel = nullptr;
 	size_t lastUMBIdx = (size_t)-1;
@@ -6071,7 +6149,7 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 		VkDeviceSize indirectOffset = batch.first * drawStride;
 		VkDeviceSize countOffset = countIdx * countStride;
 		// vkCmdDrawIndexedIndirect(cmd, currentFrame.indirectDrawCommandRawBuffer._buffer, indirectOffset, batch.count, drawStride);
-		vkCmdDrawIndexedIndirectCount(cmd, currentFrame.indirectDrawCommandRawBuffer._buffer, indirectOffset, currentFrame.indirectDrawCommandCountsBuffer._buffer, countOffset, batch.count, drawStride);
+		vkCmdDrawIndexedIndirectCount(cmd, pass.indirectDrawCommandsBuffer._buffer, indirectOffset, pass.indirectDrawCommandCountsBuffer._buffer, countOffset, batch.count, drawStride);
 		countIdx++;
 	}
 }

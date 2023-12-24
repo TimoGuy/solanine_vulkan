@@ -17,7 +17,7 @@ layout(set = 0, binding = 0) readonly buffer IndirectDrawCommandsRawBuffer
 	IndirectDrawCommandsData commands[];
 } drawCommandsInput;
 
-layout(set = 0, binding = 1) readonly buffer IndirectDrawCommandsOutputBuffer
+layout(set = 0, binding = 1) buffer IndirectDrawCommandsOutputBuffer
 {
 	IndirectDrawCommandsData commands[];
 } drawCommandsOutput;

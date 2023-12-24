@@ -155,17 +155,17 @@ struct FrameData
 	VkCommandBuffer mainCommandBuffer;
 	VkCommandBuffer pickingCommandBuffer;
 
-	struct IndirectDrawCommands
+	struct IndirectPass
 	{
 		AllocatedBuffer indirectDrawCommandsBuffer;
-		AllocatedBuffer indirectDrawCommandOffsetsBuffer;
 		AllocatedBuffer indirectDrawCommandCountsBuffer;
 		VkDescriptorSet indirectDrawCommandDescriptor;
 	};
-	AllocatedBuffer      indirectDrawCommandRawBuffer;
-	IndirectDrawCommands indirectDrawCommandsShadowPass;
-	IndirectDrawCommands indirectDrawCommandsMainPass;
-	uint32_t             numInstances;
+	AllocatedBuffer indirectDrawCommandRawBuffer;
+	AllocatedBuffer indirectDrawCommandOffsetsBuffer;
+	IndirectPass    indirectShadowPass;
+	IndirectPass    indirectMainPass;
+	uint32_t        numInstances;
 
 	AllocatedBuffer cameraBuffer;
 	AllocatedBuffer pbrShadingPropsBuffer;
@@ -467,12 +467,13 @@ private:
 		std::vector<ModelWithIndirectDrawId>& outIndirectDrawCommandIdsForPoolIndex
 #endif
 		);
-	void renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, bool materialOverride);
+	void renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, bool materialOverride, bool useShadowIndirectPass);
 
 	bool searchForPickedObjectPoolIndex(size_t& outPoolIndex);
 	void renderPickedObject(VkCommandBuffer cmd, const FrameData& currentFrame, const std::vector<ModelWithIndirectDrawId>& indirectDrawCommandIds);
 
-	void computeCulling(const FrameData& currentFrame, VkCommandBuffer cmd);
+	void computeShadowCulling(const FrameData& currentFrame, VkCommandBuffer cmd);
+	void computeMainCulling(const FrameData& currentFrame, VkCommandBuffer cmd);
 	void computeSkinnedMeshes(const FrameData& currentFrame, VkCommandBuffer cmd);
 	void renderPickingRenderpass(const FrameData& currentFrame);
 	void renderShadowRenderpass(const FrameData& currentFrame, VkCommandBuffer cmd);

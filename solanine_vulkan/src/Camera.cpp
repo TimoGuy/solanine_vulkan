@@ -146,6 +146,32 @@ void SceneCamera::recalculateCascadeViewProjs(GPUPBRShadingProps& pbrShadingProp
 		glm_mat4_copy(gpuCascadeViewProjsData.cascadeViewProjs[i], pbrShadingProps.cascadeViewProjMats[i]);
 		pbrShadingProps.cascadeSplits[i] = (nearClip + splitDist * clipRange) * -1.0f;
 
+		// Store whole shadow extents.
+		if (i == 0)
+		{
+			glm_vec3_copy(minExtents, wholeShadowMinExtents);
+			glm_vec3_copy(maxExtents, wholeShadowMaxExtents);
+		}
+		else
+		{
+			glm_vec3_minv(minExtents, wholeShadowMinExtents, wholeShadowMinExtents);
+			glm_vec3_maxv(maxExtents, wholeShadowMaxExtents, wholeShadowMaxExtents);
+		}
+
+		// Store whole shadow light view matrix.
+		if (i == SHADOWMAP_CASCADES - 1)
+		{
+			vec3 wholeFrustumCenter;
+			glm_vec3_add(wholeShadowMinExtents, wholeShadowMaxExtents, wholeFrustumCenter);
+			glm_vec3_scale(wholeFrustumCenter, 0.5f, wholeFrustumCenter);
+
+			vec3 wholeFrustumEye;
+			glm_vec3_scale(lightDir, -wholeShadowMinExtents[2], wholeFrustumEye);
+			glm_vec3_sub(wholeFrustumCenter, wholeFrustumEye, wholeFrustumEye);
+
+			glm_lookat(wholeFrustumEye, wholeFrustumCenter, up, wholeShadowLightViewMatrix);
+		}
+
 		lastSplitDist = cascadeSplits[i];
 	}
 }

@@ -180,12 +180,12 @@
 - [x] New mesh organization.
     - [x] Using buckets instead of sorting.
     - [x] Do it lol.
-- [ ] Compute culling.
+- [x] Compute culling.
     - [x] RESEARCH: how to use `vkCmdDrawIndirectIndexedCount` to compact draw commands.
         > You don't have to rewrite instance data if you use indexed count.
         > Also, with the command buffer, instead of having commands compacted to the mesh level (index offset and counts), you can compact commands to the model level.
     - [x] Fix skinned meshes and how they render (start at the @TODO: start here!!!!!!)
-    - [ ] Use a compute shader to iterate thru all the instances, and if one is visible (for this time just have the `isvisible()` func just return true), atomic add the count of the count buffer, and take the stored offset value + the new count in the count buffer - 1 to get the index in the indirect command buffer to write to. If it's the same index that the shader is working on, then skip writing the command, but if not, copy the whole indirect command into the offset+count-1 position.
+    - [x] Use a compute shader to iterate thru all the instances, and if one is visible (for this time just have the `isvisible()` func just return true), atomic add the count of the count buffer, and take the stored offset value + the new count in the count buffer - 1 to get the index in the indirect command buffer to write to. If it's the same index that the shader is working on, then skip writing the command, but if not, copy the whole indirect command into the offset+count-1 position.
         - [x] Figure out how the compute shader will figure out which count buffer offset slot to write to. @THOUGHT: maybe just adding that field into the indirect offsets buffer?
             - [x] ANSWER: copy the draw command into the next atomic add reserved spot.
         - [x] Create `isVisible()`
@@ -194,9 +194,9 @@
                 - [x] MOOOOOREEEE!!!!
                 - [x] Bug fixes m8
             - [f] Occlusion culling. (FUTURE!! This shouldn't be too hard to implement though)
-        - [ ] Create another indirect draw command buffer for shadows.
-            - [ ] Only do frustum culling tho.
-            - [ ] Has its own count buffer too.
+        - [x] Create another indirect draw command buffer for shadows.
+            - [x] Only do frustum culling tho.
+            - [x] Has its own count buffer too.
 
 - [ ] Better level editor.
     - [ ] Update collision box texture for voxel fields.
