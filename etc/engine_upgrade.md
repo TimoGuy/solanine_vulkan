@@ -211,7 +211,8 @@
         > Player object location will be handled by the global state. (FUTURE)
         - [ ] Lay out simulation objects that are just level testing spawn points and select which one to start playing at when doing level testing
             - EDITORTestLevelSpawnPoint.h/.cpp This name would be good eh!
-            - [ ] They get saved, but their render object is in the builder layer.
+            - [x] Create the 3d model.
+            - [x] They get saved, but their render object is in the builder layer.
         - [ ] When pressing F1 (or whatever key will be for starting/stopping play mode), pop up a menu that has a list of the currently available test spawn points. Click on one and the player will be created and spawned at that position.
             - [ ] Press a certain key to reset the player to the position.
         - [x] Disable player being able to be created in palette.

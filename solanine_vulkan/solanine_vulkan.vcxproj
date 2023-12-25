@@ -165,6 +165,7 @@ copy $(SolutionDir)libs\ktx\lib_$(ConfigurationName)\ktx.dll $(OutDirfullPath)kt
     <ClInclude Include="src\imgui\imgui_stdlib.h" />
     <ClInclude Include="src\imgui\pch.h" />
     <ClInclude Include="src\NoteTaker.h" />
+    <ClInclude Include="src\EDITORTestLevelSpawnPoint.h" />
     <ClInclude Include="src\EDITORTextureViewer.h" />
     <ClInclude Include="src\pch.h" />
     <ClInclude Include="src\RenderObject.h" />
@@ -235,6 +236,7 @@ copy $(SolutionDir)libs\ktx\lib_$(ConfigurationName)\ktx.dll $(OutDirfullPath)kt
     <ClCompile Include="src\InputManager.cpp" />
     <ClCompile Include="src\Main.cpp" />
     <ClCompile Include="src\NoteTaker.cpp" />
+    <ClCompile Include="src\EDITORTestLevelSpawnPoint.cpp" />
     <ClCompile Include="src\EDITORTextureViewer.cpp" />
     <ClCompile Include="src\pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>

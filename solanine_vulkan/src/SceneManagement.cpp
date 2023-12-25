@@ -18,6 +18,7 @@
 #include "HarvestableItem.h"
 #include "GondolaSystem.h"
 #include "EDITORTextureViewer.h"
+#include "EDITORTestLevelSpawnPoint.h"
 
 
 // @PALETTE: where to add serialized names for the entities
@@ -34,14 +35,16 @@ const std::vector<PaletteElem> PALETTE_ELEMENTS = {
     { ":harvestableitem", true },
     { ":gondolasystem", true },
     { ":EDITORtextureviewer", true },
+    { ":EDITORspawnpoint", true },
 };
-const std::string SimulationCharacter::TYPE_NAME = PALETTE_ELEMENTS[0].name;
-const std::string NoteTaker::TYPE_NAME           = PALETTE_ELEMENTS[1].name;
-const std::string VoxelField::TYPE_NAME          = PALETTE_ELEMENTS[2].name;
-const std::string ScannableItem::TYPE_NAME       = PALETTE_ELEMENTS[3].name;
-const std::string HarvestableItem::TYPE_NAME     = PALETTE_ELEMENTS[4].name;
-const std::string GondolaSystem::TYPE_NAME       = PALETTE_ELEMENTS[5].name;
-const std::string EDITORTextureViewer::TYPE_NAME = PALETTE_ELEMENTS[6].name;
+const std::string SimulationCharacter::TYPE_NAME       = PALETTE_ELEMENTS[0].name;
+const std::string NoteTaker::TYPE_NAME                 = PALETTE_ELEMENTS[1].name;
+const std::string VoxelField::TYPE_NAME                = PALETTE_ELEMENTS[2].name;
+const std::string ScannableItem::TYPE_NAME             = PALETTE_ELEMENTS[3].name;
+const std::string HarvestableItem::TYPE_NAME           = PALETTE_ELEMENTS[4].name;
+const std::string GondolaSystem::TYPE_NAME             = PALETTE_ELEMENTS[5].name;
+const std::string EDITORTextureViewer::TYPE_NAME       = PALETTE_ELEMENTS[6].name;
+const std::string EDITORTestLevelSpawnPoint::TYPE_NAME = PALETTE_ELEMENTS[7].name;
 
 
 namespace scene
@@ -107,6 +110,8 @@ namespace scene
             ent = new GondolaSystem(engine->_entityManager, engine->_roManager, ds);
         if (objectName == EDITORTextureViewer::TYPE_NAME)
             ent = new EDITORTextureViewer(engine->_entityManager, engine->_roManager, ds);
+        if (objectName == EDITORTestLevelSpawnPoint::TYPE_NAME)
+            ent = new EDITORTestLevelSpawnPoint(engine->_entityManager, engine->_roManager, ds);
 
         if (ent == nullptr)
         {
