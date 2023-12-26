@@ -81,3 +81,9 @@
 #include <Jolt/Math/Mat44.h>
 #include <Jolt/Math/Vec3.h>
 #include <Jolt/Math/MathTypes.h>
+
+#ifdef _DEVELOP
+    #define HAWSOO_CRASH() abort()
+#else
+    #define HAWSOO_CRASH()
+#endif

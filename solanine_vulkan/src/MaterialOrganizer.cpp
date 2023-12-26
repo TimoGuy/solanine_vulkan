@@ -612,7 +612,8 @@ namespace materialorganizer
             spv_reflect::ShaderModule umbSM;
             if (!reflectionhelper::loadShaderModule(("res/shaders/" + umb.fragment.fname).c_str(), umbSM))
             {
-                std::cerr << "ERROR: Cook failed for unique material: " << umb.umbPath << std::endl;
+                std::cerr << "ERROR: shader reflection failed for unique material: " << umb.umbPath << std::endl;
+                HAWSOO_CRASH();
                 continue;  // Duck out bc cook failed.
             }
             auto descriptorBindings = reflectionhelper::extractDescriptorBindingsSorted(umbSM);
@@ -638,6 +639,7 @@ namespace materialorganizer
             {
                 std::cerr << "[COOK EXISTING UMBS]" << std::endl
                     << "ERROR: material collection not found for unique material: " << umb.umbPath << std::endl;
+                HAWSOO_CRASH();
                 continue;  // Duck out bc cook failed.
             }
 
