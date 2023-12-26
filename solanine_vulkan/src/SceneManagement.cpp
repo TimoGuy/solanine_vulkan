@@ -307,7 +307,7 @@ namespace scene
             return false;
         }
 
-        outfile << "Hawsoo ENTity Assortment of IdentitieS" << '\n';  // File marker.
+        outfile << "Hawsoo ENTity Assortment of IdentitieS" << '\n' << '\n';  // File marker.
 
         for (auto ent : entities)
         {

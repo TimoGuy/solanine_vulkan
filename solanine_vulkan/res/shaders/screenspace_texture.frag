@@ -95,6 +95,9 @@ struct MaterialParam
 {
 	// Texture map references
 	uint textureMapIndex;
+	uint pad0;
+	uint pad1;
+	uint pad2;
 
 	// Material properties
 	vec4  tint;

@@ -65,7 +65,7 @@ VoxelField::VoxelField(VulkanEngine* engine, EntityManager* em, RenderObjectMana
     if (_data->vfpd == nullptr)
         buildDefaultVoxelData(*_data, getGUID());
 
-    _data->voxelModel = _data->rom->getModel("DevBoxWood", this, [](){});
+    _data->voxelModel = _data->rom->getModel("DevCollisionBox", this, [](){});
     std::vector<physengine::VoxelFieldCollisionShape> shapes;
     physengine::cookVoxelDataIntoShape(*_data->vfpd, getGUID(), shapes);
     assembleVoxelRenderObjects(*_data, getGUID(), shapes);

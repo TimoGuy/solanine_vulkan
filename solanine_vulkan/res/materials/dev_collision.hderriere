@@ -1,0 +1,8 @@
+Hawsoo DERived MateRIal parametER Entry
+HUMBA                           dev_collision.humba
+
+# MaterialCollection :: MaterialParam :: members
+textureMapIndex    grid256
+standableColor     0.000000,1.000000,0.000000,1.000000
+steepColor         1.000000,0.000000,0.000000,1.000000
+slopeAngleSin      0.70710678118
