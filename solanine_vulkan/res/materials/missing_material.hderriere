@@ -7,8 +7,8 @@ physicalDescriptorMapIndex      empty
 normalMapIndex                  empty
 aoMapIndex                      empty
 emissiveMapIndex                empty
-baseColorFactor                 1.000000,1.000000,1.000000,1.000000
-emissiveFactor                  1.000000,0.000000,1.000000,1000.000000
+baseColorFactor                 1.000000,0.000000,1.000000,1.000000
+emissiveFactor                  1.000000,1.000000,1.000000,1.000000
 diffuseFactor                   0.000000,0.000000,0.000000,0.000000
 specularFactor                  0.000000,0.000000,0.000000,0.000000
 workflow                        0.000000

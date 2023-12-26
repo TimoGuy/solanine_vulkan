@@ -217,6 +217,22 @@
             - [ ] Press a certain key to reset the player to the position.
         - [x] Disable player being able to be created in palette.
 
+- [ ] Font cooker
+    - [ ] STUFF
+
+- [ ] Mid level AO: XeGTAO (port to vulkan).
+    - [ ] See if the hlsl will just compile from the compiler.
+    - [ ] Get the velocity buffer working.
+    - [ ] Input in all the values needed for the XeGTAO to work.
+    - [ ] Magic and it works???!??!?!?!?
+
+- [ ] GRAPHICS EXPERIMENT: Real time sky ambient occlusion
+    > Get the whole area around the camera captured in a low frequency shadow texture in multiple different directions (26?).
+    > Maybe instead of having to sample 26 shadow maps (each direction's render is amortized, so the main cost is the sampling direction), maybe having render probes capture the occlusion, that could be good.
+        > @NOTE: it only has to look good at 30 and 60 fps!!! For these kinds of effects, the higher the better, so if they look good at those marks, they'll look good anywhere.
+        > Also, the technique has to be stable, but also be able to react quickly to changes.
+    > Perhaps a good reference technique? https://www.youtube.com/watch?v=TzS0Zspn2Ig (16 shadowmaps per frame, sampled with monte-carlo and TAA)
+
 - [ ] UI Editor
 
     - [ ] Small animations of how UI elements will come in and move out.
