@@ -144,10 +144,18 @@ namespace materialorganizer
         } compiled;
 
 
-        bool loadFromFile(const std::filesystem::path& path, bool paramIsSpecial)
+        bool loadFromFile(const std::filesystem::path& path)
         {
             umbPath = path;
-            isSpecial = paramIsSpecial;
+
+            {
+                // Check whether is special.
+                static const std::string specialSuffix = ".special.humba";
+                std::string fname = path.filename().string();
+                isSpecial =
+                    (fname.length() >= specialSuffix.length() &&
+                    fname.compare(fname.length() - specialSuffix.length(), specialSuffix.length(), specialSuffix) == 0);
+            }
 
             std::ifstream infile(umbPath);
             std::string line;
@@ -276,12 +284,6 @@ namespace materialorganizer
 
     bool loadMaterialBase(const std::filesystem::path& path)
     {
-        static const std::string specialSuffix = ".special.humba";
-        std::string fname = path.filename().string();
-        bool isSpecial =
-            (fname.length() >= specialSuffix.length() &&
-            fname.compare(fname.length() - specialSuffix.length(), specialSuffix.length(), specialSuffix) == 0);
-
         UniqueMaterialBase* umb = nullptr;  // @COPYPASTA
         for (auto& eUMB : existingUMBs)
             if (eUMB.umbPath == path)
@@ -291,20 +293,25 @@ namespace materialorganizer
             }
         if (umb == nullptr)
         {
-            UniqueMaterialBase newUMB = {};
-            if (isSpecial)
-            {
-                existingUMBs.push_back(newUMB);
-                umb = &existingUMBs.back();
-            }
-            else
-            {
-                existingUMBs.insert(existingUMBs.begin(), newUMB);
-                umb = &existingUMBs.front();
-            }
+            existingUMBs.push_back({});
+            umb = &existingUMBs.back();
         }
         *umb = {};  // Clear state.
-        return umb->loadFromFile(path, isSpecial);
+        bool success = umb->loadFromFile(path);
+
+        if (success)
+        {
+            // Sort all materials by specialness.
+            std::sort(
+                existingUMBs.begin(),
+                existingUMBs.end(),
+                [&](UniqueMaterialBase a, UniqueMaterialBase b) {
+                    return a.isSpecial < b.isSpecial;
+                }
+            );  // @NOCHECKIN: check this!
+        }
+
+        return success;
     }
 
     // Derived Material Parameter Set (.hderriere)
@@ -532,7 +539,7 @@ namespace materialorganizer
             existingDMPSs.begin(),
             existingDMPSs.end(),
             [&](DerivedMaterialParamSet a, DerivedMaterialParamSet b) {
-                return a.dmpsPath.compare(b.humbaFname) < 0;
+                return a.humbaFname.compare(b.humbaFname) < 0;
             }
         );
 

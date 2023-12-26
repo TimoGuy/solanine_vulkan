@@ -656,7 +656,14 @@ void Camera::updateMainCam(float_t deltaTime, CameraModeChangeEvent changeEvent)
 void Camera::updateFreeCam(float_t deltaTime, CameraModeChangeEvent changeEvent)
 {
 	if (changeEvent != CameraModeChangeEvent::NONE)
+	{
 		freeCamMode.enabled = false;
+
+		// Set default depth of field for free cam mode!
+		globalState::DOFFocusDepth  = 1000.0f;
+		globalState::DOFFocusExtent = 1000.0f;
+		globalState::DOFBlurExtent  = 0.0f;
+	}
 	if (_cameraMode != _cameraMode_freeCamMode)
 		return;
 

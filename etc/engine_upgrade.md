@@ -203,6 +203,15 @@
 
 - [x] BUGFIX: fix the material viewer black ball.
 
+- [x] BUGFIX: materials being off (both in material viewer and in level editor).
+    > Turns out that sorting by humba was incorrect (MaterialOrganizer.cpp: line 542), bc it was a.dmpsFname vs b.humbaFname, instead of both humbaFname.
+- [x] BUGFIX: entering level editor twice causes instance corruption.
+    > This is fortunately not instance corruption. Rather, this is related to the physics engine. It could be a stale transform that was set in the pool. Idk.
+    > Okay, so this was not from the physics engine/stale transforms. This was due to bad allocation for the first element. Since the first element's index didn't get set correctly (when `numVFsCreated == 0`), subsequent voxel fields created get fragmentation.
+    - [x] Also, didn't realize there was a memory leak with `vfpd->voxelData` in the `destroyVoxelField()` and destructor. Bonus fix!
+        > But... it also makes we wonder who is supposed to be responsible for destroying the voxeldata. I think the destruction is in the right place, so how do we create the voxeldata? That's the real question I think.
+- [x] FIX: turn off dof when going back into free cam mode.
+
 - [ ] Better level editor.
     - [x] Update collision box texture for voxel fields.
     - [ ] No physics simulations when the level is in editing mode.

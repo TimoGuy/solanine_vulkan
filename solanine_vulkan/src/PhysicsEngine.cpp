@@ -772,10 +772,9 @@ namespace physengine
             // Pull a voxel field from the pool
             size_t index = 0;
             if (numVFsCreated > 0)
-            {
                 index = (voxelFieldIndices[numVFsCreated - 1] + 1) % PHYSICS_OBJECTS_MAX_CAPACITY;
-                voxelFieldIndices[numVFsCreated] = index;
-            }
+            voxelFieldIndices[numVFsCreated] = index;
+
             VoxelFieldPhysicsData& vfpd = voxelFieldPool[index];
             numVFsCreated++;
 
@@ -808,10 +807,14 @@ namespace physengine
                 if (numVFsCreated > 1)
                 {
                     // Overwrite the index with the back index,
-                    // effectively deleting the index
+                    // effectively deleting the index, while also
+                    // preventing fragmentation.
                     index = voxelFieldIndices[numVFsCreated - 1];
                 }
                 numVFsCreated--;
+
+                // Destroy voxel data.
+                delete[] vfpd->voxelData;
 
                 // Remove and delete the voxel field body.
                 BodyInterface& bodyInterface = physicsSystem->GetBodyInterface();
