@@ -203,6 +203,12 @@
 
 - [x] BUGFIX: fix the material viewer black ball.
 
+- [x] BUGFIX: materials being off (both in material viewer and in level editor).
+    > Turns out that sorting by humba was incorrect (MaterialOrganizer.cpp: line 542), bc it was a.dmpsFname vs b.humbaFname, instead of both humbaFname.
+- [ ] BUGFIX: entering level editor twice causes instance corruption.
+    > This is fortunately not instance corruption. Rather, this is related to the physics engine. It could be a stale transform that was set in the pool. Idk.
+- [ ] FIX: turn off dof when going back into free cam mode.
+
 - [ ] Better level editor.
     - [x] Update collision box texture for voxel fields.
     - [ ] No physics simulations when the level is in editing mode.
