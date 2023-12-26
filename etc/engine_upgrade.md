@@ -201,6 +201,8 @@
 - [x] Update missing material.
     > Now it's an amalgamation of missing material in japanese and english in wordart. (https://www.makewordart.com/)
 
+- [x] BUGFIX: fix the material viewer black ball.
+
 - [ ] Better level editor.
     - [ ] Update collision box texture for voxel fields.
     - [ ] No physics simulations when the level is in editing mode.
