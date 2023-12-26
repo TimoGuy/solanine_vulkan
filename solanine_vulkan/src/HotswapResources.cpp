@@ -105,7 +105,7 @@ namespace hotswapres
             for (auto& r : resources)
                 if (r.includeInCheck &&
                     glslToSPIRVHelper::checkGLSLShaderCompileNeeded(r.path) &&
-                    glslToSPIRVHelper::compileGLSLShaderToSPIRV(r.path))
+                    glslToSPIRVHelper::compileGLSLShaderToSPIRV(r.path, isFirstRun))
                     executedHotswap = true;
         }
         else if (stageName == ".humba")
@@ -452,75 +452,6 @@ namespace hotswapres
                 else
                     std::cout << numGroupsProcessed << " Groups Processed." << std::endl;
             }
-
-
-#if 0
-                    continue;
-
-                // Insert lock guard to reload resources
-                std::cout << "[RELOAD HOTSWAPPABLE RESOURCE]" << std::endl
-                    << "Asking to swap resources..." << std::endl;
-                std::lock_guard<std::mutex> lg(hotswapResourcesMutex);
-
-                //
-                // Reload the resource
-                //
-                std::cout << "[RELOAD HOTSWAPPABLE RESOURCE]" << std::endl
-                    << "Name: " << rtw->path << std::endl;
-                resource.lastWriteTime = lastWriteTime;
-
-                if (!resource.path.has_extension())
-                {
-                    std::cerr << "ERROR: file " << resource.path << " has no extension!" << std::endl;
-                    continue;
-                }
-
-                //
-                // Find the extension and execute appropriate routine
-                //
-                const auto& ext = resource.path.extension();
-                if (ext.compare(".vert") == 0 ||
-                    ext.compare(".frag") == 0 ||
-                    ext.compare(".comp") == 0)
-                {
-                    // Compile the shader (GLSL -> SPIRV)
-                    glslToSPIRVHelper::compileGLSLShaderToSPIRV(resource.path);
-
-                    
-                    std::cout << "Recompile shader to SPIRV and trigger swapchain recreation SUCCESS" << std::endl;
-                    continue;
-                }
-                else if (ext.compare(".hrecipe"))
-                {
-                    // Cook textures
-                    texturecooker::cookTextureFromRecipe(resource.path);
-                }
-                else if (ext.compare(".gltf") == 0 ||
-                        ext.compare(".glb")  == 0)
-                {
-                    roManager->reloadModelAndTriggerCallbacks(engine, resource.path.stem().string(), resource.path.string());
-                    std::cout << "Sent message to model \"" << resource.path.stem().string() << "\" to reload." << std::endl;
-                    continue;
-                }
-                else
-                {
-                    // Execute all callback functions attached to resource name.
-                    std::string fname = resource.path.string();
-                    auto it = resourceReloadCallbackMap.find(fname);
-                    if (it != resourceReloadCallbackMap.end())
-                    {
-                        for (auto& rc : resourceReloadCallbackMap[fname])
-                            rc.callback();
-
-                        size_t callbacks = resourceReloadCallbackMap[fname].size();
-                        if (callbacks > 0)
-                        {
-                            std::cout << "Executed " << callbacks << " callback function(s) for \"" << fname << "\" to reload." << std::endl;
-                            continue;
-                        }
-                    }
-                }
-#endif
 
             // Just a simple static delay of 1 sec to not overload the filesystem.
             isFirstRun = false;

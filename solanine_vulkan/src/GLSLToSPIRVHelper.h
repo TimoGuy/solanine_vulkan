@@ -5,7 +5,7 @@
 namespace glslToSPIRVHelper
 {
     bool checkGLSLShaderCompileNeeded(const std::filesystem::path& sourceCodePath);
-    bool compileGLSLShaderToSPIRV(const std::filesystem::path& sourceCodePath);
+    bool compileGLSLShaderToSPIRV(const std::filesystem::path& sourceCodePath, bool crashOnError);
 }
 
 #endif
