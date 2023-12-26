@@ -49,11 +49,13 @@ EDITORTextureViewer::~EDITORTextureViewer()
 
 void EDITORTextureViewer::simulationUpdate(float_t simDeltaTime)
 {
+    bool forceBucketResorting = false;
     if (d->currentAssignedUMB != INTERNAL_EDITORTEXTUREVIEWER_assignedMaterialUMB)
     {
         d->currentAssignedUMB = INTERNAL_EDITORTEXTUREVIEWER_assignedMaterialUMB;
         for (auto& umbi : d->renderObj->perPrimitiveUniqueMaterialBaseIndices)
             umbi = d->currentAssignedUMB;
+        forceBucketResorting = true;
     }
     if (d->currentAssignedDMPS != INTERNAL_EDITORTEXTUREVIEWER_assignedMaterialDMPS)
     {
@@ -61,6 +63,8 @@ void EDITORTextureViewer::simulationUpdate(float_t simDeltaTime)
         for (auto& cmi : d->renderObj->calculatedModelInstances)
             cmi.materialID = d->currentAssignedDMPS;
     }
+    if (forceBucketResorting)
+        d->rom->flagMetaMeshListAsUnoptimized();
 }
 
 void EDITORTextureViewer::dump(DataSerializer& ds)

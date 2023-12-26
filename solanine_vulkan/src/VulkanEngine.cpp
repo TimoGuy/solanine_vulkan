@@ -6182,8 +6182,9 @@ void VulkanEngine::changeEditorMode(EditorModes newEditorMode)
 
 		case EditorModes::MATERIAL_EDITOR:
 		{
-			INTERNALVULKANENGINEASSIGNEDMATERIAL_umbIdx = 0;
-			INTERNALVULKANENGINEASSIGNEDMATERIAL_dmpsIdx = 0;
+			std::string path = materialorganizer::getListOfDerivedMaterials()[0];
+			INTERNALVULKANENGINEASSIGNEDMATERIAL_umbIdx = materialorganizer::derivedMaterialNameToUMBIdx(path);
+			INTERNALVULKANENGINEASSIGNEDMATERIAL_dmpsIdx = materialorganizer::derivedMaterialNameToDMPSIdx(path);
 			EDITORTextureViewer::setAssignedMaterial(
 				INTERNALVULKANENGINEASSIGNEDMATERIAL_umbIdx,
 				INTERNALVULKANENGINEASSIGNEDMATERIAL_dmpsIdx
