@@ -582,7 +582,8 @@ namespace materialorganizer
                 vkinit::imageviewCreateInfo(format, texture.map.image._image, VK_IMAGE_ASPECT_COLOR_BIT, texture.map.image._mipLevels));
             vkCreateImageView(engineRef->_device, &imageInfo, nullptr, &texture.map.imageView);
 
-            VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(texture.map.image._mipLevels), VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
+            // @TODO: have a way to detect sampler filter (idea: in the .hderriere files that reference the textures, specify the sampler wanted, then add that field in `texturesInOrder`, but might be better to remove combined image sampler if do this.)  -Timo 2023/12/25
+            VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(texture.map.image._mipLevels), VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_REPEAT, false);
             vkCreateSampler(engineRef->_device, &samplerInfo, nullptr, &texture.map.sampler);
 
             engineRef->_swapchainDependentDeletionQueue.pushFunction([=]() {
@@ -636,8 +637,8 @@ namespace materialorganizer
             if (!materialCollectionDescriptorExists)
             {
                 std::cerr << "[COOK EXISTING UMBS]" << std::endl
-                    << "ERROR: material collection not found." << std::endl;
-                continue; 
+                    << "ERROR: material collection not found for unique material: " << umb.umbPath << std::endl;
+                continue;  // Duck out bc cook failed.
             }
 
             struct StructElement
