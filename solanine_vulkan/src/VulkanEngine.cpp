@@ -6475,6 +6475,12 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 				if (ImGui::CollapsingHeader("Physics Properties", ImGuiTreeNodeFlags_DefaultOpen))
 				{
 					static vec3 worldGravity = GLM_VEC3_ZERO_INIT;
+					static bool first = true;  // @HACK
+					if (first)
+					{
+						physengine::getWorldGravity(worldGravity);
+						first = false;
+					}                          // End @HACK
 					if (ImGui::DragFloat3("worldGravity", worldGravity))
 						physengine::setWorldGravity(worldGravity);
 				}

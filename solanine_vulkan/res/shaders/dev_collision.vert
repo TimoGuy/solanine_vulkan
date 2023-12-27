@@ -11,7 +11,8 @@ layout (location = 0) out vec3 outWorldPos;
 layout (location = 1) out vec3 outViewPos;
 layout (location = 2) out vec3 outNormal;
 layout (location = 3) out vec3 outObjectPos;
-layout (location = 4) out uint baseInstanceID;
+layout (location = 4) out vec3 outObjectNormal;
+layout (location = 5) out uint baseInstanceID;
 
 
 // Camera Props
@@ -78,6 +79,11 @@ void main()
 			length(modelMatrix[2].xyz)
 		);
 	outObjectPos = inPos * scale + scale * 0.5;  // @NOTE: +scale*0.5 offsets the origin to be the bottom-left corner, fixing world space-based uv coordinate origin position.
+
+	mat3 justScaleMM = mat3( scale.x, 0.0,     0.0,
+	                         0.0,     scale.y, 0.0,
+							 0.0,     0.0,     scale.z);
+	outObjectNormal = normalize(transpose(inverse(mat3(justScaleMM))) * inNormal);
 
 	outWorldPos = locPos.xyz / locPos.w;
 	outViewPos = (cameraData.view * vec4(outWorldPos, 1.0)).xyz;

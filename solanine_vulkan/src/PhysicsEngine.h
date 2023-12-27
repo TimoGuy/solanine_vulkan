@@ -113,6 +113,7 @@ namespace physengine
     void recalcInterpolatedTransformsSet();
 
     void setWorldGravity(vec3 newGravity);
+    void getWorldGravity(vec3& outGravity);
     size_t getCollisionLayer(const std::string& layerName);
     bool raycast(vec3 origin, vec3 directionAndMagnitude, std::string& outHitGuid);
 

@@ -29,7 +29,7 @@ EDITORTextureViewer::EDITORTextureViewer(EntityManager* em, RenderObjectManager*
     if (ds)
         load(*ds);
 
-    vkglTF::Model* model = d->rom->getModel("EDITOR_TextureViewerSphere", this, [](){});
+    vkglTF::Model* model = d->rom->getModel("EDITOR_TextureViewerSphere2", this, [](){});
     d->rom->registerRenderObjects({
             {
                 .model = model,

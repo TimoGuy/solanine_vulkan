@@ -710,7 +710,10 @@ namespace physengine
             input::editorInputSet().update();
             input::simInputSet().update();
             entityManager->INTERNALsimulationUpdate(simDeltaTime);  // @NOTE: if timescale changes, then the system just waits longer/shorter per loop.
-            physicsSystem->Update(simDeltaTime, 1, 1, &tempAllocator, &jobSystem);
+            if (false)
+            {
+                physicsSystem->Update(simDeltaTime, 1, 1, &tempAllocator, &jobSystem);
+            }
             copyResultTransforms();
 
 #ifdef _DEVELOP
@@ -1289,7 +1292,7 @@ namespace physengine
 
     void setCharacterPosition(CapsulePhysicsData& cpd, vec3 position)
     {
-        cpd.character->SetPosition(RVec3(position[0], position[1], position[2]));
+        cpd.character->SetPosition(RVec3(position[0], position[1] - collisionTolerance * 0.5f, position[2]));
     }
 
     void moveCharacter(CapsulePhysicsData& cpd, vec3 velocity)
@@ -1401,6 +1404,14 @@ namespace physengine
     void setWorldGravity(vec3 newGravity)
     {
         physicsSystem->SetGravity(Vec3(newGravity[0], newGravity[1], newGravity[2]));
+    }
+
+    void getWorldGravity(vec3& outGravity)
+    {
+        Vec3 grav = physicsSystem->GetGravity();
+        outGravity[0] = grav.GetX();
+        outGravity[1] = grav.GetY();
+        outGravity[2] = grav.GetZ();
     }
 
     size_t getCollisionLayer(const std::string& layerName)

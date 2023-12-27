@@ -78,6 +78,11 @@ vec4 SRGBtoLINEAR(vec4 srgbIn)
 void main()
 {
 	vec4 rawColor = texture(mainImage, inUV);
+
+	// // @DEBUG
+	// outColor = rawColor;
+	// return;
+
 	vec4 dofFarColorAndCoC = texture(dofFarImage, inUV);
 	float farCoC = texture(dofCoCImage, inUV).g;  // @NOTE: using the NEAREST filter.
 	rawColor.rgb = mix(rawColor.rgb, dofFarColorAndCoC.rgb, min(farCoC, dofFarColorAndCoC.a));

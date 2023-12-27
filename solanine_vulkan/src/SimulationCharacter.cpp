@@ -302,6 +302,8 @@ struct SimulationCharacter_XData
     std::vector<size_t> scannableItemsIdsToSpawnAfterDeath;
 };
 
+inline bool isPlayer(SimulationCharacter_XData* d) { return d->characterType == CHARACTER_TYPE_PLAYER; }
+
 void processOutOfHealth(EntityManager* em, Entity* e, SimulationCharacter_XData* d)
 {
     // Drop off items and then destroy self.
@@ -1398,10 +1400,10 @@ SimulationCharacter::SimulationCharacter(EntityManager* em, RenderObjectManager*
     _data->staminaData.currentStamina = (float_t)_data->staminaData.maxStamina;
 
     // Create physics character.
-    bool useCCD = (_data->characterType == CHARACTER_TYPE_PLAYER);
+    bool useCCD = (isPlayer(_data));
     _data->cpd = physengine::createCharacter(getGUID(), _data->position, 0.375f, 1.25f, useCCD);  // Total height is 2, but r*2 is subtracted to get the capsule height (i.e. the line segment length that the capsule rides along)
 
-    if (_data->characterType == CHARACTER_TYPE_PLAYER)
+    if (isPlayer(_data))
     {
         _data->camera->mainCamMode.setMainCamTargetObject(_data->characterRenderObj);  // @NOTE: I believe that there should be some kind of main camera system that targets the player by default but when entering different volumes etc. the target changes depending.... essentially the system needs to be more built out imo
 
@@ -1641,7 +1643,7 @@ std::string currentText;
 
 void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, EntityManager* em, const std::string& myGuid)
 {
-    if (d->characterType == CHARACTER_TYPE_PLAYER)
+    if (isPlayer(d))
     {
         // Handle 'E' action.
         if (interactionUIText != nullptr &&
@@ -1715,7 +1717,7 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
         //
         vec2 input = GLM_VEC2_ZERO_INIT;
 
-        if (d->characterType == CHARACTER_TYPE_PLAYER)
+        if (isPlayer(d))
         {
             input[0] = input::simInputSet().flatPlaneMovement.axisX;
             input[1] = input::simInputSet().flatPlaneMovement.axisY;
@@ -1782,7 +1784,7 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
     {
         SimulationCharacter_XData::AttackWaza::WazaInput outWazaInputs[MAX_SIMULTANEOUS_WAZA_INPUTS];
         size_t outNumWazaInputs = 0;
-        if (!d->disableInput && d->characterType == CHARACTER_TYPE_PLAYER)
+        if (!d->disableInput && isPlayer(d))
         {
             wazaInputFocus = true;
             processInputForWaza(d, outWazaInputs, outNumWazaInputs);
@@ -1840,12 +1842,14 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
     //
     // Process input flags
     //
-    if (!wazaInputFocus && input::simInputSet().attack.onAction)
+    bool doAttack = (isPlayer(d) && input::simInputSet().attack.onAction);  // @NOTE: add the cases for other types right here!
+    if (!wazaInputFocus && doAttack)
     {
         processAttack(d);
     }
 
-    if (d->currentWaza != nullptr && input::simInputSet().detach.onAction)
+    bool doRelease = (isPlayer(d) && input::simInputSet().detach.onAction);
+    if (d->currentWaza != nullptr && doRelease)
     {
         processRelease(d);
     }
@@ -1862,7 +1866,7 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
         changeStamina(d, d->staminaData.refillRate * simDeltaTime, false);
     }
 
-    if (d->characterType == CHARACTER_TYPE_PLAYER)
+    if (isPlayer(d))
     {
         if (d->staminaData.changedTimer > 0.0f)
         {
@@ -1887,7 +1891,8 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
     physengine::setGravityFactor(*d->cpd, d->currentWaza != nullptr ? d->currentWaza->gravityMultiplier : 1.0f);
 
     d->prevPerformedJump = false;  // For animation state machine (differentiate goto_jump and goto_fall)
-    if (d->prevIsGrounded && !wazaInputFocus && input::simInputSet().jump.onAction)
+    bool doJump = (isPlayer(d) && input::simInputSet().jump.onAction);
+    if (d->prevIsGrounded && !wazaInputFocus && doJump)
     {
         velocity[1] = d->jumpHeight;
         d->prevIsGrounded = false;
@@ -2408,7 +2413,7 @@ void SimulationCharacter::simulationUpdate(float_t simDeltaTime)
     if (_data->wazaHitTimescale < 1.0f)
         updateWazaTimescale(simDeltaTime, _data);
 
-    if (_data->characterType == CHARACTER_TYPE_PLAYER)
+    if (isPlayer(_data))
     {
         // Prevent further processing of update if textbox exists.
         if (textbox::isProcessingMessage())
@@ -2565,7 +2570,7 @@ bool SimulationCharacter::processMessage(DataSerialized& message)
 
     if (messageType == "msg_request_interaction")
     {
-        if (_data->characterType == CHARACTER_TYPE_PLAYER)
+        if (isPlayer(_data))
         {
             std::string guid, actionVerb;
             message.loadString(guid);
@@ -2593,7 +2598,7 @@ bool SimulationCharacter::processMessage(DataSerialized& message)
     }
     else if (messageType == "msg_remove_interaction_request")
     {
-        if (_data->characterType == CHARACTER_TYPE_PLAYER)
+        if (isPlayer(_data))
         {
             std::string guid;
             message.loadString(guid);
@@ -2612,7 +2617,7 @@ bool SimulationCharacter::processMessage(DataSerialized& message)
     }
     else if (messageType == "msg_notify_scannable_item_added" || messageType == "msg_notify_harvestable_item_harvested")
     {
-        if (_data->characterType == CHARACTER_TYPE_PLAYER)
+        if (isPlayer(_data))
         {
             textmesh::regenerateTextMeshMesh(_data->uiMaterializeItem, getUIMaterializeItemText(_data));
         }
@@ -2684,10 +2689,8 @@ void SimulationCharacter::reportMoved(mat4* matrixMoved)
     glm_decompose(*matrixMoved, pos, rot, sca);
     glm_vec3_copy(pos, _data->position);
 
-    vec3 charPos;
-    glm_vec3_add(pos, vec3{ 0.0f, physengine::getLengthOffsetToBase(*_data->cpd), 0.0f }, charPos);
-    glm_vec3_copy(charPos, _data->cpd->currentCOMPosition);
-    physengine::setCharacterPosition(*_data->cpd, charPos);
+    glm_vec3_copy(pos, _data->cpd->currentCOMPosition);
+    physengine::setCharacterPosition(*_data->cpd, pos);
 }
 
 std::vector<std::string> getListOfWazaFnames()
