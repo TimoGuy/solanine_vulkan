@@ -360,6 +360,9 @@ void RenderObjectManager::updateSimTransforms()
 {
 	for (size_t i : _renderObjectsWithSimTransformIdIndices)
 	{
+		if (!_renderObjectPool[i].simTransformEnabled)
+			continue;
+
 		vec3 pos;
 		versor rot;
 		physengine::getInterpSimulationTransformPosition(_renderObjectPool[i].simTransformId, pos);

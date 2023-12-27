@@ -1167,10 +1167,11 @@ namespace physengine
 
     void setVoxelFieldBodyTransform(VoxelFieldPhysicsData& vfpd, vec3 newPosition, versor newRotation)
     {
+        BodyInterface& bodyInterface = physicsSystem->GetBodyInterface();
+
         RVec3 newPositionReal(newPosition[0], newPosition[1], newPosition[2]);
         Quat newRotationJolt(newRotation[0], newRotation[1], newRotation[2], newRotation[3]);
 
-        BodyInterface& bodyInterface = physicsSystem->GetBodyInterface();
         EActivation activation = EActivation::DontActivate;
         if (bodyInterface.GetMotionType(vfpd.bodyId) == EMotionType::Dynamic)
             activation = EActivation::Activate;

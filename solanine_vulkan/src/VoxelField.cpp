@@ -23,6 +23,8 @@ struct VoxelField_XData
     std::vector<RenderObject*> voxelRenderObjs;
     std::vector<mat4s> voxelRenderObjLocalTransforms;
 
+    int32_t disableSimFollowTimer = 0;
+
     size_t lightgridId = 0;  // If 0, then that means there is no light grid created.
 
     physengine::VoxelFieldPhysicsData* vfpd = nullptr;
@@ -390,6 +392,16 @@ bool drawVoxelEditingVisualization(VoxelField_XData* d)
 
 void VoxelField::simulationUpdate(float_t simDeltaTime)
 {
+    // Decrement `_data->disableSimFollowTimer`.
+    if (_data->disableSimFollowTimer >= 0)
+    {
+        if (_data->disableSimFollowTimer == 0)
+            for (auto& ro : _data->voxelRenderObjs)
+                ro->simTransformEnabled = true;
+        _data->disableSimFollowTimer--;
+    }
+
+    // Voxel manipulation.
     if (_data->isPicked)  // @NOTE: this picked checking system, bc physicsupdate() runs outside of the render thread, could easily get out of sync, but as long as the render thread is >40fps it should be fine.
     {
         if (_data->editorState.editing)
@@ -602,14 +614,6 @@ void VoxelField::lateUpdate(float_t deltaTime)
         glm_mat4_mul(newTrans, invTransform, newTrans);
         glm_mat4_copy(newTrans, _data->engine->_voxelFieldLightingGridTextureSet.transforms[_data->lightgridId].transform);
     }
-
-    // Update block render object positions.
-    {
-        std::lock_guard<std::mutex> lg(*_data->editorState.editingVoxelRenderObjsMutex);
-
-        for (size_t i = 0; i < _data->voxelRenderObjs.size(); i++)
-            glm_mat4_mul(_data->vfpd->interpolTransform, _data->voxelRenderObjLocalTransforms[i].raw, _data->voxelRenderObjs[i]->transformMatrix);
-    }
 }
 
 void VoxelField::dump(DataSerializer& ds)
@@ -721,7 +725,33 @@ void VoxelField::reportMoved(mat4* matrixMoved)
     glm_decompose(_data->vfpd->transform, pos, rot, sca);
     versor rotV;
     glm_mat4_quat(rot, rotV);
+
     physengine::setVoxelFieldBodyTransform(*_data->vfpd, pos, rotV);
+
+    // Disable sim following.
+    // @NOTE: There's a reason why the sim following timer is necessary. After moving
+    //        the render obj and setting its transform, the next render cycle will take the interpolated value
+    //        (usu. before the new transform even gets added into the interpolation) and apply it to
+    //        the render obj as its transform. This is bad, bc it causes the rotation and the position transforms
+    //        to lag behind, and specifically for the rotation (which uses a relative transform gizmo vsthe position
+    //        which uses an absolute position gizmo), it causes it to get way off.
+    //            Therefore, forcing the simulation to run 2 ticks before reading the render object transform
+    //        again is necessary. This forces the physics engine to propagate the new transform into both
+    //        the `current` and `previous` transform slots, thus causing any interpolated value to just equal
+    //        the value that was put into the physics engine with `physengine::setVoxelFieldBodyTransform()`.
+    //          -Timo 2023/12/27
+    for (auto& ro : _data->voxelRenderObjs)
+        ro->simTransformEnabled = false;
+    _data->disableSimFollowTimer = 2;
+
+    // Update block render object positions.
+    {
+        std::lock_guard<std::mutex> lg(*_data->editorState.editingVoxelRenderObjsMutex);
+
+        for (size_t j = 0; j < _data->voxelRenderObjs.size(); j++)
+            if (i != j)  // Skip the render obj that has already been moved.
+                glm_mat4_mul(_data->vfpd->transform, _data->voxelRenderObjLocalTransforms[j].raw, _data->voxelRenderObjs[j]->transformMatrix);
+    }
 }
 
 bool isOutsideLightGrid(physengine::VoxelFieldPhysicsData* vfpd, ivec3 position)

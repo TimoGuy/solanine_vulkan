@@ -30,6 +30,7 @@ struct RenderObject
 	mat4 transformMatrix       = GLM_MAT4_IDENTITY_INIT;  // Gets overwritten if `simTransformId` is set.
 	size_t simTransformId      = (size_t)-1;  // -1 means no attached id.
 	mat4 simTransformOffset    = GLM_MAT4_IDENTITY_INIT;
+	bool simTransformEnabled   = true;
 	RenderLayer renderLayer    = RenderLayer::VISIBLE;
 	std::string attachedEntityGuid;  // @NOTE: this is just for @DEBUG purposes for the imgui property panel
 	std::vector<GPUInstancePointer> calculatedModelInstances;

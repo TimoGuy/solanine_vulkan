@@ -215,6 +215,12 @@
 - [ ] Better level editor.
     - [x] Update collision box texture for voxel fields.
     - [ ] No physics simulations when the level is in editing mode.
+        - [x] Turn off physics.
+        - [x] Fix character position going up when moving them.
+        - [x] Fix voxelfield not wanting to rotate.
+            > It now holds off on propagating the new physics transform until 2 simulation ticks later so that no more lerping happens. A timer keeps track of the sim ticks. For compound objects, the lag is very obvious. Maybe adding a thing where you propagate the transforms of the other objects would be good?
+            - [x] Do the above
+        - [ ] Toggle physics with the same key as the camera type.
     - [ ] Save the state of the level as soon as play mode is entered.
     - [ ] Saving is disabled in play mode.
     - [ ] As soon as play mode is exited, the previously saved state of the level is reloaded.
