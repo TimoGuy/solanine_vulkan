@@ -238,6 +238,12 @@
         - [ ] Press a certain key to reset the player to the position.
     - [x] Disable player being able to be created in palette.
 
+- [ ] Add Tracy profiler
+    - [ ] Install the hpp and cpp files.
+    - [ ] Put it in every function.
+    - [ ] Figure out multithreading with the physics engine.
+    - [ ] Add GPU support with vulkan.
+
 - [ ] Font cooker
     - [ ] STUFF
 
