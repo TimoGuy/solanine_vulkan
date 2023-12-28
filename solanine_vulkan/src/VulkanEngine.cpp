@@ -6296,18 +6296,23 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 			static float_t scenePropertiesWindowWidth = 100.0f;
 			static float_t scenePropertiesWindowHeight = 100.0f;
 
-			if (input::editorInputSet().togglePlayEditMode.onAction)
+			static bool togglePlayEditModeFlag = false;
+			if (togglePlayEditModeFlag || input::editorInputSet().togglePlayEditMode.onAction)
 			{
+				togglePlayEditModeFlag = false;
 				globalState::isEditingMode = !globalState::isEditingMode;
 
 				// React to this in and out of editing/play mode!
+				static std::string tempSceneName = ".temp_scene_to_return_to_after_play_mode.temphentais";
 				if (globalState::isEditingMode)
 				{
+					scene::loadScene(tempSceneName, true);
 					physengine::requestSetRunPhysicsSimulation(false);
 					_camera->requestCameraMode(_camera->_cameraMode_freeCamMode);
 				}
 				else
 				{
+					scene::saveScene(tempSceneName, _entityManager->_entities);
 					physengine::requestSetRunPhysicsSimulation(true);
 					_camera->requestCameraMode(_camera->_cameraMode_mainCamMode);
 				}
@@ -6380,6 +6385,14 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 							}
 						ImGui::EndPopup();
 					}
+
+					ImGui::Separator();
+					ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0.355556f, 0.5f, 0.4f));
+					ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0.355556f, 0.7f, 0.5f));
+					ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0.355556f, 0.8f, 0.6f));
+					if (ImGui::Button("Start PLAY MODE (F1)"))
+						togglePlayEditModeFlag = true;  // Switch to play mode.
+					ImGui::PopStyleColor(3);
 
 					scenePropertiesWindowWidth = ImGui::GetWindowWidth();
 					scenePropertiesWindowHeight = ImGui::GetWindowHeight();

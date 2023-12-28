@@ -1492,9 +1492,9 @@ namespace physengine
     void renderImguiPerformanceStats()
     {
         static const float_t perfTimeToMS = 1000.0f / (float_t)SDL_GetPerformanceFrequency();
-        ImGui::Text("Physics Times");
+        ImGui::Text("Simulation Times");
         ImGui::Text((std::format("{:.2f}", perfStats.simTimesUS[perfStats.simTimesUSHeadIndex] * perfTimeToMS) + "ms").c_str());
-        ImGui::PlotHistogram("##Physics Times Histogram", perfStats.simTimesUS, (int32_t)perfStats.simTimesUSCount, (int32_t)perfStats.simTimesUSHeadIndex, "", 0.0f, perfStats.highestSimTime, ImVec2(256, 24.0f));
+        ImGui::PlotHistogram("##Simulation Times Histogram", perfStats.simTimesUS, (int32_t)perfStats.simTimesUSCount, (int32_t)perfStats.simTimesUSHeadIndex, "", 0.0f, perfStats.highestSimTime, ImVec2(256, 24.0f));
         ImGui::SameLine();
         ImGui::Text(("[0, " + std::format("{:.2f}", perfStats.highestSimTime * perfTimeToMS) + "]").c_str());
     }

@@ -232,10 +232,11 @@
             - [x] Add "Start Play Mode" "Stop Play Mode" debug messages.
     - [x] Make the simulation values be run by an atomic size_t instead of switching pointers and with a mutex lock.
     - [ ] Play mode uses a copy of the editing level.
-        - [ ] Save the state of the level as soon as play mode is entered.
+        - [x] Save the state of the level as soon as play mode is entered. (@NOTE: no need to load the level again, just use the state of the level you were at before).
+        - [ ] Then, add a player object at one of the spawn points.
         - [x] Saving is disabled in play mode.
             > ImGui window that does saving is replaced with play mode stats.
-        - [ ] As soon as play mode is exited, the previously saved state of the level is reloaded.
+        - [x] As soon as play mode is exited, the previously saved state of the level is reloaded.
     - [ ] Toggle wireframe mode. (Hook into material system)
         - [ ] Trigger a recook of the material system but now with the pipelines remade to have wireframe set.
         - [ ] Include zprepass in wireframe render, but not shadow map!
@@ -246,6 +247,7 @@
         - EDITORTestLevelSpawnPoint.h/.cpp This name would be good eh!
         - [x] Create the 3d model.
         - [x] They get saved, but their render object is in the builder layer.
+        - [ ] Select which one to spawn at to start playing.
     - [ ] When pressing F1 (or whatever key will be for starting/stopping play mode), pop up a menu that has a list of the currently available test spawn points. Click on one and the player will be created and spawned at that position.
         - [ ] Press a certain key to reset the player to the position.
     - [x] Disable player being able to be created in palette.

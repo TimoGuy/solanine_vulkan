@@ -412,3 +412,4 @@ models_cooked/
 
 # Compiled SPIRV shader files
 *.spv
+solanine_vulkan/res/scenes/.temp_scene_to_return_to_after_play_mode.temphentais
