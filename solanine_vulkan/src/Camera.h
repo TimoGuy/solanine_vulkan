@@ -32,7 +32,7 @@ struct SceneCamera
 	float_t   fov             = glm_rad(70.0f);
 	float_t   aspect;
 	float_t   zNear           = 1.0f;
-	float_t   zFar            = 1000.0f;
+	float_t   zFar            = 10000.0f;
 	float_t   zFarShadow      = 60.0f;
 	vec3      wholeShadowMinExtents;
 	vec3      wholeShadowMaxExtents;

@@ -204,7 +204,8 @@ void Camera::requestCameraMode(uint32_t camMode)
 void Camera::update(float_t deltaTime)
 {
 	// Update camera modes if in free/main cam modes.
-	if (input::editorInputSet().togglePlayEditMode.onAction)
+	if (!globalState::isEditingMode &&
+		input::editorInputSet().playModeCycleCameraModes.onAction)
 	{
 		if (_cameraMode == _cameraMode_mainCamMode)
 			requestCameraMode(_cameraMode_freeCamMode);

@@ -26,6 +26,8 @@ namespace globalState
     extern float_t DOFFocusExtent;
     extern float_t DOFBlurExtent;
 
+    extern bool isEditingMode;
+
     enum AncientWeaponItemType
     {
         WEAPON,

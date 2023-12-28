@@ -29,6 +29,8 @@ namespace globalState
     float_t DOFFocusExtent = 1000.0f;  // 4.0f;
     float_t DOFBlurExtent  = 0.0f;  // 2.0f;
 
+    bool isEditingMode = true;
+
     VulkanEngine* engineRef = nullptr;
     SceneCamera* sceneCameraRef = nullptr;
 

@@ -6199,6 +6199,8 @@ void VulkanEngine::changeEditorMode(EditorModes newEditorMode)
 	{
 		case EditorModes::LEVEL_EDITOR:
 		{
+			globalState::isEditingMode = true;
+			physengine::requestSetRunPhysicsSimulation(false);
 			_camera->requestCameraMode(_camera->_cameraMode_freeCamMode);
 			scene::loadScene(globalState::savedActiveScene, true);
 		} break;
@@ -6291,71 +6293,107 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 			//
 			// Scene Properties window
 			//
-			static float_t scenePropertiesWindowWidth = 0.0f;
-			ImGui::SetNextWindowPos(ImVec2(_windowExtent.width - scenePropertiesWindowWidth, MAIN_MENU_PADDING), ImGuiCond_Always);
-			ImGui::Begin((globalState::savedActiveScene + " Properties").c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
+			static float_t scenePropertiesWindowWidth = 100.0f;
+			static float_t scenePropertiesWindowHeight = 100.0f;
+
+			if (input::editorInputSet().togglePlayEditMode.onAction)
 			{
-				ImGui::Text(globalState::savedActiveScene.c_str());
+				globalState::isEditingMode = !globalState::isEditingMode;
 
-				static std::vector<std::string> listOfScenes;
-				if (ImGui::Button("Open Scene.."))
+				// React to this in and out of editing/play mode!
+				if (globalState::isEditingMode)
 				{
-					listOfScenes = scene::getListOfScenes();
-					ImGui::OpenPopup("open_scene_popup");
+					physengine::requestSetRunPhysicsSimulation(false);
+					_camera->requestCameraMode(_camera->_cameraMode_freeCamMode);
 				}
-				if (ImGui::BeginPopup("open_scene_popup"))
+				else
 				{
-					for (auto& path : listOfScenes)
-						if (ImGui::Button(("Open \"" + path + "\"").c_str()))
-						{
-							_movingMatrix.matrixToMove = nullptr;  // @HACK: just a safeguard in case if the matrixtomove happened to be on an entity that will get deleted in the next line  -Timo 2022/11/05
-							scene::loadScene(path, true);
-							globalState::savedActiveScene = path;
-							ImGui::CloseCurrentPopup();
-						}
-					ImGui::EndPopup();
+					physengine::requestSetRunPhysicsSimulation(true);
+					_camera->requestCameraMode(_camera->_cameraMode_mainCamMode);
 				}
-
-				ImGui::SameLine();
-				if (ImGui::Button("Save Scene"))
-					scene::saveScene(globalState::savedActiveScene, _entityManager->_entities);
-
-				ImGui::SameLine();
-				if (ImGui::Button("Save Scene As.."))
-					ImGui::OpenPopup("save_scene_as_popup");
-				if (ImGui::BeginPopup("save_scene_as_popup"))
-				{
-					static std::string saveSceneAsFname;
-					ImGui::InputText(".hentais", &saveSceneAsFname);
-					if (ImGui::Button(("Save As \"" + saveSceneAsFname + ".hentais\"").c_str()))
-					{
-						scene::saveScene(saveSceneAsFname + ".hentais", _entityManager->_entities);
-						globalState::savedActiveScene = saveSceneAsFname + ".hentais";
-						ImGui::CloseCurrentPopup();
-					}
-					ImGui::EndPopup();
-				}
-
-				static std::vector<std::string> listOfPrefabs;
-				if (ImGui::Button("Open Prefab.."))
-				{
-					listOfPrefabs = scene::getListOfPrefabs();
-					ImGui::OpenPopup("open_prefab_popup");
-				}
-				if (ImGui::BeginPopup("open_prefab_popup"))
-				{
-					for (auto& path : listOfPrefabs)
-						if (ImGui::Button(("Open \"" + path + "\"").c_str()))
-						{
-							scene::loadPrefabNonOwned(path);
-							ImGui::CloseCurrentPopup();
-						}
-					ImGui::EndPopup();
-				}
-
-				scenePropertiesWindowWidth = ImGui::GetWindowWidth();
 			}
-			ImGui::End();
+
+			if (globalState::isEditingMode)
+			{
+				// Editing Mode properties.
+				ImGui::SetNextWindowPos(ImVec2(_windowExtent.width - scenePropertiesWindowWidth, MAIN_MENU_PADDING), ImGuiCond_Always);
+				ImGui::Begin((globalState::savedActiveScene + " Properties").c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
+				{
+					ImGui::Text(globalState::savedActiveScene.c_str());
+
+					static std::vector<std::string> listOfScenes;
+					if (ImGui::Button("Open Scene.."))
+					{
+						listOfScenes = scene::getListOfScenes();
+						ImGui::OpenPopup("open_scene_popup");
+					}
+					if (ImGui::BeginPopup("open_scene_popup"))
+					{
+						for (auto& path : listOfScenes)
+							if (ImGui::Button(("Open \"" + path + "\"").c_str()))
+							{
+								_movingMatrix.matrixToMove = nullptr;  // @HACK: just a safeguard in case if the matrixtomove happened to be on an entity that will get deleted in the next line  -Timo 2022/11/05
+								scene::loadScene(path, true);
+								globalState::savedActiveScene = path;
+								ImGui::CloseCurrentPopup();
+							}
+						ImGui::EndPopup();
+					}
+
+					ImGui::SameLine();
+					if (ImGui::Button("Save Scene"))
+						scene::saveScene(globalState::savedActiveScene, _entityManager->_entities);
+
+					ImGui::SameLine();
+					if (ImGui::Button("Save Scene As.."))
+						ImGui::OpenPopup("save_scene_as_popup");
+					if (ImGui::BeginPopup("save_scene_as_popup"))
+					{
+						static std::string saveSceneAsFname;
+						ImGui::InputText(".hentais", &saveSceneAsFname);
+						if (ImGui::Button(("Save As \"" + saveSceneAsFname + ".hentais\"").c_str()))
+						{
+							scene::saveScene(saveSceneAsFname + ".hentais", _entityManager->_entities);
+							globalState::savedActiveScene = saveSceneAsFname + ".hentais";
+							ImGui::CloseCurrentPopup();
+						}
+						ImGui::EndPopup();
+					}
+
+					static std::vector<std::string> listOfPrefabs;
+					if (ImGui::Button("Open Prefab.."))
+					{
+						listOfPrefabs = scene::getListOfPrefabs();
+						ImGui::OpenPopup("open_prefab_popup");
+					}
+					if (ImGui::BeginPopup("open_prefab_popup"))
+					{
+						for (auto& path : listOfPrefabs)
+							if (ImGui::Button(("Open \"" + path + "\"").c_str()))
+							{
+								scene::loadPrefabNonOwned(path);
+								ImGui::CloseCurrentPopup();
+							}
+						ImGui::EndPopup();
+					}
+
+					scenePropertiesWindowWidth = ImGui::GetWindowWidth();
+					scenePropertiesWindowHeight = ImGui::GetWindowHeight();
+				}
+				ImGui::End();
+			}
+			else
+			{
+				// Play Mode desu window.
+				ImGui::SetNextWindowPos(ImVec2(_windowExtent.width - scenePropertiesWindowWidth, MAIN_MENU_PADDING), ImGuiCond_Always);
+				ImGui::SetNextWindowSize(ImVec2(scenePropertiesWindowWidth, scenePropertiesWindowHeight), ImGuiCond_Always);
+				ImGui::Begin("##Play Mode desu window", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+				{
+					ImGui::SetWindowFontScale(1.5f);
+					ImGui::Text("PLAY MODE\n (F1: Exit)");
+				}
+				ImGui::End();
+			}
 
 			// Left side props windows.
 			ImGui::SetNextWindowPos(ImVec2(0.0f, MAIN_MENU_PADDING), ImGuiCond_Always);

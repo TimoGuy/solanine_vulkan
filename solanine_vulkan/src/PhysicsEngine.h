@@ -22,6 +22,8 @@ namespace physengine
     void haltAsyncRunner();
     void cleanup();
 
+    void requestSetRunPhysicsSimulation(bool flag);
+
     size_t registerSimulationTransform();
     void unregisterSimulationTransform(size_t id);
     void updateSimulationTransformPosition(size_t id, vec3 pos);

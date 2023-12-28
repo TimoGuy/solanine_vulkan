@@ -64,8 +64,10 @@ namespace input
 	struct EditorInputSet
 	{
 		OnAction            togglePlayEditMode;
-		OnAction            toggleEditorUI;
+		OnAction            playModeToggleSimulation;
+		OnAction            playModeCycleCameraModes;
 		OnAction            cycleRenderingModes;
+		OnAction            toggleEditorUI;
 		OnAction            cancel;
 		OnAction            submit;
 		OnAction            toggleTransformManipulationMode;

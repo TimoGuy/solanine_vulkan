@@ -9,6 +9,7 @@
 #include "VkPipelineBuilderUtil.h"
 #include "VkInitializers.h"
 #include "Camera.h"
+#include "Debug.h"
 #endif
 
 #include "PhysUtil.h"
@@ -40,6 +41,8 @@ namespace physengine
     bool isAsyncRunnerRunning;
     std::thread* asyncRunner = nullptr;
     uint64_t lastTick;
+
+    bool runPhysicsSimulations = false;
 
     PhysicsSystem* physicsSystem = nullptr;
     std::map<uint32_t, std::string> bodyIdToEntityGuidMap;
@@ -368,6 +371,11 @@ namespace physengine
         vmaDestroyBuffer(engine->_allocator, capsuleVisVertexBuffer._buffer, capsuleVisVertexBuffer._allocation);
         vmaDestroyBuffer(engine->_allocator, lineVisVertexBuffer._buffer, lineVisVertexBuffer._allocation);
 #endif
+    }
+
+    void requestSetRunPhysicsSimulation(bool flag)
+    {
+        runPhysicsSimulations = flag;
     }
 
     size_t registerSimulationTransform()
@@ -700,6 +708,15 @@ namespace physengine
             uint64_t perfTime = SDL_GetPerformanceCounter();
 #endif
 
+            if (!globalState::isEditingMode &&
+                input::editorInputSet().playModeToggleSimulation.onAction)
+            {
+                runPhysicsSimulations = !runPhysicsSimulations;
+                debug::pushDebugMessage({
+                    .message = std::string("Set running physics simulations to ") + (runPhysicsSimulations ? "on" : "off"),
+                    });
+            }
+
             // @NOTE: this is the only place where `timeScale` is used. That's
             //        because this system is designed to be running at 40fps constantly
             //        in real time, so it doesn't slow down or speed up with time scale.
@@ -710,10 +727,8 @@ namespace physengine
             input::editorInputSet().update();
             input::simInputSet().update();
             entityManager->INTERNALsimulationUpdate(simDeltaTime);  // @NOTE: if timescale changes, then the system just waits longer/shorter per loop.
-            if (false)
-            {
+            if (runPhysicsSimulations)
                 physicsSystem->Update(simDeltaTime, 1, 1, &tempAllocator, &jobSystem);
-            }
             copyResultTransforms();
 
 #ifdef _DEVELOP

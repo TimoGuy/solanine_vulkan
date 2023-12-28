@@ -220,7 +220,13 @@
         - [x] Fix voxelfield not wanting to rotate.
             > It now holds off on propagating the new physics transform until 2 simulation ticks later so that no more lerping happens. A timer keeps track of the sim ticks. For compound objects, the lag is very obvious. Maybe adding a thing where you propagate the transforms of the other objects would be good?
             - [x] Do the above
-        - [ ] Toggle physics with the same key as the camera type.
+        - [x] Toggle physics with the same key as the camera type.
+        - [x] Add strong labels whether in play mode or not.
+            - [ ] Add play mode pause (ctrl F1). Keeps in play mode, pauses simulation, changes camera mode.
+                > So it's WIP, but F1 will toggle play mode, Ctrl+F1 will pause and unpause the physics sim (only when in play mode), and F2 cycles thru the camera styles.
+            - [ ] Add imgui play mode stats.
+            - [ ] Add changing camera modes during play mode too.
+    - [ ] Make the simulation values be run by an atomic size_t instead of switching pointers and with a mutex lock.
     - [ ] Save the state of the level as soon as play mode is entered.
     - [ ] Saving is disabled in play mode.
     - [ ] As soon as play mode is exited, the previously saved state of the level is reloaded.

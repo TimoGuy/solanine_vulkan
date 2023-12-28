@@ -18,6 +18,7 @@ namespace input
 		bool F1 = false;
 		bool F2 = false;
 		bool F3 = false;
+		bool F10 = false;
 		bool F11 = false;
 		bool del = false;
 		bool lCtrl = false;
@@ -102,6 +103,7 @@ namespace input
 					case SDLK_F1:                         keyMouseState.F1 = pressed; break;
 					case SDLK_F2:                         keyMouseState.F2 = pressed; break;
 					case SDLK_F3:                         keyMouseState.F3 = pressed; break;
+					case SDLK_F10:                        keyMouseState.F10 = pressed; break;
 					case SDLK_F11:                        keyMouseState.F11 = pressed; break;
 					case SDLK_DELETE:                     keyMouseState.del = pressed; break;
 					case SDLK_LCTRL:                      keyMouseState.lCtrl = pressed; break;
@@ -193,9 +195,11 @@ namespace input
 	// Input Sets.
 	void EditorInputSet::update()
 	{
-		togglePlayEditMode.update(keyMouseState.F1);
-		toggleEditorUI.update(keyMouseState.F2);
+		togglePlayEditMode.update(!keyMouseState.lCtrl && keyMouseState.F1);
+		playModeToggleSimulation.update(keyMouseState.lCtrl && keyMouseState.F1);  // @NOCHECKIN: @TODO: Fix this!!!!! Ctrl+F1 isn't working for some reason!
+		playModeCycleCameraModes.update(keyMouseState.F2);
 		cycleRenderingModes.update(keyMouseState.F3);
+		toggleEditorUI.update(keyMouseState.F10);
 		cancel.update(keyMouseState.esc);
 		submit.update(keyMouseState.enter);
 		toggleTransformManipulationMode.update(keyMouseState.q);
@@ -328,47 +332,3 @@ namespace input
 		return instance;
 	}
 }
-
-
-#if 0
-extern bool input::onLMBPress = false;
-extern bool input::onLMBRelease = false;
-extern bool input::LMBPressed = false;
-extern bool input::onRMBPress = false;
-extern bool input::onRMBRelease = false;
-extern bool input::RMBPressed = false;
-
-extern ivec2 input::mouseDelta = { 0, 0 };
-extern ivec2 input::mouseScrollDelta = { 0, 0 };
-
-extern bool input::keyUpPressed = false;
-extern bool input::keyDownPressed = false;
-extern bool input::keyLeftPressed = false;
-extern bool input::keyRightPressed = false;
-extern bool input::keyWorldUpPressed = false;
-extern bool input::keyWorldDownPressed = false;
-extern bool input::keyShiftPressed = false;
-extern bool input::keyDelPressed = false;
-extern bool input::keyCtrlPressed = false;
-extern bool input::keyQPressed = false;
-extern bool input::keyWPressed = false;
-extern bool input::keyEPressed = false;
-extern bool input::keyRPressed = false;
-extern bool input::keyDPressed = false;
-extern bool input::keyCPressed = false;
-extern bool input::keyXPressed = false;
-extern bool input::keyVPressed = false;
-extern bool input::keyEscPressed = false;
-extern bool input::keyEnterPressed = false;
-extern bool input::keyTargetPressed = false;
-extern bool input::onKeyJumpPress = false;
-extern bool input::keyJumpPressed = false;
-extern bool input::onKeyInteractPress = false;
-extern bool input::onKeyF11Press = false;
-extern bool input::onKeyF10Press = false;
-extern bool input::onKeyF9Press = false;
-extern bool input::onKeyF8Press = false;
-extern bool input::onKeyLSBPress = false;
-extern bool input::onKeyRSBPress = false;
-extern bool input::onKeyF1Press = false;
-#endif
