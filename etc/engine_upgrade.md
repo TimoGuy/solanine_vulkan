@@ -230,7 +230,7 @@
             - [x] Add changing camera modes during play mode too.
                 > It's bound to F2.
             - [x] Add "Start Play Mode" "Stop Play Mode" debug messages.
-    - [ ] Make the simulation values be run by an atomic size_t instead of switching pointers and with a mutex lock.
+    - [x] Make the simulation values be run by an atomic size_t instead of switching pointers and with a mutex lock.
     - [ ] Play mode uses a copy of the editing level.
         - [ ] Save the state of the level as soon as play mode is entered.
         - [x] Saving is disabled in play mode.

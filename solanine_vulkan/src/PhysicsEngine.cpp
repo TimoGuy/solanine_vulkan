@@ -67,9 +67,15 @@ namespace physengine
     //        New simulation transforms are written to `nextSimSet` as the calculations are formed. Once the "tick" or new frame has started,
     //        `transformSwap()` pushes `nextSimSet` to `currentSimSet` which gets pushed to `prevSimSet`. And so, more writing can happen with
     //        as little blocking the render thread as possible.  -Timo 2023/11/20
-    SimulationInterpolationSet* prevSimSet = nullptr;
-    SimulationInterpolationSet* currentSimSet = nullptr;
-    SimulationInterpolationSet* nextSimSet = nullptr;
+    // @AMEND: I'm changing this so that there's no separate pointers for prev, current, and next sim sets. Now it will be an atomic size_t (`simSetOffset`) that
+    //         ticks the new simulation sets into place. Using `simSetChain`, `simSetOffset + 0` is prev sim set, `simSetOffset + 1` is current sim set, and
+    //         `simSetOffset + 2` is next sim set. This method should remove the need for the mutex that does the pointer swap.  -Timo 2023/12/28
+    SimulationInterpolationSet* simSetChain[3] = {
+        nullptr,
+        nullptr,
+        nullptr,
+    };
+    std::atomic<size_t> simSetOffset = 0;
     SimulationInterpolationSet* calcInterpolatedSet = nullptr;
     std::vector<size_t> registeredSimSetIndices;
     std::mutex mutateSimSetPoolsMutex;
@@ -353,9 +359,9 @@ namespace physengine
 
     void cleanup()
     {
-        delete prevSimSet;
-        delete currentSimSet;
-        delete nextSimSet;
+        delete simSetChain[0];
+        delete simSetChain[1];
+        delete simSetChain[2];
         delete calcInterpolatedSet;
 
         delete asyncRunner;
@@ -401,13 +407,13 @@ namespace physengine
             if (!collided)
             {
                 // Register this one as a simulation transform.
-                glm_vec3_zero(prevSimSet->simTransforms[proposedId].position);
-                glm_vec3_zero(currentSimSet->simTransforms[proposedId].position);
-                glm_vec3_zero(nextSimSet->simTransforms[proposedId].position);
+                glm_vec3_zero(simSetChain[0]->simTransforms[proposedId].position);
+                glm_vec3_zero(simSetChain[1]->simTransforms[proposedId].position);
+                glm_vec3_zero(simSetChain[2]->simTransforms[proposedId].position);
                 glm_vec3_zero(calcInterpolatedSet->simTransforms[proposedId].position);
-                glm_quat_identity(prevSimSet->simTransforms[proposedId].rotation);
-                glm_quat_identity(currentSimSet->simTransforms[proposedId].rotation);
-                glm_quat_identity(nextSimSet->simTransforms[proposedId].rotation);
+                glm_quat_identity(simSetChain[0]->simTransforms[proposedId].rotation);
+                glm_quat_identity(simSetChain[1]->simTransforms[proposedId].rotation);
+                glm_quat_identity(simSetChain[2]->simTransforms[proposedId].rotation);
                 glm_quat_identity(calcInterpolatedSet->simTransforms[proposedId].rotation);
                 registeredSimSetIndices.push_back(proposedId);
                 std::sort(registeredSimSetIndices.begin(), registeredSimSetIndices.end());
@@ -436,12 +442,16 @@ namespace physengine
 
     void updateSimulationTransformPosition(size_t id, vec3 pos)
     {
-        glm_vec3_copy(pos, nextSimSet->simTransforms[id].position);
+        size_t simSetOffsetCopy = simSetOffset;
+        size_t nextSimSet = (simSetOffsetCopy + 2) % 3;
+        glm_vec3_copy(pos, simSetChain[nextSimSet]->simTransforms[id].position);
     }
 
     void updateSimulationTransformRotation(size_t id, versor rot)
     {
-        glm_quat_copy(rot, nextSimSet->simTransforms[id].rotation);
+        size_t simSetOffsetCopy = simSetOffset;
+        size_t nextSimSet = (simSetOffsetCopy + 2) % 3;
+        glm_quat_copy(rot, simSetChain[nextSimSet]->simTransforms[id].rotation);
     }
 
     void getInterpSimulationTransformPosition(size_t id, vec3& outPos)
@@ -686,9 +696,9 @@ namespace physengine
 
         physicsSystem->OptimizeBroadPhase();
 
-        prevSimSet = new SimulationInterpolationSet;
-        currentSimSet = new SimulationInterpolationSet;
-        nextSimSet = new SimulationInterpolationSet;
+        simSetChain[0] = new SimulationInterpolationSet;
+        simSetChain[1] = new SimulationInterpolationSet;
+        simSetChain[2] = new SimulationInterpolationSet;
         calcInterpolatedSet = new SimulationInterpolationSet;
 
 #ifdef _DEVELOP
@@ -1345,16 +1355,9 @@ namespace physengine
         return cpd.character->IsSlopeTooSteep(normal);
     }
 
-    std::mutex calcInterpolatedTransformsMutex;
-
     void transformSwap()
     {
-        std::lock_guard<std::mutex> lg(calcInterpolatedTransformsMutex);
-
-        SimulationInterpolationSet* temp = prevSimSet;
-        prevSimSet = currentSimSet;
-        currentSimSet = nextSimSet;
-        nextSimSet = temp;
+        simSetOffset++;
     }
 
     void copyResultTransforms()
@@ -1400,22 +1403,23 @@ namespace physengine
 
     void recalcInterpolatedTransformsSet()
     {
-        std::lock_guard<std::mutex> lg(calcInterpolatedTransformsMutex);
-
+        size_t simSetOffsetCopy = simSetOffset;
+        size_t prevSimSet = (simSetOffsetCopy + 0) % 3;
+        size_t currentSimSet = (simSetOffsetCopy + 1) % 3;
         float_t physicsAlpha = getPhysicsAlpha();
 
         for (size_t i = 0; i < registeredSimSetIndices.size(); i++)
         {
             size_t index = registeredSimSetIndices[i];
             glm_vec3_lerp(
-                prevSimSet->simTransforms[index].position,
-                currentSimSet->simTransforms[index].position,
+                simSetChain[prevSimSet]->simTransforms[index].position,
+                simSetChain[currentSimSet]->simTransforms[index].position,
                 physicsAlpha,
                 calcInterpolatedSet->simTransforms[index].position
             );
             glm_quat_nlerp(
-                prevSimSet->simTransforms[index].rotation,
-                currentSimSet->simTransforms[index].rotation,
+                simSetChain[prevSimSet]->simTransforms[index].rotation,
+                simSetChain[currentSimSet]->simTransforms[index].rotation,
                 physicsAlpha,
                 calcInterpolatedSet->simTransforms[index].rotation
             );
