@@ -378,6 +378,11 @@ namespace physengine
         runPhysicsSimulations = flag;
     }
 
+    bool getIsRunPhysicsSimulation()
+    {
+        return runPhysicsSimulations;
+    }
+
     size_t registerSimulationTransform()
     {
         std::lock_guard<std::mutex> lg(mutateSimSetPoolsMutex);

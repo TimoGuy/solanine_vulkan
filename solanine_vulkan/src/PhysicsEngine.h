@@ -23,6 +23,7 @@ namespace physengine
     void cleanup();
 
     void requestSetRunPhysicsSimulation(bool flag);
+    bool getIsRunPhysicsSimulation();
 
     size_t registerSimulationTransform();
     void unregisterSimulationTransform(size_t id);

@@ -6258,8 +6258,8 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 		// Debug Stats window.
 		static float_t debugStatsWindowWidth = 0.0f;
 		static float_t debugStatsWindowHeight = 0.0f;
-		ImGui::SetNextWindowPos(ImVec2(_windowExtent.width * 0.5f - debugStatsWindowWidth * 0.5f, _windowExtent.height - debugStatsWindowHeight), ImGuiCond_Always);		// @NOTE: the ImGuiCond_Always means that this line will execute always, when set to once, this line will be ignored after the first time it's called
-		ImGui::Begin("##Debug Statistics", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs);
+		ImGui::SetNextWindowPos(ImVec2(_windowExtent.width - debugStatsWindowWidth, _windowExtent.height - debugStatsWindowHeight), ImGuiCond_Always);		// @NOTE: the ImGuiCond_Always means that this line will execute always, when set to once, this line will be ignored after the first time it's called
+		ImGui::Begin("##Debug Statistics/Performance Window", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs);
 		{
 			ImGui::Text((std::to_string(_debugStats.currentFPS) + " FPS").c_str());
 			ImGui::Text(("Frame : " + std::to_string(_frameNumber)).c_str());
@@ -6291,7 +6291,7 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 		case EditorModes::LEVEL_EDITOR:
 		{
 			//
-			// Scene Properties window
+			// Scene Properties window (and play mode window).
 			//
 			static float_t scenePropertiesWindowWidth = 100.0f;
 			static float_t scenePropertiesWindowHeight = 100.0f;
@@ -6311,13 +6311,17 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 					physengine::requestSetRunPhysicsSimulation(true);
 					_camera->requestCameraMode(_camera->_cameraMode_mainCamMode);
 				}
+
+				debug::pushDebugMessage({
+					.message = (globalState::isEditingMode ? "===Stopped PLAY MODE===" : "===Started PLAY MODE==="),
+				});
 			}
 
 			if (globalState::isEditingMode)
 			{
 				// Editing Mode properties.
 				ImGui::SetNextWindowPos(ImVec2(_windowExtent.width - scenePropertiesWindowWidth, MAIN_MENU_PADDING), ImGuiCond_Always);
-				ImGui::Begin((globalState::savedActiveScene + " Properties").c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
+				ImGui::Begin("Scene Properties", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
 				{
 					ImGui::Text(globalState::savedActiveScene.c_str());
 
@@ -6387,10 +6391,34 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 				// Play Mode desu window.
 				ImGui::SetNextWindowPos(ImVec2(_windowExtent.width - scenePropertiesWindowWidth, MAIN_MENU_PADDING), ImGuiCond_Always);
 				ImGui::SetNextWindowSize(ImVec2(scenePropertiesWindowWidth, scenePropertiesWindowHeight), ImGuiCond_Always);
-				ImGui::Begin("##Play Mode desu window", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+				ImGui::Begin("##Play Mode desu window", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove);
 				{
 					ImGui::SetWindowFontScale(1.5f);
-					ImGui::Text("PLAY MODE\n (F1: Exit)");
+
+					ImGui::Text("PLAY MODE is ");
+					ImGui::SameLine();
+					ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.0f, 1.0f), "ON");
+					ImGui::SameLine();
+					ImGui::Text(" F1 to stop");
+
+					ImGui::Text("Simulation: ");
+					ImGui::SameLine();
+					ImGui::TextColored(
+						physengine::getIsRunPhysicsSimulation() ? ImVec4(0.0f, 1.0f, 0.0f, 1.0f) : ImVec4(1.0f, 0.0f, 0.0f, 1.0f),
+						physengine::getIsRunPhysicsSimulation() ? "ON" : "OFF"
+					);
+					ImGui::SameLine();
+					ImGui::Text(" (Shift+F1)");
+
+					ImGui::Text("Game Camera: ");
+					bool isCameraOn = (_camera->getCameraMode() == _camera->_cameraMode_mainCamMode);
+					ImGui::SameLine();
+					ImGui::TextColored(
+						isCameraOn ? ImVec4(0.0f, 1.0f, 0.0f, 1.0f) : ImVec4(1.0f, 0.0f, 0.0f, 1.0f),
+						isCameraOn ? "ON" : "OFF"
+					);
+					ImGui::SameLine();
+					ImGui::Text(" (F2)");
 				}
 				ImGui::End();
 			}
@@ -6398,7 +6426,7 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 			// Left side props windows.
 			ImGui::SetNextWindowPos(ImVec2(0.0f, MAIN_MENU_PADDING), ImGuiCond_Always);
 			ImGui::SetNextWindowSizeConstraints(ImVec2(-1.0f, 0.0f), ImVec2(-1.0f, _windowExtent.height - MAIN_MENU_PADDING));
-			ImGui::Begin("LEVEL EDITOR##Left side props windows", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
+			ImGui::Begin("Level Editor##Left side props windows", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
 			{
 				// PBR Shading props.
 				if (ImGui::CollapsingHeader("PBR Shading Properties", ImGuiTreeNodeFlags_DefaultOpen))

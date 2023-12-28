@@ -195,8 +195,8 @@ namespace input
 	// Input Sets.
 	void EditorInputSet::update()
 	{
-		togglePlayEditMode.update(!keyMouseState.lCtrl && keyMouseState.F1);
-		playModeToggleSimulation.update(keyMouseState.lCtrl && keyMouseState.F1);  // @NOCHECKIN: @TODO: Fix this!!!!! Ctrl+F1 isn't working for some reason!
+		togglePlayEditMode.update(!keyMouseState.lShift && keyMouseState.F1);
+		playModeToggleSimulation.update(keyMouseState.lShift && keyMouseState.F1);  // @NOTE: Ctrl+F1 doesn't work for some reason. Maybe a Windows/printer-related thing?
 		playModeCycleCameraModes.update(keyMouseState.F2);
 		cycleRenderingModes.update(keyMouseState.F3);
 		toggleEditorUI.update(keyMouseState.F10);

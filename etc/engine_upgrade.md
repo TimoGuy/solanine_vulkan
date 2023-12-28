@@ -214,7 +214,7 @@
 
 - [ ] Better level editor.
     - [x] Update collision box texture for voxel fields.
-    - [ ] No physics simulations when the level is in editing mode.
+    - [x] No physics simulations when the level is in editing mode.
         - [x] Turn off physics.
         - [x] Fix character position going up when moving them.
         - [x] Fix voxelfield not wanting to rotate.
@@ -222,14 +222,20 @@
             - [x] Do the above
         - [x] Toggle physics with the same key as the camera type.
         - [x] Add strong labels whether in play mode or not.
-            - [ ] Add play mode pause (ctrl F1). Keeps in play mode, pauses simulation, changes camera mode.
-                > So it's WIP, but F1 will toggle play mode, Ctrl+F1 will pause and unpause the physics sim (only when in play mode), and F2 cycles thru the camera styles.
-            - [ ] Add imgui play mode stats.
-            - [ ] Add changing camera modes during play mode too.
+            - [x] Add play mode pause (~~ctrl~~ shift F1). Keeps in play mode, pauses simulation, changes camera mode.
+                > So it's WIP, but F1 will toggle play mode, ~~Ctrl~~ Shift+F1 will pause and unpause the physics sim (only when in play mode), and F2 cycles thru the camera styles.
+                > There must be something wrong with Windows, bc I think it's blocking Ctrl+F1 inputs. Or my Keychron K8 keyboard.
+            - [x] Add imgui play mode stats.
+                > It's super clear with colored text replacing the save, open Scene Properties window.
+            - [x] Add changing camera modes during play mode too.
+                > It's bound to F2.
+            - [x] Add "Start Play Mode" "Stop Play Mode" debug messages.
     - [ ] Make the simulation values be run by an atomic size_t instead of switching pointers and with a mutex lock.
-    - [ ] Save the state of the level as soon as play mode is entered.
-    - [ ] Saving is disabled in play mode.
-    - [ ] As soon as play mode is exited, the previously saved state of the level is reloaded.
+    - [ ] Play mode uses a copy of the editing level.
+        - [ ] Save the state of the level as soon as play mode is entered.
+        - [x] Saving is disabled in play mode.
+            > ImGui window that does saving is replaced with play mode stats.
+        - [ ] As soon as play mode is exited, the previously saved state of the level is reloaded.
     - [ ] Toggle wireframe mode. (Hook into material system)
         - [ ] Trigger a recook of the material system but now with the pipelines remade to have wireframe set.
         - [ ] Include zprepass in wireframe render, but not shadow map!
