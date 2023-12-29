@@ -29,6 +29,8 @@
 #include "EDITORTextureViewer.h"
 #endif
 
+#include "SimulationCharacter.h"  // @NOCHECKIN
+
 
 constexpr uint64_t TIMEOUT_1_SEC = 1000000000;
 
@@ -6313,6 +6315,28 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 				else
 				{
 					scene::saveScene(tempSceneName, _entityManager->_entities);
+					{
+						// Add character and set it as the main subject.
+						// @TODO: move this somewhere else more appropriate.
+						if (globalState::listOfSpawnPoints.empty())
+						{
+							std::cerr << "ERROR: no spawn points to use for spawning player in!" << std::endl;
+							HAWSOO_CRASH();
+						}
+						auto& spd = globalState::listOfSpawnPoints[0];
+
+						DataSerializer ds;
+						ds.dumpString("00000000000000000000000000000000");
+						ds.dumpString("PLAYER");            // Type.
+						ds.dumpVec3(spd.position);          // Starting Position.
+						ds.dumpFloat(spd.facingDirection);  // Facing Direction.
+						ds.dumpFloat(100.0f);               // Health.
+						ds.dumpFloat(0.0f);                 // Num Harvestable Items.
+						ds.dumpFloat(0.0f);                 // Num Scannable Items.
+						DataSerialized dsd = ds.getSerializedData();
+						SimulationCharacter* entity = (SimulationCharacter*)scene::spinupNewObject(":character", &dsd);
+						_camera->mainCamMode.setMainCamTargetObject(entity->getMainRenderObject());
+					}
 					physengine::requestSetRunPhysicsSimulation(true);
 					_camera->requestCameraMode(_camera->_cameraMode_mainCamMode);
 				}

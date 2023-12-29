@@ -3091,3 +3091,8 @@ void SimulationCharacter::reportPhysicsContact(const JPH::Body& otherBody, const
 
     mpa.attachmentIsStale = false;
 }
+
+RenderObject* SimulationCharacter::getMainRenderObject()
+{
+    return _data->characterRenderObj;
+}

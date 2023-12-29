@@ -28,6 +28,14 @@ namespace globalState
 
     extern bool isEditingMode;
 
+    struct SpawnPointData
+    {
+        void*   referenceSpawnPointEntity;
+        vec3    position;
+        float_t facingDirection;
+    };
+    extern std::vector<SpawnPointData> listOfSpawnPoints;
+
     enum AncientWeaponItemType
     {
         WEAPON,

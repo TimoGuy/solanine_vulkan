@@ -31,6 +31,9 @@ namespace globalState
 
     bool isEditingMode = true;
 
+    std::vector<SpawnPointData> listOfSpawnPoints;
+
+
     VulkanEngine* engineRef = nullptr;
     SceneCamera* sceneCameraRef = nullptr;
 

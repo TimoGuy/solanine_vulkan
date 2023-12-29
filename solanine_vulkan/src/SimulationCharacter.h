@@ -2,6 +2,7 @@
 
 #include "Entity.h"
 class EntityManager;
+class RenderObject;
 class RenderObjectManager;
 struct Camera;
 struct SimulationCharacter_XData;
@@ -34,6 +35,7 @@ public:
     void renderImGui();
 
     void reportPhysicsContact(const JPH::Body& otherBody, const JPH::ContactManifold& manifold, JPH::ContactSettings* ioSettings);
+    RenderObject* getMainRenderObject();
 
 private:
     SimulationCharacter_XData* _data;

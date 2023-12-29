@@ -5,6 +5,7 @@
 #include "RenderObject.h"
 #include "Camera.h"
 #include "DataSerialization.h"
+#include "GlobalState.h"
 
 
 struct EDITORTestLevelSpawnPoint_XData
@@ -15,6 +16,8 @@ struct EDITORTestLevelSpawnPoint_XData
     int32_t spawnIdx        = 0;
     vec3    position        = GLM_VEC3_ZERO_INIT;
     float_t facingDirection = 0.0f;
+
+    bool updateInGlobalStateTrigger = false;
 };
 
 
@@ -37,12 +40,25 @@ EDITORTestLevelSpawnPoint::EDITORTestLevelSpawnPoint(EntityManager* em, RenderOb
         },
         { &d->renderObj }
     );
+
+    globalState::listOfSpawnPoints.push_back({
+        .referenceSpawnPointEntity = this,
+    });
+
+    d->updateInGlobalStateTrigger = true;
 }
 
 EDITORTestLevelSpawnPoint::~EDITORTestLevelSpawnPoint()
 {
     d->rom->unregisterRenderObjects({ d->renderObj });
     d->rom->removeModelCallbacks(this);
+
+    std::erase_if(
+        globalState::listOfSpawnPoints,
+        [&](globalState::SpawnPointData spd) {
+            return spd.referenceSpawnPointEntity == this;
+        }
+    );
 }
 
 void EDITORTestLevelSpawnPoint::simulationUpdate(float_t simDeltaTime)
@@ -56,6 +72,20 @@ void EDITORTestLevelSpawnPoint::simulationUpdate(float_t simDeltaTime)
     glm_mat4_identity(tm);
     glm_translate(tm, d->position);
     glm_mul_rot(tm, rotation, tm);
+
+    // Insert data into global state.
+    if (d->updateInGlobalStateTrigger)
+    {
+        for (auto& spd : globalState::listOfSpawnPoints)
+            if (spd.referenceSpawnPointEntity == this)
+            {
+                glm_vec3_copy(d->position, spd.position);
+                spd.facingDirection = d->facingDirection;
+                break;
+            }
+
+        d->updateInGlobalStateTrigger = false;
+    }
 }
 
 void EDITORTestLevelSpawnPoint::dump(DataSerializer& ds)

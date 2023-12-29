@@ -233,10 +233,11 @@
     - [x] Make the simulation values be run by an atomic size_t instead of switching pointers and with a mutex lock.
     - [ ] Play mode uses a copy of the editing level.
         - [x] Save the state of the level as soon as play mode is entered. (@NOTE: no need to load the level again, just use the state of the level you were at before).
-        - [ ] Then, add a player object at one of the spawn points.
+        - [x] Then, add a player object at one of the spawn points.
         - [x] Saving is disabled in play mode.
             > ImGui window that does saving is replaced with play mode stats.
         - [x] As soon as play mode is exited, the previously saved state of the level is reloaded.
+        - [ ] BUGFIX: some objects don't appear in the right spots after the level is reloaded?
     - [ ] Toggle wireframe mode. (Hook into material system)
         - [ ] Trigger a recook of the material system but now with the pipelines remade to have wireframe set.
         - [ ] Include zprepass in wireframe render, but not shadow map!
