@@ -231,19 +231,22 @@
                 > It's bound to F2.
             - [x] Add "Start Play Mode" "Stop Play Mode" debug messages.
     - [x] Make the simulation values be run by an atomic size_t instead of switching pointers and with a mutex lock.
-    - [ ] Play mode uses a copy of the editing level.
+    - [x] Play mode uses a copy of the editing level.
         - [x] Save the state of the level as soon as play mode is entered. (@NOTE: no need to load the level again, just use the state of the level you were at before).
         - [x] Then, add a player object at one of the spawn points.
         - [x] Saving is disabled in play mode.
             > ImGui window that does saving is replaced with play mode stats.
         - [x] As soon as play mode is exited, the previously saved state of the level is reloaded.
-        - [ ] BUGFIX: some objects don't appear in the right spots after the level is reloaded?
+        - [x] BUGFIX: some objects don't appear in the right spots after the level is reloaded?
+            > It seems to be the player object not getting deleted after doing a level reload upon stopping play mode.
+            > Fix: It's the same issue as the voxel field creation index issue when there are 0 instances created. The index never gets set in the list of capsule/voxelfield indices after deleting all the way to zero and then rebuilding (only is noticable after the [0] gets set to something other than 0, which is what happens during a full delete). Well, now it's both fixed in capsules and voxelfields... so should've definitely done it for the capsules too after doing it for the voxelfields.
     - [ ] Toggle wireframe mode. (Hook into material system)
         - [ ] Trigger a recook of the material system but now with the pipelines remade to have wireframe set.
         - [ ] Include zprepass in wireframe render, but not shadow map!
     - [x] Don't include player object in saved entity assortment of identities files.
         > Removed from `hello_hello_world`
         > @FUTURE: Player object location will be handled by the global state.
+        - [ ] Crash application if found trying to save the player object.
     - [ ] Lay out simulation objects that are just level testing spawn points and select which one to start playing at when doing level testing
         - EDITORTestLevelSpawnPoint.h/.cpp This name would be good eh!
         - [x] Create the 3d model.

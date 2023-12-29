@@ -1234,10 +1234,9 @@ namespace physengine
             // Pull a capsule from the pool
             size_t index = 0;
             if (numCapsCreated > 0)
-            {
                 index = (capsuleIndices[numCapsCreated - 1] + 1) % PHYSICS_OBJECTS_MAX_CAPACITY;
-                capsuleIndices[numCapsCreated] = index;
-            }
+            capsuleIndices[numCapsCreated] = index;
+
             CapsulePhysicsData& cpd = capsulePool[index];
             numCapsCreated++;
 
@@ -1386,7 +1385,7 @@ namespace physengine
 
             if (cpd.character == nullptr)
                 continue;
-            
+
             cpd.character->PostSimulation(collisionTolerance);
 
             RVec3 pos = cpd.character->GetCenterOfMassPosition();  // @NOTE: I thought that `GetPosition` would be quicker/lighter than `GetCenterOfMassPosition`, but getting the position negates the center of mass, thus causing an extra subtract operation.
