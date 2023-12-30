@@ -241,12 +241,15 @@
             > It seems to be the player object not getting deleted after doing a level reload upon stopping play mode.
             > Fix: It's the same issue as the voxel field creation index issue when there are 0 instances created. The index never gets set in the list of capsule/voxelfield indices after deleting all the way to zero and then rebuilding (only is noticable after the [0] gets set to something other than 0, which is what happens during a full delete). Well, now it's both fixed in capsules and voxelfields... so should've definitely done it for the capsules too after doing it for the voxelfields.
     - [ ] Toggle wireframe mode. (Hook into material system)
-        - [ ] Trigger a recook of the material system but now with the pipelines remade to have wireframe set.
-        - [ ] Include zprepass in wireframe render, but not shadow map!
+        - [ ] ~~Trigger a recook of the material system but now with the pipelines remade to have wireframe set.~~
+        - [x] Include zprepass in wireframe render, but not shadow map!
+        - [ ] Create a z-prepass wireframe material.
+        - [ ] Create a color-by instance id wireframe material.
+        - [ ] Switch between the regular materials and just using the wireframe materials in the main renderpass depending on whether wireframe is desired.
     - [x] Don't include player object in saved entity assortment of identities files.
         > Removed from `hello_hello_world`
         > @FUTURE: Player object location will be handled by the global state.
-        - [ ] Crash application if found trying to save the player object.
+        - [x] Crash application if found trying to save the player object.
     - [ ] Lay out simulation objects that are just level testing spawn points and select which one to start playing at when doing level testing
         - EDITORTestLevelSpawnPoint.h/.cpp This name would be good eh!
         - [x] Create the 3d model.
@@ -255,6 +258,15 @@
     - [ ] When pressing F1 (or whatever key will be for starting/stopping play mode), pop up a menu that has a list of the currently available test spawn points. Click on one and the player will be created and spawned at that position.
         - [ ] Press a certain key to reset the player to the position.
     - [x] Disable player being able to be created in palette.
+    - [ ] Extra free cam modes.
+        - [ ] Ortho in the 6 directions (+x, -x, +y, -y, +z, -z).
+            - [ ] Get initial ortho set up.
+            - [ ] Cycle thru with Shift+F2
+            - [ ] In ortho mode:
+                - [ ] use scroll bar to increase and decrease left,right,up,down size of ortho perspective.
+                - [ ] use middle click to move the view.
+                - [ ] As center point for forward,back (Z part of ortho perspective), use the currently selected render object.
+                - [ ] Use S,W (with Shift) to increase and decrease the distance away from the forward, back (in case editor needs to tighten the Z to see in the inside of caves or something).
 
 - [ ] Add Tracy profiler
     - [ ] Install the hpp and cpp files.

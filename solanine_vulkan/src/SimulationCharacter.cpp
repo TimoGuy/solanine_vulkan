@@ -2481,6 +2481,11 @@ void SimulationCharacter::dump(DataSerializer& ds)
 {
     Entity::dump(ds);
     ds.dumpString(_data->characterType);
+    if (isPlayer(_data))
+    {
+        std::cerr << "ERROR: attempting to save player character." << std::endl;
+        HAWSOO_CRASH();
+    }
     ds.dumpVec3(_data->position);
     ds.dumpFloat(_data->facingDirection);
 
