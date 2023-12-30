@@ -312,10 +312,12 @@
     - [ ] When it finishes, switch out the flat arrays with the newly written arrays.
     - [ ] Do the same if an object gets deleted.
 
+- [ ] Compute occlusion culling.
+
 - [ ] UI Editor
 
     - [ ] Small animations of how UI elements will come in and move out.
 
     - [ ] Entity that loads and displays a UI file.
 
-- [ ] 
+- [ ] Integrate FSR3 w/ frame generation (if it's out by now. If it's not out by 04/01/2023 for Vulkan, then just commit to FSR2).
