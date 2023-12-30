@@ -753,7 +753,7 @@ void VulkanEngine::renderMainRenderpass(const FrameData& currentFrame, VkCommand
 	vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_INLINE);
 
 	// Render skybox //
-	if (_currentEditorMode == EditorModes::LEVEL_EDITOR ||
+	if ((_currentEditorMode == EditorModes::LEVEL_EDITOR && !globalState::isEditingMode) ||
 		_currentEditorMode == EditorModes::MATERIAL_EDITOR)
 	{
 		// @TODO: put this into its own function!

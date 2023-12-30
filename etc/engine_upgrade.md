@@ -240,23 +240,21 @@
         - [x] BUGFIX: some objects don't appear in the right spots after the level is reloaded?
             > It seems to be the player object not getting deleted after doing a level reload upon stopping play mode.
             > Fix: It's the same issue as the voxel field creation index issue when there are 0 instances created. The index never gets set in the list of capsule/voxelfield indices after deleting all the way to zero and then rebuilding (only is noticable after the [0] gets set to something other than 0, which is what happens during a full delete). Well, now it's both fixed in capsules and voxelfields... so should've definitely done it for the capsules too after doing it for the voxelfields.
-    - [ ] Toggle wireframe mode. (Hook into material system)
-        - [ ] ~~Trigger a recook of the material system but now with the pipelines remade to have wireframe set.~~
-        - [x] Include zprepass in wireframe render, but not shadow map!
-        - [ ] Create a z-prepass wireframe material.
-        - [ ] Create a color-by instance id wireframe material.
-        - [ ] Switch between the regular materials and just using the wireframe materials in the main renderpass depending on whether wireframe is desired.
     - [x] Don't include player object in saved entity assortment of identities files.
         > Removed from `hello_hello_world`
         > @FUTURE: Player object location will be handled by the global state.
         - [x] Crash application if found trying to save the player object.
-    - [ ] Lay out simulation objects that are just level testing spawn points and select which one to start playing at when doing level testing
+    - [x] Lay out simulation objects that are just level testing spawn points and select which one to start playing at when doing level testing
         - EDITORTestLevelSpawnPoint.h/.cpp This name would be good eh!
         - [x] Create the 3d model.
         - [x] They get saved, but their render object is in the builder layer.
-        - [ ] Select which one to spawn at to start playing.
+        - [x] Their data structure is accessible for when doing a spawn.
     - [ ] When pressing F1 (or whatever key will be for starting/stopping play mode), pop up a menu that has a list of the currently available test spawn points. Click on one and the player will be created and spawned at that position.
-        - [ ] Press a certain key to reset the player to the position.
+        - [ ] The popup menu should spawn to right where the cursor is such that it's already pointing to the button that has the most recently selected checkpoint (or 0th if it doesn't exist).
+        - [ ] Press a certain key to reset the player to the checkpoint position.
+            - [ ] Hold the certain key to select which checkpoint to reset player to.
+                - [ ] This changes the respawning checkpoint to this checkpoint.
+        - [ ] Move the camera to be behind the direction of the checkpoint spawn position and facing forward, towards the direction the checkpoint is facing.
     - [x] Disable player being able to be created in palette.
     - [ ] Extra free cam modes.
         - [ ] Ortho in the 6 directions (+x, -x, +y, -y, +z, -z).
@@ -267,12 +265,27 @@
                 - [ ] use middle click to move the view.
                 - [ ] As center point for forward,back (Z part of ortho perspective), use the currently selected render object.
                 - [ ] Use S,W (with Shift) to increase and decrease the distance away from the forward, back (in case editor needs to tighten the Z to see in the inside of caves or something).
+    - [ ] Click at a certain point to create the instantiating instance there.
+        > This will be 不可欠 for creating large levels and adding things to the terrain easily. Having the option to move an object this way will be phenomenal too.
+        - [ ] Add function to Entity interface called `teleportToPosition(x,y,z)` and implement it to every object to create.
+        - [ ] Upon clicking the Create! button in the level editor, give a prompt that shows up and follows the mouse cursor saying "Click to the location to spawn the entity".
+        - [ ] After clicking at the place, shoot a raycast, and if it hits, use that position. If not, pick a position about 20m away in the direction selected.
+        - [ ] Create the entity and use `teleportToPosition` to move it to the position.
+    - [f] Toggle wireframe mode. (Hook into material system)
+        > @NOTE: I am deferring this to the future bc I feel like it's not the most important thing at this time. I'm looking at ortho viewpoints, better object placement as higher priority.
+        - [ ] ~~Trigger a recook of the material system but now with the pipelines remade to have wireframe set.~~
+        - [x] Include zprepass in wireframe render, but not shadow map!
+        - [ ] Create a z-prepass wireframe material.
+        - [ ] Create a color-by instance id wireframe material.
+        - [ ] Switch between the regular materials and just using the wireframe materials in the main renderpass depending on whether wireframe is desired.
 
 - [ ] Add Tracy profiler
     - [ ] Install the hpp and cpp files.
     - [ ] Put it in every function.
     - [ ] Figure out multithreading with the physics engine.
     - [ ] Add GPU support with vulkan.
+
+- [ ] TAKE A BREAK AND MOVE TO SOME GAMEPLAY ITERATION TO FIGURE OUT THE DESIGN THERE!!!!
 
 - [ ] Font cooker
     - [ ] STUFF
@@ -289,6 +302,15 @@
         > @NOTE: it only has to look good at 30 and 60 fps!!! For these kinds of effects, the higher the better, so if they look good at those marks, they'll look good anywhere.
         > Also, the technique has to be stable, but also be able to react quickly to changes.
     > Perhaps a good reference technique? https://www.youtube.com/watch?v=TzS0Zspn2Ig (16 shadowmaps per frame, sampled with monte-carlo and TAA)
+
+- [ ] Async object organization.
+    > This method should allow for immediate object integration and no hitching when adding new objects. Except for the initial 100ms or so when the object is just appended, it should run blazingly fast!
+    > The alternative to this method detailed below is to get a faster object integration thing going on. Maybe the profiler will help you understand what needs work in the object integration stage and then you won't even need to implement this async object organization system!  -Timo 2023/12/30
+    - [ ] Organize the object via buckets and write out the results into fast to iterate arrays.
+    - [ ] When a new object gets added to the instance set, just append it to the end of the iterating arrays so objects get added without hitching.
+    - [ ] In the background, start a reorganizing job.
+    - [ ] When it finishes, switch out the flat arrays with the newly written arrays.
+    - [ ] Do the same if an object gets deleted.
 
 - [ ] UI Editor
 
