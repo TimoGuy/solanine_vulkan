@@ -214,8 +214,9 @@ public:
 	bool _isInitialized{ false };
 	uint32_t _frameNumber{ 0 };
 
-	VkExtent2D _windowExtent{ 1920, 1080 };
-	// VkExtent2D _windowExtent{ 1280, 720 };
+	//VkExtent2D _windowExtent{ 1920, 1080 };
+	VkExtent2D _windowExtent{ 1600, 900 };
+	//VkExtent2D _windowExtent{ 1280, 720 };
 	SDL_Window* _window = nullptr;
 	bool _windowFullscreen = false;
 	bool _isWindowMinimized = false;    // @NOTE: if we don't handle window minimization correctly, we can get the VK_ERROR_DEVICE_LOST(-4) error
@@ -574,7 +575,7 @@ private:
 		LEVEL_EDITOR,
 		MATERIAL_EDITOR,
 	};
-	EditorModes _currentEditorMode = EditorModes::MATERIAL_EDITOR;
+	EditorModes _currentEditorMode = EditorModes::LEVEL_EDITOR;
 	void changeEditorMode(EditorModes newEditorMode);
 
 	//

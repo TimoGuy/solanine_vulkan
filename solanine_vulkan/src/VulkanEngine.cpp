@@ -2028,7 +2028,7 @@ void VulkanEngine::initVulkan()
 
 	auto instance = builder.set_app_name("Hawsoo_Solanine_x64")
 		.request_validation_layers(true)
-		.require_api_version(1, 3, 0)
+		.require_api_version(1, 2, 0)
 		.use_default_debug_messenger()
 		.build();
 
@@ -2043,7 +2043,7 @@ void VulkanEngine::initVulkan()
 
 	vkb::PhysicalDeviceSelector selector{ vkbInstance };
 	vkb::PhysicalDevice physicalDevice = selector
-		.set_minimum_version(1, 3)  // I thought draw indirect count was in 1.3, but it's in 1.2. Idk any other reason to have 1.3 be a requirement.
+		.set_minimum_version(1, 2)  // I thought draw indirect count was in 1.3, but it's in 1.2. Idk any other reason to have 1.3 be a requirement.
 		.set_surface(_surface)
 		.set_required_features({
 			// @NOTE: @FEATURES: Enable required features right here
@@ -6298,52 +6298,85 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 			static float_t scenePropertiesWindowWidth = 100.0f;
 			static float_t scenePropertiesWindowHeight = 100.0f;
 
-			static bool togglePlayEditModeFlag = false;
-			if (togglePlayEditModeFlag || input::editorInputSet().togglePlayEditMode.onAction)
+			static bool startPlayModeFlag = false;
+			static size_t selectedSpawnId = (size_t)-1;
+			static std::string tempSceneName = ".temp_scene_to_return_to_after_play_mode.temphentais";
+			if (startPlayModeFlag || input::editorInputSet().togglePlayEditMode.onAction)
 			{
-				togglePlayEditModeFlag = false;
-				globalState::isEditingMode = !globalState::isEditingMode;
+				startPlayModeFlag = false;
 
-				// React to this in and out of editing/play mode!
-				static std::string tempSceneName = ".temp_scene_to_return_to_after_play_mode.temphentais";
 				if (globalState::isEditingMode)
+				{
+					selectedSpawnId = (size_t)-1;
+					ImGui::OpenPopup("start_playmode_spawn_selection_popup");
+				}
+				else
 				{
 					scene::loadScene(tempSceneName, true);
 					physengine::requestSetRunPhysicsSimulation(false);
 					_camera->requestCameraMode(_camera->_cameraMode_freeCamMode);
-				}
-				else
-				{
-					scene::saveScene(tempSceneName, _entityManager->_entities);
-					{
-						// Add character and set it as the main subject.
-						// @TODO: move this somewhere else more appropriate.
-						if (globalState::listOfSpawnPoints.empty())
-						{
-							std::cerr << "ERROR: no spawn points to use for spawning player in!" << std::endl;
-							HAWSOO_CRASH();
-						}
-						auto& spd = globalState::listOfSpawnPoints[0];
+					globalState::isEditingMode = true;
 
-						DataSerializer ds;
-						ds.dumpString("00000000000000000000000000000000");
-						ds.dumpString("PLAYER");            // Type.
-						ds.dumpVec3(spd.position);          // Starting Position.
-						ds.dumpFloat(spd.facingDirection);  // Facing Direction.
-						ds.dumpFloat(100.0f);               // Health.
-						ds.dumpFloat(0.0f);                 // Num Harvestable Items.
-						ds.dumpFloat(0.0f);                 // Num Scannable Items.
-						DataSerialized dsd = ds.getSerializedData();
-						SimulationCharacter* entity = (SimulationCharacter*)scene::spinupNewObject(":character", &dsd);
-						_camera->mainCamMode.setMainCamTargetObject(entity->getMainRenderObject());
-					}
-					physengine::requestSetRunPhysicsSimulation(true);
-					_camera->requestCameraMode(_camera->_cameraMode_mainCamMode);
+					debug::pushDebugMessage({
+						.message = "===Stopped PLAY MODE===",
+					});
 				}
+			}
+			if (ImGui::BeginPopup("start_playmode_spawn_selection_popup"))
+			{
+				size_t spawnId = 0;
+				for (auto& spd : globalState::listOfSpawnPoints)
+				{
+					std::string desc =
+						"Spawn point #" + std::to_string(spawnId + 1) +
+						" (" + std::to_string((int32_t)spd.position[0]) + ", " + std::to_string((int32_t)spd.position[1]) + ", " + std::to_string((int32_t)spd.position[2]) + ") : " +
+						std::to_string((int32_t)glm_rad(spd.facingDirection)) + "deg";
+					if (ImGui::Button(desc.c_str()))
+					{
+						selectedSpawnId = spawnId;
+						ImGui::CloseCurrentPopup();
+					}
+
+					spawnId++;
+				}
+
+				ImGui::EndPopup();
+			}
+			if (selectedSpawnId != (size_t)-1)
+			{
+				// Enter play mode with the selected spawn.
+				scene::saveScene(tempSceneName, _entityManager->_entities);
+				{
+					// Add character and set it as the main subject.
+					// @TODO: move this somewhere else more appropriate.
+					if (globalState::listOfSpawnPoints.empty())
+					{
+						std::cerr << "ERROR: no spawn points to use for spawning player in!" << std::endl;
+						HAWSOO_CRASH();
+					}
+					auto& spd = globalState::listOfSpawnPoints[selectedSpawnId];
+
+					DataSerializer ds;
+					ds.dumpString("00000000000000000000000000000000");
+					ds.dumpString("PLAYER");            // Type.
+					ds.dumpVec3(spd.position);          // Starting Position.
+					ds.dumpFloat(spd.facingDirection);  // Facing Direction.
+					ds.dumpFloat(100.0f);               // Health.
+					ds.dumpFloat(0.0f);                 // Num Harvestable Items.
+					ds.dumpFloat(0.0f);                 // Num Scannable Items.
+					DataSerialized dsd = ds.getSerializedData();
+					SimulationCharacter* entity = (SimulationCharacter*)scene::spinupNewObject(":character", &dsd);
+					_camera->mainCamMode.setMainCamTargetObject(entity->getMainRenderObject());
+				}
+				physengine::requestSetRunPhysicsSimulation(true);
+				_camera->requestCameraMode(_camera->_cameraMode_mainCamMode);
 
 				debug::pushDebugMessage({
-					.message = (globalState::isEditingMode ? "===Stopped PLAY MODE===" : "===Started PLAY MODE==="),
+					.message = "===Started PLAY MODE===",
 				});
+
+				selectedSpawnId = (size_t)-1;
+				globalState::isEditingMode = false;
 			}
 
 			if (globalState::isEditingMode)
@@ -6415,7 +6448,7 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 					ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0.355556f, 0.7f, 0.5f));
 					ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0.355556f, 0.8f, 0.6f));
 					if (ImGui::Button("Start PLAY MODE (F1)"))
-						togglePlayEditModeFlag = true;  // Switch to play mode.
+						startPlayModeFlag = true;  // Switch to play mode.
 					ImGui::PopStyleColor(3);
 
 					scenePropertiesWindowWidth = ImGui::GetWindowWidth();

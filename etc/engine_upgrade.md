@@ -250,8 +250,10 @@
         - [x] They get saved, but their render object is in the builder layer.
         - [x] Their data structure is accessible for when doing a spawn.
     - [ ] When pressing F1 (or whatever key will be for starting/stopping play mode), pop up a menu that has a list of the currently available test spawn points. Click on one and the player will be created and spawned at that position.
+        - [x] Do initial work of setting spawn point via dialog menu.
         - [ ] The popup menu should spawn to right where the cursor is such that it's already pointing to the button that has the most recently selected checkpoint (or 0th if it doesn't exist).
-        - [ ] Press a certain key to reset the player to the checkpoint position.
+        - [ ] Press a certain key to reset the player to the checkpoint position (@NOTE: this key should be the same key for resetting in the real game).
+	    > For Mouse/KB this hotkey should be double tapping R, and for controller this should be double tapping the left joystick click.
             - [ ] Hold the certain key to select which checkpoint to reset player to.
                 - [ ] This changes the respawning checkpoint to this checkpoint.
         - [ ] Move the camera to be behind the direction of the checkpoint spawn position and facing forward, towards the direction the checkpoint is facing.
