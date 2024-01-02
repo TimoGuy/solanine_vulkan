@@ -250,13 +250,16 @@
         - [x] They get saved, but their render object is in the builder layer.
         - [x] Their data structure is accessible for when doing a spawn.
     - [ ] When pressing F1 (or whatever key will be for starting/stopping play mode), pop up a menu that has a list of the currently available test spawn points. Click on one and the player will be created and spawned at that position.
+        > Use the `OpenPopupPos` property.
         - [x] Do initial work of setting spawn point via dialog menu.
-        - [ ] The popup menu should spawn to right where the cursor is such that it's already pointing to the button that has the most recently selected checkpoint (or 0th if it doesn't exist).
+        - [d] The popup menu should spawn to right where the cursor is such that it's already pointing to the button that has the most recently selected checkpoint (or 0th if it doesn't exist).
+	    > After checking out `OpenPopupPos`, this is impossible unless if we completely changed some of the imgui api, which I don't wanna do yet. Setting this task to deprecated. Adding a new one below.
+        - [x] Move the camera to be behind the direction of the checkpoint spawn position and facing forward, towards the direction the checkpoint is facing.
         - [ ] Press a certain key to reset the player to the checkpoint position (@NOTE: this key should be the same key for resetting in the real game).
 	    > For Mouse/KB this hotkey should be double tapping R, and for controller this should be double tapping the left joystick click.
-            - [ ] Hold the certain key to select which checkpoint to reset player to.
+            - [ ] Hold the certain key to select which checkpoint to reset player to. (i.e. tap R, hold R... or "Doublehold")
                 - [ ] This changes the respawning checkpoint to this checkpoint.
-        - [ ] Move the camera to be behind the direction of the checkpoint spawn position and facing forward, towards the direction the checkpoint is facing.
+	- [ ] Just spawn player at 0th or most recent spawn point. No dialog anymore.
     - [x] Disable player being able to be created in palette.
     - [ ] Extra free cam modes.
         - [ ] Ortho in the 6 directions (+x, -x, +y, -y, +z, -z).

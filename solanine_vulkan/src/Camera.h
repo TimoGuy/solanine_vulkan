@@ -66,6 +66,12 @@ struct MainCamMode
 	float_t actualLookDistance;
 	float_t actualLookDistanceVelocity;
 
+	struct ApplyOrbitAngles
+	{
+		bool applyFlag = false;
+		vec2 newOrbitAngles;
+	} applyOrbitAngles;
+
 	struct OpponentTargetTransition
 	{
 		bool first = false;
@@ -102,6 +108,7 @@ struct MainCamMode
 	float_t   focusSmoothTimeY       = 0.3f;
 	vec3      focusPositionOffset    = { 0, 2.333333f, 0 };
 
+	void setMainCamOrbitAngles(vec2 orbitAngles);
 	void setMainCamTargetObject(RenderObject* targetObject);
 	void setOpponentCamTargetObject(physengine::CapsulePhysicsData* targetObject);
 };

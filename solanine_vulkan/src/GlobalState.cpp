@@ -32,6 +32,7 @@ namespace globalState
     bool isEditingMode = true;
 
     std::vector<SpawnPointData> listOfSpawnPoints;
+    vec3 respawnPosition;
 
 
     VulkanEngine* engineRef = nullptr;

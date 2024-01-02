@@ -6366,7 +6366,9 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 					ds.dumpFloat(0.0f);                 // Num Scannable Items.
 					DataSerialized dsd = ds.getSerializedData();
 					SimulationCharacter* entity = (SimulationCharacter*)scene::spinupNewObject(":character", &dsd);
+
 					_camera->mainCamMode.setMainCamTargetObject(entity->getMainRenderObject());
+					_camera->mainCamMode.setMainCamOrbitAngles(vec2{ glm_rad(25.0f), spd.facingDirection });
 				}
 				physengine::requestSetRunPhysicsSimulation(true);
 				_camera->requestCameraMode(_camera->_cameraMode_mainCamMode);

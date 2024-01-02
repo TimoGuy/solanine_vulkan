@@ -1399,6 +1399,9 @@ SimulationCharacter::SimulationCharacter(EntityManager* em, RenderObjectManager*
 
     _data->staminaData.currentStamina = (float_t)_data->staminaData.maxStamina;
 
+    if (isPlayer(_data))
+        glm_vec3_copy(_data->position, globalState::respawnPosition);  // @TODO: start here!!!! (got the respawn position set, just need to set teleport player to respawn pos when double-tap R.
+
     // Create physics character.
     bool useCCD = (isPlayer(_data));
     _data->cpd = physengine::createCharacter(getGUID(), _data->position, 0.375f, 1.25f, useCCD);  // Total height is 2, but r*2 is subtracted to get the capsule height (i.e. the line segment length that the capsule rides along)

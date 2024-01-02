@@ -35,6 +35,7 @@ namespace globalState
         float_t facingDirection;
     };
     extern std::vector<SpawnPointData> listOfSpawnPoints;
+    extern vec3 respawnPosition;
 
     enum AncientWeaponItemType
     {

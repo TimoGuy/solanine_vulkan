@@ -179,6 +179,12 @@ void SceneCamera::recalculateCascadeViewProjs(GPUPBRShadingProps& pbrShadingProp
 //
 // MainCamMode
 //
+void MainCamMode::setMainCamOrbitAngles(vec2 orbitAngles)
+{
+	applyOrbitAngles.applyFlag = true;
+	glm_vec2_copy(orbitAngles, applyOrbitAngles.newOrbitAngles);
+}
+
 void MainCamMode::setMainCamTargetObject(RenderObject* targetObject)
 {
 	MainCamMode::targetObject = targetObject;
@@ -393,6 +399,16 @@ void Camera::updateMainCam(float_t deltaTime, CameraModeChangeEvent changeEvent)
 	}
 	if (_cameraMode != _cameraMode_mainCamMode)
 		return;
+
+	// Apply orbit angles.
+	if (mainCamMode.applyOrbitAngles.applyFlag)
+	{
+		glm_vec2_copy(
+			mainCamMode.applyOrbitAngles.newOrbitAngles,
+			mainCamMode.orbitAngles
+		);
+		mainCamMode.applyOrbitAngles.applyFlag = false;
+	}
 
 	//
 	// Focus onto target object
