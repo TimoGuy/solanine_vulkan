@@ -1400,7 +1400,10 @@ SimulationCharacter::SimulationCharacter(EntityManager* em, RenderObjectManager*
     _data->staminaData.currentStamina = (float_t)_data->staminaData.maxStamina;
 
     if (isPlayer(_data))
-        glm_vec3_copy(_data->position, globalState::respawnPosition);  // @TODO: start here!!!! (got the respawn position set, just need to set teleport player to respawn pos when double-tap R.
+    {
+        glm_vec3_copy(_data->position, globalState::respawnPosition);
+        globalState::respawnFacingDirection = _data->facingDirection;
+    }
 
     // Create physics character.
     bool useCCD = (isPlayer(_data));
@@ -1408,8 +1411,6 @@ SimulationCharacter::SimulationCharacter(EntityManager* em, RenderObjectManager*
 
     if (isPlayer(_data))
     {
-        _data->camera->mainCamMode.setMainCamTargetObject(_data->characterRenderObj);  // @NOTE: I believe that there should be some kind of main camera system that targets the player by default but when entering different volumes etc. the target changes depending.... essentially the system needs to be more built out imo
-
         globalState::playerGUID = getGUID();
         globalState::playerPositionRef = &_data->cpd->currentCOMPosition;
 
@@ -1648,6 +1649,13 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
 {
     if (isPlayer(d))
     {
+        // Handle Respawn action.
+        if (input::simInputSet().respawn.onDoubleAction)
+        {
+            physengine::setCharacterPosition(*d->cpd, globalState::respawnPosition);
+            d->facingDirection = globalState::respawnFacingDirection;
+        }
+
         // Handle 'E' action.
         if (interactionUIText != nullptr &&
             !interactionGUIDPriorityQueue.empty())

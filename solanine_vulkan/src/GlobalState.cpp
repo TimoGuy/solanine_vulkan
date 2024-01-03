@@ -33,6 +33,7 @@ namespace globalState
 
     std::vector<SpawnPointData> listOfSpawnPoints;
     vec3 respawnPosition;
+    float_t respawnFacingDirection;
 
 
     VulkanEngine* engineRef = nullptr;

@@ -257,7 +257,8 @@
         - [x] Move the camera to be behind the direction of the checkpoint spawn position and facing forward, towards the direction the checkpoint is facing.
         - [ ] Press a certain key to reset the player to the checkpoint position (@NOTE: this key should be the same key for resetting in the real game).
 	    > For Mouse/KB this hotkey should be double tapping R, and for controller this should be double tapping the left joystick click.
-            - [ ] Hold the certain key to select which checkpoint to reset player to. (i.e. tap R, hold R... or "Doublehold")
+            - [x] Initial double tap R to respawn.
+	    - [ ] Hold the certain key to select which checkpoint to reset player to. (i.e. tap R, hold R... or "Doublehold")
                 - [ ] This changes the respawning checkpoint to this checkpoint.
 	- [ ] Just spawn player at 0th or most recent spawn point. No dialog anymore.
     - [x] Disable player being able to be created in palette.

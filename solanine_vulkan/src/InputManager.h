@@ -39,6 +39,46 @@ namespace input
 		}
 	};
 
+	struct OnDoubleAction
+	{
+		bool onDoubleAction = false;
+		float_t timer = 0.0f;
+		inline void update(bool state, float_t deltaTime)
+		{
+			onDoubleAction = false;
+
+			if (timer == 0.0f)  // Initial state.
+			{
+				if (state)
+					timer = -1.0f;
+			}
+			else if (timer == -1.0f)  // Input is pressed.
+			{
+				if (!state)
+					timer = 0.3f;
+			}
+			else if (timer > 0.0f)  // Input is released. Timer is started to see if input is pressed again before timer is expired.
+			{
+				if (state)
+				{
+					onDoubleAction = true;
+					timer = -2.0f;
+				}
+				else
+				{
+					timer -= deltaTime;
+					if (timer <= 0.0f)
+						timer = 0.0f;
+				}
+			}
+			else if (timer == -2.0f)  // Double action successfully performed. Now waiting for input to be released so that can revert to initial state.
+			{
+				if (!state)
+					timer = 0.0f;
+			}
+		}
+	};
+
 	struct OneAxis
 	{
 		float_t axis = 0.0f;
@@ -129,8 +169,9 @@ namespace input
 		OnHoldReleaseAction detach;
 		OnHoldReleaseAction focus;
 		OnAction            interact;
+		OnDoubleAction      respawn;
 
-		void update();
+		void update(float_t deltaTime);
 	};
 	SimulationThreadInputSet& simInputSet();
 }

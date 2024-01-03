@@ -740,7 +740,7 @@ namespace physengine
             //         proportionate to the timescale.  -Timo 2023/06/10
             transformSwap();
             input::editorInputSet().update();
-            input::simInputSet().update();
+            input::simInputSet().update(simDeltaTime);
             entityManager->INTERNALsimulationUpdate(simDeltaTime);  // @NOTE: if timescale changes, then the system just waits longer/shorter per loop.
             if (runPhysicsSimulations)
                 physicsSystem->Update(simDeltaTime, 1, 1, &tempAllocator, &jobSystem);

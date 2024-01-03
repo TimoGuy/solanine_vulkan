@@ -292,7 +292,7 @@ namespace input
 		return instance;
 	}
 	
-	void SimulationThreadInputSet::update()
+	void SimulationThreadInputSet::update(float_t deltaTime)
 	{
 		float_t h = 0.0f, v = 0.0f;
 		h += keyMouseState.a ? -1.0f : 0.0f;
@@ -305,6 +305,7 @@ namespace input
 		detach.update(keyMouseState.RMB);
 		focus.update(keyMouseState.lShift);
 		interact.update(keyMouseState.e);
+		respawn.update(keyMouseState.r, deltaTime);
 	}
 
 	SimulationThreadInputSet& simInputSet()

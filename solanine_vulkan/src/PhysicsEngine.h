@@ -106,7 +106,6 @@ namespace physengine
     CapsulePhysicsData* getCapsuleByIndex(size_t index);
     float_t getLengthOffsetToBase(const CapsulePhysicsData& cpd);
     void setCharacterPosition(CapsulePhysicsData& cpd, vec3 position);
-    void setCharacterCosmeticRotation(CapsulePhysicsData& cpd, versor rotation);  // @TODO: @NOCHECKIN: create this so that facing direction can get interpolated (this doesn't change the rotation of the actual physics object.)
     void moveCharacter(CapsulePhysicsData& cpd, vec3 velocity);
     void setGravityFactor(CapsulePhysicsData& cpd, float_t newGravityFactor);
     void getLinearVelocity(const CapsulePhysicsData& cpd, vec3& outVelocity);
