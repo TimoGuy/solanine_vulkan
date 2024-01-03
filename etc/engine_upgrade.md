@@ -249,7 +249,7 @@
         - [x] Create the 3d model.
         - [x] They get saved, but their render object is in the builder layer.
         - [x] Their data structure is accessible for when doing a spawn.
-    - [ ] When pressing F1 (or whatever key will be for starting/stopping play mode), pop up a menu that has a list of the currently available test spawn points. Click on one and the player will be created and spawned at that position.
+    - [x] When pressing F1 (or whatever key will be for starting/stopping play mode), pop up a menu that has a list of the currently available test spawn points. Click on one and the player will be created and spawned at that position.
         > Use the `OpenPopupPos` property.
         - [x] Do initial work of setting spawn point via dialog menu.
         - [d] The popup menu should spawn to right where the cursor is such that it's already pointing to the button that has the most recently selected checkpoint (or 0th if it doesn't exist).
@@ -262,7 +262,8 @@
                 - [x] This changes the respawning checkpoint to this checkpoint.
 		- [x] FIX: can't select the actual checkpoint. Unlock and relock mouse.
 		- [x] FIX: checkpoint spawn object isn't updating spawn position when moving it for some reason.
-	- [ ] Just spawn player at 0th or most recent spawn point. No dialog anymore.
+	- [f] Just spawn player at 0th or most recent spawn point. No dialog anymore.
+	    > Ehhhh, for now, it's fine to leave it the way it is. Do this in the future/if you feel it's necessary. The downside is the copypasta, tho.
     - [x] Disable player being able to be created in palette.
     - [ ] Extra free cam modes.
         - [ ] Ortho in the 6 directions (+x, -x, +y, -y, +z, -z).
