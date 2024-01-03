@@ -37,6 +37,8 @@ namespace globalState
     extern std::vector<SpawnPointData> listOfSpawnPoints;
     extern vec3 respawnPosition;
     extern float_t respawnFacingDirection;
+    extern bool EDITORpromptChangeSpawnPoint;
+    extern size_t EDITORtriggerRespawnFlag;
 
     enum AncientWeaponItemType
     {

@@ -79,6 +79,62 @@ namespace input
 		}
 	};
 
+	struct OnDoubleHoldAction
+	{
+		bool onDoubleAction = false;
+		bool onDoubleHoldAction = false;
+		bool onDoubleHoldReleaseAction = false;
+		float_t timer = 0.0f;
+		inline void update(bool state, float_t deltaTime)
+		{
+			onDoubleAction = false;
+			onDoubleHoldAction = false;
+			onDoubleHoldReleaseAction = false;
+
+			if (timer == 0.0f)  // Initial state.
+			{
+				if (state)
+					timer = -1.0f;
+			}
+			else if (timer == -1.0f)  // Input is pressed.
+			{
+				if (!state)
+					timer = 0.3f;
+			}
+			else if (timer > 0.0f)  // Input is released. Timer is started to see if input is pressed again before timer is expired.
+			{
+				if (state)
+				{
+					timer = -2.0f;
+				}
+				else
+				{
+					timer -= deltaTime;
+					if (timer <= 0.0f)
+						timer = 0.0f;
+				}
+			}
+			else if (timer <= -2.0f)  // Second input is pressed. Release early and `onDoubleAction` is flagged. Release late and `onDoubleHoldReleaseAction` is flagged. Holding does `onDoubleHoldAction`.
+			{
+				if (state)
+				{
+					timer -= deltaTime;
+					if (timer + deltaTime > -2.3f &&
+						timer <= -2.3f)
+						onDoubleHoldAction = true;
+				}
+				else
+				{
+					if (timer > -2.3f)
+						onDoubleAction = true;
+					else
+						onDoubleHoldReleaseAction = true;
+					timer = 0.0f;
+				}
+			}
+		}
+	};
+
 	struct OneAxis
 	{
 		float_t axis = 0.0f;
@@ -169,7 +225,7 @@ namespace input
 		OnHoldReleaseAction detach;
 		OnHoldReleaseAction focus;
 		OnAction            interact;
-		OnDoubleAction      respawn;
+		OnDoubleHoldAction  respawn;
 
 		void update(float_t deltaTime);
 	};

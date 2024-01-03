@@ -16,9 +16,19 @@ struct EDITORTestLevelSpawnPoint_XData
     int32_t spawnIdx        = 0;
     vec3    position        = GLM_VEC3_ZERO_INIT;
     float_t facingDirection = 0.0f;
-
-    bool updateInGlobalStateTrigger = false;
 };
+
+
+void updateGlobalStateSpawns(EDITORTestLevelSpawnPoint_XData* d, EDITORTestLevelSpawnPoint* _this)
+{
+    for (auto& spd : globalState::listOfSpawnPoints)
+        if (spd.referenceSpawnPointEntity == _this)
+        {
+            glm_vec3_copy(d->position, spd.position);
+            spd.facingDirection = d->facingDirection;
+            break;
+        }
+}
 
 
 EDITORTestLevelSpawnPoint::EDITORTestLevelSpawnPoint(EntityManager* em, RenderObjectManager* rom, DataSerialized* ds) : Entity(em, ds), d(new EDITORTestLevelSpawnPoint_XData)
@@ -45,7 +55,7 @@ EDITORTestLevelSpawnPoint::EDITORTestLevelSpawnPoint(EntityManager* em, RenderOb
         .referenceSpawnPointEntity = this,
     });
 
-    d->updateInGlobalStateTrigger = true;
+    updateGlobalStateSpawns(d, this);
 }
 
 EDITORTestLevelSpawnPoint::~EDITORTestLevelSpawnPoint()
@@ -72,20 +82,6 @@ void EDITORTestLevelSpawnPoint::simulationUpdate(float_t simDeltaTime)
     glm_mat4_identity(tm);
     glm_translate(tm, d->position);
     glm_mul_rot(tm, rotation, tm);
-
-    // Insert data into global state.
-    if (d->updateInGlobalStateTrigger)
-    {
-        for (auto& spd : globalState::listOfSpawnPoints)
-            if (spd.referenceSpawnPointEntity == this)
-            {
-                glm_vec3_copy(d->position, spd.position);
-                spd.facingDirection = d->facingDirection;
-                break;
-            }
-
-        d->updateInGlobalStateTrigger = false;
-    }
 }
 
 void EDITORTestLevelSpawnPoint::dump(DataSerializer& ds)
@@ -118,6 +114,8 @@ void EDITORTestLevelSpawnPoint::reportMoved(mat4* matrixMoved)
     vec3 forward;
     glm_mat4_mulv3(rot, vec3{ 0.0f, 0.0f, 1.0f }, 0.0f, forward);
     d->facingDirection = atan2f(forward[0], forward[2]);
+
+    updateGlobalStateSpawns(d, this);
 }
 
 void EDITORTestLevelSpawnPoint::renderImGui()

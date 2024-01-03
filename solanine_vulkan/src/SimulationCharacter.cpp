@@ -1399,12 +1399,6 @@ SimulationCharacter::SimulationCharacter(EntityManager* em, RenderObjectManager*
 
     _data->staminaData.currentStamina = (float_t)_data->staminaData.maxStamina;
 
-    if (isPlayer(_data))
-    {
-        glm_vec3_copy(_data->position, globalState::respawnPosition);
-        globalState::respawnFacingDirection = _data->facingDirection;
-    }
-
     // Create physics character.
     bool useCCD = (isPlayer(_data));
     _data->cpd = physengine::createCharacter(getGUID(), _data->position, 0.375f, 1.25f, useCCD);  // Total height is 2, but r*2 is subtracted to get the capsule height (i.e. the line segment length that the capsule rides along)
@@ -1650,10 +1644,16 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
     if (isPlayer(d))
     {
         // Handle Respawn action.
-        if (input::simInputSet().respawn.onDoubleAction)
+        if (input::simInputSet().respawn.onDoubleAction ||
+            globalState::EDITORtriggerRespawnFlag)
         {
             physengine::setCharacterPosition(*d->cpd, globalState::respawnPosition);
             d->facingDirection = globalState::respawnFacingDirection;
+            globalState::EDITORtriggerRespawnFlag = false;
+        }
+        if (input::simInputSet().respawn.onDoubleHoldAction)
+        {
+            globalState::EDITORpromptChangeSpawnPoint = true;
         }
 
         // Handle 'E' action.

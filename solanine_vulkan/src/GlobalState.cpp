@@ -34,6 +34,8 @@ namespace globalState
     std::vector<SpawnPointData> listOfSpawnPoints;
     vec3 respawnPosition;
     float_t respawnFacingDirection;
+    bool EDITORpromptChangeSpawnPoint = false;
+    size_t EDITORtriggerRespawnFlag = (size_t)-1;
 
 
     VulkanEngine* engineRef = nullptr;

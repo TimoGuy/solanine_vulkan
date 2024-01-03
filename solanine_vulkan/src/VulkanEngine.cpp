@@ -6292,6 +6292,48 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 	{
 		case EditorModes::LEVEL_EDITOR:
 		{
+			// Change respawn point popup.
+			static bool initiallyChangedCamModeToFree = false;
+			if (globalState::EDITORpromptChangeSpawnPoint)
+			{
+				globalState::EDITORpromptChangeSpawnPoint = false;
+				if (_camera->getCameraMode() == _camera->_cameraMode_mainCamMode)
+				{
+					_camera->requestCameraMode(_camera->_cameraMode_freeCamMode);
+					initiallyChangedCamModeToFree = true;
+				}
+				ImGui::OpenPopup("change_respawn_point");
+			}
+			if (ImGui::BeginPopup("change_respawn_point"))
+			{
+				size_t spawnId = 0;
+				for (auto& spd : globalState::listOfSpawnPoints)
+				{
+					std::string desc =
+						"Spawn point #" + std::to_string(spawnId + 1) +
+						" (" + std::to_string((int32_t)spd.position[0]) + ", " + std::to_string((int32_t)spd.position[1]) + ", " + std::to_string((int32_t)spd.position[2]) + ") : " +
+						std::to_string((int32_t)glm_rad(spd.facingDirection)) + "deg";
+					if (ImGui::Button(desc.c_str()))
+					{
+						auto& spd = globalState::listOfSpawnPoints[spawnId];
+						glm_vec3_copy(spd.position, globalState::respawnPosition);
+						globalState::respawnFacingDirection = spd.facingDirection;
+						globalState::EDITORtriggerRespawnFlag = true;
+
+						if (initiallyChangedCamModeToFree)
+						{
+							_camera->requestCameraMode(_camera->_cameraMode_mainCamMode);
+							initiallyChangedCamModeToFree = false;
+						}
+						ImGui::CloseCurrentPopup();
+					}
+
+					spawnId++;
+				}
+
+				ImGui::EndPopup();
+			}
+
 			//
 			// Scene Properties window (and play mode window).
 			//
@@ -6369,6 +6411,9 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 
 					_camera->mainCamMode.setMainCamTargetObject(entity->getMainRenderObject());
 					_camera->mainCamMode.setMainCamOrbitAngles(vec2{ glm_rad(25.0f), spd.facingDirection });
+
+					glm_vec3_copy(spd.position, globalState::respawnPosition);
+					globalState::respawnFacingDirection = spd.facingDirection;
 				}
 				physengine::requestSetRunPhysicsSimulation(true);
 				_camera->requestCameraMode(_camera->_cameraMode_mainCamMode);
