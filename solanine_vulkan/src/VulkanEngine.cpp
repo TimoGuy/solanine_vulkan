@@ -6732,10 +6732,75 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 						_flagAttachToThisEntity = nullptr;
 					}
 
+					static bool showCreateObjectTooltip = false;
 					if (ImGui::Button("Create!"))
 					{
-						auto newEnt = scene::spinupNewObject(listEntityTypes[(size_t)entityToCreateIndex], nullptr);
-						_flagAttachToThisEntity = newEnt;  // @HACK: ... but if it works?
+						showCreateObjectTooltip = true;
+					}
+					if (showCreateObjectTooltip)
+					{
+						// Figure out linecast for .
+						ImGuiIO& io = ImGui::GetIO();
+						bool raycastSuccess = false;
+						std::string raycastGuid;
+						vec3 initPosition;
+						{
+							vec3 linecastPt1, linecastPt2;
+							glm_unproject(
+								vec3{ io.MousePos.x, io.MousePos.y, 0.0f },
+								_camera->sceneCamera.gpuCameraData.projectionView,
+								vec4{ 0, 0, (float_t)_windowExtent.width, (float_t)_windowExtent.height },
+								linecastPt1
+							);
+							glm_unproject(
+								vec3{ io.MousePos.x, io.MousePos.y, 1.0f },
+								_camera->sceneCamera.gpuCameraData.projectionView,
+								vec4{ 0, 0, (float_t)_windowExtent.width, (float_t)_windowExtent.height },
+								linecastPt2
+							);
+
+							vec3 delta;
+							glm_vec3_sub(linecastPt2, linecastPt1, delta);
+							float_t frac;
+							raycastSuccess = physengine::raycast(linecastPt1, delta, raycastGuid, frac);
+							if (raycastSuccess)
+							{
+								glm_vec3_scale(delta, frac, delta);
+								glm_vec3_add(linecastPt1, delta, initPosition);
+							}
+							else
+							{
+								glm_vec3_scale_as(delta, 20.0f, delta);
+								glm_vec3_add(linecastPt1, delta, initPosition);
+							}
+						}
+
+						// Render tooltip.
+						ImGui::BeginTooltip();
+						std::string tip =
+							"Click LMB to instantiate the object `" +
+							listEntityTypes[(size_t)entityToCreateIndex] +
+							"`\nOr Esc to cancel.\n";
+						if (raycastSuccess)
+							tip += "On top of `" + raycastGuid.substr(0, 6) + "` at (" + std::to_string((int32_t)initPosition[0]) + ", " + std::to_string((int32_t)initPosition[1]) + ", " + std::to_string((int32_t)initPosition[2]) + ").";
+						else
+							tip += "At cursor (" + std::to_string((int32_t)io.MousePos.x) + ", " + std::to_string((int32_t)io.MousePos.y) + "), 20m away.";
+						ImGui::TextUnformatted(tip.c_str());
+						ImGui::EndTooltip();
+
+						if (input::editorInputSet().pickObject.onAction)
+						{
+							// Spin up new entity.
+							auto newEnt = scene::spinupNewObject(listEntityTypes[(size_t)entityToCreateIndex], nullptr);
+							newEnt->teleportToPosition(initPosition);
+							_flagAttachToThisEntity = newEnt;  // @HACK: ... but if it works?
+							showCreateObjectTooltip = false;
+						}
+						if (input::editorInputSet().cancel.onAction)
+						{
+							// Cancel creating entity.
+							showCreateObjectTooltip = false;
+						}
 					}
 
 					// Manipulate the selected entity

@@ -276,16 +276,17 @@
                 - [d] ~~As center point for forward,back (Z part of ortho perspective), use the currently selected render object.~~
                 - [d] ~~Use S,W (with Shift) to increase and decrease the distance away from the forward, back (in case editor needs to tighten the Z to see in the inside of caves or something).~~
 		    > For these 2 tickets, I feel like the current solution is adequate, and further testing will show what we need to do, since these 2 tickets don't feel like the way to move forward anymore. The current solution is to have the focus distance be a static 20 units forward, and the keys S,W just adjust forward and backwards.  -Timo 2024/01/03
-    - [ ] Click at a certain point to create the instantiating instance there.
+    - [x] Click at a certain point to create the instantiating instance there.
         > This will be 不可欠 for creating large levels and adding things to the terrain easily. Having the option to move an object this way will be phenomenal too.
-        - [ ] Add function to Entity interface called `teleportToPosition(x,y,z)` and implement it to every object to create.
-        - [ ] Upon clicking the Create! button in the level editor, give a prompt that shows up and follows the mouse cursor saying "Click to the location to spawn the entity".
-        - [ ] After clicking at the place, shoot a raycast, and if it hits, use that position. If not, pick a position about 20m away in the direction selected.
-        - [ ] Create the entity and use `teleportToPosition` to move it to the position.
+        - [x] Add function to Entity interface called `teleportToPosition(x,y,z)` and implement it to every object to create.
+	    > @NOTE: since the `lateUpdate()` function doesn't exist anymore for Harvestable and Scannable objects, I think these won't work correctly yet... so they need some fixing eh!
+        - [x] Upon clicking the Create! button in the level editor, give a prompt that shows up and follows the mouse cursor saying "Click to the location to spawn the entity".
+        - [x] After clicking at the place, shoot a raycast, and if it hits, use that position. If not, pick a position about 20m away in the direction selected.
+        - [x] Create the entity and use `teleportToPosition` to move it to the position.
     - [f] Toggle wireframe mode. (Hook into material system)
         > @NOTE: I am deferring this to the future bc I feel like it's not the most important thing at this time. I'm looking at ortho viewpoints, better object placement as higher priority.
         - [ ] ~~Trigger a recook of the material system but now with the pipelines remade to have wireframe set.~~
-        - [x] Include zprepass in wireframe render, but not shadow map!
+        - [ ] Include zprepass in wireframe render, but not shadow map!
         - [ ] Create a z-prepass wireframe material.
         - [ ] Create a color-by instance id wireframe material.
         - [ ] Switch between the regular materials and just using the wireframe materials in the main renderpass depending on whether wireframe is desired.

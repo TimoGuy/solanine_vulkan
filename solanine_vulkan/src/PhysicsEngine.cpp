@@ -423,6 +423,7 @@ namespace physengine
 
         std::cerr << "[REGISTER SIMULATION TRANSFORM]" << std::endl
             << "ERROR: no more transforms available to register. The pool is full." << std::endl;
+        return (size_t)-1;
     }
 
     void unregisterSimulationTransform(size_t id)
@@ -1445,6 +1446,12 @@ namespace physengine
 
     bool raycast(vec3 origin, vec3 directionAndMagnitude, std::string& outHitGuid)
     {
+        float_t _;
+        return raycast(origin, directionAndMagnitude, outHitGuid, _);
+    }
+
+    bool raycast(vec3 origin, vec3 directionAndMagnitude, std::string& outHitGuid, float_t& outFraction)
+    {
 #ifdef _DEVELOP
         if (engine->generateCollisionDebugVisualization)
         {
@@ -1461,6 +1468,8 @@ namespace physengine
         RayCastResult result;
         if (physicsSystem->GetNarrowPhaseQuery().CastRay(ray, result, SpecifiedBroadPhaseLayerFilter(BroadPhaseLayers::MOVING), SpecifiedObjectLayerFilter(Layers::MOVING)))
         {
+            outFraction = result.GetEarlyOutFraction();
+
             const uint32_t bodyIdIdx = result.mBodyID.GetIndex();
             if (bodyIdToEntityGuidMap.find(bodyIdIdx) == bodyIdToEntityGuidMap.end())
             {

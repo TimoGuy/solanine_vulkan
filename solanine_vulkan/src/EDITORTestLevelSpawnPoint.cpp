@@ -104,6 +104,12 @@ void EDITORTestLevelSpawnPoint::load(DataSerialized& ds)
     ds.loadFloat(d->facingDirection);
 }
 
+void EDITORTestLevelSpawnPoint::teleportToPosition(vec3 position)
+{
+    glm_vec3_copy(position, d->position);
+    updateGlobalStateSpawns(d, this);
+}
+
 void EDITORTestLevelSpawnPoint::reportMoved(mat4* matrixMoved)
 {
     vec4 pos;

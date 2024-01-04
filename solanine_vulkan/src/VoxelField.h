@@ -23,6 +23,7 @@ public:
     void dump(DataSerializer& ds);
     void load(DataSerialized& ds);
 
+    void teleportToPosition(vec3 position) override;
     void reportMoved(mat4* matrixMoved);
     void renderImGui();
 

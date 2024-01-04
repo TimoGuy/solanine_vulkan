@@ -17,6 +17,7 @@ public:
     virtual std::string getTypeName() = 0;
     std::string& getGUID() { return _guid; }
 
+    virtual void teleportToPosition(vec3 position) = 0;
     virtual void reportMoved(mat4* matrixMoved) { }
     virtual void renderImGui() { }
 
