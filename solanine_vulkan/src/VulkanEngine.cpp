@@ -6732,10 +6732,37 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 						_flagAttachToThisEntity = nullptr;
 					}
 
+					static bool showCreateObjectTooltip = false;
 					if (ImGui::Button("Create!"))
 					{
-						auto newEnt = scene::spinupNewObject(listEntityTypes[(size_t)entityToCreateIndex], nullptr);
-						_flagAttachToThisEntity = newEnt;  // @HACK: ... but if it works?
+						showCreateObjectTooltip = true;
+					}
+
+					// @TODO: add popup here (tooltip like, that shows where the object would be created)
+					//        If gonna hit an object: "On top of `abcd0123...` at (x,y,z)."
+					//        If not gonna hit obj:   "At (mouseX, mouseY), 20m away."
+					if (showCreateObjectTooltip)
+					{
+						ImGui::BeginTooltip();
+						std::string tip =
+							"Click LMB to instantiate the object `" +
+							listEntityTypes[(size_t)entityToCreateIndex] +
+							"`\n" +
+							"At cursor (mouseX, mouseY), 20m away." +
+							"\nOR\nOn top of `a0b1c2d3` at (instX,y,z).";
+						ImGui::TextUnformatted(tip.c_str());
+						ImGui::EndTooltip();
+
+						if (/*clicked LMB*/false)
+						{
+							auto newEnt = scene::spinupNewObject(listEntityTypes[(size_t)entityToCreateIndex], nullptr);
+							_flagAttachToThisEntity = newEnt;  // @HACK: ... but if it works?
+							showCreateObjectTooltip = false;
+						}
+						if (/*pressed Esc*/false)
+						{
+							showCreateObjectTooltip = false;
+						}
 					}
 
 					// Manipulate the selected entity

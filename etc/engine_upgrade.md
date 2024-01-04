@@ -279,7 +279,7 @@
     - [ ] Click at a certain point to create the instantiating instance there.
         > This will be 不可欠 for creating large levels and adding things to the terrain easily. Having the option to move an object this way will be phenomenal too.
         - [x] Add function to Entity interface called `teleportToPosition(x,y,z)` and implement it to every object to create.
-	    > @NOTE: since the `lateUpdate()` function doesn't exist for Harvestable and SCannable objects, I think these won't work correctly yet... so they need some fixing eh!
+	    > @NOTE: since the `lateUpdate()` function doesn't exist anymore for Harvestable and Scannable objects, I think these won't work correctly yet... so they need some fixing eh!
         - [ ] Upon clicking the Create! button in the level editor, give a prompt that shows up and follows the mouse cursor saying "Click to the location to spawn the entity".
         - [ ] After clicking at the place, shoot a raycast, and if it hits, use that position. If not, pick a position about 20m away in the direction selected.
         - [ ] Create the entity and use `teleportToPosition` to move it to the position.
