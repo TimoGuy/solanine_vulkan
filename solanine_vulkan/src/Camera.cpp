@@ -16,14 +16,27 @@
 //
 void SceneCamera::recalculateSceneCamera(GPUPBRShadingProps& pbrShadingProps)
 {
+	vec3 up = { 0.0f, 1.0f, 0.0f };
+	if (std::abs(facingDirection[0]) < 0.000001f &&
+		std::abs(facingDirection[1]) > 0.000001f &&
+		std::abs(facingDirection[2]) < 0.000001f)
+		glm_vec3_copy(vec3{ 0.0f, 0.0f, 1.0f }, up);
+
 	vec3 center;
 	glm_vec3_add(gpuCameraData.cameraPosition, facingDirection, center);
-	vec3 up = { 0.0f, 1.0f, 0.0f };
 	mat4 view;
 	glm_lookat(gpuCameraData.cameraPosition, center, up, view);
 	mat4 projection;
-	glm_perspective(fov, aspect, zNear, zFar, projection);
+	if (isPerspective)
+	{
+		glm_perspective(fov, aspect, zNear, zFar, projection);
+	}
+	else
+	{
+		glm_ortho(-orthoHalfWidth, orthoHalfWidth, -orthoHalfHeight, orthoHalfHeight, 0.0f, orthoFullDepth, projection);
+	}
 	projection[1][1] *= -1.0f;
+
 	glm_mat4_copy(view, gpuCameraData.view);
 	glm_mat4_copy(projection, gpuCameraData.projection);
 	glm_mat4_mul(projection, view, gpuCameraData.projectionView);
@@ -33,7 +46,7 @@ void SceneCamera::recalculateSceneCamera(GPUPBRShadingProps& pbrShadingProps)
 
 void SceneCamera::recalculateCascadeViewProjs(GPUPBRShadingProps& pbrShadingProps)
 {
-	// Copied from Sascha Willem's `shadowmappingcascade` vulkan example
+	// Derived from Sascha Willem's `shadowmappingcascade` vulkan example
 	constexpr float_t cascadeSplitLambda = 0.95f;  // @TEMP: don't know if this needs tuning
 
 	float_t cascadeSplits[SHADOWMAP_CASCADES];
@@ -400,6 +413,12 @@ void Camera::updateMainCam(float_t deltaTime, CameraModeChangeEvent changeEvent)
 	if (_cameraMode != _cameraMode_mainCamMode)
 		return;
 
+	// Switch sub camera modes (near/far).
+	if (input::editorInputSet().playModeCycleCameraSubModes.onAction)
+	{
+		mainCamMode.useFarLookDistance = !mainCamMode.useFarLookDistance;
+	}
+
 	// Apply orbit angles.
 	if (mainCamMode.applyOrbitAngles.applyFlag)
 	{
@@ -415,7 +434,7 @@ void Camera::updateMainCam(float_t deltaTime, CameraModeChangeEvent changeEvent)
 	//
 	auto& ott = mainCamMode.opponentTargetTransition;
 
-	float_t targetLookDistance = mainCamMode.lookDistance;
+	float_t targetLookDistance = mainCamMode.useFarLookDistance ? mainCamMode.lookDistanceFar : mainCamMode.lookDistance;
 
 	vec3 targetDOFProps;
 	glm_vec3_copy(ott.DOFPropsRelaxedState, targetDOFProps);
@@ -675,6 +694,8 @@ void Camera::updateFreeCam(float_t deltaTime, CameraModeChangeEvent changeEvent)
 	if (changeEvent != CameraModeChangeEvent::NONE)
 	{
 		freeCamMode.enabled = false;
+		freeCamMode.isPerspective = true;
+		freeCamMode.orthoViewIdx = 0;
 
 		// Set default depth of field for free cam mode!
 		globalState::DOFFocusDepth  = 1000.0f;
@@ -687,74 +708,202 @@ void Camera::updateFreeCam(float_t deltaTime, CameraModeChangeEvent changeEvent)
 	if (input::editorInputSet().freeCamMode.onAction || input::editorInputSet().freeCamMode.onRelease)
 	{
 		freeCamMode.enabled = (input::editorInputSet().freeCamMode.onAction && _cameraMode == _cameraMode_freeCamMode);
-		SDL_SetRelativeMouseMode(freeCamMode.enabled ? SDL_TRUE : SDL_FALSE);		// @NOTE: this causes cursor to disappear and not leave window boundaries (@BUG: Except for if you right click into the window?)
+		
+		if (freeCamMode.isPerspective)
+		{
+			SDL_SetRelativeMouseMode(freeCamMode.enabled ? SDL_TRUE : SDL_FALSE);		// @NOTE: this causes cursor to disappear and not leave window boundaries (@BUG: Except for if you right click into the window?)
 					
-		if (freeCamMode.enabled)
-			SDL_GetMouseState(
-				&freeCamMode.savedMousePosition[0],
-				&freeCamMode.savedMousePosition[1]
-			);
-		else
-			SDL_WarpMouseInWindow(_engine->_window, freeCamMode.savedMousePosition[0], freeCamMode.savedMousePosition[1]);
+			if (freeCamMode.enabled)
+				SDL_GetMouseState(
+					&freeCamMode.savedMousePosition[0],
+					&freeCamMode.savedMousePosition[1]
+				);
+			else
+				SDL_WarpMouseInWindow(_engine->_window, freeCamMode.savedMousePosition[0], freeCamMode.savedMousePosition[1]);
+		}
 	}
 	
-	if (!freeCamMode.enabled)
-		return;
 
-	vec2 mousePositionDeltaCooked = {
-		input::renderInputSet().cameraDelta.axisX * freeCamMode.sensitivity,
-		input::renderInputSet().cameraDelta.axisY * freeCamMode.sensitivity,
-	};
+	bool recalcCamera = false;
 
-	vec2 inputToVelocity = {
-		input::editorInputSet().freeCamMovement.axisX,
-		input::editorInputSet().freeCamMovement.axisY,
-	};
-
-	float_t worldUpVelocity = input::editorInputSet().verticalFreeCamMovement.axis;
-
-	if (glm_vec2_norm(mousePositionDeltaCooked) > 0.0f || glm_vec2_norm(inputToVelocity) > 0.0f || std::abs(worldUpVelocity) > 0.0f)
+	// Change camera sub modes (perspective/ortho views).
+	if (!freeCamMode.enabled &&  // Only allow switching sub modes if not in free cam mode.
+		input::editorInputSet().playModeCycleCameraSubModes.onAction)
 	{
-		vec3 worldUp = { 0.0f, 1.0f, 0.0f };
-		vec3 worldDown = { 0.0f, -1.0f, 0.0f };
+		freeCamMode.orthoViewIdx = (freeCamMode.orthoViewIdx + 1) % 4;
+		freeCamMode.isPerspective = (freeCamMode.orthoViewIdx == 0);
 
-		// Update camera facing direction with mouse input
-		vec3 facingDirectionRight;
-		glm_cross(sceneCamera.facingDirection, worldUp, facingDirectionRight);
-		glm_normalize(facingDirectionRight);
-		mat4 rotation = GLM_MAT4_IDENTITY_INIT;
-		glm_rotate(rotation, glm_rad(-mousePositionDeltaCooked[1]), facingDirectionRight);
-		vec3 newCamFacingDirection;
-		glm_mat4_mulv3(rotation, sceneCamera.facingDirection, 0.0f, newCamFacingDirection);
+		auto& cam = _engine->_camera->sceneCamera;  // @HACK: this is horrible encapsulation... smelly.
+		cam.isPerspective = freeCamMode.isPerspective;
 
-		if (glm_vec3_angle(newCamFacingDirection, worldUp) > glm_rad(5.0f) &&
-			glm_vec3_angle(newCamFacingDirection, worldDown) > glm_rad(5.0f))
-			glm_vec3_copy(newCamFacingDirection, sceneCamera.facingDirection);
+		if (freeCamMode.isPerspective)
+		{
+			// Process perspective cam mode.
+			if (std::abs(sceneCamera.facingDirection[0]) < 0.000001f &&
+				std::abs(sceneCamera.facingDirection[1]) > 0.000001f &&
+				std::abs(sceneCamera.facingDirection[2]) < 0.000001f)
+			{
+				// Adjust perspective camera forward a bit.
+				sceneCamera.facingDirection[2] = 0.1f;
+				glm_vec3_normalize(sceneCamera.facingDirection);
+			}
+		}
+		else
+		{
+			// Process ortho cam mode.
 
-		glm_mat4_identity(rotation);
-		glm_rotate(rotation, glm_rad(-mousePositionDeltaCooked[0]), worldUp);
-		glm_mat4_mulv3(rotation, sceneCamera.facingDirection, 0.0f, sceneCamera.facingDirection);
+			// Propagate data to scene camera.
+			auto& cam = _engine->_camera->sceneCamera;  // @HACK: this is horrible encapsulation... smelly.
+			cam.orthoFullDepth = freeCamMode.orthoHalfDepth * 2.0f;
+			cam.orthoHalfHeight = freeCamMode.orthoHalfHeight;
+			cam.orthoHalfWidth = freeCamMode.orthoHalfHeight * cam.aspect;
 
-		// Update camera position with keyboard input
-		float_t speedMultiplier = input::editorInputSet().fastCameraMovement.holding ? 50.0f : 25.0f;
-		glm_vec2_scale(inputToVelocity, speedMultiplier * deltaTime, inputToVelocity);
-		worldUpVelocity *= speedMultiplier * deltaTime;
+			// Process view directions.
+			vec3 focusPoint;
+			glm_vec3_scale(sceneCamera.facingDirection, freeCamMode.orthoFocusDepth, focusPoint);
+			glm_vec3_add(focusPoint, sceneCamera.gpuCameraData.cameraPosition, focusPoint);
 
-		vec3 facingDirectionScaled;
-		glm_vec3_scale(sceneCamera.facingDirection, inputToVelocity[1], facingDirectionScaled);
-		vec3 facingDirectionRightScaled;
-		glm_vec3_scale(facingDirectionRight, inputToVelocity[0], facingDirectionRightScaled);
-		vec3 upScaled = {
-			0.0f,
-			worldUpVelocity,
-			0.0f,
-		};
-		glm_vec3_add(facingDirectionScaled, facingDirectionRightScaled, facingDirectionScaled);
-		glm_vec3_addadd(facingDirectionScaled, upScaled, sceneCamera.gpuCameraData.cameraPosition);
+			vec3 negFacingDirection;
+			switch (freeCamMode.orthoViewIdx)
+			{
+				case 1:
+					glm_vec3_copy(vec3{ freeCamMode.orthoFocusDepth, 0.0f, 0.0f }, negFacingDirection);
+					break;
 
-		// Recalculate camera
-		sceneCamera.recalculateSceneCamera(_engine->_pbrRendering.gpuSceneShadingProps);
+				case 2:
+					glm_vec3_copy(vec3{ 0.0f, freeCamMode.orthoFocusDepth, 0.0f }, negFacingDirection);
+					break;
+
+				case 3:
+					glm_vec3_copy(vec3{ 0.0f, 0.0f, freeCamMode.orthoFocusDepth }, negFacingDirection);
+					break;
+			}
+
+			vec3 eye;
+			glm_vec3_add(focusPoint, negFacingDirection, eye);
+
+			glm_vec3_copy(eye, sceneCamera.gpuCameraData.cameraPosition);
+			glm_vec3_negate_to(negFacingDirection, sceneCamera.facingDirection);
+			glm_vec3_normalize(sceneCamera.facingDirection);
+		}
+
+		recalcCamera = true;
 	}
+
+
+	// Adjust the viewport size.
+	if (!freeCamMode.isPerspective &&
+		std::abs(input::editorInputSet().freeCamOrthoResize.axis) > 0.001f)
+	{
+		float_t resizeMultiplier = 1.0f - input::editorInputSet().freeCamOrthoResize.axis * 0.05f;
+		freeCamMode.orthoHalfHeight *= resizeMultiplier;
+
+		// Propagate data to scene camera. @COPYPASTA
+		auto& cam = _engine->_camera->sceneCamera;  // @HACK: this is horrible encapsulation... smelly.
+		cam.orthoFullDepth = freeCamMode.orthoHalfDepth * 2.0f;
+		cam.orthoHalfHeight = freeCamMode.orthoHalfHeight;
+		cam.orthoHalfWidth = freeCamMode.orthoHalfHeight * cam.aspect;
+
+		recalcCamera = true;
+	}
+
+	// Process free cam fly mode.
+	if (freeCamMode.enabled)
+	{
+		vec2 mousePositionDeltaCooked = {
+			input::renderInputSet().cameraDelta.axisX * freeCamMode.sensitivity,
+			input::renderInputSet().cameraDelta.axisY * freeCamMode.sensitivity,
+		};
+
+		vec2 inputToVelocity = {
+			input::editorInputSet().freeCamMovement.axisX,
+			input::editorInputSet().freeCamMovement.axisY,
+		};
+
+		float_t worldUpVelocity = input::editorInputSet().verticalFreeCamMovement.axis;
+
+		if (freeCamMode.isPerspective)
+		{
+			// Process free cam mode enabled for perspective.
+			if (glm_vec2_norm(mousePositionDeltaCooked) > 0.0f || glm_vec2_norm(inputToVelocity) > 0.0f || std::abs(worldUpVelocity) > 0.0f)
+			{
+				vec3 worldUp = { 0.0f, 1.0f, 0.0f };
+				vec3 worldDown = { 0.0f, -1.0f, 0.0f };
+
+				// Update camera facing direction with mouse input
+				vec3 facingDirectionRight;
+				glm_cross(sceneCamera.facingDirection, worldUp, facingDirectionRight);
+				glm_normalize(facingDirectionRight);
+				mat4 rotation = GLM_MAT4_IDENTITY_INIT;
+				glm_rotate(rotation, glm_rad(-mousePositionDeltaCooked[1]), facingDirectionRight);
+				vec3 newCamFacingDirection;
+				glm_mat4_mulv3(rotation, sceneCamera.facingDirection, 0.0f, newCamFacingDirection);
+
+				if (glm_vec3_angle(newCamFacingDirection, worldUp) > glm_rad(5.0f) &&
+					glm_vec3_angle(newCamFacingDirection, worldDown) > glm_rad(5.0f))
+					glm_vec3_copy(newCamFacingDirection, sceneCamera.facingDirection);
+
+				glm_mat4_identity(rotation);
+				glm_rotate(rotation, glm_rad(-mousePositionDeltaCooked[0]), worldUp);
+				glm_mat4_mulv3(rotation, sceneCamera.facingDirection, 0.0f, sceneCamera.facingDirection);
+
+				// Update camera position with keyboard input
+				float_t speedMultiplier = input::editorInputSet().fastCameraMovement.holding ? 50.0f : 25.0f;
+				glm_vec2_scale(inputToVelocity, speedMultiplier * deltaTime, inputToVelocity);
+				worldUpVelocity *= speedMultiplier * deltaTime;
+
+				vec3 facingDirectionScaled;
+				glm_vec3_scale(sceneCamera.facingDirection, inputToVelocity[1], facingDirectionScaled);
+				vec3 facingDirectionRightScaled;
+				glm_vec3_scale(facingDirectionRight, inputToVelocity[0], facingDirectionRightScaled);
+				vec3 upScaled = {
+					0.0f,
+					worldUpVelocity,
+					0.0f,
+				};
+				glm_vec3_add(facingDirectionScaled, facingDirectionRightScaled, facingDirectionScaled);
+				glm_vec3_addadd(facingDirectionScaled, upScaled, sceneCamera.gpuCameraData.cameraPosition);
+
+				recalcCamera = true;
+			}
+		}
+		else
+		{
+			// Process free cam mode enabled for ortho.
+			mousePositionDeltaCooked[0] *= -1.0f;
+			inputToVelocity[0] = 0.0f;
+			if (glm_vec2_norm(mousePositionDeltaCooked) > 0.0f || glm_vec2_norm(inputToVelocity) > 0.0f)
+			{
+				vec3 worldUp = { 0.0f, 1.0f, 0.0f };
+				if (std::abs(sceneCamera.facingDirection[0]) < 0.000001f &&
+					std::abs(sceneCamera.facingDirection[1]) > 0.000001f &&
+					std::abs(sceneCamera.facingDirection[2]) < 0.000001f)
+					glm_vec3_copy(vec3{ 0.0f, 0.0f, 1.0f }, worldUp);
+
+				// Move position (length and width).
+				vec3 up;
+				vec3 right;
+				glm_vec3_cross(sceneCamera.facingDirection, worldUp, right);
+				glm_vec3_normalize(right);
+				glm_vec3_cross(right, sceneCamera.facingDirection, up);
+				glm_vec3_normalize(up);
+
+				glm_vec2_scale(mousePositionDeltaCooked, freeCamMode.orthoHalfHeight / 30.0f, mousePositionDeltaCooked);
+				glm_vec3_scale(right, mousePositionDeltaCooked[0], right);
+				glm_vec3_scale(up, mousePositionDeltaCooked[1], up);
+				glm_vec3_addadd(right, up, sceneCamera.gpuCameraData.cameraPosition);
+
+				// Move along facingDirection axis (depth).
+				glm_vec3_muladds(sceneCamera.facingDirection, inputToVelocity[1], sceneCamera.gpuCameraData.cameraPosition);
+
+				recalcCamera = true;
+			}
+		}
+	}
+
+	// Recalculate camera
+	if (recalcCamera)
+		sceneCamera.recalculateSceneCamera(_engine->_pbrRendering.gpuSceneShadingProps);
 }
 
 void Camera::updateOrbitSubjectCam(float_t deltaTime, CameraModeChangeEvent changeEvent)

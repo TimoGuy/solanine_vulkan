@@ -162,6 +162,7 @@ namespace input
 		OnAction            togglePlayEditMode;
 		OnAction            playModeToggleSimulation;
 		OnAction            playModeCycleCameraModes;
+		OnAction            playModeCycleCameraSubModes;
 		OnAction            cycleRenderingModes;
 		OnAction            toggleEditorUI;
 		OnAction            cancel;
@@ -185,6 +186,7 @@ namespace input
 		OnHoldReleaseAction orbitCamDrag;
 		OnHoldReleaseAction freeCamMode;
 		TwoAxis             freeCamMovement;
+		OneAxis             freeCamOrthoResize;
 		OneAxis             verticalFreeCamMovement;
 		HoldAction          fastCameraMovement;
 

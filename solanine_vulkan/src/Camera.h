@@ -37,6 +37,12 @@ struct SceneCamera
 	vec3      wholeShadowMinExtents;
 	vec3      wholeShadowMaxExtents;
 	mat4      wholeShadowLightViewMatrix;
+#ifdef _DEVELOP
+	bool isPerspective = true;
+	float_t orthoHalfWidth;
+	float_t orthoHalfHeight;
+	float_t orthoFullDepth;
+#endif
 	vec3 boxCastExtents;
 	GPUCameraData gpuCameraData;
 	GPUCascadeViewProjsData gpuCascadeViewProjsData;  // This will get calculated from the scene camera since this is a CSM viewprojs
@@ -102,7 +108,9 @@ struct MainCamMode
 	} opponentTargetTransition;
 
 	// Tweak variables
+	bool      useFarLookDistance     = false;
 	float_t   lookDistance           = 5.0f;
+	float_t   lookDistanceFar        = 10.0f;
 	float_t   lookDistanceSmoothTime = 0.075f;
 	float_t   focusSmoothTimeXZ      = 0.075f;
 	float_t   focusSmoothTimeY       = 0.3f;
@@ -123,6 +131,11 @@ struct FreeCamMode
 	bool enabled = false;
 	ivec2 savedMousePosition;
 	float_t sensitivity = 0.1f;
+	bool isPerspective = true;
+	int32_t orthoViewIdx = 0;  // 0: perspective.  1: ortho X.  2: ortho Y.  3: ortho Z.
+	float_t orthoHalfDepth = 50.0f;
+	float_t orthoHalfHeight = 20.0f;
+	float_t orthoFocusDepth = 20.0f;
 };
 
 //
