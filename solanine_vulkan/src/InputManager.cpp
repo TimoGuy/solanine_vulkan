@@ -197,7 +197,8 @@ namespace input
 	{
 		togglePlayEditMode.update(!keyMouseState.lShift && keyMouseState.F1);
 		playModeToggleSimulation.update(keyMouseState.lShift && keyMouseState.F1);  // @NOTE: Ctrl+F1 doesn't work for some reason. Maybe a Windows/printer-related thing?
-		playModeCycleCameraModes.update(keyMouseState.F2);
+		playModeCycleCameraModes.update(!keyMouseState.lShift && keyMouseState.F2);
+		playModeCycleCameraSubModes.update(keyMouseState.lShift && keyMouseState.F2);
 		cycleRenderingModes.update(keyMouseState.F3);
 		toggleEditorUI.update(keyMouseState.F10);
 		cancel.update(keyMouseState.esc);
@@ -227,6 +228,8 @@ namespace input
 		v += keyMouseState.w ?  1.0f : 0.0f;
 		v += keyMouseState.s ? -1.0f : 0.0f;
 		freeCamMovement.update(h, v);
+
+		freeCamOrthoResize.update(keyMouseState.mouseScrollDelta[1]);
 
 		float_t w = 0.0f;
 		if (keyMouseState.q)

@@ -454,22 +454,19 @@ void VulkanEngine::computeShadowCulling(const FrameData& currentFrame, VkCommand
 void VulkanEngine::computeMainCulling(const FrameData& currentFrame, VkCommandBuffer cmd)
 {
 	// Set up frustum culling params.
-	// Ref: https://github.com/vblanco20-1/vulkan-guide/blob/164c144c4819840a9e59cc955a91b74abea4bd6f/extra-engine/vk_engine_scenerender.cpp#L68
-	mat4 reverseProjection;  // @NOTE: reverse projection reverses the far and near values.
-	glm_perspective(
-		_camera->sceneCamera.fov,
-		_camera->sceneCamera.aspect,
-		_camera->sceneCamera.zFar,
-		_camera->sceneCamera.zNear,
-		reverseProjection
-	);
-	reverseProjection[1][1] *= -1.0f;
 	mat4 reverseProjectionTransposed;
 	glm_mat4_transpose_to(_camera->sceneCamera.gpuCameraData.projection, reverseProjectionTransposed);
 	vec4 frustumX;
 	vec4 frustumY;
 	normalizePlane(reverseProjectionTransposed[0], reverseProjectionTransposed[3], frustumX);
 	normalizePlane(reverseProjectionTransposed[1], reverseProjectionTransposed[3], frustumY);
+
+	// Expand frustum depending on ortho size.
+	if (!_camera->sceneCamera.isPerspective)
+	{
+		frustumX[0] /= _camera->sceneCamera.orthoHalfWidth;
+		frustumY[1] /= _camera->sceneCamera.orthoHalfHeight;
+	}
 
 	GPUCullingParams pc = {
 		.zNear = _camera->sceneCamera.zNear,

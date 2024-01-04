@@ -264,16 +264,18 @@
 		- [x] FIX: checkpoint spawn object isn't updating spawn position when moving it for some reason.
 	- [f] Just spawn player at 0th or most recent spawn point. No dialog anymore.
 	    > Ehhhh, for now, it's fine to leave it the way it is. Do this in the future/if you feel it's necessary. The downside is the copypasta, tho.
+	    > @AMEND: okay, so the reason I feel like it's fine is bc I feel like upon entering the play mode, the editor shouldn't have to select the place to spawn every time, but the first time is a must. Maybe on the first time, select the spawn point, but use that spawn point until a new level is loaded, a spawn point is added/removed, or the double tap hold R is used (during play mode). So that would be what would be the improvement, not the perma-exclude dialog.
     - [x] Disable player being able to be created in palette.
-    - [ ] Extra free cam modes.
-        - [ ] Ortho in the 6 directions (+x, -x, +y, -y, +z, -z).
-            - [ ] Get initial ortho set up.
-            - [ ] Cycle thru with Shift+F2
-            - [ ] In ortho mode:
-                - [ ] use scroll bar to increase and decrease left,right,up,down size of ortho perspective.
-                - [ ] use middle click to move the view.
-                - [ ] As center point for forward,back (Z part of ortho perspective), use the currently selected render object.
-                - [ ] Use S,W (with Shift) to increase and decrease the distance away from the forward, back (in case editor needs to tighten the Z to see in the inside of caves or something).
+    - [x] Extra free cam modes.
+        - [x] Ortho in the ~~6~~ directions (+x, ~~-x,~~ +y, ~~-y,~~ +z, ~~-z~~).
+            - [x] Get initial ortho set up.
+            - [x] Cycle thru with Shift+F2
+            - [x] In ortho mode:
+                - [x] use scroll bar to increase and decrease left,right,up,down size of ortho perspective.
+                - [x] use ~~middle~~ right click to move the view.
+                - [d] ~~As center point for forward,back (Z part of ortho perspective), use the currently selected render object.~~
+                - [d] ~~Use S,W (with Shift) to increase and decrease the distance away from the forward, back (in case editor needs to tighten the Z to see in the inside of caves or something).~~
+		    > For these 2 tickets, I feel like the current solution is adequate, and further testing will show what we need to do, since these 2 tickets don't feel like the way to move forward anymore. The current solution is to have the focus distance be a static 20 units forward, and the keys S,W just adjust forward and backwards.  -Timo 2024/01/03
     - [ ] Click at a certain point to create the instantiating instance there.
         > This will be 不可欠 for creating large levels and adding things to the terrain easily. Having the option to move an object this way will be phenomenal too.
         - [ ] Add function to Entity interface called `teleportToPosition(x,y,z)` and implement it to every object to create.
