@@ -707,6 +707,17 @@ void VoxelField::load(DataSerialized& ds)
     _data->vfpd = physengine::createVoxelField(getGUID(), load_transform, load_size[0], load_size[1], load_size[2], load_voxelData);
 }
 
+void VoxelField::teleportToPosition(vec3 position)
+{
+    mat4 rot;
+    vec3 sca;
+    glm_decompose_rs(_data->vfpd->transform, rot, sca);
+    versor rotV;
+    glm_mat4_quat(rot, rotV);
+
+    physengine::setVoxelFieldBodyTransform(*_data->vfpd, position, rotV);
+}
+
 void VoxelField::reportMoved(mat4* matrixMoved)
 {
     // Search for which block was moved.

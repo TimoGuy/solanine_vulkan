@@ -423,6 +423,7 @@ namespace physengine
 
         std::cerr << "[REGISTER SIMULATION TRANSFORM]" << std::endl
             << "ERROR: no more transforms available to register. The pool is full." << std::endl;
+        return (size_t)-1;
     }
 
     void unregisterSimulationTransform(size_t id)

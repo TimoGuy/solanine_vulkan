@@ -1179,6 +1179,35 @@ size_t whichControlPointFromMatrix(GondolaSystem_XData* d, mat4* matrixToMove)
     return (size_t)-1;
 }
 
+void GondolaSystem::teleportToPosition(vec3 position)
+{
+    auto& t = _data->controlRenderObj->transformMatrix;
+    mat4 rot;
+    vec3 sca;
+    glm_decompose_rs(t, rot, sca);
+
+    vec3 delta;
+    glm_vec3_sub(position, _data->position, delta);
+    glm_vec3_copy(position, _data->position);
+
+    // Move whole system control point.
+    glm_mat4_identity(t);
+    glm_translate(t, position);
+    glm_mul_rot(t, rot, t);
+    glm_scale(t, sca);
+
+    // Move all control points to new position.
+    for (auto& cp : _data->controlPoints)
+        glm_vec3_add(cp.position, delta, cp.position);
+    _data->triggerBakeSplineCache = true;
+
+    // Move all station render objs.
+    mat4 translation = GLM_MAT4_IDENTITY_INIT;
+    glm_translate(translation, delta);
+    for (auto& station : _data->stations)
+        glm_mat4_mul(translation, station.renderObj->transformMatrix, station.renderObj->transformMatrix);
+}
+
 void GondolaSystem::reportMoved(mat4* matrixMoved)
 {
     vec4 pos;

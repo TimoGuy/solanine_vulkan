@@ -31,6 +31,7 @@ public:
     void load(DataSerialized& ds);
     bool processMessage(DataSerialized& message);
 
+    void teleportToPosition(vec3 position) override;
     void reportMoved(mat4* matrixMoved);
     void renderImGui();
 

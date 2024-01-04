@@ -21,6 +21,7 @@ public:
     void dump(DataSerializer& ds);
     void load(DataSerialized& ds);
 
+    void teleportToPosition(vec3 position) { }
     void renderImGui() { }
 
     static void setAssignedMaterial(size_t uniqueMatBaseId, size_t derivedMatId);

@@ -17,6 +17,7 @@ public:
     void load(DataSerialized& ds);
     std::string getTypeName() { return TYPE_NAME; };
 
+    void teleportToPosition(vec3 position) override;
     void renderImGui();
 
 private:

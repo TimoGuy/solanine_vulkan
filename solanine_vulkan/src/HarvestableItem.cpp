@@ -176,6 +176,11 @@ bool HarvestableItem::processMessage(DataSerialized& message)
     return false;
 }
 
+void HarvestableItem::teleportToPosition(vec3 position)
+{
+    glm_vec3_copy(position, _data->position);
+}
+
 void HarvestableItem::reportMoved(mat4* matrixMoved)
 {
     vec4 pos;

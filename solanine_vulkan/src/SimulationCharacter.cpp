@@ -1,4 +1,4 @@
-#include "pch.h"
+    #include "pch.h"
 
 #include "SimulationCharacter.h"
 
@@ -2695,6 +2695,11 @@ bool SimulationCharacter::processMessage(DataSerialized& message)
     }
 
     return false;
+}
+
+void SimulationCharacter::teleportToPosition(vec3 position)
+{
+    physengine::setCharacterPosition(*_data->cpd, position);
 }
 
 void SimulationCharacter::reportMoved(mat4* matrixMoved)

@@ -167,6 +167,11 @@ bool ScannableItem::processMessage(DataSerialized& message)
     return false;
 }
 
+void ScannableItem::teleportToPosition(vec3 position)
+{
+    glm_vec3_copy(position, _data->position);
+}
+
 void ScannableItem::reportMoved(mat4* matrixMoved)
 {
     vec4 pos;
