@@ -222,6 +222,8 @@ void Camera::requestCameraMode(uint32_t camMode)
 
 void Camera::update(float_t deltaTime)
 {
+	ZoneScoped;
+
 	// Update camera modes if in free/main cam modes.
 	if (!globalState::isEditingMode &&
 		input::editorInputSet().playModeCycleCameraModes.onAction)

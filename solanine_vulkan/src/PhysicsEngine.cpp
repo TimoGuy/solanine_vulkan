@@ -662,6 +662,8 @@ namespace physengine
 
     void runPhysicsEngineAsync()
     {
+        tracy::SetThreadName("Simulation Thread");
+
         //
         // Init Physics World.
         // REFERENCE: https://github.com/jrouwe/JoltPhysics/blob/master/HelloWorld/HelloWorld.cpp
@@ -744,11 +746,16 @@ namespace physengine
             input::simInputSet().update(simDeltaTime);
             entityManager->INTERNALsimulationUpdate(simDeltaTime);  // @NOTE: if timescale changes, then the system just waits longer/shorter per loop.
             if (runPhysicsSimulations)
+            {
+                ZoneScopedN("Update Jolt phys sys");
                 physicsSystem->Update(simDeltaTime, 1, 1, &tempAllocator, &jobSystem);
+            }
             copyResultTransforms();
 
 #ifdef _DEVELOP
             {
+                ZoneScopedN("Update performance metrics");
+
                 //
                 // Update performance metrics
                 // @COPYPASTA
@@ -1357,11 +1364,15 @@ namespace physengine
 
     void transformSwap()
     {
+        ZoneScoped;
+
         simSetOffset++;
     }
 
     void copyResultTransforms()
     {
+        ZoneScoped;
+
         auto& bodyInterface = physicsSystem->GetBodyInterface();
 
         // Set current transform.
@@ -1403,6 +1414,8 @@ namespace physengine
 
     void recalcInterpolatedTransformsSet()
     {
+        ZoneScoped;
+
         size_t simSetOffsetCopy = simSetOffset;
         size_t prevSimSet = (simSetOffsetCopy + 0) % 3;
         size_t currentSimSet = (simSetOffsetCopy + 1) % 3;

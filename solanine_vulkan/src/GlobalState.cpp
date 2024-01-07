@@ -189,6 +189,8 @@ namespace globalState
 
     void launchAsyncWriteTask()
     {
+        ZoneScoped;
+
         tfExecutor.wait_for_all();
         tfExecutor.run(tfTaskAsyncWriting);
     }

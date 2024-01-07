@@ -196,6 +196,8 @@ namespace textbox
 
     void update(const float_t& unscaledDeltaTime)
     {
+        ZoneScoped;
+
         if (myText == nullptr)
             return;
 

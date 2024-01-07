@@ -26,6 +26,8 @@ void AudioEngine::initialize()
 
 void AudioEngine::update()
 {
+    ZoneScoped;
+
     audioAdapter->update();
 }
 

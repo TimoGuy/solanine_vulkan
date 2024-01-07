@@ -91,7 +91,7 @@ copy $(SolutionDir)libs\ktx\lib_$(ConfigurationName)\ktx.dll $(OutDirfullPath)kt
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;_HAS_EXCEPTIONS=0;JPH_PROFILE_ENABLED;JPH_DEBUG_RENDERER;JPH_FLOATING_POINT_EXCEPTIONS_ENABLED;JPH_USE_AVX2;JPH_USE_AVX;JPH_USE_SSE4_1;JPH_USE_SSE4_2;JPH_USE_LZCNT;JPH_USE_TZCNT;JPH_USE_F16C;JPH_USE_FMADD;NDEBUG;_DEVELOP;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;_HAS_EXCEPTIONS=0;JPH_PROFILE_ENABLED;JPH_DEBUG_RENDERER;JPH_FLOATING_POINT_EXCEPTIONS_ENABLED;JPH_USE_AVX2;JPH_USE_AVX;JPH_USE_SSE4_1;JPH_USE_SSE4_2;JPH_USE_LZCNT;JPH_USE_TZCNT;JPH_USE_F16C;JPH_USE_FMADD;TRACY_ENABLE;NDEBUG;_DEVELOP;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
@@ -164,10 +164,11 @@ copy $(SolutionDir)libs\ktx\lib_$(ConfigurationName)\ktx.dll $(OutDirfullPath)kt
     <ClInclude Include="src\GlobalState.h" />
     <ClInclude Include="src\HarvestableItem.h" />
     <ClInclude Include="src\imgui\imgui_stdlib.h" />
-    <ClInclude Include="src\imgui\pch.h" />
     <ClInclude Include="src\NoteTaker.h" />
     <ClInclude Include="src\EDITORTestLevelSpawnPoint.h" />
     <ClInclude Include="src\EDITORTextureViewer.h" />
+    <ClInclude Include="src\imgui\pch.h" />
+    <ClInclude Include="src\tracy\pch.h" />
     <ClInclude Include="src\pch.h" />
     <ClInclude Include="src\RenderObject.h" />
     <ClInclude Include="src\ReplaySystem.h" />
@@ -192,47 +193,6 @@ copy $(SolutionDir)libs\ktx\lib_$(ConfigurationName)\ktx.dll $(OutDirfullPath)kt
     <ClInclude Include="src\InputManager.h" />
     <ClInclude Include="src\SimulationCharacter.h" />
     <ClInclude Include="src\Settings.h" />
-    <ClInclude Include="src\tracy\client\TracyArmCpuTable.hpp" />
-    <ClInclude Include="src\tracy\client\TracyCallstack.h" />
-    <ClInclude Include="src\tracy\client\TracyCallstack.hpp" />
-    <ClInclude Include="src\tracy\client\TracyCpuid.hpp" />
-    <ClInclude Include="src\tracy\client\TracyDebug.hpp" />
-    <ClInclude Include="src\tracy\client\TracyDxt1.hpp" />
-    <ClInclude Include="src\tracy\client\TracyFastVector.hpp" />
-    <ClInclude Include="src\tracy\client\TracyLock.hpp" />
-    <ClInclude Include="src\tracy\client\TracyProfiler.hpp" />
-    <ClInclude Include="src\tracy\client\TracyRingBuffer.hpp" />
-    <ClInclude Include="src\tracy\client\TracyScoped.hpp" />
-    <ClInclude Include="src\tracy\client\TracyStringHelpers.hpp" />
-    <ClInclude Include="src\tracy\client\TracySysPower.hpp" />
-    <ClInclude Include="src\tracy\client\TracySysTime.hpp" />
-    <ClInclude Include="src\tracy\client\TracySysTrace.hpp" />
-    <ClInclude Include="src\tracy\client\TracyThread.hpp" />
-    <ClInclude Include="src\tracy\client\tracy_concurrentqueue.h" />
-    <ClInclude Include="src\tracy\client\tracy_rpmalloc.hpp" />
-    <ClInclude Include="src\tracy\client\tracy_SPSCQueue.h" />
-    <ClInclude Include="src\tracy\common\TracyAlign.hpp" />
-    <ClInclude Include="src\tracy\common\TracyAlloc.hpp" />
-    <ClInclude Include="src\tracy\common\TracyApi.h" />
-    <ClInclude Include="src\tracy\common\TracyColor.hpp" />
-    <ClInclude Include="src\tracy\common\TracyForceInline.hpp" />
-    <ClInclude Include="src\tracy\common\TracyMutex.hpp" />
-    <ClInclude Include="src\tracy\common\TracyProtocol.hpp" />
-    <ClInclude Include="src\tracy\common\TracyQueue.hpp" />
-    <ClInclude Include="src\tracy\common\TracySocket.hpp" />
-    <ClInclude Include="src\tracy\common\TracyStackFrames.hpp" />
-    <ClInclude Include="src\tracy\common\TracySystem.hpp" />
-    <ClInclude Include="src\tracy\common\TracyUwp.hpp" />
-    <ClInclude Include="src\tracy\common\TracyVersion.hpp" />
-    <ClInclude Include="src\tracy\common\TracyYield.hpp" />
-    <ClInclude Include="src\tracy\common\tracy_lz4.hpp" />
-    <ClInclude Include="src\tracy\common\tracy_lz4hc.hpp" />
-    <ClInclude Include="src\tracy\libbacktrace\backtrace.hpp" />
-    <ClInclude Include="src\tracy\libbacktrace\config.h" />
-    <ClInclude Include="src\tracy\libbacktrace\filenames.hpp" />
-    <ClInclude Include="src\tracy\libbacktrace\internal.hpp" />
-    <ClInclude Include="src\tracy\tracy\Tracy.hpp" />
-    <ClInclude Include="src\tracy\tracy\TracyVulkan.hpp" />
     <ClInclude Include="src\UIQuad.h" />
     <ClInclude Include="src\Textbox.h" />
     <ClInclude Include="src\TextMesh.h" />
@@ -293,29 +253,6 @@ copy $(SolutionDir)libs\ktx\lib_$(ConfigurationName)\ktx.dll $(OutDirfullPath)kt
     <ClCompile Include="src\ReplaySystem.cpp" />
     <ClCompile Include="src\ScannableItem.cpp" />
     <ClCompile Include="src\SceneManagement.cpp" />
-    <ClCompile Include="src\tracy\client\TracyAlloc.cpp" />
-    <ClCompile Include="src\tracy\client\TracyCallstack.cpp" />
-    <ClCompile Include="src\tracy\client\TracyDxt1.cpp" />
-    <ClCompile Include="src\tracy\client\TracyOverride.cpp" />
-    <ClCompile Include="src\tracy\client\TracyProfiler.cpp" />
-    <ClCompile Include="src\tracy\client\TracySysPower.cpp" />
-    <ClCompile Include="src\tracy\client\TracySysTime.cpp" />
-    <ClCompile Include="src\tracy\client\TracySysTrace.cpp" />
-    <ClCompile Include="src\tracy\client\tracy_rpmalloc.cpp" />
-    <ClCompile Include="src\tracy\common\TracySocket.cpp" />
-    <ClCompile Include="src\tracy\common\TracyStackFrames.cpp" />
-    <ClCompile Include="src\tracy\common\TracySystem.cpp" />
-    <ClCompile Include="src\tracy\common\tracy_lz4.cpp" />
-    <ClCompile Include="src\tracy\common\tracy_lz4hc.cpp" />
-    <ClCompile Include="src\tracy\libbacktrace\alloc.cpp" />
-    <ClCompile Include="src\tracy\libbacktrace\dwarf.cpp" />
-    <ClCompile Include="src\tracy\libbacktrace\elf.cpp" />
-    <ClCompile Include="src\tracy\libbacktrace\fileline.cpp" />
-    <ClCompile Include="src\tracy\libbacktrace\macho.cpp" />
-    <ClCompile Include="src\tracy\libbacktrace\mmapio.cpp" />
-    <ClCompile Include="src\tracy\libbacktrace\posix.cpp" />
-    <ClCompile Include="src\tracy\libbacktrace\sort.cpp" />
-    <ClCompile Include="src\tracy\libbacktrace\state.cpp" />
     <ClCompile Include="src\tracy\TracyClient.cpp" />
     <ClCompile Include="src\UIQuad.cpp" />
     <ClCompile Include="src\Textbox.cpp" />

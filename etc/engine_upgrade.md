@@ -291,15 +291,29 @@
         - [ ] Create a color-by instance id wireframe material.
         - [ ] Switch between the regular materials and just using the wireframe materials in the main renderpass depending on whether wireframe is desired.
 
-- [ ] Add Tracy profiler
-    - [ ] Install the hpp and cpp files.
-    - [ ] Put it in every function.
-    - [ ] Figure out multithreading with the physics engine.
-    - [ ] Add GPU support with vulkan.
+- [x] Add Tracy profiler
+    - [x] Install the hpp and cpp files.
+    - [x] Put it in every function.
+        > @AMEND: That I'm interested in right now.
+    - [x] Figure out multithreading with the physics engine.
+    - [x] Add GPU support with vulkan.
+    - [x] Clean out extra hpp/cpp files.
+        > Turns out that they're all needed, just like the documentation was saying, but I only need to compile `TracyClient.cpp` in the solution.
+    - [f] FUTURE (When going hard with multithreading architecture): implement locks and multithreading features of tracy.
 
-- [ ] TAKE A BREAK AND MOVE TO SOME GAMEPLAY ITERATION TO FIGURE OUT THE DESIGN THERE!!!!
+- [x] BUGFIX: when entering/exiting the play mode, there was a huge hitch.
+    > Turns out that was the swapchain getting recreated bc of how the hotswap system worked.
+- [x] BUGFIX: Hotswap system doesn't wait 1 second unless there was a resource to load.
+    > It should wait 1 second after every check.
+    > @NOTE: after implementing the profiler, it's very easy to see these kinds of mistakes in the code.
+
+- [ ] TAKE A BREAK AND MOVE TO SOME GAMEPLAY ITERATION TO FIGURE OUT THE DESIGN THERE!!!! =====================================================================
+
+
 
 > @NOTE: FROM HERE IS ENGINE UPGRADE PART II
+
+- [ ] OPTIMIZATION: improve the heavy `Calculate unique vertices and normalized indices` zone.
 
 - [ ] Font cooker
     - [ ] STUFF

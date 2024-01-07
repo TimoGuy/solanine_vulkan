@@ -149,6 +149,8 @@ void RenderObjectManager::flagMetaMeshListAsUnoptimized()
 
 void RenderObjectManager::optimizeMetaMeshList()
 {
+	ZoneScoped;
+
 	// @NOTE: since this is a process-intensive operation, it could be good to compile
 	//        all of the metameshes into a separate list in a separate thread while using
 	//        the stale meta mesh list until this operation finishes. Then, upon finishing,
@@ -358,6 +360,8 @@ void RenderObjectManager::recalculateSpecialCaseIndices()
 
 void RenderObjectManager::updateSimTransforms()
 {
+	ZoneScoped;
+
 	for (size_t i : _renderObjectsWithSimTransformIdIndices)
 	{
 		if (!_renderObjectPool[i].simTransformEnabled)
@@ -377,6 +381,8 @@ void RenderObjectManager::updateSimTransforms()
 
 void RenderObjectManager::updateAnimators(float_t deltaTime)
 {
+	ZoneScoped;
+
 	// @TODO: make this multithreaded....
 	for (size_t& i : _renderObjectsWithAnimatorIndices)
 		_renderObjectPool[i].animator->update(deltaTime);
