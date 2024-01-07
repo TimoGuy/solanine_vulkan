@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Imports.h"
+class VulkanEngine;
 struct SceneCamera;
 
 
@@ -25,6 +25,20 @@ namespace globalState
     extern float_t DOFFocusDepth;
     extern float_t DOFFocusExtent;
     extern float_t DOFBlurExtent;
+
+    extern bool isEditingMode;
+
+    struct SpawnPointData
+    {
+        void*   referenceSpawnPointEntity;
+        vec3    position;
+        float_t facingDirection;
+    };
+    extern std::vector<SpawnPointData> listOfSpawnPoints;
+    extern vec3 respawnPosition;
+    extern float_t respawnFacingDirection;
+    extern bool EDITORpromptChangeSpawnPoint;
+    extern size_t EDITORtriggerRespawnFlag;
 
     enum AncientWeaponItemType
     {
@@ -62,7 +76,7 @@ namespace globalState
     };
 
 
-    void initGlobalState(SceneCamera& sc);
+    void initGlobalState(VulkanEngine* engine, SceneCamera& sc);
     void launchAsyncWriteTask();  // @NOTE: this is simply for things that are marked saved
     void cleanupGlobalState();
 

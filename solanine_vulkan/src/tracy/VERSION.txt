@@ -1,0 +1,2 @@
+Tracy v0.10 (commit 37aff70)
+https://github.com/wolfpld/tracy/commit/37aff70dfa50cf6307b3fee6074d627dc2929143

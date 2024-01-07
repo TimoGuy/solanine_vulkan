@@ -1,10 +1,10 @@
+#include "pch.h"
+
 #include "NoteTaker.h"
 
 #include "RenderObject.h"
 #include "DataSerialization.h"
 #include "StringHelper.h"
-#include "imgui/imgui.h"
-#include "imgui/imgui_stdlib.h"
 
 
 NoteTaker::NoteTaker(EntityManager* em, RenderObjectManager* rom, DataSerialized* ds) : Entity(em, ds), _rom(rom)
@@ -58,6 +58,19 @@ void NoteTaker::load(DataSerialized& ds)
         _notes += s;
     }
     replaceAll(_notes, "\\n", "\n");
+}
+
+void NoteTaker::teleportToPosition(vec3 position)
+{
+    auto& t = _renderObj->transformMatrix;
+    mat4 rot;
+    vec3 sca;
+    glm_decompose_rs(t, rot, sca);
+
+    glm_mat4_identity(t);
+    glm_translate(t, position);
+    glm_mul_rot(t, rot, t);
+    glm_scale(t, sca);
 }
 
 void NoteTaker::renderImGui()

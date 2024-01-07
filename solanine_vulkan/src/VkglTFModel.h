@@ -8,9 +8,6 @@
 
 #pragma once
 
-#include "ImportGLM.h"
-#include <mutex>
-#include <taskflow/taskflow.hpp>
 #include "VkDataStructures.h"
 #include "Settings.h"
 
@@ -58,6 +55,8 @@ namespace vkglTF
 
 	struct PBRMaterial
 	{
+		std::string name;
+
 		enum AlphaMode { ALPHAMODE_OPAQUE, ALPHAMODE_MASK, ALPHAMODE_BLEND };
 		AlphaMode alphaMode = ALPHAMODE_OPAQUE;
 		float alphaCutoff = 1.0f;
@@ -167,7 +166,8 @@ namespace vkglTF
 	{
 		enum PathType { TRANSLATION, ROTATION, SCALE };
 		PathType path;
-		Node* node;
+		int32_t  nodeIdx;  // This value gets stored in the binary repr, and needs to use it to bake ptr node.
+		Node*    node;
 		uint32_t samplerIndex;
 	};
 
@@ -280,6 +280,8 @@ namespace vkglTF
 
 	struct Model
 	{
+		size_t assignedModelIdx;
+
 		struct PBRTextureCollection
 		{
 			std::vector<Texture*> textures;
@@ -293,13 +295,24 @@ namespace vkglTF
 		struct Vertex
 		{
 			vec3 pos;
+			uint32_t instanceIDOffset;  // @NOTE: insert offset here so that 16 byte padding can be complete and normal doesn't get garbage values.  -Timo 2023/12/16
+			vec3 normal;
+			uint32_t pad0;  // Here too.
+			vec2 uv0;
+			vec2 uv1;
+			vec4 color;
+			static VertexInputDescription getVertexDescription();
+		};
+
+		struct VertexWithWeights
+		{
+			vec3 pos;
 			vec3 normal;
 			vec2 uv0;
 			vec2 uv1;
 			vec4 joint0;
 			vec4 weight0;
 			vec4 color;
-			static VertexInputDescription getVertexDescription();
 		};
 
 		struct Vertices
@@ -334,10 +347,17 @@ namespace vkglTF
 			vec3 max = { -FLT_MAX, -FLT_MAX , -FLT_MAX };
 		} dimensions;
 
+		struct BoundingSphere
+		{
+			vec3 center;
+			float_t radius;
+		} boundingSphere;
+
 		struct LoaderInfo
 		{
 			uint32_t* indexBuffer;
 			Vertex* vertexBuffer;
+			VertexWithWeights* vertexWithWeightsBuffer;
 			size_t indexCount;
 			size_t vertexCount;
 			size_t indexPos = 0;
@@ -346,7 +366,7 @@ namespace vkglTF
 
 		void destroy(VmaAllocator allocator);
 	private:
-		void loadNode(vkglTF::Node* parent, const tinygltf::Node& node, uint32_t nodeIndex, const tinygltf::Model& model, LoaderInfo& loaderInfo, float globalscale);
+		void loadNode(vkglTF::Node* parent, const tinygltf::Node& node, uint32_t nodeIndex, const tinygltf::Model& model, LoaderInfo& loaderInfo, float_t globalscale);
 		void getNodeProps(const tinygltf::Node& node, const tinygltf::Model& model, size_t& vertexCount, size_t& indexCount);
 		void loadSkins(tinygltf::Model& gltfModel);
 		void loadTextures(tinygltf::Model& gltfModel);
@@ -355,10 +375,12 @@ namespace vkglTF
 		VkSamplerMipmapMode getVkMipmapModeMode(int32_t filterMode);
 		void loadTextureSamplers(tinygltf::Model& gltfModel);
 		void loadMaterials(tinygltf::Model& gltfModel);    // @NOTE: someday it might be beneficial to have some kind of material override for any model.  -Timo
-		void loadAnimations(tinygltf::Model& gltfModel);
-		void loadAnimationStateMachine(const std::string& filename, tinygltf::Model& gltfModel);
+		void loadAnimationsFromGlTFModel(tinygltf::Model& gltfModel, std::vector<size_t>& outAccessorIndicesUsed, std::vector<size_t>& outBufferViewIndicesUsed);
+		void loadAnimationStateMachine(const std::string& filename);
 	public:
-		void loadFromFile(VulkanEngine* engine, std::string filename, float scale = 1.0f);
+		static bool checkGlTFCookNeeded(const std::filesystem::path& path);
+		static bool cookGlTFModel(const std::filesystem::path& path);
+		void loadHthrobwoaFromFile(VulkanEngine* engine, std::string filenameHthrobwoa, std::string filenameHenema, float_t scale = 1.0f);
 		void bind(VkCommandBuffer commandBuffer);
 		void draw(VkCommandBuffer commandBuffer);
 		void draw(VkCommandBuffer commandBuffer, uint32_t& inOutInstanceID);
@@ -400,7 +422,7 @@ namespace vkglTF
 		static VkDescriptorSet* getGlobalAnimatorNodeCollectionDescriptorSet(VulkanEngine* engine);  // For binding to represent a non-skinned mesh
 
 		void playAnimation(size_t maskIndex, uint32_t animationIndex, bool loop, float_t time = 0.0f);  // This is for direct control of the animation index
-		void update(const float_t& deltaTime);
+		void update(float_t deltaTime);
 
 		void runEvent(const std::string& eventName);  // @NOTE: this is really naive btw
 		void setState(const std::string& stateName, float_t time = 0.0f, bool forceImmediateUpdate = false);

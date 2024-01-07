@@ -1,14 +1,7 @@
 #pragma once
 
-#include <vector>
-#include <array>
-#include <string>
-#include <functional>
-#include <unordered_map>
-#include <mutex>
-#include <vma/vk_mem_alloc.h>
-#include "ImportGLM.h"
 #include "Settings.h"
+#include "VkDataStructures.h"
 
 namespace vkglTF { struct Model; struct Animator; }
 
@@ -34,10 +27,14 @@ struct RenderObject
 {
 	vkglTF::Model* model       = nullptr;
 	vkglTF::Animator* animator = nullptr;
-	mat4 transformMatrix       = GLM_MAT4_IDENTITY_INIT;
+	mat4 transformMatrix       = GLM_MAT4_IDENTITY_INIT;  // Gets overwritten if `simTransformId` is set.
+	size_t simTransformId      = (size_t)-1;  // -1 means no attached id.
+	mat4 simTransformOffset    = GLM_MAT4_IDENTITY_INIT;
+	bool simTransformEnabled   = true;
 	RenderLayer renderLayer    = RenderLayer::VISIBLE;
 	std::string attachedEntityGuid;  // @NOTE: this is just for @DEBUG purposes for the imgui property panel
 	std::vector<GPUInstancePointer> calculatedModelInstances;
+	std::vector<size_t> perPrimitiveUniqueMaterialBaseIndices;
 };
 
 class RenderObjectManager
@@ -45,6 +42,10 @@ class RenderObjectManager
 public:
 	bool registerRenderObjects(std::vector<RenderObject> inRenderObjectDatas, std::vector<RenderObject**> outRenderObjectDatas);
 	void unregisterRenderObjects(std::vector<RenderObject*> objRegistrations);
+
+	bool checkIsMetaMeshListUnoptimized();
+	void flagMetaMeshListAsUnoptimized();
+	void optimizeMetaMeshList();
 
 #ifdef _DEVELOP
 	vkglTF::Model* getModel(const std::string& name, void* owner, std::function<void()>&& reloadCallback);  // This is to support model hot-reloading via a callback lambda
@@ -62,9 +63,11 @@ private:
 
 	std::vector<bool*> _sendInstancePtrDataToGPU_refs;
 
+	std::vector<size_t> _renderObjectsWithSimTransformIdIndices;
 	std::vector<size_t> _renderObjectsWithAnimatorIndices;
-	void recalculateAnimatorIndices();
-	void updateAnimators(const float_t& deltaTime);
+	void recalculateSpecialCaseIndices();
+	void updateSimTransforms();
+	void updateAnimators(float_t deltaTime);
 
 	std::vector<size_t>                                   _renderObjectsIndices;
     std::array<bool,         RENDER_OBJECTS_MAX_CAPACITY> _renderObjectsIsRegistered;  // @NOTE: this will be filled with `false` on init  (https://stackoverflow.com/questions/67648693/safely-initializing-a-stdarray-of-bools)
@@ -81,6 +84,33 @@ private:
 	std::unordered_map<std::string, std::vector<ReloadCallback>> _renderObjectModelCallbacks;
 #endif
 	vkglTF::Model* createModel(vkglTF::Model* model, const std::string& name);
+
+	std::vector<std::vector<MeshCapturedInfo>> _modelMeshDraws;
+	bool _skinnedMeshEntriesExist = false;
+	uint8_t _skinnedMeshModelMemAddr;
+
+	bool _isMetaMeshListUnoptimized = true;
+
+	struct MeshBucket
+	{
+		std::vector<size_t> renderObjectIndices;
+	};
+	struct ModelBucket
+	{
+		MeshBucket* meshBuckets;
+	};
+	struct ModelBucketSet
+	{
+		ModelBucket* modelBuckets;
+	};
+	struct UniqueMaterialBaseBucket
+	{
+		ModelBucketSet modelBucketSets[2];  // First one is skinned, second is unskinned.
+	};
+	UniqueMaterialBaseBucket* _umbBuckets = nullptr;
+	size_t _numUmbBuckets = 0;
+	size_t _numModelBuckets = 0;
+	std::vector<size_t> _numMeshBucketsByModelIdx;
 
 	VmaAllocator& _allocator;
 

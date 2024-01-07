@@ -1,0 +1,10 @@
+Hawsoo Unique Material BAse
+pbr.vert.spv
+---
+screenspace_texture.frag.spv
+
+# Var Type  | Mapping to   | MaterialCollection :: MaterialParam :: member name
+sampler2D    texture_idx    textureMapIndex
+vec4         121            tint
+vec4         121            offsetTiling
+---

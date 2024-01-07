@@ -1,7 +1,5 @@
 #pragma once
 
-#include <vector>
-#include <vulkan/vulkan.h>
 struct DeletionQueue;
 
 
@@ -41,6 +39,14 @@ namespace vkutil
             std::vector<VkDynamicState>                      dynamicStates,
             VkRenderPass                                     renderPass,
             uint32_t                                         subpass,
+            VkPipeline&                                      outPipeline,
+            VkPipelineLayout&                                outPipelineLayout,
+            DeletionQueue&                                   deletionQueue);
+
+        bool buildCompute(
+            std::vector<VkPushConstantRange>                 pushConstantRanges,
+            std::vector<VkDescriptorSetLayout>               setLayouts,
+            ShaderStageInfo                     shaderStage,
             VkPipeline&                                      outPipeline,
             VkPipelineLayout&                                outPipelineLayout,
             DeletionQueue&                                   deletionQueue);

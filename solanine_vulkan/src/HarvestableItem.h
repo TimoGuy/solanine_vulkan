@@ -16,14 +16,15 @@ public:
     HarvestableItem(EntityManager* em, RenderObjectManager* rom, DataSerialized* ds);
     ~HarvestableItem();
 
-    void physicsUpdate(const float_t& physicsDeltaTime);
-    void update(const float_t& deltaTime);
-    void lateUpdate(const float_t& deltaTime);
+    void simulationUpdate(float_t simDeltaTime) override;
+    void update(float_t deltaTime);
+    void lateUpdate(float_t deltaTime);
 
     void dump(DataSerializer& ds);
     void load(DataSerialized& ds);
     bool processMessage(DataSerialized& message);
 
+    void teleportToPosition(vec3 position) override;
     void reportMoved(mat4* matrixMoved);
     void renderImGui();
 

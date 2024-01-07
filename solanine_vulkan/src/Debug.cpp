@@ -1,9 +1,8 @@
+#include "pch.h"
+
 #include "Debug.h"
 
 #ifdef _DEVELOP
-
-#include "ImportGLM.h"
-#include "imgui/imgui.h"
 
 
 std::vector<debug::DebugMessage> debug::_debugMessages;
@@ -13,12 +12,13 @@ void debug::pushDebugMessage(const DebugMessage& message)
 	_debugMessages.push_back(message);
 }
 
-void debug::renderImguiDebugMessages(const float_t& windowWidth, const float_t& deltaTime)
+void debug::renderImguiDebugMessages(const float_t& windowWidth, float_t deltaTime)
 {
     static float_t debugMessagesWindowWidth = 0.0f;
-	ImGui::SetNextWindowPos(ImVec2(windowWidth * 0.5f - debugMessagesWindowWidth * 0.5f, 0.0f), ImGuiCond_Always);
+	ImGui::SetNextWindowPos(ImVec2(windowWidth * 0.5f - debugMessagesWindowWidth * 0.5f, 18.0f), ImGuiCond_Always);
 	ImGui::Begin("##Debug Messages", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs);
 	{
+		ImGui::SetWindowFontScale(1.25f);
 		for (int32_t i = (int32_t)debug::_debugMessages.size() - 1; i >= 0; i--)
 		{
 			debug::DebugMessage& dm = debug::_debugMessages[(size_t)i];

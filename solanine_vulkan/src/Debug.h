@@ -1,9 +1,6 @@
 #pragma once
 #ifdef _DEVELOP
 
-#include <vector>
-#include <string>
-
 
 namespace debug
 {
@@ -17,6 +14,6 @@ namespace debug
     extern std::vector<DebugMessage> _debugMessages;
 
 	void pushDebugMessage(const DebugMessage& message);
-	void renderImguiDebugMessages(const float_t& windowWidth, const float_t& deltaTime);
+	void renderImguiDebugMessages(const float_t& windowWidth, float_t deltaTime);
 }
 #endif

@@ -1,0 +1,7 @@
+Hawsoo DERived MateRIal parametER Entry
+HUMBA                           screenspace_texture.humba
+
+# MaterialCollection :: MaterialParam :: members
+textureMapIndex    missing_material_texture
+tint               1.000000,1.000000,1.000000,1.000000
+offsetTiling       0.314159,0.676969,1.000000,1.000000

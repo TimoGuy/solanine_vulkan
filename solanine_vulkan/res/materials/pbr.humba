@@ -1,0 +1,28 @@
+Hawsoo Unique Material BAse    # File type identifier
+pbr.vert.spv                   # Vertex shader name
+---                            # No more unique properties in vertex shader.
+pbr_khr.frag.spv               # Fragment shader name
+
+# Var Type  | Mapping to   | MaterialCollection :: MaterialParam :: member name
+sampler2D    texture_idx    colorMapIndex
+sampler2D    texture_idx    physicalDescriptorMapIndex
+sampler2D    texture_idx    normalMapIndex
+sampler2D    texture_idx    aoMapIndex
+sampler2D    texture_idx    emissiveMapIndex
+vec4         121            baseColorFactor
+vec4         121            emissiveFactor
+vec4         121            diffuseFactor
+vec4         121            specularFactor
+float        121            workflow
+int          121            baseColorTextureSet
+int          121            physicalDescriptorTextureSet
+int          121            normalTextureSet
+int          121            occlusionTextureSet
+int          121            emissiveTextureSet
+float        121            metallicFactor
+float        121            roughnessFactor
+bool         float          alphaMask
+float        121            alphaMaskCutoff
+---                            # No more unique properties in fragment shader.
+
+# @NOTE: `121` means "one-to-one" mapping. It's just easier to type 121 and it's more fun.

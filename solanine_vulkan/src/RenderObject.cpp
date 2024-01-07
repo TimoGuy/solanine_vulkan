@@ -1,7 +1,10 @@
+#include "pch.h"
+
 #include "RenderObject.h"
 
-#include <iostream>
 #include "VkglTFModel.h"
+#include "MaterialOrganizer.h"
+#include "PhysicsEngine.h"
 
 
 bool RenderObjectManager::registerRenderObjects(std::vector<RenderObject> inRenderObjectDatas, std::vector<RenderObject**> outRenderObjectDatas)
@@ -39,17 +42,35 @@ bool RenderObjectManager::registerRenderObjects(std::vector<RenderObject> inRend
 		// Calculate instance pointers
 		RenderObject& renderObjectData = inRenderObjectDatas[i];
 		renderObjectData.calculatedModelInstances.clear();
+		renderObjectData.perPrimitiveUniqueMaterialBaseIndices.clear();
+
 		auto primitives = renderObjectData.model->getAllPrimitivesInOrder();
 		for (auto& primitive : primitives)
+		{
+			// @NOTE: Welcome to erroring out right here! This means that a model got consumed that
+			//        does not have a proper material. Go back to the model and re-export with the settings
+			//        Geometry>Materials set to "Placeholder", and Geometry>Images set to "None". Also, make sure
+			//        there is actually a material assigned to all the faces. Thanks!  -Timo 2023/12/2
+			std::string derivedMatName = "missing_material";
+			if (primitive->materialID != (uint32_t)-1 &&
+				primitive->materialID < renderObjectData.model->materials.size() &&
+				materialorganizer::checkDerivedMaterialNameExists(renderObjectData.model->materials[primitive->materialID].name + ".hderriere"))
+				derivedMatName = renderObjectData.model->materials[primitive->materialID].name;
+
 			renderObjectData.calculatedModelInstances.push_back({
 				.objectID = (uint32_t)registerIndex,
-				.materialID = primitive->materialID,
+				.materialID = (uint32_t)materialorganizer::derivedMaterialNameToDMPSIdx(derivedMatName + ".hderriere"),
 				.animatorNodeID =
 					(uint32_t)(renderObjectData.animator == nullptr ?
 					0 :
 					renderObjectData.animator->skinIndexToGlobalReservedNodeIndex(primitive->animatorSkinIndexPropagatedCopy)),
 				.voxelFieldLightingGridID = 0,  // @NOTE: the default lightmap is blank 1.0f with identity transform, so set 0 to use the default lightmap.
-				});
+			});
+
+			renderObjectData.perPrimitiveUniqueMaterialBaseIndices.push_back(
+				materialorganizer::derivedMaterialNameToUMBIdx(derivedMatName + ".hderriere")
+			);
+		}
 
 		// Register object
 		_renderObjectPool[registerIndex] = renderObjectData;
@@ -59,7 +80,7 @@ bool RenderObjectManager::registerRenderObjects(std::vector<RenderObject> inRend
 		*outRenderObjectDatas[i] = &_renderObjectPool[registerIndex];
 	}
 
-	// Sort pool indices so that models are next to each other (helps with model compacting in the rendering stage).
+	// Sort pool indices so that materials and then models are next to each other (helps with compacting render objects in the rendering stage).
 	std::sort(
 		_renderObjectsIndices.begin(),
 		_renderObjectsIndices.end(),
@@ -72,7 +93,8 @@ bool RenderObjectManager::registerRenderObjects(std::vector<RenderObject> inRend
 		*sendFlag = true;
 
 	// Recalculate what indices animated render objects are at
-	recalculateAnimatorIndices();
+	recalculateSpecialCaseIndices();
+	_isMetaMeshListUnoptimized = true;
 
 	return true;
 }
@@ -99,7 +121,8 @@ void RenderObjectManager::unregisterRenderObjects(std::vector<RenderObject*> obj
 					*sendFlag = true;
 
 				// Recalculate what indices animated render objects are at
-				recalculateAnimatorIndices();
+				recalculateSpecialCaseIndices();
+				_isMetaMeshListUnoptimized = true;
 
 				found = true;
 				break;
@@ -112,6 +135,141 @@ void RenderObjectManager::unregisterRenderObjects(std::vector<RenderObject*> obj
 			std::cerr << "[UNREGISTER RENDER OBJECT]" << std::endl
 				<< "ERROR: render object " << objRegistration << " was not found. Nothing unregistered." << std::endl;
 	}
+}
+
+bool RenderObjectManager::checkIsMetaMeshListUnoptimized()
+{
+	return _isMetaMeshListUnoptimized;
+}
+
+void RenderObjectManager::flagMetaMeshListAsUnoptimized()
+{
+	_isMetaMeshListUnoptimized = true;
+}
+
+void RenderObjectManager::optimizeMetaMeshList()
+{
+	ZoneScoped;
+
+	// @NOTE: since this is a process-intensive operation, it could be good to compile
+	//        all of the metameshes into a separate list in a separate thread while using
+	//        the stale meta mesh list until this operation finishes. Then, upon finishing,
+	//        just assign the memory address of the finished, new meta mesh list to the pointer
+	//        of the old one. Just a thought, but this would force some renderobjects
+	//        to stay alive but it's not impossible to manage.  -Timo 2023/12/12
+
+	// Delete existing bucket hierarchy using previously fetched volumes.
+	if (_umbBuckets != nullptr)
+	{
+		for (size_t i = 0; i < _numUmbBuckets; i++)
+		{
+			UniqueMaterialBaseBucket& umbBucket = _umbBuckets[i];
+			for (size_t j = 0; j < 2; j++)
+			{
+				for (size_t k = 0; k < _numModelBuckets; k++)
+				{
+					ModelBucket& modelBucket = umbBucket.modelBucketSets[j].modelBuckets[k];
+					delete[] modelBucket.meshBuckets;
+				}
+				delete[] umbBucket.modelBucketSets[j].modelBuckets;
+			}
+		}
+		delete[] _umbBuckets;
+	}
+
+	// Get bucket sizes.
+	_numUmbBuckets = materialorganizer::getNumUniqueMaterialBasesExcludingSpecials();
+	_numModelBuckets = _renderObjectModels.size();
+	_numMeshBucketsByModelIdx.clear();
+	_numMeshBucketsByModelIdx.resize(_numModelBuckets, 0);
+	size_t idx = 0;
+	for (auto it = _renderObjectModels.begin(); it != _renderObjectModels.end(); it++)
+	{
+		auto model = it->second;
+		model->assignedModelIdx = idx;
+		_numMeshBucketsByModelIdx[idx] =
+			model->getAllPrimitivesInOrder().size();
+		idx++;
+	}
+
+	// Create bucket hierarchy.
+	_umbBuckets = new UniqueMaterialBaseBucket[_numUmbBuckets];
+	for (size_t i = 0; i < _numUmbBuckets; i++)
+	{
+		UniqueMaterialBaseBucket& umbBucket = _umbBuckets[i];
+		for (size_t j = 0; j < 2; j++)
+		{
+			umbBucket.modelBucketSets[j].modelBuckets = new ModelBucket[_numModelBuckets];
+			for (size_t k = 0; k < _numModelBuckets; k++)
+			{
+				ModelBucket& modelBucket = umbBucket.modelBucketSets[j].modelBuckets[k];
+				modelBucket.meshBuckets = new MeshBucket[_numMeshBucketsByModelIdx[k]];
+			}
+		}
+	}
+	{
+		// @DEBUG show the total size of the allocated bucket hierarchy (of just the containers).
+		size_t totalSize = 0;
+		for (size_t numMeshBuckets : _numMeshBucketsByModelIdx)
+			totalSize += numMeshBuckets * 24;  // 24 is the bytes to create std::vector container.
+		totalSize *= 2;
+		totalSize *= _numUmbBuckets;
+		std::cout << "Allocated bucket hierarchy is " << totalSize << " bytes without data." << std::endl;
+	}
+
+	std::lock_guard<std::mutex> lg(renderObjectIndicesAndPoolMutex);
+
+	//
+	// Cull out render object indices that are not marked as visible
+	//
+	std::vector<size_t> visibleIndices;
+	for (size_t i = 0; i < _renderObjectsIndices.size(); i++)
+	{
+		size_t poolIndex = _renderObjectsIndices[i];
+		RenderObject& object = _renderObjectPool[poolIndex];
+
+		// See if render object itself is visible
+		if (!_renderObjectLayersEnabled[(size_t)object.renderLayer])
+			continue;
+		if (object.model == nullptr)
+			continue;
+
+		// It's visible!!!!
+		visibleIndices.push_back(poolIndex);
+	}
+
+	// Insert render objects into bucket hierarchy.
+	_skinnedMeshEntriesExist = false;
+	for (size_t roIdx = 0; roIdx < visibleIndices.size(); roIdx++)
+	{
+		RenderObject& ro = _renderObjectPool[visibleIndices[roIdx]];
+		for (size_t mi = 0; mi < ro.perPrimitiveUniqueMaterialBaseIndices.size(); mi++)
+		{
+			if (ro.animator != nullptr)
+				_skinnedMeshEntriesExist = true;
+			size_t umbIdx = ro.perPrimitiveUniqueMaterialBaseIndices[mi];
+			size_t skinnedIdx = (ro.animator != nullptr ? 0 : 1);
+			size_t modelIdx = ro.model->assignedModelIdx;
+			_umbBuckets[umbIdx]
+				.modelBucketSets[skinnedIdx]
+				.modelBuckets[modelIdx]
+				.meshBuckets[mi]
+				.renderObjectIndices.push_back(visibleIndices[roIdx]);
+		}
+	}
+
+	// Add mesh draws into data structure.
+	_modelMeshDraws.clear();
+	_modelMeshDraws.resize(_renderObjectModels.size(), {});
+	size_t mmdIdx = 0;
+	for (auto it = _renderObjectModels.begin(); it != _renderObjectModels.end(); it++)
+	{
+		uint32_t _ = 0;
+		it->second->appendPrimitiveDraws(_modelMeshDraws[mmdIdx], _);
+		mmdIdx++;
+	}
+
+	_isMetaMeshListUnoptimized = false;
 }
 
 #ifdef _DEVELOP
@@ -165,9 +323,10 @@ void RenderObjectManager::reloadModelAndTriggerCallbacks(VulkanEngine* engine, c
 	}
 
 	// Reload model
+	std::string pathStringHenema    = "res/models_cooked/" + std::filesystem::path(modelPath).stem().string() + ".henema";
 	vkglTF::Model* model = _renderObjectModels[name];
 	model->destroy(_allocator);
-	model->loadFromFile(engine, modelPath);
+	model->loadHthrobwoaFromFile(engine, modelPath, pathStringHenema);
 
 	// Trigger Model Callbacks
 	for (auto& rc : _renderObjectModelCallbacks[name])
@@ -186,20 +345,44 @@ RenderObjectManager::~RenderObjectManager()
 	delete[] _renderObjectLayersEnabled;
 }
 
-void RenderObjectManager::recalculateAnimatorIndices()
+void RenderObjectManager::recalculateSpecialCaseIndices()
 {
 	_renderObjectsWithAnimatorIndices.clear();
+	_renderObjectsWithSimTransformIdIndices.clear();
 	for (size_t poolIndex : _renderObjectsIndices)
 	{
-		if (_renderObjectPool[poolIndex].animator == nullptr)
-			continue;
-
-		_renderObjectsWithAnimatorIndices.push_back(poolIndex);
+		if (_renderObjectPool[poolIndex].animator != nullptr)
+			_renderObjectsWithAnimatorIndices.push_back(poolIndex);
+		if (_renderObjectPool[poolIndex].simTransformId != (size_t)-1)
+			_renderObjectsWithSimTransformIdIndices.push_back(poolIndex);
 	}
 }
 
-void RenderObjectManager::updateAnimators(const float_t& deltaTime)
+void RenderObjectManager::updateSimTransforms()
 {
+	ZoneScoped;
+
+	for (size_t i : _renderObjectsWithSimTransformIdIndices)
+	{
+		if (!_renderObjectPool[i].simTransformEnabled)
+			continue;
+
+		vec3 pos;
+		versor rot;
+		physengine::getInterpSimulationTransformPosition(_renderObjectPool[i].simTransformId, pos);
+		physengine::getInterpSimulationTransformRotation(_renderObjectPool[i].simTransformId, rot);
+		mat4& transform = _renderObjectPool[i].transformMatrix;
+		glm_mat4_identity(transform);
+		glm_translate(transform, pos);
+		glm_quat_rotate(transform, rot, transform);
+		glm_mat4_mul(transform, _renderObjectPool[i].simTransformOffset, transform);
+	}
+}
+
+void RenderObjectManager::updateAnimators(float_t deltaTime)
+{
+	ZoneScoped;
+
 	// @TODO: make this multithreaded....
 	for (size_t& i : _renderObjectsWithAnimatorIndices)
 		_renderObjectPool[i].animator->update(deltaTime);
@@ -209,6 +392,8 @@ vkglTF::Model* RenderObjectManager::createModel(vkglTF::Model* model, const std:
 {
 	// @NOTE: no need to reserve any size of models for this vector, bc we're just giving
 	// away the pointer to the model itself instead bc the model is created on the heap
+	if (name == "SlimeGirl")
+		int32_t ian = 69;
 	_renderObjectModels[name] = model;
 	return _renderObjectModels[name];  // Ehhh, we could've just sent back the original model pointer
 }

@@ -1,13 +1,13 @@
+#include "pch.h"
+
 #include "ScannableItem.h"
 
-#include <iostream>
 #include "VkglTFModel.h"
 #include "RenderObject.h"
 #include "EntityManager.h"
 #include "DataSerialization.h"
 #include "GlobalState.h"
 #include "Textbox.h"
-#include "imgui/imgui.h"
 
 
 struct ScannableItem_XData
@@ -27,9 +27,7 @@ struct ScannableItem_XData
 
 ScannableItem::ScannableItem(EntityManager* em, RenderObjectManager* rom, DataSerialized* ds) : Entity(em, ds), _data(new ScannableItem_XData())
 {
-    Entity::_enablePhysicsUpdate = true;
-    Entity::_enableUpdate = true;
-    Entity::_enableLateUpdate = true;
+    Entity::_enableSimulationUpdate = true;
 
     _data->rom = rom;
 
@@ -57,7 +55,7 @@ ScannableItem::~ScannableItem()
     delete _data;
 }
 
-void ScannableItem::physicsUpdate(const float_t& physicsDeltaTime)
+void ScannableItem::simulationUpdate(float_t simDeltaTime)
 {
     // Check whether this is at an interactible distance away.
     if (!globalState::playerGUID.empty() &&
@@ -85,7 +83,7 @@ void ScannableItem::physicsUpdate(const float_t& physicsDeltaTime)
     }
 }
 
-void ScannableItem::update(const float_t& deltaTime)
+void ScannableItem::update(float_t deltaTime)
 {
     if (_data->requestChangeItemModel)
     {
@@ -107,7 +105,7 @@ void ScannableItem::update(const float_t& deltaTime)
     }
 }
 
-void ScannableItem::lateUpdate(const float_t& deltaTime)
+void ScannableItem::lateUpdate(float_t deltaTime)
 {
     glm_mat4_identity(_data->renderObj->transformMatrix);
     glm_translate(_data->renderObj->transformMatrix, _data->position);
@@ -167,6 +165,11 @@ bool ScannableItem::processMessage(DataSerialized& message)
     }
 
     return false;
+}
+
+void ScannableItem::teleportToPosition(vec3 position)
+{
+    glm_vec3_copy(position, _data->position);
 }
 
 void ScannableItem::reportMoved(mat4* matrixMoved)

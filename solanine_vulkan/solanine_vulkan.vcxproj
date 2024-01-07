@@ -50,26 +50,27 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;_HAS_EXCEPTIONS=0;BT_THREADSAFE=1;JPH_PROFILE_ENABLED;JPH_DEBUG_RENDERER;JPH_FLOATING_POINT_EXCEPTIONS_ENABLED;JPH_USE_AVX2;JPH_USE_AVX;JPH_USE_SSE4_1;JPH_USE_SSE4_2;JPH_USE_LZCNT;JPH_USE_TZCNT;JPH_USE_F16C;JPH_USE_FMADD;_DEBUG;_DEVELOP;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;_HAS_EXCEPTIONS=0;JPH_PROFILE_ENABLED;JPH_DEBUG_RENDERER;JPH_FLOATING_POINT_EXCEPTIONS_ENABLED;JPH_USE_AVX2;JPH_USE_AVX;JPH_USE_SSE4_1;JPH_USE_SSE4_2;JPH_USE_LZCNT;JPH_USE_TZCNT;JPH_USE_F16C;JPH_USE_FMADD;TRACY_ENABLE;_DEBUG;_DEVELOP;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
-      <AdditionalIncludeDirectories>$(VK_SDK_PATH)\Include;$(SolutionDir)libs;$(SolutionDir)libs\fmod_core\inc;$(SolutionDir)libs\fmod_fsbank\inc;$(SolutionDir)libs\fmod_studio\inc;$(SolutionDir)libs\jolt_physics\inc;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(VK_SDK_PATH)\Include;$(SolutionDir)libs;$(SolutionDir)libs\fmod_core\inc;$(SolutionDir)libs\fmod_fsbank\inc;$(SolutionDir)libs\fmod_studio\inc;$(SolutionDir)libs\jolt_physics\inc;$(SolutionDir)libs\ktx\inc;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
-      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <WholeProgramOptimization>false</WholeProgramOptimization>
       <EnableEnhancedInstructionSet>NotSet</EnableEnhancedInstructionSet>
       <ExceptionHandling>false</ExceptionHandling>
       <FloatingPointModel>Precise</FloatingPointModel>
       <StructMemberAlignment>Default</StructMemberAlignment>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>DebugFastLink</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>$(VK_SDK_PATH)\Lib;$(SolutionDir)libs\fmod_core\lib;$(SolutionDir)libs\fmod_fsbank\lib;$(SolutionDir)libs\fmod_studio\lib;$(SolutionDir)libs\cglm;$(SolutionDir)libs\jolt_physics\lib_$(ConfigurationName)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>SDL2.lib;SDL2main.lib;vulkan-1.lib;fmod$(Suffix)_vc.lib;fmodstudio$(Suffix)_vc.lib;cglm.lib;Jolt.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(VK_SDK_PATH)\Lib;$(SolutionDir)libs\fmod_core\lib;$(SolutionDir)libs\fmod_fsbank\lib;$(SolutionDir)libs\fmod_studio\lib;$(SolutionDir)libs\cglm;$(SolutionDir)libs\jolt_physics\lib_$(ConfigurationName);$(SolutionDir)libs\ktx\lib_$(ConfigurationName)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>SDL2.lib;SDL2main.lib;vulkan-1.lib;fmod$(Suffix)_vc.lib;fmodstudio$(Suffix)_vc.lib;cglm.lib;Jolt.lib;ktx.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <LinkTimeCodeGeneration>Default</LinkTimeCodeGeneration>
     </Link>
     <PostBuildEvent>
@@ -80,7 +81,8 @@ set /A BuildNumberForSolanine+=1
 copy $(VK_SDK_PATH)\Bin\SDL2.dll $(OutDirfullPath)SDL2.dll
 copy $(SolutionDir)libs\fmod_core\lib\fmod.dll $(OutDirfullPath)fmod.dll
 copy $(SolutionDir)libs\fmod_studio\lib\fmodstudio.dll $(OutDirfullPath)fmodstudio.dll
-copy $(SolutionDir)libs\cglm\cglm.dll $(OutDirfullPath)cglm.dll</Command>
+copy $(SolutionDir)libs\cglm\cglm.dll $(OutDirfullPath)cglm.dll
+copy $(SolutionDir)libs\ktx\lib_$(ConfigurationName)\ktx.dll $(OutDirfullPath)ktx.dll</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -89,14 +91,14 @@ copy $(SolutionDir)libs\cglm\cglm.dll $(OutDirfullPath)cglm.dll</Command>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;_HAS_EXCEPTIONS=0;BT_THREADSAFE=1;JPH_PROFILE_ENABLED;JPH_DEBUG_RENDERER;JPH_FLOATING_POINT_EXCEPTIONS_ENABLED;JPH_USE_AVX2;JPH_USE_AVX;JPH_USE_SSE4_1;JPH_USE_SSE4_2;JPH_USE_LZCNT;JPH_USE_TZCNT;JPH_USE_F16C;JPH_USE_FMADD;NDEBUG;_DEVELOP;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;_HAS_EXCEPTIONS=0;JPH_PROFILE_ENABLED;JPH_DEBUG_RENDERER;JPH_FLOATING_POINT_EXCEPTIONS_ENABLED;JPH_USE_AVX2;JPH_USE_AVX;JPH_USE_SSE4_1;JPH_USE_SSE4_2;JPH_USE_LZCNT;JPH_USE_TZCNT;JPH_USE_F16C;JPH_USE_FMADD;TRACY_ENABLE;NDEBUG;_DEVELOP;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
-      <AdditionalIncludeDirectories>$(VK_SDK_PATH)\Include;$(SolutionDir)libs;$(SolutionDir)libs\fmod_core\inc;$(SolutionDir)libs\fmod_fsbank\inc;$(SolutionDir)libs\fmod_studio\inc;$(SolutionDir)libs\jolt_physics\inc;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(VK_SDK_PATH)\Include;$(SolutionDir)libs;$(SolutionDir)libs\fmod_core\inc;$(SolutionDir)libs\fmod_fsbank\inc;$(SolutionDir)libs\fmod_studio\inc;$(SolutionDir)libs\jolt_physics\inc;$(SolutionDir)libs\ktx\inc;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
-      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <EnableEnhancedInstructionSet>NotSet</EnableEnhancedInstructionSet>
       <ExceptionHandling>false</ExceptionHandling>
@@ -108,8 +110,8 @@ copy $(SolutionDir)libs\cglm\cglm.dll $(OutDirfullPath)cglm.dll</Command>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>$(VK_SDK_PATH)\Lib;$(SolutionDir)libs\fmod_core\lib;$(SolutionDir)libs\fmod_fsbank\lib;$(SolutionDir)libs\fmod_studio\lib;$(SolutionDir)libs\cglm;$(SolutionDir)libs\jolt_physics\lib_$(ConfigurationName)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>SDL2.lib;SDL2main.lib;vulkan-1.lib;fmod$(Suffix)_vc.lib;fmodstudio$(Suffix)_vc.lib;cglm.lib;Jolt.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(VK_SDK_PATH)\Lib;$(SolutionDir)libs\fmod_core\lib;$(SolutionDir)libs\fmod_fsbank\lib;$(SolutionDir)libs\fmod_studio\lib;$(SolutionDir)libs\cglm;$(SolutionDir)libs\jolt_physics\lib_$(ConfigurationName);$(SolutionDir)libs\ktx\lib_$(ConfigurationName)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>SDL2.lib;SDL2main.lib;vulkan-1.lib;fmod$(Suffix)_vc.lib;fmodstudio$(Suffix)_vc.lib;cglm.lib;Jolt.lib;ktx.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
       <Command>set /p BuildNumberForSolanine=&lt;build_number.txt
@@ -119,7 +121,8 @@ set /A BuildNumberForSolanine+=1
 copy $(VK_SDK_PATH)\Bin\SDL2.dll $(OutDirfullPath)SDL2.dll
 copy $(SolutionDir)libs\fmod_core\lib\fmod.dll $(OutDirfullPath)fmod.dll
 copy $(SolutionDir)libs\fmod_studio\lib\fmodstudio.dll $(OutDirfullPath)fmodstudio.dll
-copy $(SolutionDir)libs\cglm\cglm.dll $(OutDirfullPath)cglm.dll</Command>
+copy $(SolutionDir)libs\cglm\cglm.dll $(OutDirfullPath)cglm.dll
+copy $(SolutionDir)libs\ktx\lib_$(ConfigurationName)\ktx.dll $(OutDirfullPath)ktx.dll</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -150,6 +153,9 @@ copy $(SolutionDir)libs\cglm\cglm.dll $(OutDirfullPath)cglm.dll</Command>
     <None Include="shader\wireframe_color.vert" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\spirv\unified1\spirv.h" />
+    <ClInclude Include="src\spirv_reflect.h" />
+    <ClInclude Include="src\SPIRVReflectionHelper.h" />
     <ClInclude Include="src\AudioEngine.h" />
     <ClInclude Include="src\Camera.h" />
     <ClInclude Include="src\Debug.h" />
@@ -158,8 +164,11 @@ copy $(SolutionDir)libs\cglm\cglm.dll $(OutDirfullPath)cglm.dll</Command>
     <ClInclude Include="src\GlobalState.h" />
     <ClInclude Include="src\HarvestableItem.h" />
     <ClInclude Include="src\imgui\imgui_stdlib.h" />
-    <ClInclude Include="src\ImportGLM.h" />
     <ClInclude Include="src\NoteTaker.h" />
+    <ClInclude Include="src\EDITORTestLevelSpawnPoint.h" />
+    <ClInclude Include="src\EDITORTextureViewer.h" />
+    <ClInclude Include="src\imgui\pch.h" />
+    <ClInclude Include="src\tracy\pch.h" />
     <ClInclude Include="src\pch.h" />
     <ClInclude Include="src\RenderObject.h" />
     <ClInclude Include="src\ReplaySystem.h" />
@@ -168,6 +177,8 @@ copy $(SolutionDir)libs\cglm\cglm.dll $(OutDirfullPath)cglm.dll</Command>
     <ClInclude Include="src\Entity.h" />
     <ClInclude Include="src\DataSerialization.h" />
     <ClInclude Include="src\GLSLToSPIRVHelper.h" />
+    <ClInclude Include="src\TextureCooker.h" />
+    <ClInclude Include="src\MaterialOrganizer.h" />
     <ClInclude Include="src\imgui\imconfig.h" />
     <ClInclude Include="src\imgui\imgui.h" />
     <ClInclude Include="src\imgui\ImGuizmo.h" />
@@ -179,10 +190,10 @@ copy $(SolutionDir)libs\cglm\cglm.dll $(OutDirfullPath)cglm.dll</Command>
     <ClInclude Include="src\imgui\imstb_rectpack.h" />
     <ClInclude Include="src\imgui\imstb_textedit.h" />
     <ClInclude Include="src\imgui\imstb_truetype.h" />
-    <ClInclude Include="src\Imports.h" />
     <ClInclude Include="src\InputManager.h" />
-    <ClInclude Include="src\Character.h" />
+    <ClInclude Include="src\SimulationCharacter.h" />
     <ClInclude Include="src\Settings.h" />
+    <ClInclude Include="src\UIQuad.h" />
     <ClInclude Include="src\Textbox.h" />
     <ClInclude Include="src\TextMesh.h" />
     <ClInclude Include="src\VkBootstrap.h" />
@@ -192,6 +203,7 @@ copy $(SolutionDir)libs\cglm\cglm.dll $(OutDirfullPath)cglm.dll</Command>
     <ClInclude Include="src\VkPipelineBuilderUtil.h" />
     <ClInclude Include="src\VkTextures.h" />
     <ClInclude Include="src\VulkanEngine.h" />
+    <ClInclude Include="src\RandomNumberGenerator.h" />
     <ClInclude Include="src\StringHelper.h" />
     <ClInclude Include="src\PhysUtil.h" />
     <ClInclude Include="src\VoxelField.h" />
@@ -201,6 +213,8 @@ copy $(SolutionDir)libs\cglm\cglm.dll $(OutDirfullPath)cglm.dll</Command>
     <ClInclude Include="src\GondolaSystem.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\spirv_reflect.cpp" />
+    <ClCompile Include="src\SPIRVReflectionHelper.cpp" />
     <ClCompile Include="src\AudioEngine.cpp" />
     <ClCompile Include="src\Camera.cpp" />
     <ClCompile Include="src\Debug.cpp" />
@@ -224,16 +238,23 @@ copy $(SolutionDir)libs\cglm\cglm.dll $(OutDirfullPath)cglm.dll</Command>
     <ClCompile Include="src\InputManager.cpp" />
     <ClCompile Include="src\Main.cpp" />
     <ClCompile Include="src\NoteTaker.cpp" />
+    <ClCompile Include="src\EDITORTestLevelSpawnPoint.cpp" />
+    <ClCompile Include="src\EDITORTextureViewer.cpp" />
     <ClCompile Include="src\pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\Character.cpp" />
+    <ClCompile Include="src\SimulationCharacter.cpp" />
     <ClCompile Include="src\DataSerialization.cpp" />
+    <ClCompile Include="src\GLSLToSPIRVHelper.cpp" />
+    <ClCompile Include="src\TextureCooker.cpp" />
+    <ClCompile Include="src\MaterialOrganizer.cpp" />
     <ClCompile Include="src\RenderObject.cpp" />
     <ClCompile Include="src\ReplaySystem.cpp" />
     <ClCompile Include="src\ScannableItem.cpp" />
     <ClCompile Include="src\SceneManagement.cpp" />
+    <ClCompile Include="src\tracy\TracyClient.cpp" />
+    <ClCompile Include="src\UIQuad.cpp" />
     <ClCompile Include="src\Textbox.cpp" />
     <ClCompile Include="src\TextMesh.cpp" />
     <ClCompile Include="src\VkBootstrap.cpp" />
@@ -242,6 +263,7 @@ copy $(SolutionDir)libs\cglm\cglm.dll $(OutDirfullPath)cglm.dll</Command>
     <ClCompile Include="src\VkPipelineBuilderUtil.cpp" />
     <ClCompile Include="src\VkTextures.cpp" />
     <ClCompile Include="src\VulkanEngine.cpp" />
+    <ClCompile Include="src\RandomNumberGenerator.cpp" />
     <ClCompile Include="src\PhysUtil.cpp" />
     <ClCompile Include="src\VoxelField.cpp" />
     <ClCompile Include="src\PhysicsEngine.cpp" />

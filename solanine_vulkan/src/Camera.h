@@ -1,6 +1,5 @@
 #pragma once
 
-#include "ImportGLM.h"
 #include "Settings.h"
 class VulkanEngine;
 struct RenderObject;
@@ -29,12 +28,21 @@ struct GPUCascadeViewProjsData
 //
 struct SceneCamera
 {
-	vec3 facingDirection = { -0.570508420, -0.390730739, 0.722388268 };
+	vec3      facingDirection = { -0.570508420, -0.390730739, 0.722388268 };
 	float_t   fov             = glm_rad(70.0f);
 	float_t   aspect;
 	float_t   zNear           = 1.0f;
-	float_t   zFar            = 1000.0f;
+	float_t   zFar            = 10000.0f;
 	float_t   zFarShadow      = 60.0f;
+	vec3      wholeShadowMinExtents;
+	vec3      wholeShadowMaxExtents;
+	mat4      wholeShadowLightViewMatrix;
+#ifdef _DEVELOP
+	bool isPerspective = true;
+	float_t orthoHalfWidth;
+	float_t orthoHalfHeight;
+	float_t orthoFullDepth;
+#endif
 	vec3 boxCastExtents;
 	GPUCameraData gpuCameraData;
 	GPUCascadeViewProjsData gpuCascadeViewProjsData;  // This will get calculated from the scene camera since this is a CSM viewprojs
@@ -63,6 +71,12 @@ struct MainCamMode
 	vec3 calculatedLookDirection = { 0, -0.707106781, 0.707106781 };
 	float_t actualLookDistance;
 	float_t actualLookDistanceVelocity;
+
+	struct ApplyOrbitAngles
+	{
+		bool applyFlag = false;
+		vec2 newOrbitAngles;
+	} applyOrbitAngles;
 
 	struct OpponentTargetTransition
 	{
@@ -94,12 +108,15 @@ struct MainCamMode
 	} opponentTargetTransition;
 
 	// Tweak variables
+	bool      useFarLookDistance     = false;
 	float_t   lookDistance           = 5.0f;
+	float_t   lookDistanceFar        = 10.0f;
 	float_t   lookDistanceSmoothTime = 0.075f;
 	float_t   focusSmoothTimeXZ      = 0.075f;
 	float_t   focusSmoothTimeY       = 0.3f;
 	vec3      focusPositionOffset    = { 0, 2.333333f, 0 };
 
+	void setMainCamOrbitAngles(vec2 orbitAngles);
 	void setMainCamTargetObject(RenderObject* targetObject);
 	void setOpponentCamTargetObject(physengine::CapsulePhysicsData* targetObject);
 };
@@ -114,6 +131,26 @@ struct FreeCamMode
 	bool enabled = false;
 	ivec2 savedMousePosition;
 	float_t sensitivity = 0.1f;
+	bool isPerspective = true;
+	int32_t orthoViewIdx = 0;  // 0: perspective.  1: ortho X.  2: ortho Y.  3: ortho Z.
+	float_t orthoHalfDepth = 50.0f;
+	float_t orthoHalfHeight = 20.0f;
+	float_t orthoFocusDepth = 20.0f;
+};
+
+//
+// Orbit subject cam mode.
+// (Use middle mouse button to lock cursor and orbit around a set point)
+//
+struct OrbitSubjectCamMode
+{
+	bool moving = false;
+	vec3 focusPosition;
+	float_t focusLength;
+	vec2 orbitAngles;
+
+	vec2 sensitivity = { 0.2f, 0.2f };
+	float_t focusLengthSensitivity = 0.2f;
 };
 #endif
 
@@ -124,27 +161,32 @@ struct Camera
 {
 	Camera(VulkanEngine* engine);
 
-	SceneCamera    sceneCamera;
-	MainCamMode    mainCamMode;
+	SceneCamera         sceneCamera;
+	MainCamMode         mainCamMode;
 #ifdef _DEVELOP
-	FreeCamMode    freeCamMode;
+	FreeCamMode         freeCamMode;
+	OrbitSubjectCamMode orbitSubjectCamMode;
 #endif
 
 	const static uint32_t
-		_cameraMode_mainCamMode = 0,
-		_cameraMode_freeCamMode = 1;
+		_cameraMode_mainCamMode         = 0,
+		_cameraMode_freeCamMode         = 1,
+		_cameraMode_orbitSubjectCamMode = 2,
+		_numCameraModes                 = 3;
+	void requestCameraMode(uint32_t camMode);
 	inline uint32_t getCameraMode() { return _cameraMode; }
 
-	void update(const float_t& deltaTime);
+	void update(float_t deltaTime);
 
 private:
 	VulkanEngine* _engine;
 
-	static const uint32_t _numCameraModes = 2;
-	uint32_t _cameraMode = _cameraMode_freeCamMode;
+	uint32_t _cameraMode = (uint32_t)-1;
+	uint32_t _requestedCameraMode = (uint32_t)-1;
 	CameraModeChangeEvent _changeEvents[_numCameraModes];
 	bool _flagNextStepChangeCameraMode = false;
 
-	void updateMainCam(const float_t& deltaTime, CameraModeChangeEvent changeEvent);
-	void updateFreeCam(const float_t& deltaTime, CameraModeChangeEvent changeEvent);
+	void updateMainCam(float_t deltaTime, CameraModeChangeEvent changeEvent);
+	void updateFreeCam(float_t deltaTime, CameraModeChangeEvent changeEvent);
+	void updateOrbitSubjectCam(float_t deltaTime, CameraModeChangeEvent changeEvent);
 };

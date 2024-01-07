@@ -1,13 +1,16 @@
-#include <iostream>
+#include "pch.h"
+
 #include "VulkanEngine.h"
 
 
 #ifdef _DEVELOP
-int main()
+int32_t main(int32_t argc, char* argv[])
 #else
 int __stdcall WinMain(void*, void*, char* cmdLine, int)
 #endif
 {
+	TracySetProgramName("Hawsoo_Solanine_x64");
+
 	const char* logoText =
 		"                .^~7?7^                                             !P5PPY7^                       \n"
 		"                .?P#@@@BY!:                                          ~Y#@@@&P:                     \n"

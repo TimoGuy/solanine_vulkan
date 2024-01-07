@@ -14,6 +14,8 @@
  * Copyright © 2020 Charles Giessen (charles@lunarg.com)
  */
 
+#include "pch.h"
+
 #include "VkBootstrap.h"
 
 #include <cstdio>

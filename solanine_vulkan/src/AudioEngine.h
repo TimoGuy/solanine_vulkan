@@ -2,13 +2,6 @@
 
 #pragma once
 
-#include <fmod_studio.hpp>
-#include <fmod.hpp>
-#include <string>
-#include <map>
-#include <vector>
-#include "ImportGLM.h"
-
 struct AudioAdapter_FMOD;
 
 

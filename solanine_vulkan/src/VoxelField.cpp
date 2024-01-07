@@ -1,8 +1,7 @@
+#include "pch.h"
+
 #include "VoxelField.h"
 
-#include <stb_image_write.h>
-#include <mutex>
-#include "Imports.h"
 #include "VkglTFModel.h"
 #include "VkTextures.h"
 #include "VkInitializers.h"
@@ -14,7 +13,6 @@
 #include "VulkanEngine.h"
 #include "AudioEngine.h"
 #include "Camera.h"
-#include "imgui/imgui.h"
 
 
 struct VoxelField_XData
@@ -24,6 +22,8 @@ struct VoxelField_XData
     vkglTF::Model* voxelModel;
     std::vector<RenderObject*> voxelRenderObjs;
     std::vector<mat4s> voxelRenderObjLocalTransforms;
+
+    int32_t disableSimFollowTimer = 0;
 
     size_t lightgridId = 0;  // If 0, then that means there is no light grid created.
 
@@ -52,9 +52,7 @@ void triggerLoadLightingIfExists(VoxelField_XData& d, const std::string& guid);
 
 VoxelField::VoxelField(VulkanEngine* engine, EntityManager* em, RenderObjectManager* rom, DataSerialized* ds) : Entity(em, ds), _data(new VoxelField_XData())
 {
-    Entity::_enablePhysicsUpdate = true;
-    Entity::_enableUpdate = true;
-    Entity::_enableLateUpdate = true;
+    Entity::_enableSimulationUpdate = true;
 
     _data->engine = engine;
     _data->rom = rom;
@@ -69,7 +67,7 @@ VoxelField::VoxelField(VulkanEngine* engine, EntityManager* em, RenderObjectMana
     if (_data->vfpd == nullptr)
         buildDefaultVoxelData(*_data, getGUID());
 
-    _data->voxelModel = _data->rom->getModel("DevBoxWood", this, [](){});
+    _data->voxelModel = _data->rom->getModel("DevCollisionBox", this, [](){});
     std::vector<physengine::VoxelFieldCollisionShape> shapes;
     physengine::cookVoxelDataIntoShape(*_data->vfpd, getGUID(), shapes);
     assembleVoxelRenderObjects(*_data, getGUID(), shapes);
@@ -86,7 +84,7 @@ VoxelField::~VoxelField()
 
 void triggerLoadLightingIfExists(VoxelField_XData& d, const std::string& guid)
 {
-    std::string folder = "res/textures/generated_voxelfield_lightgrids/vf_" + guid;
+    std::string folder = "res/texture_pool/generated_voxelfield_lightgrids/vf_" + guid;
     if (!std::filesystem::exists(folder) ||
         !std::filesystem::is_directory(folder))
     {
@@ -160,8 +158,13 @@ void triggerLoadLightingIfExists(VoxelField_XData& d, const std::string& guid)
 void calculateObjectSpaceCameraLinecastPoints(VulkanEngine* engine, physengine::VoxelFieldPhysicsData* vfpd, vec3& outLinecastPt1, vec3& outLinecastPt2)
 {
 	vec3 linecastPt1, linecastPt2;
-    glm_vec3_copy(engine->_camera->sceneCamera.gpuCameraData.cameraPosition, linecastPt1);
     ImGuiIO& io = ImGui::GetIO();
+    glm_unproject(
+        vec3{ io.MousePos.x, io.MousePos.y, 0.0f },
+        engine->_camera->sceneCamera.gpuCameraData.projectionView,
+        vec4{ 0, 0, (float_t)engine->_windowExtent.width, (float_t)engine->_windowExtent.height },
+        linecastPt1
+    );
     glm_unproject(
         vec3{ io.MousePos.x, io.MousePos.y, 1.0f },
         engine->_camera->sceneCamera.gpuCameraData.projectionView,
@@ -194,6 +197,7 @@ bool intersectAABB(vec3 rayOrigin, vec3 rayDirection, vec3 aabbMin, vec3 aabbMax
     glm_vec3_maxv(tMin, tMax, t2);
 
     float_t tNear = glm_vec3_max(t1);
+    tNear = std::max(0.0f, tNear);  // For preventing intersects happening behind ray origin.
     float_t tFar = glm_vec3_min(t2);
 
     if (tNear > tFar)  // No intersection.
@@ -386,23 +390,34 @@ bool drawVoxelEditingVisualization(VoxelField_XData* d)
     return true;
 }
 
-void VoxelField::physicsUpdate(const float_t& physicsDeltaTime)
+void VoxelField::simulationUpdate(float_t simDeltaTime)
 {
+    // Decrement `_data->disableSimFollowTimer`.
+    if (_data->disableSimFollowTimer >= 0)
+    {
+        if (_data->disableSimFollowTimer == 0)
+            for (auto& ro : _data->voxelRenderObjs)
+                ro->simTransformEnabled = true;
+        _data->disableSimFollowTimer--;
+    }
+
+    // Voxel manipulation.
     if (_data->isPicked)  // @NOTE: this picked checking system, bc physicsupdate() runs outside of the render thread, could easily get out of sync, but as long as the render thread is >40fps it should be fine.
     {
-        static bool prevCorXorVPressed = false;
-
         if (_data->editorState.editing)
         {
             drawVoxelEditingVisualization(_data);
 
             // Commit interaction.
-            if (input::keyEscPressed)
+            if (input::editorInputSet().cancel.onAction)
             {
                 // Exit editing with no changes
                 _data->editorState.editing = false;
             }
-            else if (input::keyEnterPressed || (!prevCorXorVPressed && (input::keyCPressed || input::keyXPressed || input::keyVPressed)))
+            else if (input::editorInputSet().submit.onAction ||
+                input::editorInputSet().actionC.onAction ||
+                input::editorInputSet().actionX.onAction ||
+                input::editorInputSet().actionV.onAction)
             {
                 // Exit editing, saving changes
                 bool rebuildRenderObjs = false;
@@ -440,13 +455,12 @@ void VoxelField::physicsUpdate(const float_t& physicsDeltaTime)
                         glm_ivec3_add(_data->editorState.editStartPosition, offset, _data->editorState.editStartPosition);  // Change the edit positions to account for the offset.
                         glm_ivec3_add(_data->editorState.editEndPosition, offset, _data->editorState.editEndPosition);
 
-                        // Insert the resized offset into renderobject offsets.
-                        glm_translate(_data->vfpd->transform, vec3{ (float_t)offset[0], (float_t)offset[1], (float_t)offset[2] });
-
                         // Find which voxel type (for only slopes).
-                        uint8_t slopeSpaceId = 2;
+                        uint8_t slopeSpaceId;
                         if (_data->editorState.editType == VoxelField_XData::EditorState::EditType::CHANGE_TO_SLOPE)
                         {
+                            slopeSpaceId = 2;
+
                             float_t maxCardinalDirDot = -1.0f;
                             mat3 rotation;
                             glm_mat4_pick3(_data->vfpd->interpolTransform, rotation);
@@ -551,41 +565,38 @@ void VoxelField::physicsUpdate(const float_t& physicsDeltaTime)
                 }
             }
         }
-        else if (!prevCorXorVPressed &&
-            (input::keyCPressed || input::keyXPressed || input::keyVPressed) &&
+        else if ((input::editorInputSet().actionC.onAction || input::editorInputSet().actionX.onAction || input::editorInputSet().actionV.onAction) &&
             raycastMouseToVoxel(_data->engine, _data->vfpd, _data->editorState.editStartPosition, _data->editorState.flatAxis))
         {
             // Enter editing mode
             _data->editorState.editing = true;
             std::string editTypeStr = "";
-            if (input::keyCPressed)
+            if (input::editorInputSet().actionC.onAction)
             {
                 _data->editorState.editType = VoxelField_XData::EditorState::EditType::APPEND;
                 editTypeStr = "APPEND";
             }
-            else if (input::keyXPressed)
+            else if (input::editorInputSet().actionX.onAction)
             {
                 _data->editorState.editType = VoxelField_XData::EditorState::EditType::REMOVE;
                 editTypeStr = "REMOVE";
             }
-            else if (input::keyVPressed)
+            else if (input::editorInputSet().actionV.onAction)
             {
                 _data->editorState.editType = VoxelField_XData::EditorState::EditType::CHANGE_TO_SLOPE;
                 editTypeStr = "CHANGE_TO_SLOPE";
             }
             std::cout << "STARTING EDITING (" << editTypeStr << ") at { " << _data->editorState.editStartPosition[0] << ", " << _data->editorState.editStartPosition[1] << ", " << _data->editorState.editStartPosition[2] << " } with axis { " << _data->editorState.flatAxis[0] << ", " << _data->editorState.flatAxis[1] << ", " << _data->editorState.flatAxis[2] << " }" << std::endl;
         }
-
-        prevCorXorVPressed = input::keyCPressed || input::keyXPressed || input::keyVPressed;
         _data->isPicked = false;
     }
 }
 
-void VoxelField::update(const float_t& deltaTime)
+void VoxelField::update(float_t deltaTime)
 {
 }
 
-void VoxelField::lateUpdate(const float_t& deltaTime)
+void VoxelField::lateUpdate(float_t deltaTime)
 {
     // Update lightgrid transforms
     if (_data->lightgridId > 0)
@@ -602,14 +613,6 @@ void VoxelField::lateUpdate(const float_t& deltaTime)
         glm_mat4_inv(_data->vfpd->interpolTransform, invTransform);
         glm_mat4_mul(newTrans, invTransform, newTrans);
         glm_mat4_copy(newTrans, _data->engine->_voxelFieldLightingGridTextureSet.transforms[_data->lightgridId].transform);
-    }
-
-    // Update block render object positions.
-    {
-        std::lock_guard<std::mutex> lg(*_data->editorState.editingVoxelRenderObjsMutex);
-
-        for (size_t i = 0; i < _data->voxelRenderObjs.size(); i++)
-            glm_mat4_mul(_data->vfpd->interpolTransform, _data->voxelRenderObjLocalTransforms[i].raw, _data->voxelRenderObjs[i]->transformMatrix);
     }
 }
 
@@ -704,6 +707,17 @@ void VoxelField::load(DataSerialized& ds)
     _data->vfpd = physengine::createVoxelField(getGUID(), load_transform, load_size[0], load_size[1], load_size[2], load_voxelData);
 }
 
+void VoxelField::teleportToPosition(vec3 position)
+{
+    mat4 rot;
+    vec3 sca;
+    glm_decompose_rs(_data->vfpd->transform, rot, sca);
+    versor rotV;
+    glm_mat4_quat(rot, rotV);
+
+    physengine::setVoxelFieldBodyTransform(*_data->vfpd, position, rotV);
+}
+
 void VoxelField::reportMoved(mat4* matrixMoved)
 {
     // Search for which block was moved.
@@ -722,7 +736,33 @@ void VoxelField::reportMoved(mat4* matrixMoved)
     glm_decompose(_data->vfpd->transform, pos, rot, sca);
     versor rotV;
     glm_mat4_quat(rot, rotV);
+
     physengine::setVoxelFieldBodyTransform(*_data->vfpd, pos, rotV);
+
+    // Disable sim following.
+    // @NOTE: There's a reason why the sim following timer is necessary. After moving
+    //        the render obj and setting its transform, the next render cycle will take the interpolated value
+    //        (usu. before the new transform even gets added into the interpolation) and apply it to
+    //        the render obj as its transform. This is bad, bc it causes the rotation and the position transforms
+    //        to lag behind, and specifically for the rotation (which uses a relative transform gizmo vsthe position
+    //        which uses an absolute position gizmo), it causes it to get way off.
+    //            Therefore, forcing the simulation to run 2 ticks before reading the render object transform
+    //        again is necessary. This forces the physics engine to propagate the new transform into both
+    //        the `current` and `previous` transform slots, thus causing any interpolated value to just equal
+    //        the value that was put into the physics engine with `physengine::setVoxelFieldBodyTransform()`.
+    //          -Timo 2023/12/27
+    for (auto& ro : _data->voxelRenderObjs)
+        ro->simTransformEnabled = false;
+    _data->disableSimFollowTimer = 2;
+
+    // Update block render object positions.
+    {
+        std::lock_guard<std::mutex> lg(*_data->editorState.editingVoxelRenderObjsMutex);
+
+        for (size_t j = 0; j < _data->voxelRenderObjs.size(); j++)
+            if (i != j)  // Skip the render obj that has already been moved.
+                glm_mat4_mul(_data->vfpd->transform, _data->voxelRenderObjLocalTransforms[j].raw, _data->voxelRenderObjs[j]->transformMatrix);
+    }
 }
 
 bool isOutsideLightGrid(physengine::VoxelFieldPhysicsData* vfpd, ivec3 position)
@@ -1165,7 +1205,7 @@ void buildLighting(VoxelField_XData* d, const std::string& guid)
     //
     // Save lightgrid information to file
     //
-    std::string folder = "res/textures/generated_voxelfield_lightgrids/vf_" + guid;
+    std::string folder = "res/texture_pool/generated_voxelfield_lightgrids/vf_" + guid;
     std::filesystem::create_directories(folder);
     for (size_t k = 0; k < lightgridZ; k++)
     {
@@ -1239,6 +1279,7 @@ inline void assembleVoxelRenderObjects(VoxelField_XData& data, const std::string
     {
         RenderObject newRO = {
             .model = data.voxelModel,
+            .simTransformId = data.vfpd->simTransformId,
             .renderLayer = RenderLayer::BUILDER,
             .attachedEntityGuid = attachedEntityGuid,
         };
@@ -1252,7 +1293,7 @@ inline void assembleVoxelRenderObjects(VoxelField_XData& data, const std::string
         glm_scale(localTransform.raw, extent2);
         data.voxelRenderObjLocalTransforms.push_back(localTransform);
 
-        glm_mat4_mul(data.vfpd->transform, localTransform.raw, newRO.transformMatrix);
+        glm_mat4_copy(localTransform.raw, newRO.simTransformOffset);
         inROs.push_back(newRO);
     }
 

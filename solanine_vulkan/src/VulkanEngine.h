@@ -1,12 +1,12 @@
 #pragma once
 
-#include "Imports.h"
 #include "Settings.h"
 #include "VkDataStructures.h"
 #include "EntityManager.h"
 #include "SceneManagement.h"
 
 
+struct SDL_Window;
 struct RenderObject;
 class RenderObjectManager;
 class Entity;
@@ -40,6 +40,7 @@ struct GPUPBRShadingProps
 struct GPUObjectData
 {
 	mat4 modelMatrix;
+	vec4 boundingSphere;
 };
 
 struct GPUPickingSelectedIdData
@@ -51,6 +52,16 @@ struct GPUPickingSelectedIdData
 struct ColorPushConstBlock
 {
 	vec4 color;
+};
+
+struct UIQuadSettingsConstBlock
+{
+	vec4 tint;
+	float_t useNineSlicing;
+	float_t nineSlicingBoundX1;
+	float_t nineSlicingBoundX2;
+	float_t nineSlicingBoundY1;
+	float_t nineSlicingBoundY2;
 };
 
 struct GPUCoCParams
@@ -74,6 +85,67 @@ struct GPUGatherDOFParams
 	float_t oneOverArbitraryResExtentY;
 };
 
+struct GPUPostProcessParams
+{
+	bool applyTonemap;
+	bool pad0;
+	bool pad1;
+	bool pad2;  // Vulkan spec requires multiple of 4 bytes for push constants.
+};
+
+struct GPUCullingParams
+{
+	mat4     view;
+	float_t  zNear;
+	float_t  zFar;
+	float_t  frustumX_x;
+	float_t  frustumX_z;
+	float_t  frustumY_y;
+	float_t  frustumY_z;
+	uint32_t cullingEnabled;
+	uint32_t numInstances;
+};
+
+struct GPUIndirectDrawCommandOffsetsData
+{
+	uint32_t batchFirstIndex;
+	uint32_t countIndex;
+	uint32_t pad0;
+	uint32_t pad1;
+};
+
+struct GPUInputSkinningMeshPrefixData
+{
+	uint32_t numVertices;
+    uint32_t pad0;
+    uint32_t pad1;
+    uint32_t pad2;
+};
+
+struct GPUInputSkinningMeshData
+{
+	vec3 pos;
+    uint32_t animatorNodeID;  // @NOTE: insert offset here so that 16 byte padding can be complete and normal doesn't get garbage values.  -Timo 2023/12/16
+    vec3 normal;
+    uint32_t baseInstanceID;  // Here too.
+    vec2 UV0;
+    vec2 UV1;
+    vec4 joint0;
+    vec4 weight0;
+    vec4 color0;
+};
+
+struct GPUOutputSkinningMeshData
+{
+	vec3 pos;
+    uint32_t instanceIDOffset;  // @NOTE: insert offset here so that 16 byte padding can be complete and normal doesn't get garbage values.  -Timo 2023/12/16
+    vec3 normal;
+	uint32_t pad0;  // Here too.
+    vec2 UV0;
+    vec2 UV1;
+    vec4 color0;
+};
+
 struct FrameData
 {
 	VkSemaphore presentSemaphore, renderSemaphore;
@@ -82,7 +154,22 @@ struct FrameData
 	VkCommandPool commandPool;
 	VkCommandBuffer mainCommandBuffer;
 	VkCommandBuffer pickingCommandBuffer;
-	AllocatedBuffer indirectDrawCommandBuffer;
+
+#if TRACY_ENABLE
+	TracyVkCtx mainCommandBufferTracyVk;
+#endif
+
+	struct IndirectPass
+	{
+		AllocatedBuffer indirectDrawCommandsBuffer;
+		AllocatedBuffer indirectDrawCommandCountsBuffer;
+		VkDescriptorSet indirectDrawCommandDescriptor;
+	};
+	AllocatedBuffer indirectDrawCommandRawBuffer;
+	AllocatedBuffer indirectDrawCommandOffsetsBuffer;
+	IndirectPass    indirectShadowPass;
+	IndirectPass    indirectMainPass;
+	uint32_t        numInstances;
 
 	AllocatedBuffer cameraBuffer;
 	AllocatedBuffer pbrShadingPropsBuffer;
@@ -99,6 +186,19 @@ struct FrameData
 
 	AllocatedBuffer pickingSelectedIdBuffer;
 	VkDescriptorSet pickingReturnValueDescriptor;
+
+	struct ComputeSkinning
+	{
+		uint64_t        numVertices;
+		uint64_t        numIndices;
+		AllocatedBuffer inputVerticesBuffer;
+		AllocatedBuffer outputVerticesBuffer;
+		uint64_t        outputBufferSize;
+		AllocatedBuffer indicesBuffer;
+		VkDescriptorSet inoutVerticesDescriptor;
+		bool created                    = false;
+		bool recalculateSkinningBuffers = true;
+	} skinning;
 };
 
 struct UploadContext
@@ -118,11 +218,15 @@ public:
 	bool _isInitialized{ false };
 	uint32_t _frameNumber{ 0 };
 
-	VkExtent2D _windowExtent{ 1920, 1080 };
-	// VkExtent2D _windowExtent{ 1280, 720 };
-	struct SDL_Window* _window{ nullptr };
+	//VkExtent2D _windowExtent{ 1920, 1080 };
+	VkExtent2D _windowExtent{ 1600, 900 };
+	//VkExtent2D _windowExtent{ 1280, 720 };
+	SDL_Window* _window = nullptr;
+	bool _windowFullscreen = false;
 	bool _isWindowMinimized = false;    // @NOTE: if we don't handle window minimization correctly, we can get the VK_ERROR_DEVICE_LOST(-4) error
 	bool _recreateSwapchain = false;
+
+	void setWindowFullscreen(bool isFullscreen);
 
 	//
 	// Vulkan Base
@@ -170,6 +274,13 @@ public:
 	Texture        _depthImage;
 	VkFormat       _depthFormat;
 
+	//
+	// Texture for taking a snapshot of the rendered game screen
+	// (to warp for screen transitions, pause menus, etc.)
+	//
+	Texture       _snapshotImage;
+	bool          _blitToSnapshotImageFlag = false;
+	bool          _skyboxIsSnapshotImage = false;
 
 	//
 	// UI Renderpass
@@ -301,6 +412,8 @@ public:
 	VkDescriptorSetLayout _pickingReturnValueSetLayout;
 	VkDescriptorSetLayout _skeletalAnimationSetLayout;    // @NOTE: for this one, descriptor sets are created inside of the vkglTFModels themselves, they're not global
 	VkDescriptorSetLayout _postprocessSetLayout;
+	VkDescriptorSetLayout _computeCullingIndirectDrawCommandSetLayout;
+	VkDescriptorSetLayout _computeSkinningInoutVerticesSetLayout;
 
 	AllocatedBuffer createBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
 	size_t padUniformBufferSize(size_t originalSize);    // @NOTE: this is unused, but it's useful for dynamic uniform buffers
@@ -337,9 +450,12 @@ private:
 	FrameData _frames[FRAME_OVERLAP];
 	FrameData& getCurrentFrame();
 
+	void loadMaterials();
 	void loadMeshes();
 
 	void uploadCurrentFrameToGPU(const FrameData& currentFrame);
+	void createSkinningBuffers(FrameData& currentFrame);
+	void destroySkinningBuffersIfCreated(FrameData& currentFrame);
 	
 	std::vector<IndirectBatch> indirectBatches;
 
@@ -350,21 +466,24 @@ private:
 	};
 
 	void compactRenderObjectsIntoDraws(
-		const FrameData& currentFrame,
+		FrameData& currentFrame,
 #ifdef _DEVELOP
 		std::vector<size_t> onlyPoolIndices,
 		std::vector<ModelWithIndirectDrawId>& outIndirectDrawCommandIdsForPoolIndex
 #endif
 		);
-	void renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame);
+	void renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, bool materialOverride, bool useShadowIndirectPass);
 
 	bool searchForPickedObjectPoolIndex(size_t& outPoolIndex);
 	void renderPickedObject(VkCommandBuffer cmd, const FrameData& currentFrame, const std::vector<ModelWithIndirectDrawId>& indirectDrawCommandIds);
 
+	void computeShadowCulling(const FrameData& currentFrame, VkCommandBuffer cmd);
+	void computeMainCulling(const FrameData& currentFrame, VkCommandBuffer cmd);
+	void computeSkinnedMeshes(const FrameData& currentFrame, VkCommandBuffer cmd);
 	void renderPickingRenderpass(const FrameData& currentFrame);
 	void renderShadowRenderpass(const FrameData& currentFrame, VkCommandBuffer cmd);
 	void renderMainRenderpass(const FrameData& currentFrame, VkCommandBuffer cmd, const std::vector<ModelWithIndirectDrawId>& pickingIndirectDrawCommandIds);
-	void renderUIRenderpass(VkCommandBuffer cmd);
+	void renderUIRenderpass(const FrameData& currentFrame, VkCommandBuffer cmd);
 	void renderPostprocessRenderpass(const FrameData& currentFrame, VkCommandBuffer cmd, uint32_t swapchainImageIndex);
 
 public:
@@ -437,7 +556,7 @@ private:
 		float_t renderTimesMS[256 * 2];
 		float_t highestRenderTime = -1.0f;
 	} _debugStats;
-	void updateDebugStats(const float_t& deltaTime);
+	void updateDebugStats(float_t deltaTime);
 
 	//
 	// Moving matrices around
@@ -450,6 +569,18 @@ private:
 public:
 	mat4* getMatrixToMove() { return _movingMatrix.matrixToMove; }
 private:
+
+	//
+	// Editor Modes
+	// @TODO: move this to a place that's not here!
+	//
+	enum class EditorModes
+	{
+		LEVEL_EDITOR,
+		MATERIAL_EDITOR,
+	};
+	EditorModes _currentEditorMode = EditorModes::LEVEL_EDITOR;
+	void changeEditorMode(EditorModes newEditorMode);
 
 	//
 	// ImGui Stuff
@@ -466,5 +597,6 @@ private:
 #endif
 
     friend class Entity;
-	friend Entity* scene::spinupNewObject(const std::string& objectName, VulkanEngine* engine, DataSerialized* ds);
+	friend void scene::tick();
+	friend Entity* scene::spinupNewObject(const std::string& objectName, DataSerialized* ds);
 };

@@ -1,47 +1,22 @@
+#include "pch.h"
+
 #include "PhysicsEngine.h"
 
 #ifdef _DEVELOP
-#include <array>
 #include "VkDataStructures.h"
 #include "VulkanEngine.h"
 #include "VkDescriptorBuilderUtil.h"
 #include "VkPipelineBuilderUtil.h"
 #include "VkInitializers.h"
 #include "Camera.h"
+#include "Debug.h"
 #endif
 
-#include <SDL2/SDL.h>
-#include <iostream>
-#include <chrono>
-#include <thread>
-#include <algorithm>
-#include <format>
-#include <map>
-#include <Jolt/Jolt.h>
-#include <Jolt/RegisterTypes.h>
-#include <Jolt/Core/Factory.h>
-#include <Jolt/Core/TempAllocator.h>
-#include <Jolt/Core/StreamWrapper.h>
-#include <Jolt/Core/JobSystemThreadPool.h>
-#include <Jolt/Physics/PhysicsSettings.h>
-#include <Jolt/Physics/PhysicsSystem.h>
-#include <Jolt/Physics/PhysicsScene.h>
-#include <Jolt/Physics/Collision/RayCast.h>
-#include <Jolt/Physics/Collision/CastResult.h>
-#include <Jolt/Physics/Collision/Shape/BoxShape.h>
-#include <Jolt/Physics/Collision/Shape/SphereShape.h>  // @TODO: don't need this.
-#include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
-#include <Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h>
-#include <Jolt/Physics/Collision/Shape/StaticCompoundShape.h>
-#include <Jolt/Physics/Character/Character.h>
-#include <Jolt/Physics/Body/BodyCreationSettings.h>
-#include <Jolt/Physics/Body/BodyActivationListener.h>
 #include "PhysUtil.h"
+#include "InputManager.h"
 #include "EntityManager.h"
-#include "Character.h"
+#include "SimulationCharacter.h"
 #include "GlobalState.h"
-#include "imgui/imgui.h"
-#include "imgui/implot.h"
 
 JPH_SUPPRESS_WARNINGS
 using namespace JPH;
@@ -55,8 +30,8 @@ namespace physengine
     //
     // Physics engine works
     //
-    constexpr float_t physicsDeltaTime = 0.025f;    // 40fps. This seemed to be the sweet spot. 25/30fps would be inconsistent for getting smaller platform jumps with the dash move. 50fps felt like too many physics calculations all at once. 40fps seems right, striking a balance.  -Timo 2023/01/26
-    constexpr float_t physicsDeltaTimeInMS = physicsDeltaTime * 1000.0f;
+    constexpr float_t simDeltaTime = 0.025f;    // 40fps. This seemed to be the sweet spot. 25/30fps would be inconsistent for getting smaller platform jumps with the dash move. 50fps felt like too many physics calculations all at once. 40fps seems right, striking a balance.  -Timo 2023/01/26
+    constexpr float_t physicsDeltaTimeInMS = simDeltaTime * 1000.0f;
     constexpr float_t oneOverPhysicsDeltaTimeInMS = 1.0f / physicsDeltaTimeInMS;
 
     constexpr float_t collisionTolerance = 0.05f;  // For physics characters.
@@ -67,6 +42,8 @@ namespace physengine
     std::thread* asyncRunner = nullptr;
     uint64_t lastTick;
 
+    bool runPhysicsSimulations = false;
+
     PhysicsSystem* physicsSystem = nullptr;
     std::map<uint32_t, std::string> bodyIdToEntityGuidMap;
 
@@ -75,6 +52,33 @@ namespace physengine
         NOTHING = 0,
         IS_CHARACTER,
     };
+
+    // Simulation transform.
+    struct SimulationTransform
+    {
+        vec3 position = GLM_VEC3_ZERO_INIT;
+        versor rotation = GLM_QUAT_IDENTITY_INIT;
+    };
+    struct SimulationInterpolationSet
+    {
+        SimulationTransform simTransforms[65536 * 2];
+    };
+    // @NOTE: The interpolated simulation position is calculated between `prevSimSet` and `currentSimSet` and is stored in `calcInterpolatedSet`.
+    //        New simulation transforms are written to `nextSimSet` as the calculations are formed. Once the "tick" or new frame has started,
+    //        `transformSwap()` pushes `nextSimSet` to `currentSimSet` which gets pushed to `prevSimSet`. And so, more writing can happen with
+    //        as little blocking the render thread as possible.  -Timo 2023/11/20
+    // @AMEND: I'm changing this so that there's no separate pointers for prev, current, and next sim sets. Now it will be an atomic size_t (`simSetOffset`) that
+    //         ticks the new simulation sets into place. Using `simSetChain`, `simSetOffset + 0` is prev sim set, `simSetOffset + 1` is current sim set, and
+    //         `simSetOffset + 2` is next sim set. This method should remove the need for the mutex that does the pointer swap.  -Timo 2023/12/28
+    SimulationInterpolationSet* simSetChain[3] = {
+        nullptr,
+        nullptr,
+        nullptr,
+    };
+    std::atomic<size_t> simSetOffset = 0;
+    SimulationInterpolationSet* calcInterpolatedSet = nullptr;
+    std::vector<size_t> registeredSimSetIndices;
+    std::mutex mutateSimSetPoolsMutex;
 
 #ifdef _DEVELOP
     struct DebugStats
@@ -305,8 +309,8 @@ namespace physengine
             },
             { debugVisDescriptorLayout },
             {
-                { VK_SHADER_STAGE_VERTEX_BIT, "shader/physengineDebugVis.vert.spv" },
-                { VK_SHADER_STAGE_FRAGMENT_BIT, "shader/physengineDebugVis.frag.spv" },
+                { VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/physengineDebugVis.vert.spv" },
+                { VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/physengineDebugVis.frag.spv" },
             },
             attributes,
             bindings,
@@ -355,6 +359,11 @@ namespace physengine
 
     void cleanup()
     {
+        delete simSetChain[0];
+        delete simSetChain[1];
+        delete simSetChain[2];
+        delete calcInterpolatedSet;
+
         delete asyncRunner;
         delete physicsSystem;
 
@@ -370,13 +379,94 @@ namespace physengine
 #endif
     }
 
-    float_t getPhysicsAlpha()
+    void requestSetRunPhysicsSimulation(bool flag)
     {
-        return (SDL_GetTicks64() - lastTick) * oneOverPhysicsDeltaTimeInMS * globalState::timescale;
+        runPhysicsSimulations = flag;
     }
 
-    void tick();
-    void tock();
+    bool getIsRunPhysicsSimulation()
+    {
+        return runPhysicsSimulations;
+    }
+
+    size_t registerSimulationTransform()
+    {
+        std::lock_guard<std::mutex> lg(mutateSimSetPoolsMutex);
+
+        size_t proposedId;
+        for (proposedId = 0; proposedId < 65536 * 2; proposedId++)
+        {
+            bool collided = false;
+            for (auto& i : registeredSimSetIndices)
+                if (i == proposedId)
+                {
+                    collided = true;
+                    break;
+                }
+            
+            if (!collided)
+            {
+                // Register this one as a simulation transform.
+                glm_vec3_zero(simSetChain[0]->simTransforms[proposedId].position);
+                glm_vec3_zero(simSetChain[1]->simTransforms[proposedId].position);
+                glm_vec3_zero(simSetChain[2]->simTransforms[proposedId].position);
+                glm_vec3_zero(calcInterpolatedSet->simTransforms[proposedId].position);
+                glm_quat_identity(simSetChain[0]->simTransforms[proposedId].rotation);
+                glm_quat_identity(simSetChain[1]->simTransforms[proposedId].rotation);
+                glm_quat_identity(simSetChain[2]->simTransforms[proposedId].rotation);
+                glm_quat_identity(calcInterpolatedSet->simTransforms[proposedId].rotation);
+                registeredSimSetIndices.push_back(proposedId);
+                std::sort(registeredSimSetIndices.begin(), registeredSimSetIndices.end());
+                return proposedId;
+            }
+        }
+
+        std::cerr << "[REGISTER SIMULATION TRANSFORM]" << std::endl
+            << "ERROR: no more transforms available to register. The pool is full." << std::endl;
+        return (size_t)-1;
+    }
+
+    void unregisterSimulationTransform(size_t id)
+    {
+        std::lock_guard<std::mutex> lg(mutateSimSetPoolsMutex);
+        
+        for (auto it = registeredSimSetIndices.begin(); it != registeredSimSetIndices.end(); it++)
+            if ((*it) == id)
+            {
+                registeredSimSetIndices.erase(it);
+                return;
+            }
+
+        std::cerr << "[UNREGISTER SIMULATION TRANSFORM]" << std::endl
+            << "WARNING: id " << id << " was not found in pool to delete. It did not exist." << std::endl;
+    }
+
+    void updateSimulationTransformPosition(size_t id, vec3 pos)
+    {
+        size_t simSetOffsetCopy = simSetOffset;
+        size_t nextSimSet = (simSetOffsetCopy + 2) % 3;
+        glm_vec3_copy(pos, simSetChain[nextSimSet]->simTransforms[id].position);
+    }
+
+    void updateSimulationTransformRotation(size_t id, versor rot)
+    {
+        size_t simSetOffsetCopy = simSetOffset;
+        size_t nextSimSet = (simSetOffsetCopy + 2) % 3;
+        glm_quat_copy(rot, simSetChain[nextSimSet]->simTransforms[id].rotation);
+    }
+
+    void getInterpSimulationTransformPosition(size_t id, vec3& outPos)
+    {
+        glm_vec3_copy(calcInterpolatedSet->simTransforms[id].position, outPos);
+    }
+
+    void getInterpSimulationTransformRotation(size_t id, versor& outRot)
+    {
+        glm_quat_copy(calcInterpolatedSet->simTransforms[id].rotation, outRot);
+    }
+
+    void transformSwap();
+    void copyResultTransforms();
 
     static void TraceImpl(const char* inFMT, ...)  // Callback for traces, connect this to your own trace function if you have one
     {
@@ -528,8 +618,8 @@ namespace physengine
                 case UserDataMeaning::IS_CHARACTER:
                 {
                     uint32_t id = thisBody.GetID().GetIndex();
-                    ::Character* entityAsChar;
-                    if (entityAsChar = dynamic_cast<::Character*>(entityManager->getEntityViaGUID(bodyIdToEntityGuidMap[id])))
+                    SimulationCharacter* entityAsChar;
+                    if (entityAsChar = dynamic_cast<SimulationCharacter*>(entityManager->getEntityViaGUID(bodyIdToEntityGuidMap[id])))
                         entityAsChar->reportPhysicsContact(otherBody, manifold, &ioSettings);
                 } return;
             }
@@ -572,6 +662,8 @@ namespace physengine
 
     void runPhysicsEngineAsync()
     {
+        tracy::SetThreadName("Simulation Thread");
+
         //
         // Init Physics World.
         // REFERENCE: https://github.com/jrouwe/JoltPhysics/blob/master/HelloWorld/HelloWorld.cpp
@@ -607,6 +699,15 @@ namespace physengine
 
         physicsSystem->OptimizeBroadPhase();
 
+        simSetChain[0] = new SimulationInterpolationSet;
+        simSetChain[1] = new SimulationInterpolationSet;
+        simSetChain[2] = new SimulationInterpolationSet;
+        calcInterpolatedSet = new SimulationInterpolationSet;
+
+#ifdef _DEVELOP
+        input::registerEditorInputSetOnThisThread();
+#endif
+
         isInitialized = true;  // Initialization finished.
 
         //
@@ -617,26 +718,44 @@ namespace physengine
             lastTick = SDL_GetTicks64();
 
 #ifdef _DEVELOP
-            uint64_t perfTime = SDL_GetPerformanceCounter();
-
             {   // Reset all the debug vis lines.
                 std::lock_guard<std::mutex> lg(mutateDebugVisLines);
                 debugVisLines.clear();
             }
+
+            uint64_t perfTime = SDL_GetPerformanceCounter();
 #endif
+
+            if (!globalState::isEditingMode &&
+                input::editorInputSet().playModeToggleSimulation.onAction)
+            {
+                runPhysicsSimulations = !runPhysicsSimulations;
+                debug::pushDebugMessage({
+                    .message = std::string("Set running physics simulations to ") + (runPhysicsSimulations ? "on" : "off"),
+                    });
+            }
+
             // @NOTE: this is the only place where `timeScale` is used. That's
             //        because this system is designed to be running at 40fps constantly
             //        in real time, so it doesn't slow down or speed up with time scale.
             // @REPLY: I thought that the system should just run in a constant 40fps. As in,
             //         if the timescale slows down, then the tick rate should also slow down
             //         proportionate to the timescale.  -Timo 2023/06/10
-            tick();
-            entityManager->INTERNALphysicsUpdate(physicsDeltaTime);  // @NOTE: if timescale changes, then the system just waits longer/shorter.
-            physicsSystem->Update(physicsDeltaTime, 1, 1, &tempAllocator, &jobSystem);
-            tock();
+            transformSwap();
+            input::editorInputSet().update();
+            input::simInputSet().update(simDeltaTime);
+            entityManager->INTERNALsimulationUpdate(simDeltaTime);  // @NOTE: if timescale changes, then the system just waits longer/shorter per loop.
+            if (runPhysicsSimulations)
+            {
+                ZoneScopedN("Update Jolt phys sys");
+                physicsSystem->Update(simDeltaTime, 1, 1, &tempAllocator, &jobSystem);
+            }
+            copyResultTransforms();
 
 #ifdef _DEVELOP
             {
+                ZoneScopedN("Update performance metrics");
+
                 //
                 // Update performance metrics
                 // @COPYPASTA
@@ -694,10 +813,9 @@ namespace physengine
             // Pull a voxel field from the pool
             size_t index = 0;
             if (numVFsCreated > 0)
-            {
                 index = (voxelFieldIndices[numVFsCreated - 1] + 1) % PHYSICS_OBJECTS_MAX_CAPACITY;
-                voxelFieldIndices[numVFsCreated] = index;
-            }
+            voxelFieldIndices[numVFsCreated] = index;
+
             VoxelFieldPhysicsData& vfpd = voxelFieldPool[index];
             numVFsCreated++;
 
@@ -709,6 +827,7 @@ namespace physengine
             vfpd.sizeZ = sizeZ;
             vfpd.voxelData = voxelData;
             vfpd.bodyId = JPH::BodyID();
+            vfpd.simTransformId = registerSimulationTransform();
 
             return &vfpd;
         }
@@ -729,15 +848,20 @@ namespace physengine
                 if (numVFsCreated > 1)
                 {
                     // Overwrite the index with the back index,
-                    // effectively deleting the index
+                    // effectively deleting the index, while also
+                    // preventing fragmentation.
                     index = voxelFieldIndices[numVFsCreated - 1];
                 }
                 numVFsCreated--;
+
+                // Destroy voxel data.
+                delete[] vfpd->voxelData;
 
                 // Remove and delete the voxel field body.
                 BodyInterface& bodyInterface = physicsSystem->GetBodyInterface();
                 bodyInterface.RemoveBody(vfpd->bodyId);
                 bodyInterface.DestroyBody(vfpd->bodyId);
+                unregisterSimulationTransform(vfpd->simTransformId);
 
                 return true;
             }
@@ -860,6 +984,7 @@ namespace physengine
         {
             bodyInterface.RemoveBody(vfpd.bodyId);
             bodyInterface.DestroyBody(vfpd.bodyId);
+            vfpd.bodyId = BodyID();
         }
 
         // Create shape for each voxel.
@@ -882,6 +1007,8 @@ namespace physengine
             // Start greedy search.
             if (vfpd.voxelData[idx] == 1)
             {
+                uint8_t myType = vfpd.voxelData[idx];
+
                 // Filled space search.
                 size_t encX = 1,  // Encapsulation sizes. Multiply it all together to get the count of encapsulation.
                     encY = 1,
@@ -890,7 +1017,7 @@ namespace physengine
                 {
                     // Test whether next position is viable.
                     size_t idx = x * vfpd.sizeY * vfpd.sizeZ + j * vfpd.sizeZ + k;
-                    bool viable = (vfpd.voxelData[idx] == 1 && !processed[idx]);
+                    bool viable = (vfpd.voxelData[idx] == myType && !processed[idx]);
                     if (!viable)
                         break;  // Exit if not viable.
                     
@@ -903,7 +1030,7 @@ namespace physengine
                     for (size_t x = i; x < i + encX; x++)
                     {
                         size_t idx = x * vfpd.sizeY * vfpd.sizeZ + y * vfpd.sizeZ + k;
-                        viable &= (vfpd.voxelData[idx] == 1 && !processed[idx]);
+                        viable &= (vfpd.voxelData[idx] == myType && !processed[idx]);
                         if (!viable)
                             break;
                     }
@@ -921,7 +1048,7 @@ namespace physengine
                     for (size_t y = j; y < j + encY; y++)
                     {
                         size_t idx = x * vfpd.sizeY * vfpd.sizeZ + y * vfpd.sizeZ + z;
-                        viable &= (vfpd.voxelData[idx] == 1 && !processed[idx]);
+                        viable &= (vfpd.voxelData[idx] == myType && !processed[idx]);
                         if (!viable)
                             break;
                     }
@@ -1020,22 +1147,29 @@ namespace physengine
                 float_t angle      = std::asinf(1.0f / realLength);
                 float_t realHeight = std::sinf(90.0f - angle);
 
+                float_t yoff = 0.0f;
                 Quat rotation;
                 if (myType == 2)
                     rotation = Quat::sEulerAngles(Vec3(-angle, 0.0f, 0.0f));
                 else if (myType == 3)
                     rotation = Quat::sEulerAngles(Vec3(0.0f, 0.0f, angle));
                 else if (myType == 4)
+                {
                     rotation = Quat::sEulerAngles(Vec3(angle, 0.0f, 0.0f));
+                    yoff = 1.0f;
+                }
                 else if (myType == 5)
+                {
                     rotation = Quat::sEulerAngles(Vec3(0.0f, 0.0f, -angle));
+                    yoff = 1.0f;
+                }
                 else
                     std::cerr << "[COOKING VOXEL SHAPES]" << std::endl
                         << "WARNING: voxel type " << myType << " was not recognized." << std::endl;
                 
                 Vec3 extent((float_t)(even ? width : realLength) * 0.5f, (float_t)realHeight * 0.5f, (float_t)(even ? realLength : width) * 0.5f);
 
-                Vec3 origin = Vec3{ (float_t)i, (float_t)j, (float_t)k } + rotation * (extent + Vec3(0.0f, -realHeight, 0.0f));
+                Vec3 origin = Vec3{ (float_t)i, (float_t)j + yoff, (float_t)k } + rotation * (extent + Vec3(0.0f, -realHeight, 0.0f));
 
                 compoundShape->AddShape(origin, rotation, new BoxShape(extent));
 
@@ -1071,21 +1205,22 @@ namespace physengine
 
     void setVoxelFieldBodyTransform(VoxelFieldPhysicsData& vfpd, vec3 newPosition, versor newRotation)
     {
+        BodyInterface& bodyInterface = physicsSystem->GetBodyInterface();
+
         RVec3 newPositionReal(newPosition[0], newPosition[1], newPosition[2]);
         Quat newRotationJolt(newRotation[0], newRotation[1], newRotation[2], newRotation[3]);
 
-        BodyInterface& bodyInterface = physicsSystem->GetBodyInterface();
         EActivation activation = EActivation::DontActivate;
         if (bodyInterface.GetMotionType(vfpd.bodyId) == EMotionType::Dynamic)
             activation = EActivation::Activate;
         bodyInterface.SetPositionAndRotation(vfpd.bodyId, newPositionReal, newRotationJolt, activation);
     }
 
-    void moveVoxelFieldBodyKinematic(VoxelFieldPhysicsData& vfpd, vec3 newPosition, versor newRotation, const float_t& physicsDeltaTime)
+    void moveVoxelFieldBodyKinematic(VoxelFieldPhysicsData& vfpd, vec3 newPosition, versor newRotation, float_t simDeltaTime)
     {
         RVec3 newPositionReal(newPosition[0], newPosition[1], newPosition[2]);
         Quat newRotationJolt(newRotation[0], newRotation[1], newRotation[2], newRotation[3]);
-        physicsSystem->GetBodyInterface().MoveKinematic(vfpd.bodyId, newPositionReal, newRotationJolt, physicsDeltaTime);
+        physicsSystem->GetBodyInterface().MoveKinematic(vfpd.bodyId, newPositionReal, newRotationJolt, simDeltaTime);
     }
 
     void setVoxelFieldBodyKinematic(VoxelFieldPhysicsData& vfpd, bool isKinematic)
@@ -1107,10 +1242,9 @@ namespace physengine
             // Pull a capsule from the pool
             size_t index = 0;
             if (numCapsCreated > 0)
-            {
                 index = (capsuleIndices[numCapsCreated - 1] + 1) % PHYSICS_OBJECTS_MAX_CAPACITY;
-                capsuleIndices[numCapsCreated] = index;
-            }
+            capsuleIndices[numCapsCreated] = index;
+
             CapsulePhysicsData& cpd = capsulePool[index];
             numCapsCreated++;
 
@@ -1138,7 +1272,9 @@ namespace physengine
             cpd.character = new JPH::Character(settings, RVec3(position[0], position[1], position[2]), Quat::sIdentity(), (int64_t)UserDataMeaning::IS_CHARACTER, physicsSystem);
             if (enableCCD)
                 physicsSystem->GetBodyInterface().SetMotionQuality(cpd.character->GetBodyID(), EMotionQuality::LinearCast);
+
             cpd.character->AddToPhysicsSystem(EActivation::Activate);
+            cpd.simTransformId = registerSimulationTransform();
 
             // Add guid into references.
             bodyIdToEntityGuidMap[cpd.character->GetBodyID().GetIndex()] = entityGuid;
@@ -1169,6 +1305,7 @@ namespace physengine
 
                 // Remove and delete the physics capsule.
                 cpd->character->RemoveFromPhysicsSystem();
+                unregisterSimulationTransform(cpd->simTransformId);
 
                 return true;
             }
@@ -1193,7 +1330,7 @@ namespace physengine
 
     void setCharacterPosition(CapsulePhysicsData& cpd, vec3 position)
     {
-        cpd.character->SetPosition(RVec3(position[0], position[1], position[2]));
+        cpd.character->SetPosition(RVec3(position[0], position[1] - collisionTolerance * 0.5f, position[2]));
     }
 
     void moveCharacter(CapsulePhysicsData& cpd, vec3 velocity)
@@ -1225,28 +1362,17 @@ namespace physengine
         return cpd.character->IsSlopeTooSteep(normal);
     }
 
-    //
-    // Tick
-    //
-    void tick()
+    void transformSwap()
     {
-        auto& bodyInterface = physicsSystem->GetBodyInterface();
+        ZoneScoped;
 
-        // Set previous transform
-        for (size_t i = 0; i < numVFsCreated; i++)
-        {
-            VoxelFieldPhysicsData& vfpd = voxelFieldPool[voxelFieldIndices[i]];
-            glm_mat4_copy(vfpd.transform, vfpd.prevTransform);
-        }
-        for (size_t i = 0; i < numCapsCreated; i++)
-        {
-            CapsulePhysicsData& cpd = capsulePool[capsuleIndices[i]];
-            glm_vec3_copy(cpd.currentCOMPosition, cpd.prevCOMPosition);
-        }
+        simSetOffset++;
     }
 
-    void tock()
+    void copyResultTransforms()
     {
+        ZoneScoped;
+
         auto& bodyInterface = physicsSystem->GetBodyInterface();
 
         // Set current transform.
@@ -1255,32 +1381,14 @@ namespace physengine
             VoxelFieldPhysicsData& vfpd = voxelFieldPool[voxelFieldIndices[i]];
             // vfpd.COMPositionDifferent = false;  // @TODO: implement this!
 
-            if (vfpd.bodyId.IsInvalid() || !bodyInterface.IsActive(vfpd.bodyId))
+            if (vfpd.bodyId.IsInvalid()/* || !bodyInterface.IsActive(vfpd.bodyId)*/)
                 continue;
 
-            RMat44 trans = bodyInterface.GetWorldTransform(vfpd.bodyId);
-            // Copy to cglm style.
-            Vec4 c0 = trans.GetColumn4(0);
-            Vec4 c1 = trans.GetColumn4(1);
-            Vec4 c2 = trans.GetColumn4(2);
-            Vec4 c3 = trans.GetColumn4(3);
-            vfpd.transform[0][0] = c0.GetX();
-            vfpd.transform[0][1] = c0.GetY();
-            vfpd.transform[0][2] = c0.GetZ();
-            vfpd.transform[0][3] = c0.GetW();
-            vfpd.transform[1][0] = c1.GetX();
-            vfpd.transform[1][1] = c1.GetY();
-            vfpd.transform[1][2] = c1.GetZ();
-            vfpd.transform[1][3] = c1.GetW();
-            vfpd.transform[2][0] = c2.GetX();
-            vfpd.transform[2][1] = c2.GetY();
-            vfpd.transform[2][2] = c2.GetZ();
-            vfpd.transform[2][3] = c2.GetW();
-            vfpd.transform[3][0] = c3.GetX();
-            vfpd.transform[3][1] = c3.GetY();
-            vfpd.transform[3][2] = c3.GetZ();
-            vfpd.transform[3][3] = c3.GetW();
-            //////////////////////
+            RVec3 pos;
+            Quat rot;
+            bodyInterface.GetPositionAndRotation(vfpd.bodyId, pos, rot);
+            updateSimulationTransformPosition(vfpd.simTransformId, vec3{ pos.GetX(), pos.GetY(), pos.GetZ() });
+            updateSimulationTransformRotation(vfpd.simTransformId, versor{ rot.GetX(), rot.GetY(), rot.GetZ(), rot.GetW() });
         }
         for (size_t i = 0; i < numCapsCreated; i++)
         {
@@ -1289,356 +1397,45 @@ namespace physengine
 
             if (cpd.character == nullptr)
                 continue;
-            
+
             cpd.character->PostSimulation(collisionTolerance);
 
-            // Copy to cglm style.
             RVec3 pos = cpd.character->GetCenterOfMassPosition();  // @NOTE: I thought that `GetPosition` would be quicker/lighter than `GetCenterOfMassPosition`, but getting the position negates the center of mass, thus causing an extra subtract operation.
-            cpd.currentCOMPosition[0] = pos.GetX();
-            cpd.currentCOMPosition[1] = pos.GetY();
-            cpd.currentCOMPosition[2] = pos.GetZ();
-            //////////////////////
+            updateSimulationTransformPosition(cpd.simTransformId, vec3{ pos.GetX(), pos.GetY(), pos.GetZ() });
+
             cpd.COMPositionDifferent = (glm_vec3_distance2(cpd.currentCOMPosition, cpd.prevCOMPosition) > 0.000001f);
         }
     }
 
-#if 0
-    //
-    // Collision algorithms
-    //
-    void closestPointToLineSegment(vec3& pt, vec3& a, vec3& b, vec3& outPt)
+    inline float_t getPhysicsAlpha()
     {
-        // https://arrowinmyknee.com/2021/03/15/some-math-about-capsule-collision/
-        vec3 ab;
-        glm_vec3_sub(b, a, ab);
-
-        // Project pt onto ab, but deferring divide by Dot(ab, ab)
-        vec3 pt_a;
-        glm_vec3_sub(pt, a, pt_a);
-        float_t t = glm_vec3_dot(pt_a, ab);
-        if (t <= 0.0f)
-        {
-            // pt projects outside the [a,b] interval, on the a side; clamp to a
-            t = 0.0f;
-            glm_vec3_copy(a, outPt);
-        }
-        else
-        {
-            float_t denom = glm_vec3_dot(ab, ab); // Always nonnegative since denom = ||ab||∧2
-            if (t >= denom)
-            {
-                // pt projects outside the [a,b] interval, on the b side; clamp to b
-                t = 1.0f;
-                glm_vec3_copy(b, outPt);
-            }
-            else
-            {
-                // pt projects inside the [a,b] interval; must do deferred divide now
-                t = t / denom;
-                glm_vec3_scale(ab, t, ab);
-                glm_vec3_add(a, ab, outPt);
-            }
-        }
+        return (SDL_GetTicks64() - lastTick) * oneOverPhysicsDeltaTimeInMS * globalState::timescale;
     }
 
-    bool checkCapsuleCollidingWithVoxelField(VoxelFieldPhysicsData& vfpd, CapsulePhysicsData& cpd, vec3& collisionNormal, float_t& penetrationDepth)
+    void recalcInterpolatedTransformsSet()
     {
-        //
-        // Broad phase: turn both objects into AABB and do collision
-        //
-        auto broadPhaseTimingStart = std::chrono::high_resolution_clock::now();
+        ZoneScoped;
 
-        vec3 capsulePtATransformed;
-        vec3 capsulePtBTransformed;
-        mat4 vfpdTransInv;
-        glm_mat4_inv(vfpd.transform, vfpdTransInv);
-        glm_vec3_copy(cpd.basePosition, capsulePtATransformed);
-       COM_vec3_copy(cpd.basePosition, capsulePtBTransformed);
-        capsulePtATransformed[1] += cpd.radius + cpd.height;
-        capsulePtBTransformed[1] += cpd.radius;
-        glm_mat4_mulv3(vfpdTransInv, capsulePtATransformed, 1.0f, capsulePtATransformed);
-        glm_mat4_mulv3(vfpdTransInv, capsulePtBTransformed, 1.0f, capsulePtBTransformed);
-        vec3 capsuleAABBMinMax[2] = {
-            {
-                std::min(capsulePtATransformed[0], capsulePtBTransformed[0]) - cpd.radius,  // @NOTE: add/subtract the radius while in voxel field transform space.
-                std::min(capsulePtATransformed[1], capsulePtBTransformed[1]) - cpd.radius,
-                std::min(capsulePtATransformed[2], capsulePtBTransformed[2]) - cpd.radius
-            },
-            {
-                std::max(capsulePtATransformed[0], capsulePtBTransformed[0]) + cpd.radius,
-                std::max(capsulePtATransformed[1], capsulePtBTransformed[1]) + cpd.radius,
-                std::max(capsulePtATransformed[2], capsulePtBTransformed[2]) + cpd.radius
-            },
-        };
-        vec3 voxelFieldAABBMinMax[2] = {
-            { 0.0f, 0.0f, 0.0f },
-            { vfpd.sizeX, vfpd.sizeY, vfpd.sizeZ },
-        };
-        if (capsuleAABBMinMax[0][0] > voxelFieldAABBMinMax[1][0] ||
-            capsuleAABBMinMax[1][0] < voxelFieldAABBMinMax[0][0] ||
-            capsuleAABBMinMax[0][1] > voxelFieldAABBMinMax[1][1] ||
-            capsuleAABBMinMax[1][1] < voxelFieldAABBMinMax[0][1] ||
-            capsuleAABBMinMax[0][2] > voxelFieldAABBMinMax[1][2] ||
-            capsuleAABBMinMax[1][2] < voxelFieldAABBMinMax[0][2])
-            return false;
+        size_t simSetOffsetCopy = simSetOffset;
+        size_t prevSimSet = (simSetOffsetCopy + 0) % 3;
+        size_t currentSimSet = (simSetOffsetCopy + 1) % 3;
+        float_t physicsAlpha = getPhysicsAlpha();
 
-        auto broadPhaseTimingDiff = std::chrono::high_resolution_clock::now() - broadPhaseTimingStart;
-
-        //
-        // Narrow phase: check all filled voxels within the capsule AABB
-        //
-        auto narrowPhaseTimingStart = std::chrono::high_resolution_clock::now();
-        ivec3 searchMin = {
-            std::max(floor(capsuleAABBMinMax[0][0]), voxelFieldAABBMinMax[0][0]),
-            std::max(floor(capsuleAABBMinMax[0][1]), voxelFieldAABBMinMax[0][1]),
-            std::max(floor(capsuleAABBMinMax[0][2]), voxelFieldAABBMinMax[0][2])
-        };
-        ivec3 searchMax = {
-            std::min(floor(capsuleAABBMinMax[1][0]), voxelFieldAABBMinMax[1][0] - 1),
-            std::min(floor(capsuleAABBMinMax[1][1]), voxelFieldAABBMinMax[1][1] - 1),
-            std::min(floor(capsuleAABBMinMax[1][2]), voxelFieldAABBMinMax[1][2] - 1)
-        };
-
-        bool collisionSuccessful = false;
-        float_t lowestDpSqrDist = std::numeric_limits<float_t>::max();
-        size_t lkjlkj = 0;
-        size_t succs = 0;
-        for (size_t i = searchMin[0]; i <= searchMax[0]; i++)
-            for (size_t j = searchMin[1]; j <= searchMax[1]; j++)
-                for (size_t k = searchMin[2]; k <= searchMax[2]; k++)
-                {
-                    lkjlkj++;
-                    uint8_t vd = vfpd.voxelData[i * vfpd.sizeY * vfpd.sizeZ + j * vfpd.sizeZ + k];
-
-                    switch (vd)
-                    {
-                        // Empty space
-                    case 0:
-                        continue;
-
-                        // Filled space
-                    case 1:
-                    {
-                        //
-                        // Test collision with this voxel
-                        //
-                        vec3 voxelCenterPt = { i + 0.5f, j + 0.5f, k + 0.5f };
-                        vec3 point;
-                        closestPointToLineSegment(voxelCenterPt, capsulePtATransformed, capsulePtBTransformed, point);
-
-                        vec3 boundedPoint;
-                        glm_vec3_copy(point, boundedPoint);
-                        boundedPoint[0] = glm_clamp(boundedPoint[0], i, i + 1.0f);
-                        boundedPoint[1] = glm_clamp(boundedPoint[1], j, j + 1.0f);
-                        boundedPoint[2] = glm_clamp(boundedPoint[2], k, k + 1.0f);
-                        if (point == boundedPoint)
-                        {
-                            // Collider is stuck inside
-                            collisionNormal[0] = 0.0f;
-                            collisionNormal[1] = 1.0f;
-                            collisionNormal[2] = 0.0f;
-                            penetrationDepth = 1.0f;
-                            return true;
-                        }
-                        else
-                        {
-                            // Get more accurate point with the bounded point
-                            vec3 betterPoint;
-                            closestPointToLineSegment(boundedPoint, capsulePtATransformed, capsulePtBTransformed, betterPoint);
-
-                            vec3 deltaPoint;
-                            glm_vec3_sub(betterPoint, boundedPoint, deltaPoint);
-                            float_t dpSqrDist = glm_vec3_norm2(deltaPoint);
-                            if (dpSqrDist < cpd.radius * cpd.radius && dpSqrDist < lowestDpSqrDist)
-                            {
-                                // Collision successful
-                                succs++;
-                                collisionSuccessful = true;
-                                lowestDpSqrDist = dpSqrDist;
-                                glm_normalize(deltaPoint);
-                                mat4 transformCopy;
-                                glm_mat4_copy(vfpd.transform, transformCopy);
-                                glm_mat4_mulv3(transformCopy, deltaPoint, 0.0f, collisionNormal);
-                                penetrationDepth = cpd.radius - std::sqrt(dpSqrDist);
-                            }
-                        }
-                    } break;
-                    }
-                }
-
-        auto narrowPhaseTimingDiff = std::chrono::high_resolution_clock::now() - narrowPhaseTimingStart;
-        // std::cout << "collided: checks: " << lkjlkj << "\tsuccs: " << succs << "\ttime (broad): " << broadPhaseTimingDiff  << "\ttime (narrow): " << narrowPhaseTimingDiff << "\tisGround: " << (collisionNormal[1] >= 0.707106665647) << "\tnormal: " << collisionNormal[0] << ", " << collisionNormal[1] << ", " << collisionNormal[2] << "\tdepth: " << penetrationDepth << std::endl;
-
-        return collisionSuccessful;
-    }
-
-    bool debugCheckCapsuleColliding(CapsulePhysicsData& cpd, vec3& collisionNormal, float_t& penetrationDepth)
-    {
-        vec3 normal;
-        float_t penDepth;
-
-        for (size_t i = 0; i < numVFsCreated; i++)
+        for (size_t i = 0; i < registeredSimSetIndices.size(); i++)
         {
-            size_t& index = voxelFieldIndices[i];
-            if (checkCapsuleCollidingWithVoxelField(voxelFieldPool[index], cpd, normal, penDepth))
-            {
-                glm_vec3_copy(normal, collisionNormal);
-                penetrationDepth = penDepth;
-                return true;
-            }
-        }
-        return false;
-    }
-
-    void moveCapsuleAccountingForCollision(CapsulePhysicsData& cpd, vec3 deltaPosition, bool stickToGround, vec3& outNormal, float_t ccdDistance)
-    {
-        glm_vec3_zero(outNormal);  // In case if no collision happens, normal is zero'd!
-
-        do
-        {
-            // // @NOTE: keep this code here. It works sometimes (if the edge capsule walked up to is flat) and is useful for reference.
-            // vec3 originalPosition;
-            // glm_vec3_copy(cpd.basePosition, originalPosition);
-
-            vec3 deltaPositionCCD;
-            glm_vec3_copy(deltaPosition, deltaPositionCCD);
-            if (glm_vec3_norm2(deltaPosition) > ccdDistance * ccdDistance) // Move at a max of the ccdDistance
-                glm_vec3_scale_as(deltaPosition, ccdDistance, deltaPositionCCD);
-            glm_vec3_sub(deltaPosition, deltaPositionCCD, deltaPosition);
-
-            // Move and check for collision
-            glm_vec3_zero(outNormal);
-            float_t numNormals = 0.0f;
-
-            glm_vec3_add(cpd.basePosition, deltaPositionCCD, cpd.basePosition);
-
-            for (size_t iterations = 0; iterations < 6; iterations++)
-            {
-                vec3 normal;
-                float_t penetrationDepth;
-                bool collided = physengine::debugCheckCapsuleColliding(cpd, normal, penetrationDepth);
-
-                // @NOTE: this was to stick the capsule to the ground for high humps, but caused the capsule
-                //        to fly off at twice the speed sometimes bc of nicking the side of the capsule with the
-                //        collision resolution. Without sticking (and if voxels are the way), then there is no need
-                //        to keep the capsule stuck onto the ground.  -Timo 2023/08/08
-                // // Subsequent iterations of collision are just to resolve until sitting in empty space,
-                // // so only double check 1st iteration if expecting to stick to the ground.
-                // if (iterations == 0 && !collided && stickToGround)
-                // {
-                //     vec3 oldPosition;
-                //     glm_vec3_copy(cpd.basePosition, oldPosition);
-
-                //     cpd.basePosition[1] += -ccdDistance;  // Just push straight down maximum amount to see if collides
-                //     collided = physengine::debugCheckCapsuleColliding(cpd, normal, penetrationDepth);
-                //     if (!collided)
-                //         glm_vec3_copy(oldPosition, cpd.basePosition);  // I guess this empty space was where the capsule was supposed to go to after all!
-                // }
-
-                // Resolved into empty space.
-                // Do not proceed to do collision resolution.
-                if (!collided)
-                    break;
-
-                // Collided!
-                glm_vec3_add(outNormal, normal, outNormal);
-                penetrationDepth += 0.0001f;
-                if (normal[1] >= 0.707106781187)  // >=45 degrees
-                {
-                    // Don't slide on "level-enough" ground
-                    cpd.basePosition[1] += penetrationDepth / normal[1];
-                }
-                else
-                {
-                    vec3 penetrationDepthV3 = { penetrationDepth, penetrationDepth, penetrationDepth };
-                    glm_vec3_muladd(normal, penetrationDepthV3, cpd.basePosition);
-                }
-            }
-
-            if (numNormals != 0.0f)
-                glm_vec3_scale(outNormal, 1.0f / numNormals, outNormal);
-
-            // // Keep capsule from falling off the edge!
-            // // @NOTE: keep this code here. It works sometimes (if the edge capsule walked up to is flat) and is useful for reference.
-            // if (stickToGround && (glm_vec3_norm2(outNormal) < 0.000001f || outNormal[1] < 0.707106781187))
-            // {
-            //     if (glm_vec3_norm2(outNormal) > 0.000001f && glm_vec3_norm2(deltaPosition) > 0.000001f)
-            //     {
-            //         // Redirect rest of ccd movement along the cross of up and the bad normal
-            //         vec3 upXBadNormal;
-            //         glm_cross(vec3{ 0.0f, 1.0f, 0.0f }, outNormal, upXBadNormal);
-            //         glm_normalize(upXBadNormal);
-
-            //         vec3 deltaPositionFlat = {
-            //             deltaPosition[0] + deltaPositionCCD[0],
-            //             0.0f,
-            //             deltaPosition[2] + deltaPositionCCD[2],
-            //         };
-            //         float_t deltaPositionY = deltaPosition[1] + deltaPositionCCD[1];
-            //         float_t deltaPositionFlatLength = glm_vec3_norm(deltaPositionFlat);
-            //         glm_normalize(deltaPositionFlat);
-
-            //         float_t slideSca = glm_dot(upXBadNormal, deltaPositionFlat);
-            //         glm_vec3_scale(upXBadNormal, slideSca * deltaPositionFlatLength, deltaPosition);
-            //         deltaPosition[1] = deltaPositionY;
-            //     }
-
-
-            //     std::cout << "DONT JUMP!\tX: " << outNormal[0] << "\tY: " << outNormal[1] << "\tZ: " << outNormal[2] << std::endl;
-            //     outNormal[0] = outNormal[2] = 0.0f;
-            //     outNormal[1] = 1.0f;
-
-            //     glm_vec3_copy(originalPosition, cpd.basePosition);
-            // }
-        } while (glm_vec3_norm2(deltaPosition) > 0.000001f);
-    }
-#endif
-
-    void setPhysicsObjectInterpolation(const float_t& physicsAlpha)
-    {
-        auto& bodyInterface = physicsSystem->GetBodyInterface();
-
-        //
-        // Set interpolated transform
-        //
-        for (size_t i = 0; i < numVFsCreated; i++)
-        {
-            VoxelFieldPhysicsData& vfpd = voxelFieldPool[voxelFieldIndices[i]];
-            if (vfpd.prevTransform != vfpd.transform)
-            {
-                vec4   prevPositionV4, positionV4;
-                vec3   prevPosition, position;
-                mat4   prevRotationM4, rotationM4;
-                versor prevRotation, rotation;
-                vec3   prevScale, scale;
-                glm_decompose(vfpd.prevTransform, prevPositionV4, prevRotationM4, prevScale);
-                glm_decompose(vfpd.transform, positionV4, rotationM4, scale);
-                glm_vec4_copy3(prevPositionV4, prevPosition);
-                glm_vec4_copy3(positionV4, position);
-                glm_mat4_quat(prevRotationM4, prevRotation);
-                glm_mat4_quat(rotationM4, rotation);
-
-                vec3 interpolPos;
-                glm_vec3_lerp(prevPosition, position, physicsAlpha, interpolPos);
-                versor interpolRot;
-                glm_quat_nlerp(prevRotation, rotation, physicsAlpha, interpolRot);
-                vec3 interpolSca;
-                glm_vec3_lerp(prevScale, scale, physicsAlpha, interpolSca);
-
-                mat4 transform = GLM_MAT4_IDENTITY_INIT;
-                glm_translate(transform, interpolPos);
-                glm_quat_rotate(transform, interpolRot, transform);
-                glm_scale(transform, interpolSca);
-                glm_mat4_copy(transform, vfpd.interpolTransform);
-            }
-        }
-        for (size_t i = 0; i < numCapsCreated; i++)
-        {
-            CapsulePhysicsData& cpd = capsulePool[capsuleIndices[i]];
-            if (cpd.COMPositionDifferent)
-                glm_vec3_lerp(cpd.prevCOMPosition, cpd.currentCOMPosition, physicsAlpha, cpd.interpolCOMPosition);
-            else
-                glm_vec3_copy(cpd.currentCOMPosition, cpd.interpolCOMPosition);
+            size_t index = registeredSimSetIndices[i];
+            glm_vec3_lerp(
+                simSetChain[prevSimSet]->simTransforms[index].position,
+                simSetChain[currentSimSet]->simTransforms[index].position,
+                physicsAlpha,
+                calcInterpolatedSet->simTransforms[index].position
+            );
+            glm_quat_nlerp(
+                simSetChain[prevSimSet]->simTransforms[index].rotation,
+                simSetChain[currentSimSet]->simTransforms[index].rotation,
+                physicsAlpha,
+                calcInterpolatedSet->simTransforms[index].rotation
+            );
         }
     }
 
@@ -1647,12 +1444,26 @@ namespace physengine
         physicsSystem->SetGravity(Vec3(newGravity[0], newGravity[1], newGravity[2]));
     }
 
+    void getWorldGravity(vec3& outGravity)
+    {
+        Vec3 grav = physicsSystem->GetGravity();
+        outGravity[0] = grav.GetX();
+        outGravity[1] = grav.GetY();
+        outGravity[2] = grav.GetZ();
+    }
+
     size_t getCollisionLayer(const std::string& layerName)
     {
         return 0;  // @INCOMPLETE: for now, just ignore the collision layers and check everything.
     }
 
     bool raycast(vec3 origin, vec3 directionAndMagnitude, std::string& outHitGuid)
+    {
+        float_t _;
+        return raycast(origin, directionAndMagnitude, outHitGuid, _);
+    }
+
+    bool raycast(vec3 origin, vec3 directionAndMagnitude, std::string& outHitGuid, float_t& outFraction)
     {
 #ifdef _DEVELOP
         if (engine->generateCollisionDebugVisualization)
@@ -1670,6 +1481,8 @@ namespace physengine
         RayCastResult result;
         if (physicsSystem->GetNarrowPhaseQuery().CastRay(ray, result, SpecifiedBroadPhaseLayerFilter(BroadPhaseLayers::MOVING), SpecifiedObjectLayerFilter(Layers::MOVING)))
         {
+            outFraction = result.GetEarlyOutFraction();
+
             const uint32_t bodyIdIdx = result.mBodyID.GetIndex();
             if (bodyIdToEntityGuidMap.find(bodyIdIdx) == bodyIdToEntityGuidMap.end())
             {
@@ -1684,74 +1497,6 @@ namespace physengine
         }
         return false;
     }
-
-#if 0
-    bool checkLineSegmentIntersectingCapsule(CapsulePhysicsData& cpd, vec3& pt1, vec3& pt2, std::string& outHitGuid)
-    {
-#ifdef _DEVELOP
-        if (engine->generateCollisionDebugVisualization)
-            drawDebugVisLine(pt1, pt2);
-#endif
-
-        vec3 a_A, a_B;
-        glm_vec3_add(cpd.basePosition, vec3{ 0.0f, cpd.radius, 0.0f }, a_A);
-        glm_vec3_add(cpd.basePosition, vec3{ 0.0f, cpd.radius + cpd.height, 0.0f }, a_B);
-
-        vec3 v0, v1, v2, v3;
-        glm_vec3_sub(pt1, a_A, v0);
-        glm_vec3_sub(pt2, a_A, v1);
-        glm_vec3_sub(pt1, a_B, v2);
-        glm_vec3_sub(pt2, a_B, v3);
-
-        float_t d0 = glm_vec3_norm2(v0);
-        float_t d1 = glm_vec3_norm2(v1);
-        float_t d2 = glm_vec3_norm2(v2);
-        float_t d3 = glm_vec3_norm2(v3);
-
-        vec3 bestA;
-        if (d2 < d0 || d2 < d1 || d3 < d0 || d3 < d1)
-            glm_vec3_copy(a_B, bestA);
-        else
-            glm_vec3_copy(a_A, bestA);
-
-        vec3 bestB;
-        closestPointToLineSegment(bestA, pt1, pt2, bestB);
-        closestPointToLineSegment(bestB, a_A, a_B, bestA);
-
-        // Use best points to test collision
-        outHitGuid = cpd.entityGuid;
-        return (glm_vec3_distance2(bestA, bestB) <= cpd.radius * cpd.radius);
-    }
-
-    bool lineSegmentCast(vec3& pt1, vec3& pt2, size_t collisionLayer, bool getAllGuids, std::vector<std::string>& outHitGuids)
-    {
-        collisionLayer;  // @INCOMPLETE: note that this is unused.
-        bool success = false;
-
-        // Check capsules
-        for (size_t i = 0; i < numCapsCreated; i++)
-        {
-            size_t& index = capsuleIndices[i];
-            std::string outHitGuid;
-            if (checkLineSegmentIntersectingCapsule(capsulePool[index], pt1, pt2, outHitGuid))
-            {
-                outHitGuids.push_back(outHitGuid);
-                success = true;
-
-                if (!getAllGuids)
-                    return true;
-            }
-        }
-
-        // Check Voxel Fields
-        for (size_t i = 0; i < numVFsCreated; i++)
-        {
-            // @INCOMPLETE: just ignore voxel fields for now.
-        }
-
-        return success;
-    }
-#endif
 
 #ifdef _DEVELOP
     void drawDebugVisLine(vec3 pt1, vec3 pt2, DebugVisLineType type)
@@ -1768,9 +1513,9 @@ namespace physengine
     void renderImguiPerformanceStats()
     {
         static const float_t perfTimeToMS = 1000.0f / (float_t)SDL_GetPerformanceFrequency();
-        ImGui::Text("Physics Times");
+        ImGui::Text("Simulation Times");
         ImGui::Text((std::format("{:.2f}", perfStats.simTimesUS[perfStats.simTimesUSHeadIndex] * perfTimeToMS) + "ms").c_str());
-        ImGui::PlotHistogram("##Physics Times Histogram", perfStats.simTimesUS, (int32_t)perfStats.simTimesUSCount, (int32_t)perfStats.simTimesUSHeadIndex, "", 0.0f, perfStats.highestSimTime, ImVec2(256, 24.0f));
+        ImGui::PlotHistogram("##Simulation Times Histogram", perfStats.simTimesUS, (int32_t)perfStats.simTimesUSCount, (int32_t)perfStats.simTimesUSHeadIndex, "", 0.0f, perfStats.highestSimTime, ImVec2(256, 24.0f));
         ImGui::SameLine();
         ImGui::Text(("[0, " + std::format("{:.2f}", perfStats.highestSimTime * perfTimeToMS) + "]").c_str());
     }
@@ -1825,32 +1570,32 @@ namespace physengine
             GPUVisInstancePushConst pc = {};
             switch (dvl.type)
             {
-                case PURPTEAL:
+                case DebugVisLineType::PURPTEAL:
                     glm_vec4_copy(vec4{ 0.75f, 0.0f, 1.0f, 1.0f }, pc.color1);
                     glm_vec4_copy(vec4{ 0.0f, 0.75f, 1.0f, 1.0f }, pc.color2);
                     break;
 
-                case AUDACITY:
+                case DebugVisLineType::AUDACITY:
                     glm_vec4_copy(vec4{ 0.0f, 0.1f, 0.5f, 1.0f }, pc.color1);
                     glm_vec4_copy(vec4{ 0.0f, 0.25f, 1.0f, 1.0f }, pc.color2);
                     break;
 
-                case SUCCESS:
+                case DebugVisLineType::SUCCESS:
                     glm_vec4_copy(vec4{ 0.1f, 0.1f, 0.1f, 1.0f }, pc.color1);
                     glm_vec4_copy(vec4{ 0.0f, 1.0f, 0.7f, 1.0f }, pc.color2);
                     break;
 
-                case VELOCITY:
+                case DebugVisLineType::VELOCITY:
                     glm_vec4_copy(vec4{ 0.75f, 0.2f, 0.1f, 1.0f }, pc.color1);
                     glm_vec4_copy(vec4{ 1.0f, 0.0f, 0.0f, 1.0f }, pc.color2);
                     break;
 
-                case KIKKOARMY:
+                case DebugVisLineType::KIKKOARMY:
                     glm_vec4_copy(vec4{ 0.0f, 0.0f, 0.0f, 1.0f }, pc.color1);
                     glm_vec4_copy(vec4{ 0.0f, 0.25f, 0.0f, 1.0f }, pc.color2);
                     break;
 
-                case YUUJUUFUDAN:
+                case DebugVisLineType::YUUJUUFUDAN:
                     glm_vec4_copy(vec4{ 0.69f, 0.69f, 0.69f, 1.0f }, pc.color1);
                     glm_vec4_copy(vec4{ 1.0f, 1.0f, 1.0f, 1.0f }, pc.color2);
                     break;

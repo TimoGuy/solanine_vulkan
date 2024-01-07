@@ -1,6 +1,7 @@
+#include "pch.h"
+
 #include "GondolaSystem.h"
 
-#include <Jolt/Jolt.h>
 #include "EntityManager.h"
 #include "RenderObject.h"
 #include "PhysicsEngine.h"
@@ -11,7 +12,6 @@
 #include "DataSerialization.h"
 #include "VoxelField.h"
 #include "VulkanEngine.h"
-#include "imgui/imgui.h"
 
 
 VulkanEngine* GondolaSystem::_engine = nullptr;
@@ -27,7 +27,6 @@ constexpr float_t LENGTH_BOGIE_PADDING_LOCAL_NETWORK = LENGTH_CART_LOCAL_NETWORK
 
 struct GondolaSystem_XData
 {
-    VulkanEngine*              engineRef;
     RenderObjectManager*       rom;
     RenderObject*              controlRenderObj;
 
@@ -301,26 +300,26 @@ void destructAndResetGondolaCollisions(GondolaSystem_XData* d, EntityManager* em
     d->detailedGondola.collisions.clear();
 }
 
-void buildCollisions(GondolaSystem_XData* d, VulkanEngine* engineRef, std::vector<VoxelField*>& outCollisions, GondolaSystem_XData::GondolaNetworkType networkType)
+void buildCollisions(GondolaSystem_XData* d, std::vector<VoxelField*>& outCollisions, GondolaSystem_XData::GondolaNetworkType networkType)
 {
     // Load prefab from file.
     std::vector<Entity*> ents;
     switch (networkType)
     {
         case GondolaSystem_XData::GondolaNetworkType::FUTSUU:
-            scene::loadPrefab("gondola_collision_futsuu.hunk", engineRef, ents);  // Supposed to contain all the cars for collision (even though there are repeats in the collision data).
+            scene::loadPrefab("gondola_collision_futsuu.hunk", ents);  // Supposed to contain all the cars for collision (even though there are repeats in the collision data).
             break;
 
         case GondolaSystem_XData::GondolaNetworkType::JUNKYUU:
-            scene::loadPrefab("gondola_collision_junkyuu.hunk", engineRef, ents);
+            scene::loadPrefab("gondola_collision_junkyuu.hunk", ents);
             break;
 
         case GondolaSystem_XData::GondolaNetworkType::KAISOKU:
-            scene::loadPrefab("gondola_collision_kaisoku.hunk", engineRef, ents);
+            scene::loadPrefab("gondola_collision_kaisoku.hunk", ents);
             break;
 
         case GondolaSystem_XData::GondolaNetworkType::TOKKYUU:
-            scene::loadPrefab("gondola_collision_tokkyuu.hunk", engineRef, ents);
+            scene::loadPrefab("gondola_collision_tokkyuu.hunk", ents);
             break;
     }
 
@@ -336,7 +335,7 @@ void buildCollisions(GondolaSystem_XData* d, VulkanEngine* engineRef, std::vecto
     }
 }
 
-void moveCollisionBodies(GondolaSystem_XData* d, bool staticMove, float_t physicsDeltaTime)  // If `staticMove==false`, then will be kinematic move.
+void moveCollisionBodies(GondolaSystem_XData* d, bool staticMove, float_t simDeltaTime)  // If `staticMove==false`, then will be kinematic move.
 {
     for (size_t i = 0; i < d->detailedGondola.collisions.size(); i++)
     {
@@ -352,7 +351,7 @@ void moveCollisionBodies(GondolaSystem_XData* d, bool staticMove, float_t physic
         vec3 newPos;
         glm_vec3_add(cart.calcCurrentROPos, extent, newPos);
 
-        collision->moveBody(newPos, cart.calcCurrentRORot, staticMove, physicsDeltaTime);
+        collision->moveBody(newPos, cart.calcCurrentRORot, staticMove, simDeltaTime);
     }
 }
 
@@ -360,7 +359,7 @@ void readyGondolaInteraction(GondolaSystem_XData* d, EntityManager* em, const Go
 {
     // Clear and rebuild
     destructAndResetGondolaCollisions(d, em);
-    buildCollisions(d, d->engineRef, d->detailedGondola.collisions, d->gondolaNetworkType);
+    buildCollisions(d, d->detailedGondola.collisions, d->gondolaNetworkType);
     d->detailedGondola.prevClosestSimulation = desiredSimulationIdx;  // Mark cache as completed.
     moveCollisionBodies(d, true, 0.0f);
 }
@@ -378,7 +377,7 @@ void readyStationInteraction(GondolaSystem_XData* d, GondolaSystem_XData::Statio
     if (d->detailedStation.collision == nullptr)
     {
         std::vector<Entity*> ents;
-        scene::loadPrefab("gondola_collision_station.hunk", d->engineRef, ents);
+        scene::loadPrefab("gondola_collision_station.hunk", ents);
         for (auto& ent : ents)
         {
             VoxelField* entAsVF;
@@ -473,14 +472,11 @@ void calculateStationSecAuxCPIndices(GondolaSystem_XData* d)
     }
 }
 
-GondolaSystem::GondolaSystem(EntityManager* em, RenderObjectManager* rom, VulkanEngine* engineRef, DataSerialized* ds) : Entity(em, ds), _data(new GondolaSystem_XData())
+GondolaSystem::GondolaSystem(EntityManager* em, RenderObjectManager* rom, DataSerialized* ds) : Entity(em, ds), _data(new GondolaSystem_XData())
 {
-    Entity::_enablePhysicsUpdate = true;
-    Entity::_enableUpdate = true;
-    Entity::_enableLateUpdate = true;
+    Entity::_enableSimulationUpdate = true;
 
     _data->rom = rom;
-    _data->engineRef = engineRef;
 
     if (ds)
         load(*ds);
@@ -716,7 +712,7 @@ bool searchForRightTOnCurve(GondolaSystem_XData* d, float_t& ioT, vec3 anchorPos
     return true;
 }
 
-void updateSimulation(GondolaSystem_XData* d, EntityManager* em, size_t simIdx, const float& physicsDeltaTime)
+void updateSimulation(GondolaSystem_XData* d, EntityManager* em, size_t simIdx, const float& simDeltaTime)
 {
     GondolaSystem_XData::Simulation& ioSimulation = d->simulations[simIdx];
     uint8_t trackVersion = (simIdx + 1) % d->numTrackVersions;
@@ -782,7 +778,7 @@ void updateSimulation(GondolaSystem_XData* d, EntityManager* em, size_t simIdx, 
     }
 
     // Update physics objects.
-    moveCollisionBodies(d, false, physicsDeltaTime);
+    moveCollisionBodies(d, false, simDeltaTime);
 }
 
 void updateControlPointPositions(GondolaSystem_XData* d, GondolaSystem_XData::Station& ioStation, mat4 transform)
@@ -815,9 +811,9 @@ void updateStation(GondolaSystem_XData* d)
     d->triggerBakeSplineCache = true;  // Assumption is that the station moved.
 }
 
-bool showCurvePaths = true;
+bool showCurvePaths = false;//true;  @NOCHECKIN
 
-void GondolaSystem::physicsUpdate(const float_t& physicsDeltaTime)
+void GondolaSystem::simulationUpdate(float_t simDeltaTime)
 {
     if (showCurvePaths)
         drawDEBUGCurveVisualization(_data);
@@ -826,10 +822,10 @@ void GondolaSystem::physicsUpdate(const float_t& physicsDeltaTime)
     // @TODO: there should be some kind of timeslicing for this, then update the timestamp of the new calculated point, and in `lateUpdate()` interpolate between the two generated points.
     // @REPLY: and then for the closest iterating one, there should be `updateSimulation` running every frame, since this affects the collisions too.
     //         In order to accomplish this, having a global timer is important. Then that way each timesliced gondola won't have to guess the timing and then it gets off.
-    //         Just pass in the global timer value instead of `physicsDeltaTime`.  @TODO
-    _data->gondolaSimulationGlobalTimer += physicsDeltaTime;
+    //         Just pass in the global timer value instead of `simDeltaTime`.  @TODO
+    _data->gondolaSimulationGlobalTimer += simDeltaTime;
     for (int64_t i = _data->simulations.size() - 1; i >= 0; i--)  // Reverse iteration so that delete can happen.
-        updateSimulation(_data, _em, i, physicsDeltaTime);
+        updateSimulation(_data, _em, i, simDeltaTime);
 
     if (_data->detailedStation.collision != nullptr &&
         _data->detailedStation.prevClosestStation != (size_t)-1)
@@ -1082,11 +1078,11 @@ void GondolaSystem::physicsUpdate(const float_t& physicsDeltaTime)
     }
 }
 
-void GondolaSystem::update(const float_t& deltaTime)
+void GondolaSystem::update(float_t deltaTime)
 {
 }
 
-void GondolaSystem::lateUpdate(const float_t& deltaTime)
+void GondolaSystem::lateUpdate(float_t deltaTime)
 {
     glm_mat4_identity(_data->controlRenderObj->transformMatrix);
     glm_translate(_data->controlRenderObj->transformMatrix, _data->position);
@@ -1183,6 +1179,35 @@ size_t whichControlPointFromMatrix(GondolaSystem_XData* d, mat4* matrixToMove)
     return (size_t)-1;
 }
 
+void GondolaSystem::teleportToPosition(vec3 position)
+{
+    auto& t = _data->controlRenderObj->transformMatrix;
+    mat4 rot;
+    vec3 sca;
+    glm_decompose_rs(t, rot, sca);
+
+    vec3 delta;
+    glm_vec3_sub(position, _data->position, delta);
+    glm_vec3_copy(position, _data->position);
+
+    // Move whole system control point.
+    glm_mat4_identity(t);
+    glm_translate(t, position);
+    glm_mul_rot(t, rot, t);
+    glm_scale(t, sca);
+
+    // Move all control points to new position.
+    for (auto& cp : _data->controlPoints)
+        glm_vec3_add(cp.position, delta, cp.position);
+    _data->triggerBakeSplineCache = true;
+
+    // Move all station render objs.
+    mat4 translation = GLM_MAT4_IDENTITY_INIT;
+    glm_translate(translation, delta);
+    for (auto& station : _data->stations)
+        glm_mat4_mul(translation, station.renderObj->transformMatrix, station.renderObj->transformMatrix);
+}
+
 void GondolaSystem::reportMoved(mat4* matrixMoved)
 {
     vec4 pos;
@@ -1260,7 +1285,7 @@ void executeCAction(GondolaSystem_XData* d, GondolaSystem* _this, const std::str
     if (controlPointIdx == (size_t)-1)
         return;
 
-    bool backwards = input::keyShiftPressed;
+    bool backwards = input::editorInputSet().backwardsModifier.holding;
     float_t directionMultiplier = 1.0f;
     if (backwards)
         directionMultiplier = -1.0f;
@@ -1443,18 +1468,12 @@ void GondolaSystem::renderImGui()
         "X: delete selected control point.\n"
         "V: assign/unassign station at control point."
     );
-    static bool prevCHeld = false;
-    static bool prevXHeld = false;
-    static bool prevVHeld = false;
-    if (input::keyCPressed && !prevCHeld)
+    if (input::editorInputSet().actionC.onAction)
         executeCAction(_data, this, getGUID(), _engine->getMatrixToMove());
-    prevCHeld = input::keyCPressed;
-    if (input::keyXPressed && !prevXHeld)
+    if (input::editorInputSet().actionX.onAction)
         executeXAction(_data, _em, _engine->getMatrixToMove());
-    prevXHeld = input::keyXPressed;
-    if (input::keyVPressed && !prevVHeld)
+    if (input::editorInputSet().actionV.onAction)
         executeVAction(_data, _em, this, getGUID(), _engine->getMatrixToMove());
-    prevVHeld = input::keyVPressed;
 
     // Imgui.
     ImGui::Checkbox("Show Curve Paths", &showCurvePaths);

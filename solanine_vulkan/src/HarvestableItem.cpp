@@ -1,6 +1,7 @@
+#include "pch.h"
+
 #include "HarvestableItem.h"
 
-#include <iostream>
 #include "VkglTFModel.h"
 #include "RenderObject.h"
 #include "EntityManager.h"
@@ -10,7 +11,6 @@
 #include "GlobalState.h"
 #include "Textbox.h"
 #include "Debug.h"
-#include "imgui/imgui.h"
 
 
 struct HarvestableItem_XData
@@ -31,9 +31,7 @@ struct HarvestableItem_XData
 
 HarvestableItem::HarvestableItem(EntityManager* em, RenderObjectManager* rom, DataSerialized* ds) : Entity(em, ds), _data(new HarvestableItem_XData())
 {
-    Entity::_enablePhysicsUpdate = true;
-    Entity::_enableUpdate = true;
-    Entity::_enableLateUpdate = true;
+    Entity::_enableSimulationUpdate = true;
 
     _data->rom = rom;
 
@@ -73,7 +71,7 @@ HarvestableItem::~HarvestableItem()
     delete _data;
 }
 
-void HarvestableItem::physicsUpdate(const float_t& physicsDeltaTime)
+void HarvestableItem::simulationUpdate(float_t simDeltaTime)
 {
     // Check whether this is at an interactible distance away.
     if (!globalState::playerGUID.empty() &&
@@ -102,7 +100,7 @@ void HarvestableItem::physicsUpdate(const float_t& physicsDeltaTime)
     }
 }
 
-void HarvestableItem::update(const float_t& deltaTime)
+void HarvestableItem::update(float_t deltaTime)
 {
     if (_data->requestChangeItemModel)
     {
@@ -125,7 +123,7 @@ void HarvestableItem::update(const float_t& deltaTime)
     }
 }
 
-void HarvestableItem::lateUpdate(const float_t& deltaTime)
+void HarvestableItem::lateUpdate(float_t deltaTime)
 {
     glm_mat4_identity(_data->renderObj->transformMatrix);
     glm_translate(_data->renderObj->transformMatrix, _data->position);
@@ -176,6 +174,11 @@ bool HarvestableItem::processMessage(DataSerialized& message)
     }
 
     return false;
+}
+
+void HarvestableItem::teleportToPosition(vec3 position)
+{
+    glm_vec3_copy(position, _data->position);
 }
 
 void HarvestableItem::reportMoved(mat4* matrixMoved)

@@ -1,12 +1,7 @@
+#include "pch.h"
+
 #include "TextMesh.h"
 
-#include <fstream>
-#include <sstream>
-#include <array>
-#include <vector>
-#include <algorithm>
-#include <mutex>
-#include <assert.h>
 #include "VulkanEngine.h"  // @TODO: work to just include the forward declaration of the createBuffer function
 #include "VkTextures.h"
 #include "VkInitializers.h"
@@ -140,8 +135,8 @@ namespace textmesh
 			},
 			{ gpuUICameraSetLayout, textMeshSetLayout },
 			{
-				{ VK_SHADER_STAGE_VERTEX_BIT, "shader/sdf.vert.spv" },
-				{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/sdf.frag.spv" },
+				{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/sdf.vert.spv" },
+				{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/sdf.frag.spv" },
 			},
 			attributes,
 			bindings,
@@ -499,6 +494,8 @@ namespace textmesh
 
 	void uploadUICameraDataToGPU()
 	{
+		ZoneScoped;
+
 		// Keep UI camera data up to date with main camera.
 		// @NOTE: since this buffer isn't double buffered, it will desync as far as the projectionView matrix (for debug stuff afaik), but the ortho projection should be just fine.
 		glm_mat4_copy(engine->_camera->sceneCamera.gpuCameraData.projectionView, gpuUICamera.projectionView);

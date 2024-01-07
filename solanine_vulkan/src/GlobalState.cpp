@@ -1,15 +1,18 @@
+#include "pch.h"
+
 #include "GlobalState.h"
 
 #include "DataSerialization.h"
 #include "Debug.h"
 #include "StringHelper.h"
 #include "Camera.h"
+#include "VulkanEngine.h"
 
 
 namespace globalState
 {
     // Default values
-    std::string savedActiveScene                = "sample_scene_simplified.ssdat";
+    std::string savedActiveScene                = "sample_scene_simplified.hentais";
 
     vec3    savedPlayerPosition        = GLM_VEC3_ZERO_INIT;    // Currently unused. @TODO
     float_t savedPlayerFacingDirection = 0.0f;                  // Currently unused. @TODO
@@ -26,6 +29,16 @@ namespace globalState
     float_t DOFFocusExtent = 1000.0f;  // 4.0f;
     float_t DOFBlurExtent  = 0.0f;  // 2.0f;
 
+    bool isEditingMode = true;
+
+    std::vector<SpawnPointData> listOfSpawnPoints;
+    vec3 respawnPosition;
+    float_t respawnFacingDirection;
+    bool EDITORpromptChangeSpawnPoint = false;
+    size_t EDITORtriggerRespawnFlag = (size_t)-1;
+
+
+    VulkanEngine* engineRef = nullptr;
     SceneCamera* sceneCameraRef = nullptr;
 
     // Harvestable items (e.g. materials, raw ores, etc.)
@@ -101,6 +114,11 @@ namespace globalState
         dsd.loadVec3(sceneCameraRef->gpuCameraData.cameraPosition);
         dsd.loadVec3(sceneCameraRef->facingDirection);
         dsd.loadFloat(sceneCameraRef->fov);
+
+        float_t windowFullScreenF;
+        dsd.loadFloat(windowFullScreenF);
+        engineRef->setWindowFullscreen((bool)windowFullScreenF);
+
         dsd.loadVec3(savedPlayerPosition);
         dsd.loadFloat(savedPlayerFacingDirection);
 
@@ -133,6 +151,7 @@ namespace globalState
         ds.dumpVec3(sceneCameraRef->gpuCameraData.cameraPosition);
         ds.dumpVec3(sceneCameraRef->facingDirection);
         ds.dumpFloat(sceneCameraRef->fov);
+        ds.dumpFloat((float_t)engineRef->_windowFullscreen);
         ds.dumpVec3(savedPlayerPosition);
         ds.dumpFloat(savedPlayerFacingDirection);
         ds.dumpFloat(savedPlayerHealth);
@@ -152,8 +171,9 @@ namespace globalState
         });
     }
 
-    void initGlobalState(SceneCamera& sc)
+    void initGlobalState(VulkanEngine* engine, SceneCamera& sc)
     {
+        engineRef = engine;
         sceneCameraRef = &sc;
 
         // Initial values for inventory and list of materializable items.
@@ -169,6 +189,8 @@ namespace globalState
 
     void launchAsyncWriteTask()
     {
+        ZoneScoped;
+
         tfExecutor.wait_for_all();
         tfExecutor.run(tfTaskAsyncWriting);
     }

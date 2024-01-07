@@ -1,0 +1,7 @@
+- [ ] Checkpoint system.
+    - [ ] If near a possible checkpoint, it will start to glow.
+    - [ ] If the player claps, then their soul will leak out a bit.
+        - [ ] If not near a possible checkpoint, then the soul will return back to the player.
+        - [ ] If near a possible checkpoint, the soul will rush and flow into the possible checkpoint, letting that be the set checkpoint.
+    - [ ] With a button press, the player will be reverted back to where their soul was contained in the set checkpoint, and they respawn so that they're sitting on top of the set checkpoint.
+        - [ ] With a new move or new jump input, the player will hop off the checkpoint. Some checkpoints are suspended in midair.

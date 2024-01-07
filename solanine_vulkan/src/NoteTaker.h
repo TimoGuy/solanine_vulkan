@@ -1,7 +1,6 @@
 #pragma once
 
 #include "Entity.h"
-#include "Imports.h"
 struct RenderObject;
 class RenderObjectManager;
 
@@ -18,6 +17,7 @@ public:
     void load(DataSerialized& ds);
     std::string getTypeName() { return TYPE_NAME; };
 
+    void teleportToPosition(vec3 position) override;
     void renderImGui();
 
 private:

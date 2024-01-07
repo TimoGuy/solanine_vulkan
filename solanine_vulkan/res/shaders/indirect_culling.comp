@@ -1,0 +1,130 @@
+#version 460
+
+layout (local_size_x = 128) in;
+
+// Indirect Draw Commands.
+struct IndirectDrawCommandsData
+{
+    uint indexCount;
+    uint instanceCount;
+    uint firstIndex;
+    int  vertexOffset;
+    uint firstInstance;
+};
+
+layout(set = 0, binding = 0) readonly buffer IndirectDrawCommandsRawBuffer
+{
+	IndirectDrawCommandsData commands[];
+} drawCommandsInput;
+
+layout(set = 0, binding = 1) buffer IndirectDrawCommandsOutputBuffer
+{
+	IndirectDrawCommandsData commands[];
+} drawCommandsOutput;
+
+
+// Indirect Draw Command Offsets.
+struct IndirectDrawCommandOffsetsData
+{
+	uint batchFirstIndex;
+	uint countIndex;
+	uint pad0;
+	uint pad1;
+};
+
+layout(std140, set = 0, binding = 2) readonly buffer IndirectDrawCommandOffsetsBuffer
+{
+	IndirectDrawCommandOffsetsData offsets[];
+} drawCommandOffsets;
+
+
+// Indirect Draw Command Counts.
+layout(set = 0, binding = 3) buffer IndirectDrawCommandCountsBuffer
+{
+	uint counts[];
+} drawCommandCounts;
+
+
+// All Object Matrices
+struct ObjectData
+{
+	mat4 modelMatrix;
+	vec4 boundingSphere;
+};
+
+layout(std140, set = 1, binding = 0) readonly buffer ObjectBuffer
+{
+	ObjectData objects[];
+} objectBuffer;
+
+
+// Instance ID Pointers
+struct InstancePointer
+{
+	uint objectID;
+	uint materialID;
+	uint animatorNodeID;  // @TODO: take out! This will be used by the compute skinning process.
+	uint voxelFieldLightingGridID;
+};
+
+layout(std140, set = 2, binding = 0) readonly buffer InstancePtrBuffer
+{
+	InstancePointer pointers[];
+} instancePtrBuffer;
+
+
+// Params.
+layout(push_constant) uniform Params {
+    mat4  view;
+    float zNear;
+    float zFar;
+    float frustumX_x;
+    float frustumX_z;
+    float frustumY_y;
+    float frustumY_z;
+    uint  cullingEnabled;
+    uint  numInstances;
+} params;
+
+
+bool isVisible(uint objectID)
+{
+    bool visible = true;
+
+    vec4 boundingSphere = objectBuffer.objects[objectID].boundingSphere;
+    vec3 bsCenter = (params.view * vec4(boundingSphere.xyz, 1.0)).xyz;
+    float bsRadius = boundingSphere.w;
+
+    // Frustum side planes (right and top using abs).
+    visible = visible && bsCenter.z * params.frustumX_z - abs(bsCenter.x) * params.frustumX_x > -bsRadius;
+    visible = visible && bsCenter.z * params.frustumY_z - abs(bsCenter.y) * params.frustumY_y > -bsRadius;
+
+    // Frustum near and far planes.
+    // @NOTE: center z needs to be inverted bc no reverse projection frustum here.
+    visible = visible && -bsCenter.z + bsRadius > params.zNear && -bsCenter.z - bsRadius < params.zFar;
+
+    // Disable culling via flag (i.e. enable all objects as visible).
+    visible = visible || params.cullingEnabled == 0;
+
+    // @TODO: @FUTURE: Implement occlusion culling using depth pyramid.
+
+    return visible;
+}
+
+
+void main()
+{
+    uint gID = gl_GlobalInvocationID.x;
+    if (gID < params.numInstances)
+    {
+        if (isVisible(instancePtrBuffer.pointers[gID].objectID))
+        {
+            uint countIdx = drawCommandOffsets.offsets[gID].countIndex;
+            uint batchOffset = atomicAdd(drawCommandCounts.counts[countIdx], 1);
+
+            // Copy draw command data.
+            uint copyTo = drawCommandOffsets.offsets[gID].batchFirstIndex + batchOffset;
+            drawCommandsOutput.commands[copyTo] = drawCommandsInput.commands[gID];
+        }
+    }
+}

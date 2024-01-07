@@ -1,13 +1,13 @@
+#include "pch.h"
+
 #include "VulkanEngine.h"
 
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_vulkan.h>
-#include <vma/vk_mem_alloc.h>
 #include "VkBootstrap.h"
 #include "VkInitializers.h"
 #include "VkDescriptorBuilderUtil.h"
 #include "VkPipelineBuilderUtil.h"
 #include "VkTextures.h"
+#include "MaterialOrganizer.h"
 #include "VkglTFModel.h"
 #include "TextMesh.h"
 #include "AudioEngine.h"
@@ -24,15 +24,19 @@
 #include "HotswapResources.h"
 #include "GlobalState.h"
 #include "GondolaSystem.h"
-#include "imgui/imgui.h"
-#include "imgui/imgui_stdlib.h"
-#include "imgui/imgui_impl_sdl.h"
-#include "imgui/imgui_impl_vulkan.h"
-#include "imgui/implot.h"
-#include "imgui/ImGuizmo.h"
+
+#ifdef _DEVELOP
+#include "EDITORTextureViewer.h"
+#endif
+
+#include "SimulationCharacter.h"  // @NOCHECKIN
 
 
 constexpr uint64_t TIMEOUT_1_SEC = 1000000000;
+
+#ifdef _DEVELOP
+std::mutex* hotswapMutex = nullptr;
+#endif
 
 void VulkanEngine::init()
 {
@@ -55,6 +59,8 @@ void VulkanEngine::init()
 	//
 	SDL_Init(SDL_INIT_VIDEO);
 	SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN);
+	if (_windowFullscreen)
+		window_flags = (SDL_WindowFlags)(window_flags | SDL_WINDOW_FULLSCREEN_DESKTOP);
 
 	_window = SDL_CreateWindow(
 		("Solanine Prealpha - Vulkan" + buildNumber).c_str(),
@@ -70,14 +76,14 @@ void VulkanEngine::init()
 	_camera = new Camera(this);
 
 #ifdef _DEVELOP
-	hotswapres::buildResourceList();
+	hotswapMutex = hotswapres::startResourceChecker(this, _roManager, &_recreateSwapchain);
 #endif
 
 	initVulkan();
 	initSwapchain();
 	initCommands();
 	initShadowRenderpass();
-	initShadowImages();  // @NOTE: this isn't screen space, so no need to recreate images on swapchain recreation
+	initShadowImages();  // @NOTE: this isn't screen space, so no need to recreate images on swapchain recreation.
 	initMainRenderpass();
 	initUIRenderpass();
 	initPostprocessRenderpass();
@@ -93,10 +99,12 @@ void VulkanEngine::init()
 	generateBRDFLUT();
 	initDescriptors();
 	initPipelines();
+	loadMaterials();
 
 	AudioEngine::getInstance().initialize();
 	physengine::start(_entityManager);
-	globalState::initGlobalState(_camera->sceneCamera);
+	globalState::initGlobalState(this, _camera->sceneCamera);
+	scene::init(this);
 	GondolaSystem::_engine = this;
 
 	while (!physengine::isInitialized);  // Spin lock so that new scene doesn't get loaded before physics are finished initializing.
@@ -105,11 +113,8 @@ void VulkanEngine::init()
 
 	_isInitialized = true;
 
-	scene::loadScene(globalState::savedActiveScene, this);
+	changeEditorMode(_currentEditorMode);
 }
-
-constexpr size_t numPerfs = 15;
-uint64_t perfs[numPerfs];
 
 vec4 lightDir = { 0.144958f, 0.849756f, 0.506855f, 0.0f };
 
@@ -140,39 +145,49 @@ void VulkanEngine::run()
 	float_t saveGlobalStateTimeElapsed = 0.0f;
 
 #ifdef _DEVELOP
-	std::mutex* hotswapMutex = hotswapres::startResourceChecker(this, &_recreateSwapchain, _roManager);
+	input::registerEditorInputSetOnThisThread();
 #endif
 
 	while (isRunning)
 	{
-		perfs[0] = SDL_GetPerformanceCounter();
-		// Poll events from the window
-		input::processInput(&isRunning, &_isWindowMinimized);
-		perfs[0] = SDL_GetPerformanceCounter() - perfs[0];
-
-
-		perfs[1] = SDL_GetPerformanceCounter();
-		// Update time multiplier
-		if (input::onKeyLSBPress || input::onKeyRSBPress)
-		{
-			globalState::timescale *= input::onKeyLSBPress ? 0.5f : 2.0f;
-			debug::pushDebugMessage({
-				.message = "Set timescale to " + std::to_string(globalState::timescale),
-			});
-		}
-		perfs[1] = SDL_GetPerformanceCounter() - perfs[1];
-
-
-		perfs[2] = SDL_GetPerformanceCounter();
 		// Update DeltaTime
 		uint64_t currentFrame = SDL_GetPerformanceCounter();
 		const float_t deltaTime = (float_t)(currentFrame - lastFrame) * ticksFrequency;
 		const float_t scaledDeltaTime = deltaTime * globalState::timescale;
 		lastFrame = currentFrame;
-		perfs[2] = SDL_GetPerformanceCounter() - perfs[2];
 
+		// Poll events from the window
+		input::processInput(&isRunning, &_isWindowMinimized);
+		input::editorInputSet().update();
+		input::renderInputSet().update(deltaTime);
 
-		perfs[3] = SDL_GetPerformanceCounter();
+		// Toggle fullscreen.
+		if (input::renderInputSet().toggleFullscreen.onAction)
+			setWindowFullscreen(!_windowFullscreen);
+
+#ifdef _DEVELOP
+		// Update time multiplier
+		{
+			bool changedTimescale = false;
+			if (input::editorInputSet().halveTimescale.onAction)
+			{
+				globalState::timescale *= 0.5f;
+				changedTimescale = true;
+			}
+			if (input::editorInputSet().doubleTimescale.onAction)
+			{
+				globalState::timescale *= 2.0f;
+				changedTimescale = true;
+			}
+			if (changedTimescale)
+			{
+				debug::pushDebugMessage({
+					.message = "Set timescale to " + std::to_string(globalState::timescale),
+				});
+			}
+		}
+#endif
+
 		// Stop anything from updating when window is minimized
 		// @NOTE: this prevents the VK_ERROR_DEVICE_LOST(-4) error
 		//        once the rendering code gets run while the window
@@ -185,46 +200,27 @@ void VulkanEngine::run()
 
 		// Collect debug stats
 		updateDebugStats(deltaTime);
-		perfs[3] = SDL_GetPerformanceCounter() - perfs[3];
 
-
-		perfs[4] = SDL_GetPerformanceCounter();
 		// Update textbox
 		textbox::update(deltaTime);
 
-		// Update entities
-		_entityManager->update(scaledDeltaTime);
-		perfs[4] = SDL_GetPerformanceCounter() - perfs[4];
-
-
-		perfs[5] = SDL_GetPerformanceCounter();
-		// Update animators
+		// Update render objects.
+		physengine::recalcInterpolatedTransformsSet();
+		_roManager->updateSimTransforms();
 		_roManager->updateAnimators(scaledDeltaTime);
-		perfs[5] = SDL_GetPerformanceCounter() - perfs[5];
 
-
-		perfs[6] = SDL_GetPerformanceCounter();
-		// Late update (i.e. after animators are run)
-		_entityManager->lateUpdate(scaledDeltaTime);
-		perfs[6] = SDL_GetPerformanceCounter() - perfs[6];
-
-
-		perfs[7] = SDL_GetPerformanceCounter();
 		// Update camera
 		_camera->update(deltaTime);
-		perfs[7] = SDL_GetPerformanceCounter() - perfs[7];
 
+		// Allow scene management to tear down or load scenes.
+		scene::tick();
 
-		perfs[8] = SDL_GetPerformanceCounter();
 		// Add/Remove requested entities
 		_entityManager->INTERNALaddRemoveRequestedEntities();
 
 		// Add/Change/Remove text meshes
-		textmesh::INTERNALprocessChangeQueue();
-		perfs[8] = SDL_GetPerformanceCounter() - perfs[8];
+		// textmesh::INTERNALprocessChangeQueue();
 
-
-		perfs[9] = SDL_GetPerformanceCounter();
 		// Update global state
 		saveGlobalStateTimeElapsed += deltaTime;
 		if (saveGlobalStateTimeElapsed > saveGlobalStateTime)
@@ -232,52 +228,26 @@ void VulkanEngine::run()
 			saveGlobalStateTimeElapsed = 0.0f;
 			globalState::launchAsyncWriteTask();
 		}
-		perfs[9] = SDL_GetPerformanceCounter() - perfs[9];
 
-
-		perfs[10] = SDL_GetPerformanceCounter();
 		// Update Audio Engine
 		AudioEngine::getInstance().update();
-		perfs[10] = SDL_GetPerformanceCounter() - perfs[10];
 
-
-		perfs[11] = SDL_GetPerformanceCounter();
-		//
 		// Render
-		//
 #ifdef _DEVELOP
-		std::lock_guard<std::mutex> lg(*hotswapMutex);
+		{
+			std::lock_guard<std::mutex> lg(*hotswapMutex);
 #endif
 
-		if (_recreateSwapchain)
-			recreateSwapchain();
-		perfs[11] = SDL_GetPerformanceCounter() - perfs[11];
+			if (_recreateSwapchain)
+				recreateSwapchain();
+			renderImGui(deltaTime);
+			render();
 
-
-		perfs[12] = SDL_GetPerformanceCounter();
-		renderImGui(deltaTime);
-		perfs[12] = SDL_GetPerformanceCounter() - perfs[12];
-
-
-		perfs[13] = SDL_GetPerformanceCounter();
-		render();
-		perfs[13] = SDL_GetPerformanceCounter() - perfs[13];
-
-
-		//
-		// Calculate performance
-		//
-		if (input::keyCtrlPressed)
-		{
-			uint64_t totalPerf = 0;
-			for (size_t i = 0; i < numPerfs; i++)
-				totalPerf += perfs[i];
-
-			std::cout << "Performance:";
-			for (size_t i = 0; i < numPerfs; i++)
-				std::cout << "\t" << (perfs[i] * 100 / totalPerf) << "% (" << perfs[i] << ")";
-			std::cout << std::endl;
+#ifdef _DEVELOP
 		}
+
+		FrameMark;
+#endif
 	}
 }
 
@@ -308,6 +278,8 @@ void VulkanEngine::cleanup()
 
 		delete _roManager;
 		vkglTF::Animator::destroyEmpty(this);
+		for (size_t i = 0; i < FRAME_OVERLAP; i++)
+			destroySkinningBuffersIfCreated(_frames[i]);
 
 		_mainDeletionQueue.flush();
 		_swapchainDependentDeletionQueue.flush();
@@ -332,8 +304,194 @@ void VulkanEngine::cleanup()
 	std::cout << "Cleanup procedure finished." << std::endl;
 }
 
+void VulkanEngine::setWindowFullscreen(bool isFullscreen)
+{
+	ZoneScoped;
+
+	_windowFullscreen = isFullscreen;
+	SDL_SetWindowFullscreen(_window, _windowFullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
+}
+
+void normalizePlane(vec4 a, vec4 w, vec4& outNormalizedPlane)
+{
+	vec4 aw;
+	glm_vec4_add(a, w, aw);
+	vec3 aw3;
+	glm_vec3(aw, aw3);
+	glm_vec4_scale(aw, 1.0f / glm_vec3_norm(aw3), outNormalizedPlane);
+}
+
+static bool doCullingStuff = true;
+
+void VulkanEngine::computeShadowCulling(const FrameData& currentFrame, VkCommandBuffer cmd)
+{
+	ZoneScoped;
+	TracyVkZone(currentFrame.mainCommandBufferTracyVk, cmd, "Compute shadow culling");
+
+	// Set up frustum culling params.
+	mat4 reverseOrtho;
+	glm_ortho(
+		_camera->sceneCamera.wholeShadowMinExtents[0],
+		_camera->sceneCamera.wholeShadowMaxExtents[0],
+		_camera->sceneCamera.wholeShadowMinExtents[1],
+		_camera->sceneCamera.wholeShadowMaxExtents[1],
+		_camera->sceneCamera.wholeShadowMaxExtents[2],  // @NOTE: Znear and zfar are switched... though it doesn't really matter for anything with ortho projection.
+		_camera->sceneCamera.wholeShadowMinExtents[2],
+		reverseOrtho
+	);
+	mat4 reverseOrthoTransposed;
+	glm_mat4_transpose_to(_camera->sceneCamera.gpuCameraData.projection, reverseOrthoTransposed);
+	vec4 frustumX;
+	vec4 frustumY;
+	normalizePlane(reverseOrthoTransposed[0], reverseOrthoTransposed[3], frustumX);
+	normalizePlane(reverseOrthoTransposed[1], reverseOrthoTransposed[3], frustumY);
+
+	GPUCullingParams pc = {
+		.zNear = std::numeric_limits<float_t>::min(),  // @TODO: add switch to turn off near/far plane comparison in frustum culling.
+		.zFar = std::numeric_limits<float_t>::max(),
+		.frustumX_x = frustumX[0],
+		.frustumX_z = frustumX[2],
+		.frustumY_y = frustumY[1],
+		.frustumY_z = frustumY[2],
+		.cullingEnabled = (uint32_t)true,
+		.numInstances = currentFrame.numInstances,
+	};
+	glm_mat4_copy(_camera->sceneCamera.wholeShadowLightViewMatrix, pc.view);
+
+	// Dispatch compute.
+	Material& computeCulling = *getMaterial("computeCulling");
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, computeCulling.pipeline);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, computeCulling.pipelineLayout, 0, 1, &currentFrame.indirectShadowPass.indirectDrawCommandDescriptor, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, computeCulling.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, computeCulling.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
+	vkCmdPushConstants(cmd, computeCulling.pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(GPUCullingParams), &pc);
+	vkCmdDispatch(cmd, std::ceil(currentFrame.numInstances / 128.0f), 1, 1);
+
+	// Block vertex shaders from running until the dispatched job is finished.
+	VkBufferMemoryBarrier barriers[] = {
+		{
+			.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+			.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
+			.dstAccessMask = VK_ACCESS_INDIRECT_COMMAND_READ_BIT,
+			.srcQueueFamilyIndex = _graphicsQueueFamily,
+			.dstQueueFamilyIndex = _graphicsQueueFamily,
+			.buffer = currentFrame.indirectShadowPass.indirectDrawCommandsBuffer._buffer,
+			.offset = 0,
+			.size = sizeof(VkDrawIndexedIndirectCommand) * INSTANCE_PTR_MAX_CAPACITY,
+		},
+		{
+			.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+			.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
+			.dstAccessMask = VK_ACCESS_INDIRECT_COMMAND_READ_BIT,
+			.srcQueueFamilyIndex = _graphicsQueueFamily,
+			.dstQueueFamilyIndex = _graphicsQueueFamily,
+			.buffer = currentFrame.indirectShadowPass.indirectDrawCommandCountsBuffer._buffer,
+			.offset = 0,
+			.size = sizeof(uint32_t) * INSTANCE_PTR_MAX_CAPACITY,
+		}
+	};
+	vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, 0, 0, nullptr, 2, barriers, 0, nullptr);
+}
+
+void VulkanEngine::computeMainCulling(const FrameData& currentFrame, VkCommandBuffer cmd)
+{
+	ZoneScoped;
+	TracyVkZone(currentFrame.mainCommandBufferTracyVk, cmd, "Compute main culling");
+
+	// Set up frustum culling params.
+	mat4 reverseProjectionTransposed;
+	glm_mat4_transpose_to(_camera->sceneCamera.gpuCameraData.projection, reverseProjectionTransposed);
+	vec4 frustumX;
+	vec4 frustumY;
+	normalizePlane(reverseProjectionTransposed[0], reverseProjectionTransposed[3], frustumX);
+	normalizePlane(reverseProjectionTransposed[1], reverseProjectionTransposed[3], frustumY);
+
+	// Expand frustum depending on ortho size.
+	if (!_camera->sceneCamera.isPerspective)
+	{
+		frustumX[0] /= _camera->sceneCamera.orthoHalfWidth;
+		frustumY[1] /= _camera->sceneCamera.orthoHalfHeight;
+	}
+
+	GPUCullingParams pc = {
+		.zNear = _camera->sceneCamera.zNear,
+		.zFar = _camera->sceneCamera.zFar,
+		.frustumX_x = frustumX[0],
+		.frustumX_z = frustumX[2],
+		.frustumY_y = frustumY[1],
+		.frustumY_z = frustumY[2],
+		.cullingEnabled = (uint32_t)true,
+		.numInstances = currentFrame.numInstances,
+	};
+	glm_mat4_copy(_camera->sceneCamera.gpuCameraData.view, pc.view);
+
+	// Dispatch compute.
+	Material& computeCulling = *getMaterial("computeCulling");
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, computeCulling.pipeline);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, computeCulling.pipelineLayout, 0, 1, &currentFrame.indirectMainPass.indirectDrawCommandDescriptor, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, computeCulling.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, computeCulling.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
+	vkCmdPushConstants(cmd, computeCulling.pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(GPUCullingParams), &pc);
+	vkCmdDispatch(cmd, std::ceil(currentFrame.numInstances / 128.0f), 1, 1);
+
+	// Block vertex shaders from running until the dispatched job is finished.
+	VkBufferMemoryBarrier barriers[] = {
+		{
+			.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+			.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
+			.dstAccessMask = VK_ACCESS_INDIRECT_COMMAND_READ_BIT,
+			.srcQueueFamilyIndex = _graphicsQueueFamily,
+			.dstQueueFamilyIndex = _graphicsQueueFamily,
+			.buffer = currentFrame.indirectMainPass.indirectDrawCommandsBuffer._buffer,
+			.offset = 0,
+			.size = sizeof(VkDrawIndexedIndirectCommand) * INSTANCE_PTR_MAX_CAPACITY,
+		},
+		{
+			.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+			.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
+			.dstAccessMask = VK_ACCESS_INDIRECT_COMMAND_READ_BIT,
+			.srcQueueFamilyIndex = _graphicsQueueFamily,
+			.dstQueueFamilyIndex = _graphicsQueueFamily,
+			.buffer = currentFrame.indirectMainPass.indirectDrawCommandCountsBuffer._buffer,
+			.offset = 0,
+			.size = sizeof(uint32_t) * INSTANCE_PTR_MAX_CAPACITY,
+		}
+	};
+	vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, 0, 0, nullptr, 2, barriers, 0, nullptr);
+}
+
+void VulkanEngine::computeSkinnedMeshes(const FrameData& currentFrame, VkCommandBuffer cmd)
+{
+	ZoneScoped;
+	TracyVkZone(currentFrame.mainCommandBufferTracyVk, cmd, "Compute mesh skinning");
+
+	if (_roManager->_renderObjectsWithAnimatorIndices.empty())
+		return;  // Omit skinning meshes if no meshes to skin.
+
+	Material& computeSkinning = *getMaterial("computeSkinning");
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, computeSkinning.pipeline);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, computeSkinning.pipelineLayout, 0, 1, &currentFrame.skinning.inoutVerticesDescriptor, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, computeSkinning.pipelineLayout, 1, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(this), 0, nullptr);
+	vkCmdDispatch(cmd, std::ceil(currentFrame.skinning.numVertices / 256.0f), 1, 1);
+
+	// Block vertex shaders from running until the dispatched job is finished.
+	VkBufferMemoryBarrier barrier = {
+		.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+		.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
+		.dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+		.srcQueueFamilyIndex = _graphicsQueueFamily,
+		.dstQueueFamilyIndex = _graphicsQueueFamily,
+		.buffer = currentFrame.skinning.outputVerticesBuffer._buffer,
+		.offset = 0,
+		.size = currentFrame.skinning.outputBufferSize,
+	};
+	vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, 0, 0, nullptr, 1, &barrier, 0, nullptr);
+}
+
 void VulkanEngine::renderPickingRenderpass(const FrameData& currentFrame)
 {
+	ZoneScoped;
+
 	VK_CHECK(vkResetFences(_device, 1, &currentFrame.pickingRenderFence));
 
 	// Reset the command buffer and start the render pass
@@ -382,7 +540,6 @@ void VulkanEngine::renderPickingRenderpass(const FrameData& currentFrame)
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 3, 1, &currentFrame.pickingReturnValueDescriptor, 0, nullptr);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pickingMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(this), 0, nullptr);
 
 	// Set dynamic scissor
 	VkRect2D scissor = {};
@@ -394,7 +551,7 @@ void VulkanEngine::renderPickingRenderpass(const FrameData& currentFrame)
 	std::cout << "[PICKING]" << std::endl
 		<< "set picking scissor to: x=" << scissor.offset.x << "  y=" << scissor.offset.y << "  w=" << scissor.extent.width << "  h=" << scissor.extent.height << std::endl;
 
-	renderRenderObjects(cmd, currentFrame);
+	renderRenderObjects(cmd, currentFrame, true, false);
 
 	// End renderpass
 	vkCmdEndRenderPass(cmd);
@@ -413,7 +570,10 @@ void VulkanEngine::renderPickingRenderpass(const FrameData& currentFrame)
 	// Submit work to gpu
 	VkResult result = vkQueueSubmit(_graphicsQueue, 1, &submit, currentFrame.pickingRenderFence);
 	if (result == VK_ERROR_DEVICE_LOST)
+	{
+		std::cerr << "ERROR: VULKAN DEVICE LOST." << std::endl;
 		return;
+	}
 
 	//
 	// Read from GPU to the CPU (the actual picking part eh!)
@@ -453,6 +613,9 @@ void VulkanEngine::renderPickingRenderpass(const FrameData& currentFrame)
 
 void VulkanEngine::renderShadowRenderpass(const FrameData& currentFrame, VkCommandBuffer cmd)
 {
+	ZoneScoped;
+	TracyVkZone(currentFrame.mainCommandBufferTracyVk, cmd, "Render shadow pass");
+
 	VkClearValue depthClear;
 	depthClear.depthStencil = { 1.0f, 0 };
 
@@ -476,7 +639,7 @@ void VulkanEngine::renderShadowRenderpass(const FrameData& currentFrame, VkComma
 	memcpy(data, &_camera->sceneCamera.gpuCascadeViewProjsData, sizeof(GPUCascadeViewProjsData));
 	vmaUnmapMemory(_allocator, currentFrame.cascadeViewProjsBuffer._allocation);
 
-	Material& shadowDepthPassMaterial = *getMaterial("shadowDepthPassMaterial");
+	Material& shadowDepthPassMaterial = *getMaterial("shadowdepthpass.special.humba");
 	for (uint32_t i = 0; i < SHADOWMAP_CASCADES; i++)
 	{
 		renderpassInfo.framebuffer = _shadowCascades[i].framebuffer;
@@ -486,13 +649,12 @@ void VulkanEngine::renderShadowRenderpass(const FrameData& currentFrame, VkComma
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 0, 1, &currentFrame.cascadeViewProjsDescriptor, 0, nullptr);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 3, 1, &getMaterial("pbrMaterial")->textureSet, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(this), 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowDepthPassMaterial.pipelineLayout, 3, 1, &shadowDepthPassMaterial.textureSet, 0, nullptr);
 
 		CascadeIndexPushConstBlock pc = { i };
 		vkCmdPushConstants(cmd, shadowDepthPassMaterial.pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(CascadeIndexPushConstBlock), &pc);
 
-		renderRenderObjects(cmd, currentFrame);
+		renderRenderObjects(cmd, currentFrame, true, true);
 		
 		vkCmdEndRenderPass(cmd);
 	}
@@ -500,6 +662,9 @@ void VulkanEngine::renderShadowRenderpass(const FrameData& currentFrame, VkComma
 
 void VulkanEngine::renderMainRenderpass(const FrameData& currentFrame, VkCommandBuffer cmd, const std::vector<ModelWithIndirectDrawId>& pickingIndirectDrawCommandIds)
 {
+	ZoneScoped;
+	TracyVkZone(currentFrame.mainCommandBufferTracyVk, cmd, "Render main pass");
+
 	VkClearValue clearValue;
 	clearValue.color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
 
@@ -526,46 +691,37 @@ void VulkanEngine::renderMainRenderpass(const FrameData& currentFrame, VkCommand
 	// Begin renderpass
 	vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-	Material& defaultMaterial = *getMaterial("pbrMaterial");    // @HACK: @TODO: currently, the way that the pipeline is getting used is by just hardcode using it in the draw commands for models... however, each model should get its pipeline set to this material instead (or whatever material its using... that's why we can't hardcode stuff!!!)   @TODO: create some kind of way to propagate the newly created pipeline to the primMat (calculated material in the gltf model) instead of using defaultMaterial directly.  -Timo
-	Material& defaultZPrepassMaterial = *getMaterial("pbrZPrepassMaterial");
-	Material& skyboxMaterial = *getMaterial("skyboxMaterial");
 
 	// Render z prepass //
+	Material& defaultZPrepassMaterial = *getMaterial("zprepass.special.humba");
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipeline);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 3, 1, &defaultMaterial.textureSet, 0, nullptr);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(this), 0, nullptr);
-	renderRenderObjects(cmd, currentFrame);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultZPrepassMaterial.pipelineLayout, 3, 1, &defaultZPrepassMaterial.textureSet, 0, nullptr);
+	renderRenderObjects(cmd, currentFrame, true, false);
 	//////////////////////
 
 	// Switch from zprepass subpass to main subpass
 	vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_INLINE);
 
 	// Render skybox //
-	// @TODO: put this into its own function!
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipeline);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipelineLayout, 1, 1, &skyboxMaterial.textureSet, 0, nullptr);
+	if ((_currentEditorMode == EditorModes::LEVEL_EDITOR && !globalState::isEditingMode) ||
+		_currentEditorMode == EditorModes::MATERIAL_EDITOR)
+	{
+		// @TODO: put this into its own function!
+		Material& skyboxMaterial = *getMaterial("skyboxMaterial");
+		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipeline);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxMaterial.pipelineLayout, 1, 1, &skyboxMaterial.textureSet, 0, nullptr);
 
-	auto skybox = _roManager->getModel("Box", nullptr, [](){});
-	skybox->bind(cmd);
-	skybox->draw(cmd);
+		auto skybox = _roManager->getModel("Box", nullptr, [](){});
+		skybox->bind(cmd);
+		skybox->draw(cmd);
+	}
 	///////////////////
 
-	// Bind material
-	// @TODO: put this into its own function!
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipeline);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 3, 1, &defaultMaterial.textureSet, 0, nullptr);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 4, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(this), 0, nullptr);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultMaterial.pipelineLayout, 5, 1, &_voxelFieldLightingGridTextureSet.descriptor, 0, nullptr);
-	////////////////
-
-	renderRenderObjects(cmd, currentFrame);
+	renderRenderObjects(cmd, currentFrame, false, false);
 	if (!pickingIndirectDrawCommandIds.empty())
 		renderPickedObject(cmd, currentFrame, pickingIndirectDrawCommandIds);
 	physengine::renderDebugVisualization(cmd);
@@ -574,8 +730,11 @@ void VulkanEngine::renderMainRenderpass(const FrameData& currentFrame, VkCommand
 	vkCmdEndRenderPass(cmd);
 }
 
-void VulkanEngine::renderUIRenderpass(VkCommandBuffer cmd)
+void VulkanEngine::renderUIRenderpass(const FrameData& currentFrame, VkCommandBuffer cmd)
 {
+	ZoneScoped;
+	TracyVkZone(currentFrame.mainCommandBufferTracyVk, cmd, "Render UI pass");
+
 	VkClearValue clearValue;
 	clearValue.color = { { 0.0f, 0.0f, 0.0f, 0.0f } };
 
@@ -607,6 +766,8 @@ void VulkanEngine::renderUIRenderpass(VkCommandBuffer cmd)
 
 void ppBlitBloom(VkCommandBuffer cmd, Texture& mainImage, VkExtent2D& windowExtent, Texture& bloomImage, VkExtent2D& bloomImageExtent)
 {
+	ZoneScoped;
+
 	//
 	// Blit bloom
 	// @NOTE: @IMPROVE: the bloom render pass has obvious artifacts when a camera pans slowly.
@@ -791,6 +952,8 @@ void ppBlitBloom(VkCommandBuffer cmd, Texture& mainImage, VkExtent2D& windowExte
 
 void ppDepthOfField_GenerateCircleOfConfusion(VkCommandBuffer cmd, VkRenderPass CoCRenderPass, VkFramebuffer CoCFramebuffer, Material& CoCMaterial, GPUCoCParams& CoCParams, VkExtent2D& windowExtent)
 {
+	ZoneScoped;
+
 	VkClearValue clearValues[1];
 	clearValues[0].color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
 
@@ -822,6 +985,8 @@ void ppDepthOfField_GenerateCircleOfConfusion(VkCommandBuffer cmd, VkRenderPass 
 
 void ppDepthOfField_HalveCircleOfConfusionWhileGeneratingNearFar(VkCommandBuffer cmd, VkRenderPass halveCoCRenderPass, VkFramebuffer halveCoCFramebuffer, Material& halveCoCMaterial, VkExtent2D& halfResImageExtent)
 {
+	ZoneScoped;
+
 	VkClearValue clearValues[2];
 	clearValues[0].color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
 	clearValues[1].color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
@@ -860,6 +1025,8 @@ struct IncrementalHalveCoCParams
 
 void ppDepthOfField_IncrementalReductionHalveCircleOfConfusion(VkCommandBuffer cmd, VkRenderPass incrementalReductionHalveCoCRenderPass, std::vector<IncrementalHalveCoCParams>& incrementalReductions)
 {
+	ZoneScoped;
+
 	for (IncrementalHalveCoCParams& ihcp : incrementalReductions)
 	{
 		VkFramebuffer incrementalReductionHalveCoCFramebuffer = ihcp.framebuffer;
@@ -897,6 +1064,8 @@ void ppDepthOfField_IncrementalReductionHalveCircleOfConfusion(VkCommandBuffer c
 
 void ppDepthOfField_BlurNearsideCoC(VkCommandBuffer cmd, VkRenderPass blurXNearsideCoCRenderPass, VkFramebuffer blurXNearsideCoCFramebuffer, Material& blurXMaterial, VkRenderPass blurYNearsideCoCRenderPass, VkFramebuffer blurYNearsideCoCFramebuffer, Material& blurYMaterial, GPUBlurParams& blurParams, VkExtent2D& incrementalReductionHalveResImageExtent)
 {
+	ZoneScoped;
+
 	// Blur the downsized nearside CoC using ping-pong technique.
 	VkRenderPass blurPasses[] = { blurXNearsideCoCRenderPass, blurYNearsideCoCRenderPass };
 	VkFramebuffer blurFramebuffers[] = { blurXNearsideCoCFramebuffer, blurYNearsideCoCFramebuffer };
@@ -938,6 +1107,8 @@ void ppDepthOfField_BlurNearsideCoC(VkCommandBuffer cmd, VkRenderPass blurXNears
 
 void ppDepthOfField_GatherDepthOfField(VkCommandBuffer cmd, VkRenderPass gatherDOFRenderPass, VkFramebuffer gatherDOFFramebuffer, Material& gatherDOFMaterial, GPUGatherDOFParams& dofParams, VkExtent2D& halfResImageExtent)
 {
+	ZoneScoped;
+
 	// Downsize nearside CoC.
 	VkClearValue clearValues[2];
 	clearValues[0].color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
@@ -970,6 +1141,8 @@ void ppDepthOfField_GatherDepthOfField(VkCommandBuffer cmd, VkRenderPass gatherD
 
 void ppDepthOfField_DepthOfFieldFloodFill(VkCommandBuffer cmd, VkRenderPass dofFloodFillRenderPass, VkFramebuffer dofFloodFillFramebuffer, Material& dofFloodFillMaterial, GPUBlurParams& floodfillParams, VkExtent2D& halfResImageExtent)
 {
+	ZoneScoped;
+
 	// Downsize nearside CoC.
 	VkClearValue clearValues[2];
 	clearValues[0].color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
@@ -1010,6 +1183,8 @@ void ppDepthOfField(
 	VkRenderPass gatherDOFRenderPass, VkFramebuffer gatherDOFFramebuffer, Material& gatherDOFMaterial, GPUGatherDOFParams& dofParams,
 	VkRenderPass dofFloodFillRenderPass, VkFramebuffer dofFloodFillFramebuffer, Material& dofFloodFillMaterial, GPUBlurParams& floodfillParams)
 {
+	ZoneScoped;
+
 	ppDepthOfField_GenerateCircleOfConfusion(
 		cmd,
 		CoCRenderPass,
@@ -1064,8 +1239,56 @@ void ppDepthOfField(
 	);
 }
 
+void ppCombinePostprocesses(
+	VkCommandBuffer cmd,
+	VkRenderPass postprocessRenderPass, VkFramebuffer postprocessFramebuffer, Material& postprocessMaterial, VkExtent2D& windowExtent, VkDescriptorSet currentFrameGlobalDescriptor, bool applyTonemap, bool applyImGui)
+{
+	ZoneScoped;
+
+	// Combine all postprocessing
+	GPUPostProcessParams CoCParams = {
+		.applyTonemap = applyTonemap,
+	};
+
+	VkClearValue clearValue;
+	clearValue.color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
+
+	VkRenderPassBeginInfo renderpassInfo = {
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+		.pNext = nullptr,
+
+		.renderPass = postprocessRenderPass,
+		.framebuffer = postprocessFramebuffer,
+		.renderArea = {
+			.offset = VkOffset2D{ 0, 0 },
+			.extent = windowExtent,
+		},
+
+		.clearValueCount = 1,
+		.pClearValues = &clearValue,
+	};
+
+	// Begin renderpass
+	vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, postprocessMaterial.pipeline);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, postprocessMaterial.pipelineLayout, 0, 1, &currentFrameGlobalDescriptor, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, postprocessMaterial.pipelineLayout, 1, 1, &postprocessMaterial.textureSet, 0, nullptr);
+	vkCmdPushConstants(cmd, postprocessMaterial.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(GPUPostProcessParams), &CoCParams);
+	vkCmdDraw(cmd, 3, 1, 0, 0);
+
+	if (applyImGui)
+		ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
+
+	// End renderpass
+	vkCmdEndRenderPass(cmd);
+}
+
 void VulkanEngine::renderPostprocessRenderpass(const FrameData& currentFrame, VkCommandBuffer cmd, uint32_t swapchainImageIndex)
 {
+	ZoneScoped;
+	TracyVkZone(currentFrame.mainCommandBufferTracyVk, cmd, "Render postprocess pass");
+
 	// Generate postprocessing.
 	ppBlitBloom(
 		cmd,
@@ -1141,50 +1364,150 @@ void VulkanEngine::renderPostprocessRenderpass(const FrameData& currentFrame, Vk
 		floodfillParams
 	);
 
-	// Combine all postprocessing
-	VkClearValue clearValue;
-	clearValue.color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
+	// Blit result to snapshot image.
+	if (_blitToSnapshotImageFlag)
+	{
+		// Combine postprocesses without tonemapping.
+		ppCombinePostprocesses(
+			cmd,
+			_postprocessRenderPass,
+			_swapchainFramebuffers[swapchainImageIndex],
+			*getMaterial("postprocessMaterial"),
+			_windowExtent,
+			currentFrame.globalDescriptor,
+			false,
+			false
+		);
 
-	VkRenderPassBeginInfo renderpassInfo = {
-		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-		.pNext = nullptr,
+		// Do blitting process.
+		VkImageMemoryBarrier imageBarrier = {
+			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+			.subresourceRange = {
+				.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+				.baseMipLevel   = 0,
+				.levelCount     = 1,
+				.baseArrayLayer = 0,
+				.layerCount     = 1,
+			},
+		};
 
-		.renderPass = _postprocessRenderPass,
-		.framebuffer = _swapchainFramebuffers[swapchainImageIndex],		// @NOTE: Framebuffer of the index the swapchain gave
-		.renderArea = {
-			.offset = VkOffset2D{ 0, 0 },
-			.extent = _windowExtent,
-		},
+		// Convert KHR image to transfer src.
+		imageBarrier.image = _swapchainImages[swapchainImageIndex];
+		imageBarrier.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+		imageBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+		imageBarrier.srcAccessMask = VK_ACCESS_NONE;
+		imageBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+		vkCmdPipelineBarrier(cmd,
+			VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+			0, nullptr,
+			0, nullptr,
+			1, &imageBarrier
+		);
 
-		.clearValueCount = 1,
-		.pClearValues = &clearValue,
-	};
+		// Convert snapshot image to transfer dst.
+		imageBarrier.image = _snapshotImage.image._image;
+		imageBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		imageBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		imageBarrier.srcAccessMask = VK_ACCESS_NONE;
+		imageBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		vkCmdPipelineBarrier(cmd,
+			VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+			0, nullptr,
+			0, nullptr,
+			1, &imageBarrier
+		);
 
-	// Begin renderpass
-	vkCmdBeginRenderPass(cmd, &renderpassInfo, VK_SUBPASS_CONTENTS_INLINE);
+		// Blit.
+		VkImageBlit blitRegion = {
+			.srcSubresource = {
+				.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+				.mipLevel       = 0,
+				.baseArrayLayer = 0,
+				.layerCount     = 1,
+			},
+			.srcOffsets = {
+				{ 0, 0, 0 },
+				{ (int32_t)_windowExtent.width, (int32_t)_windowExtent.height, 1 },
+			},
+			.dstSubresource = {
+				.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+				.mipLevel       = 0,
+				.baseArrayLayer = 0,
+				.layerCount     = 1,
+			},
+			.dstOffsets = {
+				{ 0, 0, 0 },
+				{
+					(int32_t)_windowExtent.width,
+					(int32_t)_windowExtent.height,
+					1
+				},
+			},
+		};
+		vkCmdBlitImage(cmd,
+			_swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+			_snapshotImage.image._image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			1, &blitRegion,
+			VK_FILTER_NEAREST
+		);
 
-	Material& postprocessMaterial = *getMaterial("postprocessMaterial");
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, postprocessMaterial.pipeline);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, postprocessMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, postprocessMaterial.pipelineLayout, 1, 1, &postprocessMaterial.textureSet, 0, nullptr);
-	vkCmdPushConstants(cmd, postprocessMaterial.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(GPUCoCParams), &CoCParams);
-	vkCmdDraw(cmd, 3, 1, 0, 0);
+		// Convert KHR image back to KHR present src.
+		imageBarrier.image = _swapchainImages[swapchainImageIndex];
+		imageBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+		imageBarrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+		imageBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+		imageBarrier.dstAccessMask = VK_ACCESS_NONE;
+		vkCmdPipelineBarrier(cmd,
+			VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+			0, nullptr,
+			0, nullptr,
+			1, &imageBarrier
+		);
 
-	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
+		// Convert snapshot image to shader read only.
+		imageBarrier.image = _snapshotImage.image._image;
+		imageBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		imageBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		imageBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		imageBarrier.dstAccessMask = VK_ACCESS_NONE;
+		vkCmdPipelineBarrier(cmd,
+			VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+			0, nullptr,
+			0, nullptr,
+			1, &imageBarrier
+		);
 
-	// End renderpass
-	vkCmdEndRenderPass(cmd);
+		// Finish.
+		_blitToSnapshotImageFlag = false;
+	}
+
+	// Finish postprocess stack.
+	ppCombinePostprocesses(
+		cmd,
+		_postprocessRenderPass,
+		_swapchainFramebuffers[swapchainImageIndex],
+		*getMaterial("postprocessMaterial"),
+		_windowExtent,
+		currentFrame.globalDescriptor,
+		true,
+		true
+	);
 }
 
 void VulkanEngine::render()
 {
+	ZoneScoped;
+
 	const auto& currentFrame = getCurrentFrame();
 	VkResult result;
 
 	// Wait until GPU finishes rendering the previous frame
 	result = vkWaitForFences(_device, 1, &currentFrame.renderFence, true, TIMEOUT_1_SEC);
 	if (result == VK_ERROR_DEVICE_LOST)
+	{
+		std::cerr << "ERROR: VULKAN DEVICE LOST." << std::endl;
 		return;
+	}
 
 	VK_CHECK(vkResetFences(_device, 1, &currentFrame.renderFence));
 
@@ -1214,60 +1537,87 @@ void VulkanEngine::render()
 		.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
 		.pInheritanceInfo = nullptr,
 	};
+
 	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
+	{
+		TracyVkZone(currentFrame.mainCommandBufferTracyVk, cmd, "Render");
 
-	//
-	// Upload current frame to GPU and compact into draw calls
-	//
-	perfs[14] = SDL_GetPerformanceCounter();
-	recreateVoxelLightingDescriptor();
-	uploadCurrentFrameToGPU(currentFrame);
-	textmesh::uploadUICameraDataToGPU();
-#ifdef _DEVELOP
-	std::vector<size_t> pickedPoolIndices = { 0 };
-	if (!searchForPickedObjectPoolIndex(pickedPoolIndices[0]))
-		pickedPoolIndices.clear();
-	std::vector<ModelWithIndirectDrawId> pickingIndirectDrawCommandIds;
-#endif
-	compactRenderObjectsIntoDraws(currentFrame, pickedPoolIndices, pickingIndirectDrawCommandIds);
-	perfs[14] = SDL_GetPerformanceCounter() - perfs[14];
+		//
+		// Upload current frame to GPU and compact into draw calls
+		//
+		recreateVoxelLightingDescriptor();
+		uploadCurrentFrameToGPU(currentFrame);
+		textmesh::uploadUICameraDataToGPU();
 
-	// Render render passes.
-	renderShadowRenderpass(currentFrame, cmd);
-	renderMainRenderpass(currentFrame, cmd, pickingIndirectDrawCommandIds);
-	renderUIRenderpass(cmd);
-	renderPostprocessRenderpass(currentFrame, cmd, swapchainImageIndex);
+	#ifdef _DEVELOP
+		std::vector<size_t> pickedPoolIndices = { 0 };
+		if (!searchForPickedObjectPoolIndex(pickedPoolIndices[0]))
+			pickedPoolIndices.clear();
+		std::vector<ModelWithIndirectDrawId> pickingIndirectDrawCommandIds;
+	#endif
 
-	//
-	// Submit command buffer to gpu for execution
-	//
-	VK_CHECK(vkEndCommandBuffer(cmd));
+		if (_roManager->checkIsMetaMeshListUnoptimized())
+		{
+			_roManager->optimizeMetaMeshList();
+			for (size_t i = 0; i < FRAME_OVERLAP; i++)
+				_frames[i].skinning.recalculateSkinningBuffers = true;
+		}
+		if (currentFrame.skinning.recalculateSkinningBuffers)
+			createSkinningBuffers(getCurrentFrame());
 
-	VkSubmitInfo submit = {};
-	submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-	submit.pNext = nullptr;
+		if (doCullingStuff)
+			compactRenderObjectsIntoDraws(getCurrentFrame(), pickedPoolIndices, pickingIndirectDrawCommandIds);
 
-	VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-	submit.pWaitDstStageMask = &waitStage;
+		// Render render passes.
+		if (doCullingStuff)
+		{
+			computeShadowCulling(currentFrame, cmd);
+			computeMainCulling(currentFrame, cmd);
+		}
+		computeSkinnedMeshes(currentFrame, cmd);
+		renderShadowRenderpass(currentFrame, cmd);
+		renderMainRenderpass(currentFrame, cmd, pickingIndirectDrawCommandIds);
+		renderUIRenderpass(currentFrame, cmd);
+		renderPostprocessRenderpass(currentFrame, cmd, swapchainImageIndex);
+	}
 
-	submit.waitSemaphoreCount = 1;
-	submit.pWaitSemaphores = &currentFrame.presentSemaphore;
+	// Submit command buffer to gpu for execution.
+	{
+		ZoneScopedN("Submit vk command buffer to gpu");
+		TracyVkCollect(currentFrame.mainCommandBufferTracyVk, cmd);  // Collect vulkan profiling before command buffer recording ends.
 
-	submit.signalSemaphoreCount = 1;
-	submit.pSignalSemaphores = &currentFrame.renderSemaphore;
+		VK_CHECK(vkEndCommandBuffer(cmd));
 
-	submit.commandBufferCount = 1;
-	submit.pCommandBuffers = &cmd;
+		VkSubmitInfo submit = {};
+		submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		submit.pNext = nullptr;
 
-	// Submit work to gpu
-	result = vkQueueSubmit(_graphicsQueue, 1, &submit, currentFrame.renderFence);
-	if (result == VK_ERROR_DEVICE_LOST)
-		return;
+		VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+		submit.pWaitDstStageMask = &waitStage;
+
+		submit.waitSemaphoreCount = 1;
+		submit.pWaitSemaphores = &currentFrame.presentSemaphore;
+
+		submit.signalSemaphoreCount = 1;
+		submit.pSignalSemaphores = &currentFrame.renderSemaphore;
+
+		submit.commandBufferCount = 1;
+		submit.pCommandBuffers = &cmd;
+
+		// Submit work to gpu
+		result = vkQueueSubmit(_graphicsQueue, 1, &submit, currentFrame.renderFence);
+		if (result == VK_ERROR_DEVICE_LOST)
+		{
+			std::cerr << "ERROR: VULKAN DEVICE LOST." << std::endl;
+			return;
+		}
+	}
 
 	//
 	// Picking Render Pass (OPTIONAL AND SEPARATE)
 	//
-	if (input::onLMBPress &&
+	if (_currentEditorMode == EditorModes::LEVEL_EDITOR &&
+		input::editorInputSet().pickObject.onAction &&
 		_camera->getCameraMode() == Camera::_cameraMode_freeCamMode &&
 		!_camera->freeCamMode.enabled &&
 		!ImGui::GetIO().WantCaptureMouse &&
@@ -1279,30 +1629,32 @@ void VulkanEngine::render()
 		renderPickingRenderpass(currentFrame);
 	}
 
-	//
-	// Present the rendered frame to the screen
-	//
-	VkPresentInfoKHR presentInfo = {
-		.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-		.pNext = nullptr,
-
-		.waitSemaphoreCount = 1,
-		.pWaitSemaphores = &currentFrame.renderSemaphore,
-
-		.swapchainCount = 1,
-		.pSwapchains = &_swapchain,
-
-		.pImageIndices = &swapchainImageIndex,
-	};
-
-	result = vkQueuePresentKHR(_graphicsQueue, &presentInfo);
-	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
+	// Present the rendered frame to the screen.
 	{
-		_recreateSwapchain = true;
-	}
-	else if (result != VK_SUCCESS)
-	{
-		throw std::runtime_error("ERROR: failed to present swap chain image!");
+		ZoneScopedN("Present rendered frame");
+
+		VkPresentInfoKHR presentInfo = {
+			.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+			.pNext = nullptr,
+
+			.waitSemaphoreCount = 1,
+			.pWaitSemaphores = &currentFrame.renderSemaphore,
+
+			.swapchainCount = 1,
+			.pSwapchains = &_swapchain,
+
+			.pImageIndices = &swapchainImageIndex,
+		};
+
+		result = vkQueuePresentKHR(_graphicsQueue, &presentInfo);
+		if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
+		{
+			_recreateSwapchain = true;
+		}
+		else if (result != VK_SUCCESS)
+		{
+			throw std::runtime_error("ERROR: failed to present swap chain image!");
+		}
 	}
 
 	//
@@ -1313,136 +1665,138 @@ void VulkanEngine::render()
 
 void VulkanEngine::loadImages()
 {
-	// Load empty
+	// @NOTE: @NOCHECKIN: This needs to be resolved. Do we keep this or discard this? Images should be loaded in with ktx loaders now.
+	// // Load empty
+	// {
+	// 	Texture empty;
+	// 	vkutil::loadImageFromFile(*this, "res/texture_pool/empty.png", VK_FORMAT_R8G8B8A8_UNORM, 1, empty.image);
+
+	// 	VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_UNORM, empty.image._image, VK_IMAGE_ASPECT_COLOR_BIT, empty.image._mipLevels);
+	// 	vkCreateImageView(_device, &imageInfo, nullptr, &empty.imageView);
+
+	// 	VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(empty.image._mipLevels), VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
+	// 	vkCreateSampler(_device, &samplerInfo, nullptr, &empty.sampler);
+
+	// 	_mainDeletionQueue.pushFunction([=]() {
+	// 		vkDestroySampler(_device, empty.sampler, nullptr);
+	// 		vkDestroyImageView(_device, empty.imageView, nullptr);
+	// 	});
+
+	// 	_loadedTextures["empty"] = empty;
+	// }
+	struct ImageFnameName
 	{
-		Texture empty;
-		vkutil::loadImageFromFile(*this, "res/textures/empty.png", VK_FORMAT_R8G8B8A8_UNORM, 1, empty.image);
+		std::string fname;
+		std::string textureName;
+	};
+	std::vector<ImageFnameName> fnameNames = {
+		{ "empty.hdelicious", "empty" },
+		{ "empty3d.hdelicious", "empty3d" },
+		{ "_develop_icon_layer_visible.hdelicious", "imguiTextureLayerVisible" },
+		{ "_develop_icon_layer_invisible.hdelicious", "imguiTextureLayerInvisible" },
+		{ "_develop_icon_layer_builder.hdelicious", "imguiTextureLayerBuilder" },
+		{ "_develop_icon_layer_collision.hdelicious", "imguiTextureLayerCollision" },
+	};
+	for (auto& fn : fnameNames)
+	{
+		uint32_t dimensions;
+		Texture tex;
+		VkFormat format;
+		vkutil::loadKTXImageFromFile(*this, ("res/texture_cooked/" + fn.fname).c_str(), dimensions, /*VK_FORMAT_R8G8B8A8_UNORM*/format, tex.image);
 
-		VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_UNORM, empty.image._image, VK_IMAGE_ASPECT_COLOR_BIT, empty.image._mipLevels);
-		vkCreateImageView(_device, &imageInfo, nullptr, &empty.imageView);
+		VkImageViewCreateInfo imageInfo =
+			(dimensions == 3 ?
+			vkinit::imageview3DCreateInfo(format, tex.image._image, VK_IMAGE_ASPECT_COLOR_BIT, tex.image._mipLevels) :
+			vkinit::imageviewCreateInfo(format, tex.image._image, VK_IMAGE_ASPECT_COLOR_BIT, tex.image._mipLevels));
+		vkCreateImageView(_device, &imageInfo, nullptr, &tex.imageView);
 
-		VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(empty.image._mipLevels), VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
-		vkCreateSampler(_device, &samplerInfo, nullptr, &empty.sampler);
+		VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(tex.image._mipLevels), VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
+		vkCreateSampler(_device, &samplerInfo, nullptr, &tex.sampler);
 
 		_mainDeletionQueue.pushFunction([=]() {
-			vkDestroySampler(_device, empty.sampler, nullptr);
-			vkDestroyImageView(_device, empty.imageView, nullptr);
+			vkDestroySampler(_device, tex.sampler, nullptr);
+			vkDestroyImageView(_device, tex.imageView, nullptr);
 		});
 
-		_loadedTextures["empty"] = empty;
-	}
-	{
-		Texture empty;
-		vkutil::loadImage3DFromFile(*this, { "res/textures/empty.png" }, VK_FORMAT_R8G8B8A8_UNORM, empty.image);
-
-		VkImageViewCreateInfo imageInfo = vkinit::imageview3DCreateInfo(VK_FORMAT_R8G8B8A8_UNORM, empty.image._image, VK_IMAGE_ASPECT_COLOR_BIT, empty.image._mipLevels);
-		vkCreateImageView(_device, &imageInfo, nullptr, &empty.imageView);
-
-		VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(empty.image._mipLevels), VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
-		vkCreateSampler(_device, &samplerInfo, nullptr, &empty.sampler);
-
-		_mainDeletionQueue.pushFunction([=]() {
-			vkDestroySampler(_device, empty.sampler, nullptr);
-			vkDestroyImageView(_device, empty.imageView, nullptr);
-		});
-
-		_loadedTextures["empty3d"] = empty;
+		_loadedTextures[fn.textureName] = tex;
 	}
 
-	// Load woodFloor057
-	{
-		Texture woodFloor057;
-		vkutil::loadImageFromFile(*this, "res/textures/WoodFloor057_1K-JPG/WoodFloor057_1K_Color.jpg", VK_FORMAT_R8G8B8A8_SRGB, 0, woodFloor057.image);
 
-		VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, woodFloor057.image._image, VK_IMAGE_ASPECT_COLOR_BIT, woodFloor057.image._mipLevels);
-		vkCreateImageView(_device, &imageInfo, nullptr, &woodFloor057.imageView);
+	// // Load imguiTextureLayerVisible
+	// {
+	// 	Texture textureLayerVisible;
+	// 	vkutil::loadImageFromFile(*this, "res/_develop/icon_layer_visible.png", VK_FORMAT_R8G8B8A8_SRGB, 0, textureLayerVisible.image);
 
-		VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(woodFloor057.image._mipLevels), VK_FILTER_LINEAR);
-		vkCreateSampler(_device, &samplerInfo, nullptr, &woodFloor057.sampler);
+	// 	VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, textureLayerVisible.image._image, VK_IMAGE_ASPECT_COLOR_BIT, textureLayerVisible.image._mipLevels);
+	// 	vkCreateImageView(_device, &imageInfo, nullptr, &textureLayerVisible.imageView);
 
-		_mainDeletionQueue.pushFunction([=]() {
-			vkDestroySampler(_device, woodFloor057.sampler, nullptr);
-			vkDestroyImageView(_device, woodFloor057.imageView, nullptr);
-			});
+	// 	VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(textureLayerVisible.image._mipLevels), VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
+	// 	vkCreateSampler(_device, &samplerInfo, nullptr, &textureLayerVisible.sampler);
 
-		_loadedTextures["WoodFloor057"] = woodFloor057;
-	}
+	// 	_mainDeletionQueue.pushFunction([=]() {
+	// 		vkDestroySampler(_device, textureLayerVisible.sampler, nullptr);
+	// 		vkDestroyImageView(_device, textureLayerVisible.imageView, nullptr);
+	// 		});
 
-	// Load imguiTextureLayerVisible
-	{
-		Texture textureLayerVisible;
-		vkutil::loadImageFromFile(*this, "res/_develop/icon_layer_visible.png", VK_FORMAT_R8G8B8A8_SRGB, 0, textureLayerVisible.image);
+	// 	_loadedTextures["imguiTextureLayerVisible"] = textureLayerVisible;
+	// }
 
-		VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, textureLayerVisible.image._image, VK_IMAGE_ASPECT_COLOR_BIT, textureLayerVisible.image._mipLevels);
-		vkCreateImageView(_device, &imageInfo, nullptr, &textureLayerVisible.imageView);
+	// // Load imguiTextureLayerInvisible
+	// {
+	// 	Texture textureLayerInvisible;
+	// 	vkutil::loadImageFromFile(*this, "res/_develop/icon_layer_invisible.png", VK_FORMAT_R8G8B8A8_SRGB, 0, textureLayerInvisible.image);
 
-		VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(textureLayerVisible.image._mipLevels), VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
-		vkCreateSampler(_device, &samplerInfo, nullptr, &textureLayerVisible.sampler);
+	// 	VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, textureLayerInvisible.image._image, VK_IMAGE_ASPECT_COLOR_BIT, textureLayerInvisible.image._mipLevels);
+	// 	vkCreateImageView(_device, &imageInfo, nullptr, &textureLayerInvisible.imageView);
 
-		_mainDeletionQueue.pushFunction([=]() {
-			vkDestroySampler(_device, textureLayerVisible.sampler, nullptr);
-			vkDestroyImageView(_device, textureLayerVisible.imageView, nullptr);
-			});
+	// 	VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(textureLayerInvisible.image._mipLevels), VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
+	// 	vkCreateSampler(_device, &samplerInfo, nullptr, &textureLayerInvisible.sampler);
 
-		_loadedTextures["imguiTextureLayerVisible"] = textureLayerVisible;
-	}
+	// 	_mainDeletionQueue.pushFunction([=]() {
+	// 		vkDestroySampler(_device, textureLayerInvisible.sampler, nullptr);
+	// 		vkDestroyImageView(_device, textureLayerInvisible.imageView, nullptr);
+	// 		});
 
-	// Load imguiTextureLayerInvisible
-	{
-		Texture textureLayerInvisible;
-		vkutil::loadImageFromFile(*this, "res/_develop/icon_layer_invisible.png", VK_FORMAT_R8G8B8A8_SRGB, 0, textureLayerInvisible.image);
+	// 	_loadedTextures["imguiTextureLayerInvisible"] = textureLayerInvisible;
+	// }
 
-		VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, textureLayerInvisible.image._image, VK_IMAGE_ASPECT_COLOR_BIT, textureLayerInvisible.image._mipLevels);
-		vkCreateImageView(_device, &imageInfo, nullptr, &textureLayerInvisible.imageView);
+	// // Load imguiTextureLayerBuilder
+	// {
+	// 	Texture textureLayerBuilder;
+	// 	vkutil::loadImageFromFile(*this, "res/_develop/icon_layer_builder.png", VK_FORMAT_R8G8B8A8_SRGB, 0, textureLayerBuilder.image);
 
-		VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(textureLayerInvisible.image._mipLevels), VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
-		vkCreateSampler(_device, &samplerInfo, nullptr, &textureLayerInvisible.sampler);
+	// 	VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, textureLayerBuilder.image._image, VK_IMAGE_ASPECT_COLOR_BIT, textureLayerBuilder.image._mipLevels);
+	// 	vkCreateImageView(_device, &imageInfo, nullptr, &textureLayerBuilder.imageView);
 
-		_mainDeletionQueue.pushFunction([=]() {
-			vkDestroySampler(_device, textureLayerInvisible.sampler, nullptr);
-			vkDestroyImageView(_device, textureLayerInvisible.imageView, nullptr);
-			});
+	// 	VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(textureLayerBuilder.image._mipLevels), VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
+	// 	vkCreateSampler(_device, &samplerInfo, nullptr, &textureLayerBuilder.sampler);
 
-		_loadedTextures["imguiTextureLayerInvisible"] = textureLayerInvisible;
-	}
+	// 	_mainDeletionQueue.pushFunction([=]() {
+	// 		vkDestroySampler(_device, textureLayerBuilder.sampler, nullptr);
+	// 		vkDestroyImageView(_device, textureLayerBuilder.imageView, nullptr);
+	// 		});
 
-	// Load imguiTextureLayerBuilder
-	{
-		Texture textureLayerBuilder;
-		vkutil::loadImageFromFile(*this, "res/_develop/icon_layer_builder.png", VK_FORMAT_R8G8B8A8_SRGB, 0, textureLayerBuilder.image);
+	// 	_loadedTextures["imguiTextureLayerBuilder"] = textureLayerBuilder;
+	// }
 
-		VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, textureLayerBuilder.image._image, VK_IMAGE_ASPECT_COLOR_BIT, textureLayerBuilder.image._mipLevels);
-		vkCreateImageView(_device, &imageInfo, nullptr, &textureLayerBuilder.imageView);
+	// // Load imguiTextureLayerCollision  @NOTE: this is a special case. It's not a render layer but rather a toggle to see the debug shapes rendered
+	// {
+	// 	Texture textureLayerCollision;
+	// 	vkutil::loadImageFromFile(*this, "res/_develop/icon_layer_collision.png", VK_FORMAT_R8G8B8A8_SRGB, 0, textureLayerCollision.image);
 
-		VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(textureLayerBuilder.image._mipLevels), VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
-		vkCreateSampler(_device, &samplerInfo, nullptr, &textureLayerBuilder.sampler);
+	// 	VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, textureLayerCollision.image._image, VK_IMAGE_ASPECT_COLOR_BIT, textureLayerCollision.image._mipLevels);
+	// 	vkCreateImageView(_device, &imageInfo, nullptr, &textureLayerCollision.imageView);
 
-		_mainDeletionQueue.pushFunction([=]() {
-			vkDestroySampler(_device, textureLayerBuilder.sampler, nullptr);
-			vkDestroyImageView(_device, textureLayerBuilder.imageView, nullptr);
-			});
+	// 	VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(textureLayerCollision.image._mipLevels), VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
+	// 	vkCreateSampler(_device, &samplerInfo, nullptr, &textureLayerCollision.sampler);
 
-		_loadedTextures["imguiTextureLayerBuilder"] = textureLayerBuilder;
-	}
+	// 	_mainDeletionQueue.pushFunction([=]() {
+	// 		vkDestroySampler(_device, textureLayerCollision.sampler, nullptr);
+	// 		vkDestroyImageView(_device, textureLayerCollision.imageView, nullptr);
+	// 		});
 
-	// Load imguiTextureLayerCollision  @NOTE: this is a special case. It's not a render layer but rather a toggle to see the debug shapes rendered
-	{
-		Texture textureLayerCollision;
-		vkutil::loadImageFromFile(*this, "res/_develop/icon_layer_collision.png", VK_FORMAT_R8G8B8A8_SRGB, 0, textureLayerCollision.image);
-
-		VkImageViewCreateInfo imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, textureLayerCollision.image._image, VK_IMAGE_ASPECT_COLOR_BIT, textureLayerCollision.image._mipLevels);
-		vkCreateImageView(_device, &imageInfo, nullptr, &textureLayerCollision.imageView);
-
-		VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(static_cast<float_t>(textureLayerCollision.image._mipLevels), VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false);
-		vkCreateSampler(_device, &samplerInfo, nullptr, &textureLayerCollision.sampler);
-
-		_mainDeletionQueue.pushFunction([=]() {
-			vkDestroySampler(_device, textureLayerCollision.sampler, nullptr);
-			vkDestroyImageView(_device, textureLayerCollision.imageView, nullptr);
-			});
-
-		_loadedTextures["imguiTextureLayerCollision"] = textureLayerCollision;
-	}
+	// 	_loadedTextures["imguiTextureLayerCollision"] = textureLayerCollision;
+	// }
 
 	// Initialize the shadow jitter image
 	{
@@ -1526,6 +1880,8 @@ void VulkanEngine::initVoxelLightingDescriptor()
 
 void VulkanEngine::recreateVoxelLightingDescriptor()
 {
+	ZoneScoped;
+
 	// Upload transforms.
 	void* data;
 	vmaMapMemory(_allocator, _voxelFieldLightingGridTextureSet.transformsBuffer._allocation, &data);
@@ -1596,6 +1952,8 @@ Material* VulkanEngine::attachTextureSetToMaterial(VkDescriptorSet textureSet, c
 
 Material* VulkanEngine::getMaterial(const std::string& name)
 {
+	ZoneScoped;
+
 	auto it = _materials.find(name);
 	if (it == _materials.end())
 		return nullptr;
@@ -1660,7 +2018,7 @@ void VulkanEngine::initVulkan()
 
 	auto instance = builder.set_app_name("Hawsoo_Solanine_x64")
 		.request_validation_layers(true)
-		.require_api_version(1, 3, 0)
+		.require_api_version(1, 2, 0)
 		.use_default_debug_messenger()
 		.build();
 
@@ -1675,7 +2033,7 @@ void VulkanEngine::initVulkan()
 
 	vkb::PhysicalDeviceSelector selector{ vkbInstance };
 	vkb::PhysicalDevice physicalDevice = selector
-		.set_minimum_version(1, 3)
+		.set_minimum_version(1, 2)  // I thought draw indirect count was in 1.3, but it's in 1.2. Idk any other reason to have 1.3 be a requirement.
 		.set_surface(_surface)
 		.set_required_features({
 			// @NOTE: @FEATURES: Enable required features right here
@@ -1701,6 +2059,14 @@ void VulkanEngine::initVulkan()
 	VkPhysicalDeviceVulkan12Features vulkan12Features = {
 		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
 		.pNext = nullptr,
+		// For `vkCmdDrawIndexedIndirectCount`
+		.drawIndirectCount = VK_TRUE,
+		// For non-uniform, dynamic arrays of textures in shaders.
+		.descriptorIndexing = VK_TRUE,
+		.shaderSampledImageArrayNonUniformIndexing = VK_TRUE,
+		.descriptorBindingVariableDescriptorCount = VK_TRUE,
+		.runtimeDescriptorArray = VK_TRUE,
+		// For MIN/MAX sampler when creating mip chains.
 		.samplerFilterMinmax = VK_TRUE,
 	};
 	vkb::Device vkbDevice =
@@ -1734,6 +2100,7 @@ void VulkanEngine::initVulkan()
 	vkutil::pipelinelayoutcache::init(_device);
 	textmesh::init(this);
 	textbox::init(this);
+	materialorganizer::init(this);
 	vkinit::_maxSamplerAnisotropy = _gpuProperties.limits.maxSamplerAnisotropy;
 
 	//
@@ -1829,13 +2196,30 @@ void VulkanEngine::initCommands()
 		// Create picking command buffer  @NOTE: commandbufferallocateinfo just says we're gonna allocate 1 commandbuffer from the pool
 		VK_CHECK(vkAllocateCommandBuffers(_device, &cmdAllocInfo, &_frames[i].pickingCommandBuffer));
 
+#if TRACY_ENABLE
+		// Create tracy vulkan context.
+		_frames[i].mainCommandBufferTracyVk =
+			TracyVkContext(_chosenGPU, _device, _graphicsQueue, _frames[i].mainCommandBuffer);
+#endif
+
 		// Create indirect draw command buffer
-		_frames[i].indirectDrawCommandBuffer = createBuffer(sizeof(VkDrawIndexedIndirectCommand) * INSTANCE_PTR_MAX_CAPACITY, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+		_frames[i].indirectDrawCommandRawBuffer = createBuffer(sizeof(VkDrawIndexedIndirectCommand) * INSTANCE_PTR_MAX_CAPACITY, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+		_frames[i].indirectShadowPass.indirectDrawCommandsBuffer = createBuffer(sizeof(VkDrawIndexedIndirectCommand) * INSTANCE_PTR_MAX_CAPACITY, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+		_frames[i].indirectMainPass.indirectDrawCommandsBuffer = createBuffer(sizeof(VkDrawIndexedIndirectCommand) * INSTANCE_PTR_MAX_CAPACITY, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+		_frames[i].indirectDrawCommandOffsetsBuffer = createBuffer(sizeof(GPUIndirectDrawCommandOffsetsData) * INSTANCE_PTR_MAX_CAPACITY, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+		_frames[i].indirectShadowPass.indirectDrawCommandCountsBuffer = createBuffer(sizeof(uint32_t) * INSTANCE_PTR_MAX_CAPACITY, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+		_frames[i].indirectMainPass.indirectDrawCommandCountsBuffer = createBuffer(sizeof(uint32_t) * INSTANCE_PTR_MAX_CAPACITY, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
 		// Add destroy command for cleanup
 		_mainDeletionQueue.pushFunction([=]() {
 			vkDestroyCommandPool(_device, _frames[i].commandPool, nullptr);
-			vmaDestroyBuffer(_allocator, _frames[i].indirectDrawCommandBuffer._buffer, _frames[i].indirectDrawCommandBuffer._allocation);
+			TracyVkDestroy(_frames[i].mainCommandBufferTracyVk);
+			vmaDestroyBuffer(_allocator, _frames[i].indirectDrawCommandRawBuffer._buffer, _frames[i].indirectDrawCommandRawBuffer._allocation);
+			vmaDestroyBuffer(_allocator, _frames[i].indirectShadowPass.indirectDrawCommandsBuffer._buffer, _frames[i].indirectShadowPass.indirectDrawCommandsBuffer._allocation);
+			vmaDestroyBuffer(_allocator, _frames[i].indirectMainPass.indirectDrawCommandsBuffer._buffer, _frames[i].indirectMainPass.indirectDrawCommandsBuffer._allocation);
+			vmaDestroyBuffer(_allocator, _frames[i].indirectDrawCommandOffsetsBuffer._buffer, _frames[i].indirectDrawCommandOffsetsBuffer._allocation);
+			vmaDestroyBuffer(_allocator, _frames[i].indirectShadowPass.indirectDrawCommandCountsBuffer._buffer, _frames[i].indirectShadowPass.indirectDrawCommandCountsBuffer._allocation);
+			vmaDestroyBuffer(_allocator, _frames[i].indirectMainPass.indirectDrawCommandCountsBuffer._buffer, _frames[i].indirectMainPass.indirectDrawCommandCountsBuffer._allocation);
 			});
 	}
 
@@ -3510,7 +3894,7 @@ void VulkanEngine::initDescriptors()    // @NOTE: don't destroy and then recreat
 			.range = sizeof(GPUObjectData) * RENDER_OBJECTS_MAX_CAPACITY,
 		};
 		vkutil::DescriptorBuilder::begin()
-			.bindBuffer(0, &objectBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_VERTEX_BIT)
+			.bindBuffer(0, &objectBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_COMPUTE_BIT)
 			.build(_frames[i].objectDescriptor, _objectSetLayout);
 
 		//
@@ -3523,7 +3907,7 @@ void VulkanEngine::initDescriptors()    // @NOTE: don't destroy and then recreat
 			.range = sizeof(GPUInstancePointer) * INSTANCE_PTR_MAX_CAPACITY,
 		};
 		vkutil::DescriptorBuilder::begin()
-			.bindBuffer(0, &instancePtrBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT)
+			.bindBuffer(0, &instancePtrBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT)
 			.build(_frames[i].instancePtrDescriptor, _instancePtrSetLayout);
 
 		//
@@ -3567,93 +3951,6 @@ void VulkanEngine::initDescriptors()    // @NOTE: don't destroy and then recreat
 	attachTextureSetToMaterial(singleTextureSet, "skyboxMaterial");
 
 	//
-	// All PBR Textures
-	//
-	AllocatedBuffer materialParamsBuffer = createBuffer(sizeof(PBRMaterialParam) * MAX_NUM_MATERIALS, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
-
-	VkDescriptorImageInfo* textureImageInfos = new VkDescriptorImageInfo[MAX_NUM_MAPS];  // @TODO: make this an expandable array.
-	for (size_t i = 0; i < MAX_NUM_MAPS; i++)
-		textureImageInfos[i] =
-			(i < vkglTF::Model::pbrTextureCollection.textures.size()) ?
-			vkinit::textureToDescriptorImageInfo(vkglTF::Model::pbrTextureCollection.textures[i]) :
-			vkinit::textureToDescriptorImageInfo(vkglTF::Model::pbrTextureCollection.textures[0]);
-
-	VkDescriptorBufferInfo materialParamsBufferInfo = {
-		.buffer = materialParamsBuffer._buffer,
-		.offset = 0,
-		.range = sizeof(PBRMaterialParam) * MAX_NUM_MATERIALS,
-	};
-
-	VkDescriptorSet allPBRTexturesDescriptorSet;
-	vkutil::DescriptorBuilder::begin()
-		.bindImageArray(0, MAX_NUM_MAPS, textureImageInfos, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
-		.bindBuffer(1, &materialParamsBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT)
-		.build(allPBRTexturesDescriptorSet, _pbrTexturesSetLayout);
-	attachTextureSetToMaterial(allPBRTexturesDescriptorSet, "pbrMaterial");
-
-	//
-	// Copy over material information
-	//
-	void* materialParamsData;
-	vmaMapMemory(_allocator, materialParamsBuffer._allocation, &materialParamsData);
-	PBRMaterialParam* materialParamsSSBO = (PBRMaterialParam*)materialParamsData;
-	for (size_t i = 0; i < MAX_NUM_MATERIALS; i++)
-	{
-		size_t index = i;
-		if (index >= vkglTF::Model::pbrMaterialCollection.materials.size())
-			index = 0;
-
-		vkglTF::PBRMaterial* mat = vkglTF::Model::pbrMaterialCollection.materials[index];
-
-		PBRMaterialParam p = {
-			.colorMapIndex              = mat->texturePtr.colorMapIndex,
-			.physicalDescriptorMapIndex = mat->texturePtr.physicalDescriptorMapIndex,
-			.normalMapIndex             = mat->texturePtr.normalMapIndex,
-			.aoMapIndex                 = mat->texturePtr.aoMapIndex,
-			.emissiveMapIndex           = mat->texturePtr.emissiveMapIndex,
-		};
-
-		glm_vec4_copy(mat->emissiveFactor, p.emissiveFactor);
-		// To save space, availabilty and texture coordinates set are combined
-		// -1 = texture not used for this material, >= 0 texture used and index of texture coordinate set
-		p.colorTextureSet = mat->baseColorTexture != nullptr ? mat->texCoordSets.baseColor : -1;
-		p.normalTextureSet = mat->normalTexture != nullptr ? mat->texCoordSets.normal : -1;
-		p.occlusionTextureSet = mat->occlusionTexture != nullptr ? mat->texCoordSets.occlusion : -1;
-		p.emissiveTextureSet = mat->emissiveTexture != nullptr ? mat->texCoordSets.emissive : -1;
-		p.alphaMask = static_cast<float>(mat->alphaMode == vkglTF::PBRMaterial::ALPHAMODE_MASK);
-		p.alphaMaskCutoff = mat->alphaCutoff;
-
-		// TODO: glTF specs states that metallic roughness should be preferred, even if specular glossiness is present
-
-		if (mat->pbrWorkflows.metallicRoughness)
-		{
-			// Metallic roughness workflow
-			p.workflow = static_cast<float>(PBR_WORKFLOW_METALLIC_ROUGHNESS);
-			glm_vec4_copy(mat->baseColorFactor, p.baseColorFactor);
-			p.metallicFactor = mat->metallicFactor;
-			p.roughnessFactor = mat->roughnessFactor;
-			p.PhysicalDescriptorTextureSet = mat->metallicRoughnessTexture != nullptr ? mat->texCoordSets.metallicRoughness : -1;
-			p.colorTextureSet = mat->baseColorTexture != nullptr ? mat->texCoordSets.baseColor : -1;
-		}
-
-		if (mat->pbrWorkflows.specularGlossiness)
-		{
-			// Specular glossiness workflow
-			p.workflow = static_cast<float>(PBR_WORKFLOW_SPECULAR_GLOSSINESS);
-			p.PhysicalDescriptorTextureSet = mat->extension.specularGlossinessTexture != nullptr ? mat->texCoordSets.specularGlossiness : -1;
-			p.colorTextureSet = mat->extension.diffuseTexture != nullptr ? mat->texCoordSets.baseColor : -1;
-			glm_vec4_copy(mat->extension.diffuseFactor, p.diffuseFactor);
-			glm_vec4(mat->extension.specularFactor, 1.0f, p.specularFactor);
-		}
-
-		*materialParamsSSBO = p;
-
-		// Increment along, sir!
-		materialParamsSSBO++;
-	}
-	vmaUnmapMemory(_allocator, materialParamsBuffer._allocation);
-
-	//
 	// Voxel Field Lightgrids Descriptor Set
 	//
 	initVoxelLightingDescriptor();
@@ -3663,31 +3960,81 @@ void VulkanEngine::initDescriptors()    // @NOTE: don't destroy and then recreat
 	//
 	vkglTF::Animator::initializeEmpty(this);
 
-	// Add cleanup procedure
-	_mainDeletionQueue.pushFunction([=]() {
-		vmaDestroyBuffer(_allocator, materialParamsBuffer._buffer, materialParamsBuffer._allocation);
-	});
-
 	//
 	// Text Mesh Fonts
 	//
-	textmesh::loadFontSDF("res/textures/font_sdf_rgba.png", "res/font.fnt", "defaultFont");
+	textmesh::loadFontSDF("res/texture_pool/font_sdf_rgba.png", "res/font.fnt", "defaultFont");
 
 	physengine::initDebugVisDescriptors(this);
+
+	// Descriptor set for compute culling.
+	for (size_t i = 0; i < FRAME_OVERLAP; i++)
+	{
+		auto& currentFrame = _frames[i];
+
+		VkDescriptorBufferInfo drawCommandsRawBufferInfo = {
+			.buffer = currentFrame.indirectDrawCommandRawBuffer._buffer,
+			.offset = 0,
+			.range = sizeof(VkDrawIndexedIndirectCommand) * INSTANCE_PTR_MAX_CAPACITY,
+		};
+		VkDescriptorBufferInfo drawCommandOffsetsBufferInfo = {
+			.buffer = currentFrame.indirectDrawCommandOffsetsBuffer._buffer,
+			.offset = 0,
+			.range = sizeof(GPUIndirectDrawCommandOffsetsData) * INSTANCE_PTR_MAX_CAPACITY,
+		};
+		{
+			// Shadow pass.
+			VkDescriptorBufferInfo drawCommandsOutputBufferInfo = {
+				.buffer = currentFrame.indirectShadowPass.indirectDrawCommandsBuffer._buffer,
+				.offset = 0,
+				.range = sizeof(VkDrawIndexedIndirectCommand) * INSTANCE_PTR_MAX_CAPACITY,
+			};
+			VkDescriptorBufferInfo drawCommandCountsBufferInfo = {
+				.buffer = currentFrame.indirectShadowPass.indirectDrawCommandCountsBuffer._buffer,
+				.offset = 0,
+				.range = sizeof(uint32_t) * INSTANCE_PTR_MAX_CAPACITY,
+			};
+
+			vkutil::DescriptorBuilder::begin()
+				.bindBuffer(0, &drawCommandsRawBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT)
+				.bindBuffer(1, &drawCommandsOutputBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT)
+				.bindBuffer(2, &drawCommandOffsetsBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT)
+				.bindBuffer(3, &drawCommandCountsBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT)
+				.build(currentFrame.indirectShadowPass.indirectDrawCommandDescriptor, _computeCullingIndirectDrawCommandSetLayout);
+		}
+		{
+			// Main pass.
+			VkDescriptorBufferInfo drawCommandsOutputBufferInfo = {
+				.buffer = currentFrame.indirectMainPass.indirectDrawCommandsBuffer._buffer,
+				.offset = 0,
+				.range = sizeof(VkDrawIndexedIndirectCommand) * INSTANCE_PTR_MAX_CAPACITY,
+			};
+			VkDescriptorBufferInfo drawCommandCountsBufferInfo = {
+				.buffer = currentFrame.indirectMainPass.indirectDrawCommandCountsBuffer._buffer,
+				.offset = 0,
+				.range = sizeof(uint32_t) * INSTANCE_PTR_MAX_CAPACITY,
+			};
+
+			vkutil::DescriptorBuilder::begin()
+				.bindBuffer(0, &drawCommandsRawBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT)
+				.bindBuffer(1, &drawCommandsOutputBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT)
+				.bindBuffer(2, &drawCommandOffsetsBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT)
+				.bindBuffer(3, &drawCommandCountsBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT)
+				.build(currentFrame.indirectMainPass.indirectDrawCommandDescriptor, _computeCullingIndirectDrawCommandSetLayout);
+		}
+	}
+
+	// Descriptor set layout for compute skinning.
+	// (Can't create descriptors bc 0 byte buffers can't get created)
+	_computeSkinningInoutVerticesSetLayout =
+		vkutil::descriptorlayoutcache::createDescriptorLayout({
+			vkutil::descriptorlayoutcache::layoutBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT),
+			vkutil::descriptorlayoutcache::layoutBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT),
+		});
 }
 
 void VulkanEngine::initPipelines()
 {
-	//
-	// Load shader modules
-	//
-	/*VkShaderModule debugPhysicsObjectVertShader,
-					debugPhysicsObjectFragShader;
-	loadShaderModule("shader/debug_physics_object.vert.spv", debugPhysicsObjectVertShader);
-	loadShaderModule("shader/debug_physics_object.frag.spv", debugPhysicsObjectFragShader);*/
-
-
-
 	// Common values
 	vkglTF::VertexInputDescription modelVertexDescription = vkglTF::Model::Vertex::getVertexDescription();
 	VkViewport screenspaceViewport = {
@@ -3725,61 +4072,33 @@ void VulkanEngine::initPipelines()
 		};
 	}
 
-	// Mesh ZPrepass Pipeline
-	VkPipeline meshZPrepassPipeline;
-	VkPipelineLayout meshZPrepassPipelineLayout;
+	// Snapshot image pipeline
+	VkPipeline snapshotImagePipeline;
+	VkPipelineLayout snapshotImagePipelineLayout;
 	vkutil::pipelinebuilder::build(
 		{},
-		{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _pbrTexturesSetLayout, _skeletalAnimationSetLayout },
+		{ _singleTextureSetLayout },
 		{
-			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/pbr_zprepass.vert.spv" },
-			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/pbr_khr_zprepass.frag.spv" },
+			{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/genbrdflut.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/snapshotImage.frag.spv" },
 		},
-		modelVertexDescription.attributes,
-		modelVertexDescription.bindings,
+		{},  // No triangles are actually streamed in
+		{},
 		vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
 		screenspaceViewport,
 		screenspaceScissor,
-		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT),
-		{}, // No color attachment for the z prepass pipeline; only writing to depth!
-		vkinit::multisamplingStateCreateInfo(),
-		vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS),
-		{},
-		_mainRenderPass,
-		0,
-		meshZPrepassPipeline,
-		meshZPrepassPipelineLayout,
-		_swapchainDependentDeletionQueue
-	);
-	attachPipelineToMaterial(meshZPrepassPipeline, meshZPrepassPipelineLayout, "pbrZPrepassMaterial");
-
-	// Mesh Pipeline
-	VkPipeline meshPipeline;
-	VkPipelineLayout meshPipelineLayout;
-	vkutil::pipelinebuilder::build(
-		{},
-		{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _pbrTexturesSetLayout, _skeletalAnimationSetLayout, _voxelFieldLightingGridTextureSet.layout },
-		{
-			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/pbr.vert.spv" },
-			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/pbr_khr.frag.spv" },
-		},
-		modelVertexDescription.attributes,
-		modelVertexDescription.bindings,
-		vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
-		screenspaceViewport,
-		screenspaceScissor,
-		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT),
+		vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE),
 		{ vkinit::colorBlendAttachmentState() },
 		vkinit::multisamplingStateCreateInfo(),
-		vkinit::depthStencilCreateInfo(true, false, VK_COMPARE_OP_EQUAL),
+		vkinit::depthStencilCreateInfo(false, false, VK_COMPARE_OP_ALWAYS),
 		{},
 		_mainRenderPass,
 		1,
-		meshPipeline,
-		meshPipelineLayout,
+		snapshotImagePipeline,
+		snapshotImagePipelineLayout,
 		_swapchainDependentDeletionQueue
 	);
-	attachPipelineToMaterial(meshPipeline, meshPipelineLayout, "pbrMaterial");
+	attachPipelineToMaterial(snapshotImagePipeline, snapshotImagePipelineLayout, "snapshotImageMaterial");
 
 	// Skybox pipeline
 	VkPipeline skyboxPipeline;
@@ -3788,8 +4107,8 @@ void VulkanEngine::initPipelines()
 		{},
 		{ _globalSetLayout, _singleTextureSetLayout },
 		{
-			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/skybox.vert.spv" },
-			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/skybox.frag.spv" },
+			{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/skybox.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/skybox.frag.spv" },
 		},
 		modelVertexDescription.attributes,
 		modelVertexDescription.bindings,
@@ -3814,10 +4133,10 @@ void VulkanEngine::initPipelines()
 	VkPipelineLayout pickingPipelineLayout;
 	vkutil::pipelinebuilder::build(
 		{},
-		{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _pickingReturnValueSetLayout, _skeletalAnimationSetLayout },
+		{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _pickingReturnValueSetLayout },
 		{
-			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/picking.vert.spv" },
-			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/picking.frag.spv" },
+			{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/picking.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/picking.frag.spv" },
 		},
 		modelVertexDescription.attributes,
 		modelVertexDescription.bindings,
@@ -3848,10 +4167,10 @@ void VulkanEngine::initPipelines()
 				.size = sizeof(ColorPushConstBlock)
 			}
 		},
-		{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _skeletalAnimationSetLayout },
+		{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout },
 		{
-			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/wireframe_color.vert.spv" },
-			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/color.frag.spv" },
+			{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/wireframe_color.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/color.frag.spv" },
 		},
 		modelVertexDescription.attributes,
 		modelVertexDescription.bindings,
@@ -3880,10 +4199,10 @@ void VulkanEngine::initPipelines()
 				.size = sizeof(ColorPushConstBlock)
 			}
 		},
-		{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout, _skeletalAnimationSetLayout },
+		{ _globalSetLayout, _objectSetLayout, _instancePtrSetLayout },
 		{
-			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/wireframe_color.vert.spv" },
-			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/color.frag.spv" },
+			{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/wireframe_color.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/color.frag.spv" },
 		},
 		modelVertexDescription.attributes,
 		modelVertexDescription.bindings,
@@ -3903,50 +4222,6 @@ void VulkanEngine::initPipelines()
 	);
 	attachPipelineToMaterial(wireframeBehindPipeline, wireframePipelineLayout, "wireframeColorBehindMaterial");
 
-	// Shadow Depth Pass pipeline
-	auto shadowRasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE);
-	shadowRasterizer.depthClampEnable = VK_TRUE;
-
-	VkPipeline shadowDepthPassPipeline;
-	VkPipelineLayout shadowDepthPassPipelineLayout;
-	vkutil::pipelinebuilder::build(
-		{
-			VkPushConstantRange{
-				.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-				.offset = 0,
-				.size = sizeof(CascadeIndexPushConstBlock)
-			}
-		},
-		{ _cascadeViewProjsSetLayout, _objectSetLayout, _instancePtrSetLayout, _pbrTexturesSetLayout, _skeletalAnimationSetLayout },
-		{
-			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/shadow_depthpass.vert.spv" },
-			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/shadow_depthpass.frag.spv" },
-		},
-		modelVertexDescription.attributes,
-		modelVertexDescription.bindings,
-		vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
-		VkViewport{
-			0.0f, 0.0f,
-			(float_t)SHADOWMAP_DIMENSION, (float_t)SHADOWMAP_DIMENSION,
-			0.0f, 1.0f,
-		},
-		VkRect2D{
-			{ 0, 0 },
-			VkExtent2D{ SHADOWMAP_DIMENSION, SHADOWMAP_DIMENSION },
-		},
-		shadowRasterizer,
-		{},  // No color attachment for this pipeline
-		vkinit::multisamplingStateCreateInfo(),
-		vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL),
-		{},
-		_shadowRenderPass,
-		0,
-		shadowDepthPassPipeline,
-		shadowDepthPassPipelineLayout,
-		_swapchainDependentDeletionQueue
-	);
-	attachPipelineToMaterial(shadowDepthPassPipeline, shadowDepthPassPipelineLayout, "shadowDepthPassMaterial");
-
 	// Postprocess pipeline
 	VkPipeline postprocessPipeline;
 	VkPipelineLayout postprocessPipelineLayout;
@@ -3955,13 +4230,13 @@ void VulkanEngine::initPipelines()
 			VkPushConstantRange{
 				.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
 				.offset = 0,
-				.size = sizeof(GPUCoCParams)
+				.size = sizeof(GPUPostProcessParams)
 			}
 		},
 		{ _globalSetLayout, _postprocessSetLayout },
 		{
-			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/genbrdflut.vert.spv" },
-			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/postprocess.frag.spv" },
+			{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/genbrdflut.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/postprocess.frag.spv" },
 		},
 		{},  // No triangles are actually streamed in
 		{},
@@ -4000,8 +4275,8 @@ void VulkanEngine::initPipelines()
 		},
 		{ _dofSingleTextureLayout },
 		{
-			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/genbrdflut.vert.spv" },
-			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/generate_coc.frag.spv" },
+			{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/genbrdflut.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/generate_coc.frag.spv" },
 		},
 		{},  // No triangles are actually streamed in
 		{},
@@ -4034,8 +4309,8 @@ void VulkanEngine::initPipelines()
 		},
 		{ _dofDoubleTextureLayout },
 		{
-			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/genbrdflut.vert.spv" },
-			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/halve_coc.frag.spv" },
+			{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/genbrdflut.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/halve_coc.frag.spv" },
 		},
 		{},  // No triangles are actually streamed in
 		{},
@@ -4064,8 +4339,8 @@ void VulkanEngine::initPipelines()
 			{},
 			{ _dofSingleTextureLayout },
 			{
-				{ VK_SHADER_STAGE_VERTEX_BIT, "shader/genbrdflut.vert.spv" },
-				{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/incrementalReductionHalve_coc.frag.spv" },
+				{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/genbrdflut.vert.spv" },
+				{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/incrementalReductionHalve_coc.frag.spv" },
 			},
 			{},  // No triangles are actually streamed in
 			{},
@@ -4100,8 +4375,8 @@ void VulkanEngine::initPipelines()
 		},
 		{ _dofSingleTextureLayout },
 		{
-			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/genbrdflut.vert.spv" },
-			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/blur_x_singlechannel.frag.spv" },
+			{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/genbrdflut.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/blur_x_singlechannel.frag.spv" },
 		},
 		{},  // No triangles are actually streamed in
 		{},
@@ -4134,8 +4409,8 @@ void VulkanEngine::initPipelines()
 		},
 		{ _dofSingleTextureLayout },
 		{
-			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/genbrdflut.vert.spv" },
-			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/blur_y_singlechannel.frag.spv" },
+			{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/genbrdflut.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/blur_y_singlechannel.frag.spv" },
 		},
 		{},  // No triangles are actually streamed in
 		{},
@@ -4168,8 +4443,8 @@ void VulkanEngine::initPipelines()
 		},
 		{ _dofTripleTextureLayout },
 		{
-			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/genbrdflut.vert.spv" },
-			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/gather_dof.frag.spv" },
+			{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/genbrdflut.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/gather_dof.frag.spv" },
 		},
 		{},  // No triangles are actually streamed in
 		{},
@@ -4202,8 +4477,8 @@ void VulkanEngine::initPipelines()
 		},
 		{ _dofDoubleTextureLayout },
 		{
-			{ VK_SHADER_STAGE_VERTEX_BIT, "shader/genbrdflut.vert.spv" },
-			{ VK_SHADER_STAGE_FRAGMENT_BIT, "shader/dof_floodfill.frag.spv" },
+			{ VK_SHADER_STAGE_VERTEX_BIT, "res/shaders/genbrdflut.vert.spv" },
+			{ VK_SHADER_STAGE_FRAGMENT_BIT, "res/shaders/dof_floodfill.frag.spv" },
 		},
 		{},  // No triangles are actually streamed in
 		{},
@@ -4222,6 +4497,38 @@ void VulkanEngine::initPipelines()
 		_swapchainDependentDeletionQueue
 	);
 	attachPipelineToMaterial(dofFloodFillPipeline, dofFloodFillPipelineLayout, "DOFFloodFillMaterial");
+
+	// Compute culling pipeline.
+	VkPipeline computeCullingPipeline;
+	VkPipelineLayout computeCullingPipelineLayout;
+	vkutil::pipelinebuilder::buildCompute(
+		{
+			VkPushConstantRange{
+				.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+				.offset = 0,
+				.size = sizeof(GPUCullingParams)
+			}
+		},
+		{ _computeCullingIndirectDrawCommandSetLayout, _objectSetLayout, _instancePtrSetLayout },
+		{ VK_SHADER_STAGE_COMPUTE_BIT, "res/shaders/indirect_culling.comp.spv" },
+		computeCullingPipeline,
+		computeCullingPipelineLayout,
+		_swapchainDependentDeletionQueue  // Ultimately this doesn't need to change when the swapchain changes, but this allows for the shader getting reloaded when a swapchain recreation occurs.
+	);
+	attachPipelineToMaterial(computeCullingPipeline, computeCullingPipelineLayout, "computeCulling");
+
+	// Compute skinning pipeline.
+	VkPipeline computeSkinningPipeline;
+	VkPipelineLayout computeSkinningPipelineLayout;
+	vkutil::pipelinebuilder::buildCompute(
+		{},
+		{ _computeSkinningInoutVerticesSetLayout, _skeletalAnimationSetLayout },
+		{ VK_SHADER_STAGE_COMPUTE_BIT, "res/shaders/skinned_mesh.comp.spv" },
+		computeSkinningPipeline,
+		computeSkinningPipelineLayout,
+		_swapchainDependentDeletionQueue  // Ultimately this doesn't need to change when the swapchain changes, but this allows for the shader getting reloaded when a swapchain recreation occurs.
+	);
+	attachPipelineToMaterial(computeSkinningPipeline, computeSkinningPipelineLayout, "computeSkinning");
 
 	//
 	// Other pipelines
@@ -4596,17 +4903,17 @@ void VulkanEngine::generatePBRCubemaps()
 
 		VkShaderModule filtercubeVertShader,
 						filtercubeFragShader;
-		vkutil::pipelinebuilder::loadShaderModule("shader/filtercube.vert.spv", filtercubeVertShader);
+		vkutil::pipelinebuilder::loadShaderModule("res/shaders/filtercube.vert.spv", filtercubeVertShader);
 		switch (target)
 		{
 		case ENVIRONMENT:
-			vkutil::pipelinebuilder::loadShaderModule("shader/skyboxfiltercube.frag.spv", filtercubeFragShader);
+			vkutil::pipelinebuilder::loadShaderModule("res/shaders/skyboxfiltercube.frag.spv", filtercubeFragShader);
 			break;
 		case IRRADIANCE:
-			vkutil::pipelinebuilder::loadShaderModule("shader/irradiancecube.frag.spv", filtercubeFragShader);
+			vkutil::pipelinebuilder::loadShaderModule("res/shaders/irradiancecube.frag.spv", filtercubeFragShader);
 			break;
 		case PREFILTEREDENV:
-			vkutil::pipelinebuilder::loadShaderModule("shader/prefilterenvmap.frag.spv", filtercubeFragShader);
+			vkutil::pipelinebuilder::loadShaderModule("res/shaders/prefilterenvmap.frag.spv", filtercubeFragShader);
 			break;
 		default:
 			filtercubeFragShader = VK_NULL_HANDLE;
@@ -5060,8 +5367,8 @@ void VulkanEngine::generateBRDFLUT()
 
 	VkShaderModule genBrdfLUTVertShader,
 					genBrdfLUTFragShader;
-	vkutil::pipelinebuilder::loadShaderModule("shader/genbrdflut.vert.spv", genBrdfLUTVertShader);
-	vkutil::pipelinebuilder::loadShaderModule("shader/genbrdflut.frag.spv", genBrdfLUTFragShader);
+	vkutil::pipelinebuilder::loadShaderModule("res/shaders/genbrdflut.vert.spv", genBrdfLUTVertShader);
+	vkutil::pipelinebuilder::loadShaderModule("res/shaders/genbrdflut.frag.spv", genBrdfLUTFragShader);
 
 	std::array<VkPipelineShaderStageCreateInfo, 2> shaderStages = {
 		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, genBrdfLUTVertShader),
@@ -5221,6 +5528,8 @@ void VulkanEngine::initImgui()
 
 void VulkanEngine::recreateSwapchain()
 {
+	ZoneScoped;
+
 	int w, h;
 	SDL_GetWindowSize(_window, &w, &h);
 
@@ -5247,6 +5556,7 @@ void VulkanEngine::recreateSwapchain()
 	initPickingRenderpass();
 	initFramebuffers();
 	initPipelines();
+	loadMaterials();
 
 	_camera->sceneCamera.recalculateSceneCamera(_pbrRendering.gpuSceneShadingProps);
 
@@ -5255,40 +5565,63 @@ void VulkanEngine::recreateSwapchain()
 
 FrameData& VulkanEngine::getCurrentFrame()
 {
+	ZoneScoped;
 	return _frames[_frameNumber % FRAME_OVERLAP];
+}
+
+void VulkanEngine::loadMaterials()
+{
+	for (const auto& entry : std::filesystem::recursive_directory_iterator("res/materials/"))
+	{
+		const auto& path = entry.path();
+		if (std::filesystem::is_directory(path) ||
+			!path.has_extension())
+			continue;
+
+		if (path.extension().compare(".humba") == 0)
+		{
+			materialorganizer::loadMaterialBase(path);
+		}
+		else if (path.extension().compare(".hderriere") == 0)
+		{
+			materialorganizer::loadDerivedMaterialParam(path);
+		}
+	}
+	materialorganizer::cookTextureIndices();
 }
 
 void VulkanEngine::loadMeshes()
 {
-#define MULTITHREAD_MESH_LOADING 1
+	// @NOTE: `MULTITHREAD_MESH_LOADING` cannot be used if rapidjson is the json parser for tiny_gltf.h
+#define MULTITHREAD_MESH_LOADING 0
 #if MULTITHREAD_MESH_LOADING
 	tf::Executor e;
 	tf::Taskflow taskflow;
 #endif
 
 	std::vector<std::pair<std::string, vkglTF::Model*>> modelNameAndModels;
-	for (const auto& entry : std::filesystem::recursive_directory_iterator("res/models/"))
+	for (const auto& entry : std::filesystem::recursive_directory_iterator("res/models_cooked/"))
 	{
 		const auto& path = entry.path();
 		if (std::filesystem::is_directory(path))
 			continue;		// Ignore directories
 		if (!path.has_extension() ||
-			(path.extension().compare(".gltf") != 0 &&
-			path.extension().compare(".glb") != 0))
+			path.extension().compare(".hthrobwoa") != 0)
 			continue;		// @NOTE: ignore non-model files
 
 		modelNameAndModels.push_back(
 			std::make_pair<std::string, vkglTF::Model*>(path.stem().string(), nullptr)
 		);
 
-		size_t      targetIndex = modelNameAndModels.size() - 1;
-		std::string pathString  = path.string();
+		size_t      targetIndex         = modelNameAndModels.size() - 1;
+		std::string pathStringHthrobwoa = path.string();
+		std::string pathStringHenema    = "res/models_cooked/" + path.stem().string() + ".henema";
 
 #if MULTITHREAD_MESH_LOADING
 		taskflow.emplace([&, targetIndex, pathString]() {
 #endif
 			modelNameAndModels[targetIndex].second = new vkglTF::Model();
-			modelNameAndModels[targetIndex].second->loadFromFile(this, pathString);
+			modelNameAndModels[targetIndex].second->loadHthrobwoaFromFile(this, pathStringHthrobwoa, pathStringHenema);
 #if MULTITHREAD_MESH_LOADING
 		});
 #endif
@@ -5303,6 +5636,8 @@ void VulkanEngine::loadMeshes()
 
 void VulkanEngine::uploadCurrentFrameToGPU(const FrameData& currentFrame)
 {
+	ZoneScoped;
+
 	//
 	// Upload Camera Data to GPU
 	//
@@ -5317,187 +5652,463 @@ void VulkanEngine::uploadCurrentFrameToGPU(const FrameData& currentFrame)
 	vmaMapMemory(_allocator, currentFrame.pbrShadingPropsBuffer._allocation, &data);
 	memcpy(data, &_pbrRendering.gpuSceneShadingProps, sizeof(GPUPBRShadingProps));
 	vmaUnmapMemory(_allocator, currentFrame.pbrShadingPropsBuffer._allocation);
-}
-
-void VulkanEngine::compactRenderObjectsIntoDraws(const FrameData& currentFrame, std::vector<size_t> onlyPoolIndices, std::vector<ModelWithIndirectDrawId>& outIndirectDrawCommandIdsForPoolIndex)
-{
-	std::lock_guard<std::mutex> lg(_roManager->renderObjectIndicesAndPoolMutex);
 
 	//
 	// Fill in object data into current frame object buffer
-	// @NOTE: this kinda makes more sense to do this in `uploadCurrentFrameToGPU()`,
-	//        however, that would require applying multiple lock guards, and would make the program slower.
 	//
-	void* objectData;
-	vmaMapMemory(_allocator, currentFrame.objectBuffer._allocation, &objectData);
-	GPUObjectData* objectSSBO = (GPUObjectData*)objectData;    // @IMPROVE: perhaps multithread this? Or only update when the object moves?
-	for (size_t poolIndex : _roManager->_renderObjectsIndices)  // @NOTE: bc of the pool system these indices will be scattered, but that should work just fine
-		glm_mat4_copy(
-			_roManager->_renderObjectPool[poolIndex].transformMatrix,
-			objectSSBO[poolIndex].modelMatrix
-		);		// Another evil pointer trick I love... call me Dmitri the Evil
-	vmaUnmapMemory(_allocator, currentFrame.objectBuffer._allocation);
-
-	//
-	// Cull out render object indices that are not marked as visible
-	//
-	std::vector<size_t> visibleIndices;
-	for (size_t i = 0; i < _roManager->_renderObjectsIndices.size(); i++)
 	{
-		size_t poolIndex = _roManager->_renderObjectsIndices[i];
-		RenderObject& object = _roManager->_renderObjectPool[poolIndex];
+		std::lock_guard<std::mutex> lg(_roManager->renderObjectIndicesAndPoolMutex);
+		void* objectData;
+		vmaMapMemory(_allocator, currentFrame.objectBuffer._allocation, &objectData);
+		GPUObjectData* objectSSBO = (GPUObjectData*)objectData;    // @IMPROVE: perhaps multithread this? Or only update when the object moves?
+		for (size_t poolIndex : _roManager->_renderObjectsIndices)  // @NOTE: bc of the pool system these indices will be scattered, but that should work just fine
+		{
+			// Another evil pointer trick I love... call me Dmitri the Evil!
 
-		// See if render object itself is visible
-		if (!_roManager->_renderObjectLayersEnabled[(size_t)object.renderLayer])
-			continue;
-		if (object.model == nullptr)
-			continue;
+			// Assign model matrix.
+			mat4& modelMatrix = _roManager->_renderObjectPool[poolIndex].transformMatrix;
+			glm_mat4_copy(
+				modelMatrix,
+				objectSSBO[poolIndex].modelMatrix
+			);
 
-		// It's visible!!!!
-		visibleIndices.push_back(poolIndex);
+			// Calc bounding sphere center.
+			vec3& boundingSphereCenter = _roManager->_renderObjectPool[poolIndex].model->boundingSphere.center;
+			vec4 boundingSphere = { boundingSphereCenter[0], boundingSphereCenter[1], boundingSphereCenter[2], 1.0f };
+			glm_mat4_mulv(
+				modelMatrix,
+				boundingSphere,
+				boundingSphere
+			);
+
+			// Calc bounding sphere radius.
+			vec3 scale;
+			glm_decompose_scalev(modelMatrix, scale);
+			glm_vec3_abs(scale, scale);
+			boundingSphere[3] =
+				_roManager->_renderObjectPool[poolIndex].model->boundingSphere.radius
+					* glm_vec3_max(scale);
+
+			// Assign bounding sphere.
+			glm_vec4_copy(
+				boundingSphere,
+				objectSSBO[poolIndex].boundingSphere
+			);
+		}
+		vmaUnmapMemory(_allocator, currentFrame.objectBuffer._allocation);
 	}
-
-	//
-	// Gather the number of times a model is drawn
-	//
-	struct ModelDrawCount
-	{
-		vkglTF::Model* model;
-		size_t drawCount;
-		size_t baseModelRenderObjectIndex;
-	};
-	std::vector<ModelDrawCount> mdcs;
-
-	vkglTF::Model* lastModel = nullptr;
-	for (size_t roIdx = 0; roIdx < visibleIndices.size(); roIdx++)
-	{
-		RenderObject& ro = _roManager->_renderObjectPool[visibleIndices[roIdx]];
-		if (ro.model == lastModel)
-		{
-			mdcs.back().drawCount++;
-		}
-		else
-		{
-			mdcs.push_back({
-				.model = ro.model,
-				.drawCount = 1,
-				.baseModelRenderObjectIndex = roIdx,
-				});
-			lastModel = ro.model;
-		}
-	}
-
-	//
-	// Gather each model's meshes and collate them into their own draw commands
-	//
-	std::vector<MeshCapturedInfo> meshDraws;
-	for (ModelDrawCount& mdc : mdcs)
-	{
-		uint32_t numMeshes = 0;
-		mdc.model->appendPrimitiveDraws(meshDraws, numMeshes);
-
-		for (size_t i = 0; i < numMeshes; i++)
-		{
-			// Tell each mesh to draw as many times as the model exists, thus
-			// collating the mesh draws inside the model drawing window.
-			meshDraws[meshDraws.size() - numMeshes + i].modelDrawCount = mdc.drawCount;
-			meshDraws[meshDraws.size() - numMeshes + i].baseModelRenderObjectIndex = mdc.baseModelRenderObjectIndex;
-			meshDraws[meshDraws.size() - numMeshes + i].meshNumInModel = numMeshes;
-		}
-	}
-
-	//
-	// Open up memory map for instance level data
-	//
-	void* instancePtrData;
-	vmaMapMemory(_allocator, currentFrame.instancePtrBuffer._allocation, &instancePtrData);
-	GPUInstancePointer* instancePtrSSBO = (GPUInstancePointer*)instancePtrData;
-
-	void* indirectDrawCommandsData;
-	vmaMapMemory(_allocator, currentFrame.indirectDrawCommandBuffer._allocation, &indirectDrawCommandsData);
-	VkDrawIndexedIndirectCommand* indirectDrawCommands = (VkDrawIndexedIndirectCommand*)indirectDrawCommandsData;
-
-	//
-	// Write indirect commands
-	//
-	std::vector<IndirectBatch> batches;
-	lastModel = nullptr;
-	size_t instanceID = 0;
-	size_t meshIndex = 0;
-	size_t baseModelRenderObjectIndex = 0;
-	for (MeshCapturedInfo& ib : meshDraws)
-	{
-		// Combine the mesh-level draw commands into model-level draw commands.
-		if (lastModel == ib.model)
-		{
-			batches.back().count += ib.modelDrawCount;
-		}
-		else
-		{
-			batches.push_back({
-				.model = ib.model,
-				.first = (uint32_t)instanceID,
-				.count = ib.modelDrawCount,  // @NOTE: since the meshes are collated, we need to draw each mesh the number of times the model is going to get drawn.
-				});
-
-			lastModel = ib.model;
-			meshIndex = 0;  // New model, so reset the mesh index counter.
-			baseModelRenderObjectIndex = ib.baseModelRenderObjectIndex;
-		}
-
-		// Create draw command for each mesh instance.
-		for (size_t modelIndex = 0; modelIndex < ib.modelDrawCount; modelIndex++)
-		{
-			*indirectDrawCommands = {
-				.indexCount = ib.meshIndexCount,
-				.instanceCount = 1,
-				.firstIndex = ib.meshFirstIndex,
-				.vertexOffset = 0,
-				.firstInstance = (uint32_t)instanceID,
-			};
-			indirectDrawCommands++;
-
-			GPUInstancePointer& gip = _roManager->_renderObjectPool[visibleIndices[baseModelRenderObjectIndex + modelIndex]].calculatedModelInstances[meshIndex];
-#ifdef _DEVELOP
-			if (!onlyPoolIndices.empty())
-				for (size_t index : onlyPoolIndices)
-					if (index == gip.objectID)
-					{
-						// Include this draw indirect command.
-						outIndirectDrawCommandIdsForPoolIndex.push_back({ ib.model, (uint32_t)instanceID });
-						break;
-					}
-#endif
-			*instancePtrSSBO = gip;
-			instancePtrSSBO++;
-
-			instanceID++;
-		}
-
-		// Increment to the next mesh
-		meshIndex++;
-	}
-
-	// Cleanup and return
-	vmaUnmapMemory(_allocator, currentFrame.instancePtrBuffer._allocation);
-	vmaUnmapMemory(_allocator, currentFrame.indirectDrawCommandBuffer._allocation);
-	indirectBatches = batches;
 }
 
-void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame)
+void VulkanEngine::createSkinningBuffers(FrameData& currentFrame)
 {
+	ZoneScoped;
+
+	destroySkinningBuffersIfCreated(currentFrame);
+
+	if (!_roManager->_skinnedMeshEntriesExist)
+		return;  // Exit early bc buffers will be initialized to be empty.
+
+	// Traverse buckets and count up skinned mesh indices.
+	// (While also caching mesh vertices and indices).
+	struct SkinnedMesh
+	{
+		size_t modelIdx;
+		size_t meshIdx;
+		size_t animatorNodeID;
+		vkglTF::Model* model;
+	};
+	struct MeshVerticesIndices
+	{
+		std::set<uint32_t> uniqueVertexIndices;
+		std::vector<uint32_t> indicesNormalized;
+	};
+
+	auto& s = currentFrame.skinning;
+	s.numVertices = 0;
+	s.numIndices = 0;
+	std::vector<SkinnedMesh> skinnedMeshes;
+	std::map<size_t, MeshVerticesIndices> modelMeshHashToVerticesIndices;
+
+	{
+		ZoneScopedN("Traverse buckets");
+
+		for (size_t i = 0; i < _roManager->_numUmbBuckets; i++)
+		{
+			auto& umbBucket = _roManager->_umbBuckets[i];
+			size_t j = 0;  // Only do skinned pass.
+			{
+				bool isSkinnedPass = (j == 0);
+				for (size_t k = 0; k < _roManager->_numModelBuckets; k++)
+				{
+					auto& modelBucket = umbBucket.modelBucketSets[j].modelBuckets[k];
+					for (size_t l = 0; l < _roManager->_numMeshBucketsByModelIdx[k]; l++)
+					{
+						auto& meshBucket = modelBucket.meshBuckets[l];
+						if (meshBucket.renderObjectIndices.empty())
+							continue;
+
+						auto& meshDraw = _roManager->_modelMeshDraws[k][l];
+
+						// Fetch/calc num vertices in mesh.
+						size_t modelMeshHash = k | l << 32;
+						if (modelMeshHashToVerticesIndices.find(modelMeshHash) == modelMeshHashToVerticesIndices.end())
+						{
+							ZoneScopedN("Calculate unique vertices and normalized indices");
+
+							// Calculate, then add into cache.
+							std::set<uint32_t> uniqueVertexIndices;
+							std::vector<uint32_t> indicesNormalized;
+
+							// Insert in indices to create sorted, unique set.
+							for (size_t vertex = meshDraw.meshFirstIndex;
+								vertex < meshDraw.meshFirstIndex + meshDraw.meshIndexCount;
+								vertex++)
+							{
+								uint32_t index = meshDraw.model->loaderInfo.indexBuffer[vertex];
+								uniqueVertexIndices.emplace(index);
+								indicesNormalized.push_back(index);
+							}
+
+							// Normalize indices using sorted set.
+							uint32_t nextIndex = 0;
+							for (uint32_t uniqueIndex : uniqueVertexIndices)
+							{
+								for (auto& normalizedIndex : indicesNormalized)
+									if (uniqueIndex == normalizedIndex)
+										normalizedIndex = nextIndex;
+								nextIndex++;
+							}
+
+							// Cache.
+							modelMeshHashToVerticesIndices[modelMeshHash] = {
+								.uniqueVertexIndices = uniqueVertexIndices,
+								.indicesNormalized = indicesNormalized,
+							};
+						}
+
+						// Insert stats into skinnedMeshes and counts.
+						size_t meshVertexCount = modelMeshHashToVerticesIndices[modelMeshHash].uniqueVertexIndices.size();
+						for (auto& roIdx : meshBucket.renderObjectIndices)
+						{
+							s.numVertices += meshVertexCount;
+							s.numIndices += meshDraw.meshIndexCount;
+							skinnedMeshes.push_back({
+								.modelIdx = k,
+								.meshIdx = l,
+								.animatorNodeID = _roManager->_renderObjectPool[roIdx].calculatedModelInstances[l].animatorNodeID,
+								.model = meshDraw.model,
+							});
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Create buffers.
+	// @TODO: turn these into transfer/staging buffers.
+	size_t inputVerticesBufferSize = sizeof(GPUInputSkinningMeshPrefixData) + sizeof(GPUInputSkinningMeshData) * s.numVertices;
+	{
+		ZoneScopedN("Create input vertices buffer");
+		s.inputVerticesBuffer = createBuffer(inputVerticesBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+	}
+
+	s.outputBufferSize = sizeof(GPUOutputSkinningMeshData) * s.numVertices;
+	{
+		ZoneScopedN("Create output vertices buffer");
+		s.outputVerticesBuffer = createBuffer(s.outputBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);  // @NOTE: no staging buffer for this bc all the data is loaded via compute shader on the gpu!
+	}
+
+	size_t indicesBufferSize = sizeof(uint32_t) * s.numIndices;
+	{
+		ZoneScopedN("Create combined skinned indices buffer");
+		s.indicesBuffer = createBuffer(indicesBufferSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+	}
+
+	// Upload input vertices.
+	{
+		ZoneScopedN("Upload unique vertices");
+
+		uint8_t* data;
+		vmaMapMemory(_allocator, s.inputVerticesBuffer._allocation, (void**)&data);
+
+		// Insert prefix data.
+		GPUInputSkinningMeshPrefixData ismpd = {
+			.numVertices = (uint32_t)s.numVertices,
+		};
+		memcpy(data, &ismpd, sizeof(GPUInputSkinningMeshPrefixData));
+		data += sizeof(GPUInputSkinningMeshPrefixData);
+
+		// Insert remaining data.
+		for (auto& sm : skinnedMeshes)
+		{
+			size_t modelMeshHash = sm.modelIdx | sm.meshIdx << 32;
+			auto& vi = modelMeshHashToVerticesIndices[modelMeshHash];
+			for (auto& idx : vi.uniqueVertexIndices)
+			{
+				auto& vert = sm.model->loaderInfo.vertexWithWeightsBuffer[idx];
+				GPUInputSkinningMeshData ismd = {};
+				glm_vec3_copy(vert.pos, ismd.pos);
+				glm_vec3_copy(vert.normal, ismd.normal);
+				glm_vec2_copy(vert.uv0, ismd.UV0);
+				glm_vec2_copy(vert.uv1, ismd.UV1);
+				glm_vec4_copy(vert.joint0, ismd.joint0);
+				glm_vec4_copy(vert.weight0, ismd.weight0);
+				glm_vec4_copy(vert.color, ismd.color0);
+				ismd.animatorNodeID = sm.animatorNodeID;
+				ismd.baseInstanceID = 0;  // @DEPRECATED: base instance id offset is unnecessary now.
+
+				memcpy(data, &ismd, sizeof(GPUInputSkinningMeshData));
+				data += sizeof(GPUInputSkinningMeshData);
+			}
+		}
+
+		vmaUnmapMemory(_allocator, s.inputVerticesBuffer._allocation);
+	}
+
+	// Upload indices.
+	{
+		ZoneScopedN("Upload normalized indices");
+
+		uint8_t* data;
+		vmaMapMemory(_allocator, s.indicesBuffer._allocation, (void**)&data);
+
+		// Insert data.
+		uint32_t indexOffset = 0;
+		for (auto& sm : skinnedMeshes)
+		{
+			size_t modelMeshHash = sm.modelIdx | sm.meshIdx << 32;
+			auto& vi = modelMeshHashToVerticesIndices[modelMeshHash];
+			for (auto& idx : vi.indicesNormalized)
+			{
+				uint32_t indexCooked = idx + indexOffset;
+				memcpy(data, &indexCooked, sizeof(uint32_t));
+				data += sizeof(uint32_t);
+			}
+			indexOffset += vi.uniqueVertexIndices.size();  // Offset by num vertices bc that's the max index.
+		}
+
+		vmaUnmapMemory(_allocator, s.indicesBuffer._allocation);
+	}
+
+	// Create descriptors.
+	{
+		ZoneScopedN("Create compute skinning descriptors");
+
+		VkDescriptorBufferInfo inputVerticesBufferInfo = {
+			.buffer = s.inputVerticesBuffer._buffer,
+			.offset = 0,
+			.range = inputVerticesBufferSize,
+		};
+		VkDescriptorBufferInfo outputVerticesBufferInfo = {
+			.buffer = s.outputVerticesBuffer._buffer,
+			.offset = 0,
+			.range = s.outputBufferSize,
+		};
+		vkutil::DescriptorBuilder::begin()
+			.bindBuffer(0, &inputVerticesBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT)
+			.bindBuffer(1, &outputVerticesBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT)
+			.build(s.inoutVerticesDescriptor);
+	}
+
+	// Finish.
+	s.created = true;
+	s.recalculateSkinningBuffers = false;
+}
+
+void VulkanEngine::destroySkinningBuffersIfCreated(FrameData& currentFrame)
+{
+	ZoneScoped;
+
+	auto& s = currentFrame.skinning;
+	if (s.created)
+	{
+		vmaDestroyBuffer(_allocator, s.inputVerticesBuffer._buffer, s.inputVerticesBuffer._allocation);
+		vmaDestroyBuffer(_allocator, s.outputVerticesBuffer._buffer, s.outputVerticesBuffer._allocation);
+		vmaDestroyBuffer(_allocator, s.indicesBuffer._buffer, s.indicesBuffer._allocation);
+		s.created = false;
+	}
+}
+
+void VulkanEngine::compactRenderObjectsIntoDraws(FrameData& currentFrame, std::vector<size_t> onlyPoolIndices, std::vector<ModelWithIndirectDrawId>& outIndirectDrawCommandIdsForPoolIndex)
+{
+	ZoneScoped;
+
+	GPUInstancePointer* instancePtrSSBO;
+	vmaMapMemory(_allocator, currentFrame.instancePtrBuffer._allocation, (void**)&instancePtrSSBO);
+	VkDrawIndexedIndirectCommand* indirectDrawCommands;
+	vmaMapMemory(_allocator, currentFrame.indirectDrawCommandRawBuffer._allocation, (void**)&indirectDrawCommands);
+	GPUIndirectDrawCommandOffsetsData* indirectDrawCommandOffsets;
+	vmaMapMemory(_allocator, currentFrame.indirectDrawCommandOffsetsBuffer._allocation, (void**)&indirectDrawCommandOffsets);
+	uint32_t* indirectDrawCommandCountsShadow;
+	vmaMapMemory(_allocator, currentFrame.indirectShadowPass.indirectDrawCommandCountsBuffer._allocation, (void**)&indirectDrawCommandCountsShadow);
+	uint32_t* indirectDrawCommandCountsMain;
+	vmaMapMemory(_allocator, currentFrame.indirectMainPass.indirectDrawCommandCountsBuffer._allocation, (void**)&indirectDrawCommandCountsMain);
+
+	// Traverse thru bucket to write commands.
+	{
+		std::vector<IndirectBatch> batches;
+		size_t nextSkinnedIndex = 0;
+		size_t instanceID = 0;
+
+		std::lock_guard<std::mutex> lg(_roManager->renderObjectIndicesAndPoolMutex);
+
+		for (size_t i = 0; i < _roManager->_numUmbBuckets; i++)
+		{
+			auto& umbBucket = _roManager->_umbBuckets[i];
+			for (size_t j = 0; j < 2; j++)
+			{
+				bool isSkinnedPass = (j == 0);
+				auto modelIter = _roManager->_renderObjectModels.begin();
+				for (size_t k = 0; k < _roManager->_numModelBuckets; k++, modelIter++)
+				{
+					auto& modelBucket = umbBucket.modelBucketSets[j].modelBuckets[k];
+
+					// Create new batch.
+					IndirectBatch batch = {
+						.model = (isSkinnedPass ? (vkglTF::Model*)&_roManager->_skinnedMeshModelMemAddr : modelIter->second),
+						.uniqueMaterialBaseId = (uint32_t)i,
+						.first = (uint32_t)instanceID,  // @NOTE: This is actually the draw command id.
+						.count = 0,
+					};
+
+					for (size_t l = 0; l < _roManager->_numMeshBucketsByModelIdx[k]; l++)
+					{
+						auto& meshBucket = modelBucket.meshBuckets[l];
+						for (auto& roIdx : meshBucket.renderObjectIndices)
+						{
+							auto& meshDraw = _roManager->_modelMeshDraws[k][l];
+							*indirectDrawCommands = {
+								.indexCount = meshDraw.meshIndexCount,
+								.instanceCount = 1,
+								.firstIndex = (isSkinnedPass ? (uint32_t)nextSkinnedIndex : meshDraw.meshFirstIndex),
+								.vertexOffset = 0,
+								.firstInstance = (uint32_t)instanceID,
+							};
+
+							*indirectDrawCommandOffsets = {
+								.batchFirstIndex = batch.first,
+								.countIndex = (uint32_t)batches.size(),
+							};
+
+							GPUInstancePointer& gip = _roManager->_renderObjectPool[roIdx].calculatedModelInstances[l];
+							*instancePtrSSBO = gip;
+
+#ifdef _DEVELOP
+							if (!onlyPoolIndices.empty())  // Is this line even necessary? I'm doing this bc the for loop setup code could take longer than just checking whether the list is empty.
+								for (size_t index : onlyPoolIndices)
+									if (index == gip.objectID)
+									{
+										// Include this draw indirect command list for picking.
+										outIndirectDrawCommandIdsForPoolIndex.push_back({
+											meshDraw.model,
+											(uint32_t)instanceID
+										});
+										break;
+									}
+#endif
+
+							if (isSkinnedPass)
+								nextSkinnedIndex += meshDraw.meshIndexCount;  // Jump num indices to go to next index group (if wanting to do an offset, use vertex count).
+							indirectDrawCommands++;
+							indirectDrawCommandOffsets++;
+							instancePtrSSBO++;
+							instanceID++;
+							batch.count++;
+						}
+					}
+
+					if (batch.count > 0)
+					{
+						batches.push_back(batch);  // Only add the batch in if there are instances in the batch.
+
+						// Init as count of 0 so that culling can increment this value.
+						*indirectDrawCommandCountsShadow = 0;
+						indirectDrawCommandCountsShadow++;
+						*indirectDrawCommandCountsMain = 0;
+						indirectDrawCommandCountsMain++;
+					}
+				}
+			}
+		}
+
+		currentFrame.numInstances = instanceID;
+		indirectBatches = batches;
+	}
+
+	// Finish.
+	vmaUnmapMemory(_allocator, currentFrame.instancePtrBuffer._allocation);
+	vmaUnmapMemory(_allocator, currentFrame.indirectDrawCommandRawBuffer._allocation);
+	vmaUnmapMemory(_allocator, currentFrame.indirectDrawCommandOffsetsBuffer._allocation);
+	vmaUnmapMemory(_allocator, currentFrame.indirectShadowPass.indirectDrawCommandCountsBuffer._allocation);
+	vmaUnmapMemory(_allocator, currentFrame.indirectMainPass.indirectDrawCommandCountsBuffer._allocation);
+}
+
+void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, bool materialOverride, bool useShadowIndirectPass)
+{
+	ZoneScoped;
+
+	auto& pass = useShadowIndirectPass ? currentFrame.indirectShadowPass : currentFrame.indirectMainPass;
+
 	// Iterate thru all the batches
+	vkglTF::Model* lastModel = nullptr;
+	size_t lastUMBIdx = (size_t)-1;
 	uint32_t drawStride = sizeof(VkDrawIndexedIndirectCommand);
+	uint32_t countStride = sizeof(uint32_t);
+	uint32_t countIdx = 0;
 	for (IndirectBatch& batch : indirectBatches)
 	{
-		VkDeviceSize indirectOffset = batch.first * drawStride;
-		batch.model->bind(cmd);
-		vkCmdDrawIndexedIndirect(cmd, currentFrame.indirectDrawCommandBuffer._buffer, indirectOffset, batch.count, drawStride);
+		ZoneScopedN("Draw indirect batch");
+
+		if (lastModel != batch.model)
+		{
+			ZoneScopedN("Bind model");
+
+			if (batch.model == (vkglTF::Model*)&_roManager->_skinnedMeshModelMemAddr)
+			{
+				// Bind the compute skinned intermediate buffer.
+				const VkDeviceSize offsets[1] = { 0 };
+				vkCmdBindVertexBuffers(cmd, 0, 1, &currentFrame.skinning.outputVerticesBuffer._buffer, offsets);
+				vkCmdBindIndexBuffer(cmd, currentFrame.skinning.indicesBuffer._buffer, 0, VK_INDEX_TYPE_UINT32);
+			}
+			else
+				batch.model->bind(cmd);
+			lastModel = batch.model;
+		}
+		if (!materialOverride && lastUMBIdx != batch.uniqueMaterialBaseId)
+		{
+			ZoneScopedN("Bind pipeline");
+
+			// Bind material
+			// @TODO: put this into its own function!
+			Material& uMaterial = *getMaterial(materialorganizer::umbIdxToUniqueMaterialName(batch.uniqueMaterialBaseId));    // @HACK: @TODO: currently, the way that the pipeline is getting used is by just hardcode using it in the draw commands for models... however, each model should get its pipeline set to this material instead (or whatever material its using... that's why we can't hardcode stuff!!!)   @TODO: create some kind of way to propagate the newly created pipeline to the primMat (calculated material in the gltf model) instead of using uMaterial directly.  -Timo
+			vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, uMaterial.pipeline);
+			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, uMaterial.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
+			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, uMaterial.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
+			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, uMaterial.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
+			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, uMaterial.pipelineLayout, 3, 1, &uMaterial.textureSet, 0, nullptr);
+			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, uMaterial.pipelineLayout, 4, 1, &_voxelFieldLightingGridTextureSet.descriptor, 0, nullptr);
+			////////////////
+			
+			lastUMBIdx = batch.uniqueMaterialBaseId;
+		}
+
+		{
+			ZoneScopedN("Vk Cmd Draw Indirect Count");
+
+			VkDeviceSize indirectOffset = batch.first * drawStride;
+			VkDeviceSize countOffset = countIdx * countStride;
+			// vkCmdDrawIndexedIndirect(cmd, currentFrame.indirectDrawCommandRawBuffer._buffer, indirectOffset, batch.count, drawStride);
+			vkCmdDrawIndexedIndirectCount(cmd, pass.indirectDrawCommandsBuffer._buffer, indirectOffset, pass.indirectDrawCommandCountsBuffer._buffer, countOffset, batch.count, drawStride);
+			countIdx++;
+		}
 	}
 }
 
 bool VulkanEngine::searchForPickedObjectPoolIndex(size_t& outPoolIndex)
 {
+	ZoneScoped;
+
 	for (size_t i = 0; i < _roManager->_renderObjectsIndices.size(); i++)
 	{
 		size_t poolIndex = _roManager->_renderObjectsIndices[i];
@@ -5535,7 +6146,6 @@ void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& curr
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, material.pipelineLayout, 0, 1, &currentFrame.globalDescriptor, 0, nullptr);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, material.pipelineLayout, 1, 1, &currentFrame.objectDescriptor, 0, nullptr);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, material.pipelineLayout, 2, 1, &currentFrame.instancePtrDescriptor, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, material.pipelineLayout, 3, 1, vkglTF::Animator::getGlobalAnimatorNodeCollectionDescriptorSet(this), 0, nullptr);
 
 		// Push constants
 		ColorPushConstBlock pc = {};
@@ -5547,15 +6157,25 @@ void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& curr
 		for (const ModelWithIndirectDrawId& mwidid : indirectDrawCommandIds)
 		{
 			VkDeviceSize indirectOffset = mwidid.indirectDrawId * drawStride;
-			mwidid.model->bind(cmd);
-			vkCmdDrawIndexedIndirect(cmd, currentFrame.indirectDrawCommandBuffer._buffer, indirectOffset, 1, drawStride);
+			if (mwidid.model == (vkglTF::Model*)&_roManager->_skinnedMeshModelMemAddr)  // @HACK: getting the right indirect draw command with the combined skinned mesh intermediate buffer!  -Timo 2023/12/16
+			{
+				// Bind the compute skinned intermediate buffer. @COPYPASTA
+				const VkDeviceSize offsets[1] = { 0 };
+				vkCmdBindVertexBuffers(cmd, 0, 1, &currentFrame.skinning.outputVerticesBuffer._buffer, offsets);
+				vkCmdBindIndexBuffer(cmd, currentFrame.skinning.indicesBuffer._buffer, 0, VK_INDEX_TYPE_UINT32);
+			}
+			else
+				mwidid.model->bind(cmd);
+			vkCmdDrawIndexedIndirect(cmd, currentFrame.indirectDrawCommandRawBuffer._buffer, indirectOffset, 1, drawStride);
 		}
 	}
 }
 
 #ifdef _DEVELOP
-void VulkanEngine::updateDebugStats(const float_t& deltaTime)
+void VulkanEngine::updateDebugStats(float_t deltaTime)
 {
+	ZoneScoped;
+
 	_debugStats.currentFPS = (uint32_t)std::roundf(1.0f / deltaTime);
 	_debugStats.renderTimesMSHeadIndex = (size_t)std::fmodf((float_t)_debugStats.renderTimesMSHeadIndex + 1, (float_t)_debugStats.renderTimesMSCount);
 
@@ -5580,6 +6200,8 @@ void VulkanEngine::updateDebugStats(const float_t& deltaTime)
 
 void VulkanEngine::submitSelectedRenderObjectId(int32_t poolIndex)
 {
+	ZoneScoped;
+
 	if (poolIndex < 0)
 	{
 		// Nullify the matrixToMove pointer
@@ -5595,643 +6217,1029 @@ void VulkanEngine::submitSelectedRenderObjectId(int32_t poolIndex)
 		<< "Selected object " << poolIndex << std::endl;
 }
 
+size_t INTERNALVULKANENGINEASSIGNEDMATERIAL_umbIdx;
+size_t INTERNALVULKANENGINEASSIGNEDMATERIAL_dmpsIdx;
+
+void VulkanEngine::changeEditorMode(EditorModes newEditorMode)
+{
+	_movingMatrix.matrixToMove = nullptr;
+
+	// Spin down previous editor mode.
+	switch (_currentEditorMode)
+	{
+		case EditorModes::LEVEL_EDITOR:
+		{
+
+		} break;
+
+		case EditorModes::MATERIAL_EDITOR:
+		{
+			std::string path = materialorganizer::getListOfDerivedMaterials()[0];
+			INTERNALVULKANENGINEASSIGNEDMATERIAL_umbIdx = materialorganizer::derivedMaterialNameToUMBIdx(path);
+			INTERNALVULKANENGINEASSIGNEDMATERIAL_dmpsIdx = materialorganizer::derivedMaterialNameToDMPSIdx(path);
+			EDITORTextureViewer::setAssignedMaterial(
+				INTERNALVULKANENGINEASSIGNEDMATERIAL_umbIdx,
+				INTERNALVULKANENGINEASSIGNEDMATERIAL_dmpsIdx
+			);
+		} break;
+	}
+
+	_currentEditorMode = newEditorMode;
+
+	// Spin up new editor mode.
+	switch (_currentEditorMode)
+	{
+		case EditorModes::LEVEL_EDITOR:
+		{
+			globalState::isEditingMode = true;
+			physengine::requestSetRunPhysicsSimulation(false);
+			_camera->requestCameraMode(_camera->_cameraMode_freeCamMode);
+			scene::loadScene(globalState::savedActiveScene, true);
+		} break;
+
+		case EditorModes::MATERIAL_EDITOR:
+		{
+			_camera->requestCameraMode(_camera->_cameraMode_orbitSubjectCamMode);
+			scene::loadScene("EDITOR_material_editor.hentais", true);
+		} break;
+	}
+}
+
 void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 {
+	ZoneScoped;
+
+	constexpr float_t MAIN_MENU_PADDING = 18.0f;
 	static bool showDemoWindows = false;
-	// if (input::onKeyF1Press)  // @DEBUG: enable this to allow toggling showing demo windows.
-	// 	showDemoWindows = !showDemoWindows;
-	if (showDemoWindows)
-	{
-		ImGui::ShowDemoWindow();
-		ImPlot::ShowDemoWindow();
-	}
+	static bool showPerfWindow = true;
 
 	bool allowKeyboardShortcuts =
 		_camera->getCameraMode() == Camera::_cameraMode_freeCamMode &&
 		!_camera->freeCamMode.enabled &&
 		!io.WantTextInput;
 
-	//
-	// Debug Messages window
-	//
+	// Top menu.
+	if (ImGui::BeginMainMenuBar())
+	{
+		if (ImGui::BeginMenu("Mode"))
+		{
+			if (ImGui::MenuItem("Level Editor", "", (_currentEditorMode == EditorModes::LEVEL_EDITOR)) && _currentEditorMode != EditorModes::LEVEL_EDITOR) changeEditorMode(EditorModes::LEVEL_EDITOR);
+			if (ImGui::MenuItem("Material Editor", "", (_currentEditorMode == EditorModes::MATERIAL_EDITOR)) && _currentEditorMode != EditorModes::MATERIAL_EDITOR) changeEditorMode(EditorModes::MATERIAL_EDITOR);
+			ImGui::EndMenu();
+		}
+		if (ImGui::BeginMenu("Window"))
+		{
+			ImGui::MenuItem("Do Culling stuff DEBUG", "", &doCullingStuff);
+			ImGui::MenuItem("Performance Window", "", &showPerfWindow);
+			ImGui::MenuItem("Demo Windows", "", &showDemoWindows);
+			ImGui::EndMenu();
+		}
+		ImGui::EndMainMenuBar();
+	}
+
+	// Demo windows.
+	if (showDemoWindows)
+	{
+		ImGui::ShowDemoWindow();
+		ImPlot::ShowDemoWindow();
+	}
+
+	// Debug messages.
 	debug::renderImguiDebugMessages((float_t)_windowExtent.width, deltaTime);
 
-	//
-	// Scene Properties window
-	//
-	static std::string _flagNextStepLoadThisPathAsAScene = "";
-	if (!_flagNextStepLoadThisPathAsAScene.empty())
+	if (showPerfWindow)
 	{
-		scene::loadScene(_flagNextStepLoadThisPathAsAScene, this);
-		_flagNextStepLoadThisPathAsAScene = "";
+		// Debug Stats window.
+		static float_t debugStatsWindowWidth = 0.0f;
+		static float_t debugStatsWindowHeight = 0.0f;
+		ImGui::SetNextWindowPos(ImVec2(_windowExtent.width - debugStatsWindowWidth, _windowExtent.height - debugStatsWindowHeight), ImGuiCond_Always);		// @NOTE: the ImGuiCond_Always means that this line will execute always, when set to once, this line will be ignored after the first time it's called
+		ImGui::Begin("##Debug Statistics/Performance Window", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs);
+		{
+			ImGui::Text((std::to_string(_debugStats.currentFPS) + " FPS").c_str());
+			ImGui::Text(("Frame : " + std::to_string(_frameNumber)).c_str());
+
+			ImGui::Separator();
+
+			ImGui::Text(("Timescale: " + std::to_string(globalState::timescale)).c_str());
+
+			ImGui::Separator();
+
+			ImGui::Text("Render Times");
+			ImGui::Text((std::format("{:.2f}", _debugStats.renderTimesMS[_debugStats.renderTimesMSHeadIndex]) + "ms").c_str());
+			ImGui::PlotHistogram("##Render Times Histogram", _debugStats.renderTimesMS, (int32_t)_debugStats.renderTimesMSCount, (int32_t)_debugStats.renderTimesMSHeadIndex, "", 0.0f, _debugStats.highestRenderTime, ImVec2(256, 24.0f));
+			ImGui::SameLine();
+			ImGui::Text(("[0, " + std::format("{:.2f}", _debugStats.highestRenderTime) + "]").c_str());
+
+			ImGui::Separator();
+
+			physengine::renderImguiPerformanceStats();
+
+			debugStatsWindowWidth = ImGui::GetWindowWidth();
+			debugStatsWindowHeight = ImGui::GetWindowHeight();
+		}
+		ImGui::End();
 	}
 
-	static float_t scenePropertiesWindowWidth = 0.0f;
-	ImGui::SetNextWindowPos(ImVec2(_windowExtent.width - scenePropertiesWindowWidth, 0.0f), ImGuiCond_Always);
-	ImGui::Begin((globalState::savedActiveScene + " Properties").c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
+	switch (_currentEditorMode)
 	{
-		ImGui::Text(globalState::savedActiveScene.c_str());
-
-		static std::vector<std::string> listOfScenes;
-		if (ImGui::Button("Open Scene.."))
+		case EditorModes::LEVEL_EDITOR:
 		{
-			listOfScenes = scene::getListOfScenes();
-			ImGui::OpenPopup("open_scene_popup");
-		}
-		if (ImGui::BeginPopup("open_scene_popup"))
-		{
-			for (auto& path : listOfScenes)
-				if (ImGui::Button(("Open \"" + path + "\"").c_str()))
+			// Change respawn point popup.
+			static bool initiallyChangedCamModeToFree = false;
+			if (globalState::EDITORpromptChangeSpawnPoint)
+			{
+				globalState::EDITORpromptChangeSpawnPoint = false;
+				if (_camera->getCameraMode() == _camera->_cameraMode_mainCamMode)
 				{
-					_movingMatrix.matrixToMove = nullptr;  // @HACK: just a safeguard in case if the matrixtomove happened to be on an entity that will get deleted in the next line  -Timo 2022/11/05
-					for (auto& ent : _entityManager->_entities)
-						_entityManager->destroyEntity(ent);
-					_flagNextStepLoadThisPathAsAScene = path;  // @HACK: mireba wakaru... but it's needed bc it works when delaying the load by a step...  -Timo 2022/10/30
-					ImGui::CloseCurrentPopup();
+					_camera->requestCameraMode(_camera->_cameraMode_freeCamMode);
+					initiallyChangedCamModeToFree = true;
 				}
-			ImGui::EndPopup();
-		}
-
-		ImGui::SameLine();
-		if (ImGui::Button("Save Scene"))
-			scene::saveScene(globalState::savedActiveScene, _entityManager->_entities, this);
-
-		ImGui::SameLine();
-		if (ImGui::Button("Save Scene As.."))
-			ImGui::OpenPopup("save_scene_as_popup");
-		if (ImGui::BeginPopup("save_scene_as_popup"))
-		{
-			static std::string saveSceneAsFname;
-			ImGui::InputText(".ssdat", &saveSceneAsFname);
-			if (ImGui::Button(("Save As \"" + saveSceneAsFname + ".ssdat\"").c_str()))
-			{
-				scene::saveScene(saveSceneAsFname + ".ssdat", _entityManager->_entities, this);
-				globalState::savedActiveScene = saveSceneAsFname + ".ssdat";
-				ImGui::CloseCurrentPopup();
+				ImGui::OpenPopup("change_respawn_point");
 			}
-			ImGui::EndPopup();
-		}
-
-		static std::vector<std::string> listOfPrefabs;
-		if (ImGui::Button("Open Prefab.."))
-		{
-			listOfPrefabs = scene::getListOfPrefabs();
-			ImGui::OpenPopup("open_prefab_popup");
-		}
-		if (ImGui::BeginPopup("open_prefab_popup"))
-		{
-			for (auto& path : listOfPrefabs)
-				if (ImGui::Button(("Open \"" + path + "\"").c_str()))
-				{
-					scene::loadPrefabNonOwned(path, this);
-					ImGui::CloseCurrentPopup();
-				}
-			ImGui::EndPopup();
-		}
-
-		scenePropertiesWindowWidth = ImGui::GetWindowWidth();
-	}
-	ImGui::End();
-
-	//
-	// Debug Stats window
-	//
-	constexpr float_t windowPadding = 8.0f;
-	static float_t debugStatsWindowWidth = 0.0f;
-	static float_t debugStatsWindowHeight = 0.0f;
-
-	ImGui::SetNextWindowPos(ImVec2(_windowExtent.width * 0.5f - debugStatsWindowWidth - windowPadding, _windowExtent.height - debugStatsWindowHeight), ImGuiCond_Always);		// @NOTE: the ImGuiCond_Always means that this line will execute always, when set to once, this line will be ignored after the first time it's called
-	ImGui::Begin("##Debug Statistics", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs);
-	{
-		ImGui::Text((std::to_string(_debugStats.currentFPS) + " FPS").c_str());
-		ImGui::Text(("Frame : " + std::to_string(_frameNumber)).c_str());
-
-		ImGui::Separator();
-
-		ImGui::Text(("Timescale: " + std::to_string(globalState::timescale)).c_str());
-
-		ImGui::Separator();
-
-		ImGui::Text("Render Times");
-		ImGui::Text((std::format("{:.2f}", _debugStats.renderTimesMS[_debugStats.renderTimesMSHeadIndex]) + "ms").c_str());
-		ImGui::PlotHistogram("##Render Times Histogram", _debugStats.renderTimesMS, (int32_t)_debugStats.renderTimesMSCount, (int32_t)_debugStats.renderTimesMSHeadIndex, "", 0.0f, _debugStats.highestRenderTime, ImVec2(256, 24.0f));
-		ImGui::SameLine();
-		ImGui::Text(("[0, " + std::format("{:.2f}", _debugStats.highestRenderTime) + "]").c_str());
-
-		ImGui::Separator();
-
-		physengine::renderImguiPerformanceStats();
-
-		debugStatsWindowWidth = ImGui::GetWindowWidth();
-		debugStatsWindowHeight = ImGui::GetWindowHeight();
-	}
-	ImGui::End();
-
-	//
-	// GameState info window
-	//
-	static float_t gamestateInfoWindowHeight = 0.0f;
-	ImGui::SetNextWindowPos(ImVec2(_windowExtent.width * 0.5f + windowPadding, _windowExtent.height - gamestateInfoWindowHeight), ImGuiCond_Always);		// @NOTE: the ImGuiCond_Always means that this line will execute always, when set to once, this line will be ignored after the first time it's called
-	ImGui::Begin("##GameState Info", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
-	{
-		ImGui::Text(("Health: " + std::to_string(globalState::savedPlayerHealth) + " / " + std::to_string(globalState::savedPlayerMaxHealth)).c_str());
-
-		gamestateInfoWindowHeight = ImGui::GetWindowHeight();
-	}
-	ImGui::End();
-
-
-	//
-	// PBR Shading Properties
-	//
-	static float_t scrollSpeed = 40.0f;
-	static float_t windowOffsetY = 0.0f;
-	float_t accumulatedWindowHeight = 0.0f;
-	float_t maxWindowWidth = 0.0f;
-
-	ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight + windowOffsetY), ImGuiCond_Always);
-	ImGui::Begin("PBR Shading Properties", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
-	{
-		if (ImGui::DragFloat3("Light Direction", _pbrRendering.gpuSceneShadingProps.lightDir))
-			glm_normalize(_pbrRendering.gpuSceneShadingProps.lightDir);		
-
-		ImGui::DragFloat("Exposure", &_pbrRendering.gpuSceneShadingProps.exposure, 0.1f, 0.1f, 10.0f);
-		ImGui::DragFloat("Gamma", &_pbrRendering.gpuSceneShadingProps.gamma, 0.1f, 0.1f, 4.0f);
-		ImGui::DragFloat("IBL Strength", &_pbrRendering.gpuSceneShadingProps.scaleIBLAmbient, 0.1f, 0.0f, 2.0f);
-
-		ImGui::DragFloat("Shadow Jitter Strength", &_pbrRendering.gpuSceneShadingProps.shadowJitterMapOffsetScale, 0.1f);
-
-		static int debugViewIndex = 0;
-		if (ImGui::Combo("Debug View Input", &debugViewIndex, "none\0Base color\0Normal\0Occlusion\0Emissive\0Metallic\0Roughness"))
-			_pbrRendering.gpuSceneShadingProps.debugViewInputs = (float_t)debugViewIndex;
-
-		static int debugViewEquation = 0;
-		if (ImGui::Combo("Debug View Equation", &debugViewEquation, "none\0Diff (l,n)\0F (l,h)\0G (l,v,h)\0D (h)\0Specular"))
-			_pbrRendering.gpuSceneShadingProps.debugViewEquation = (float_t)debugViewEquation;
-
-		ImGui::Text(("Prefiltered Cubemap Miplevels: " + std::to_string((int32_t)_pbrRendering.gpuSceneShadingProps.prefilteredCubemapMipLevels)).c_str());
-
-		ImGui::Separator();
-
-		ImGui::Text("Toggle Layers");
-
-		static const ImVec2 imageButtonSize = ImVec2(64, 64);
-		static const ImVec4 tintColorActive = ImVec4(1, 1, 1, 1);
-		static const ImVec4 tintColorInactive = ImVec4(1, 1, 1, 0.25);
-
-		//
-		// Toggle Layers (Section: Rendering)
-		//
-		ImTextureID renderingLayersButtonIcons[] = {
-			(ImTextureID)_imguiData.textureLayerVisible,
-			(ImTextureID)_imguiData.textureLayerInvisible,
-			(ImTextureID)_imguiData.textureLayerBuilder,
-			(ImTextureID)_imguiData.textureLayerCollision,
-		};
-		std::string buttonTurnOnSfx[] = {
-			"res/_develop/layer_visible_sfx.ogg",
-			"res/_develop/layer_invisible_sfx.ogg",
-			"res/_develop/layer_builder_sfx.ogg",
-			"res/_develop/layer_collision_sfx.ogg",
-		};
-
-		for (size_t i = 0; i < std::size(renderingLayersButtonIcons); i++)
-		{
-			bool isLayerActive = false;
-			switch (i)
+			if (ImGui::BeginPopup("change_respawn_point"))
 			{
-			case 0:
-			case 1:
-			case 2:
-				isLayerActive = _roManager->_renderObjectLayersEnabled[i];
-				break;
-
-			case 3:
-				isLayerActive = generateCollisionDebugVisualization;
-				break;
-			}
-
-			if (ImGui::ImageButton(renderingLayersButtonIcons[i], imageButtonSize, ImVec2(0, 0), ImVec2(1, 1), -1, ImVec4(0, 0, 0, 0), isLayerActive ? tintColorActive : tintColorInactive))
-			{
-				switch (i)
+				size_t spawnId = 0;
+				for (auto& spd : globalState::listOfSpawnPoints)
 				{
-				case 0:
-				case 1:
-				case 2:
-				{
-					// Toggle render layer
-					_roManager->_renderObjectLayersEnabled[i] = !_roManager->_renderObjectLayersEnabled[i];
-					if (!_roManager->_renderObjectLayersEnabled[i])
+					std::string desc =
+						"Spawn point #" + std::to_string(spawnId + 1) +
+						" (" + std::to_string((int32_t)spd.position[0]) + ", " + std::to_string((int32_t)spd.position[1]) + ", " + std::to_string((int32_t)spd.position[2]) + ") : " +
+						std::to_string((int32_t)glm_rad(spd.facingDirection)) + "deg";
+					if (ImGui::Button(desc.c_str()))
 					{
-						// Find object that matrixToMove is pulling from (if any)
+						auto& spd = globalState::listOfSpawnPoints[spawnId];
+						glm_vec3_copy(spd.position, globalState::respawnPosition);
+						globalState::respawnFacingDirection = spd.facingDirection;
+						globalState::EDITORtriggerRespawnFlag = true;
+
+						if (initiallyChangedCamModeToFree)
+						{
+							_camera->requestCameraMode(_camera->_cameraMode_mainCamMode);
+							initiallyChangedCamModeToFree = false;
+						}
+						ImGui::CloseCurrentPopup();
+					}
+
+					spawnId++;
+				}
+
+				ImGui::EndPopup();
+			}
+
+			//
+			// Scene Properties window (and play mode window).
+			//
+			static float_t scenePropertiesWindowWidth = 100.0f;
+			static float_t scenePropertiesWindowHeight = 100.0f;
+
+			static bool startPlayModeFlag = false;
+			static size_t selectedSpawnId = (size_t)-1;
+			static std::string tempSceneName = ".temp_scene_to_return_to_after_play_mode.temphentais";
+			if (startPlayModeFlag || input::editorInputSet().togglePlayEditMode.onAction)
+			{
+				startPlayModeFlag = false;
+
+				if (globalState::isEditingMode)
+				{
+					selectedSpawnId = (size_t)-1;
+					ImGui::OpenPopup("start_playmode_spawn_selection_popup");
+				}
+				else
+				{
+					scene::loadScene(tempSceneName, true);
+					physengine::requestSetRunPhysicsSimulation(false);
+					_camera->requestCameraMode(_camera->_cameraMode_freeCamMode);
+					globalState::isEditingMode = true;
+
+					debug::pushDebugMessage({
+						.message = "===Stopped PLAY MODE===",
+					});
+				}
+			}
+			if (ImGui::BeginPopup("start_playmode_spawn_selection_popup"))
+			{
+				size_t spawnId = 0;
+				for (auto& spd : globalState::listOfSpawnPoints)
+				{
+					std::string desc =
+						"Spawn point #" + std::to_string(spawnId + 1) +
+						" (" + std::to_string((int32_t)spd.position[0]) + ", " + std::to_string((int32_t)spd.position[1]) + ", " + std::to_string((int32_t)spd.position[2]) + ") : " +
+						std::to_string((int32_t)glm_rad(spd.facingDirection)) + "deg";
+					if (ImGui::Button(desc.c_str()))
+					{
+						selectedSpawnId = spawnId;
+						ImGui::CloseCurrentPopup();
+					}
+
+					spawnId++;
+				}
+
+				ImGui::EndPopup();
+			}
+			if (selectedSpawnId != (size_t)-1)
+			{
+				// Enter play mode with the selected spawn.
+				scene::saveScene(tempSceneName, _entityManager->_entities);
+				{
+					// Add character and set it as the main subject.
+					// @TODO: move this somewhere else more appropriate.
+					if (globalState::listOfSpawnPoints.empty())
+					{
+						std::cerr << "ERROR: no spawn points to use for spawning player in!" << std::endl;
+						HAWSOO_CRASH();
+					}
+					auto& spd = globalState::listOfSpawnPoints[selectedSpawnId];
+
+					DataSerializer ds;
+					ds.dumpString("00000000000000000000000000000000");
+					ds.dumpString("PLAYER");            // Type.
+					ds.dumpVec3(spd.position);          // Starting Position.
+					ds.dumpFloat(spd.facingDirection);  // Facing Direction.
+					ds.dumpFloat(100.0f);               // Health.
+					ds.dumpFloat(0.0f);                 // Num Harvestable Items.
+					ds.dumpFloat(0.0f);                 // Num Scannable Items.
+					DataSerialized dsd = ds.getSerializedData();
+					SimulationCharacter* entity = (SimulationCharacter*)scene::spinupNewObject(":character", &dsd);
+
+					_camera->mainCamMode.setMainCamTargetObject(entity->getMainRenderObject());
+					_camera->mainCamMode.setMainCamOrbitAngles(vec2{ glm_rad(25.0f), spd.facingDirection });
+
+					glm_vec3_copy(spd.position, globalState::respawnPosition);
+					globalState::respawnFacingDirection = spd.facingDirection;
+				}
+				physengine::requestSetRunPhysicsSimulation(true);
+				_camera->requestCameraMode(_camera->_cameraMode_mainCamMode);
+
+				debug::pushDebugMessage({
+					.message = "===Started PLAY MODE===",
+				});
+
+				selectedSpawnId = (size_t)-1;
+				globalState::isEditingMode = false;
+			}
+
+			if (globalState::isEditingMode)
+			{
+				// Editing Mode properties.
+				ImGui::SetNextWindowPos(ImVec2(_windowExtent.width - scenePropertiesWindowWidth, MAIN_MENU_PADDING), ImGuiCond_Always);
+				ImGui::Begin("Scene Properties", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
+				{
+					ImGui::Text(globalState::savedActiveScene.c_str());
+
+					static std::vector<std::string> listOfScenes;
+					if (ImGui::Button("Open Scene.."))
+					{
+						listOfScenes = scene::getListOfScenes();
+						ImGui::OpenPopup("open_scene_popup");
+					}
+					if (ImGui::BeginPopup("open_scene_popup"))
+					{
+						for (auto& path : listOfScenes)
+							if (ImGui::Button(("Open \"" + path + "\"").c_str()))
+							{
+								_movingMatrix.matrixToMove = nullptr;  // @HACK: just a safeguard in case if the matrixtomove happened to be on an entity that will get deleted in the next line  -Timo 2022/11/05
+								scene::loadScene(path, true);
+								globalState::savedActiveScene = path;
+								ImGui::CloseCurrentPopup();
+							}
+						ImGui::EndPopup();
+					}
+
+					ImGui::SameLine();
+					if (ImGui::Button("Save Scene"))
+						scene::saveScene(globalState::savedActiveScene, _entityManager->_entities);
+
+					ImGui::SameLine();
+					if (ImGui::Button("Save Scene As.."))
+						ImGui::OpenPopup("save_scene_as_popup");
+					if (ImGui::BeginPopup("save_scene_as_popup"))
+					{
+						static std::string saveSceneAsFname;
+						ImGui::InputText(".hentais", &saveSceneAsFname);
+						if (ImGui::Button(("Save As \"" + saveSceneAsFname + ".hentais\"").c_str()))
+						{
+							scene::saveScene(saveSceneAsFname + ".hentais", _entityManager->_entities);
+							globalState::savedActiveScene = saveSceneAsFname + ".hentais";
+							ImGui::CloseCurrentPopup();
+						}
+						ImGui::EndPopup();
+					}
+
+					static std::vector<std::string> listOfPrefabs;
+					if (ImGui::Button("Open Prefab.."))
+					{
+						listOfPrefabs = scene::getListOfPrefabs();
+						ImGui::OpenPopup("open_prefab_popup");
+					}
+					if (ImGui::BeginPopup("open_prefab_popup"))
+					{
+						for (auto& path : listOfPrefabs)
+							if (ImGui::Button(("Open \"" + path + "\"").c_str()))
+							{
+								scene::loadPrefabNonOwned(path);
+								ImGui::CloseCurrentPopup();
+							}
+						ImGui::EndPopup();
+					}
+
+					ImGui::Separator();
+					ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0.355556f, 0.5f, 0.4f));
+					ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0.355556f, 0.7f, 0.5f));
+					ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0.355556f, 0.8f, 0.6f));
+					if (ImGui::Button("Start PLAY MODE (F1)"))
+						startPlayModeFlag = true;  // Switch to play mode.
+					ImGui::PopStyleColor(3);
+
+					scenePropertiesWindowWidth = ImGui::GetWindowWidth();
+					scenePropertiesWindowHeight = ImGui::GetWindowHeight();
+				}
+				ImGui::End();
+			}
+			else
+			{
+				// Play Mode desu window.
+				ImGui::SetNextWindowPos(ImVec2(_windowExtent.width - scenePropertiesWindowWidth, MAIN_MENU_PADDING), ImGuiCond_Always);
+				ImGui::SetNextWindowSize(ImVec2(scenePropertiesWindowWidth, scenePropertiesWindowHeight), ImGuiCond_Always);
+				ImGui::Begin("##Play Mode desu window", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove);
+				{
+					ImGui::SetWindowFontScale(1.5f);
+
+					ImGui::Text("PLAY MODE is ");
+					ImGui::SameLine();
+					ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.0f, 1.0f), "ON");
+					ImGui::SameLine();
+					ImGui::Text(" F1 to stop");
+
+					ImGui::Text("Simulation: ");
+					ImGui::SameLine();
+					ImGui::TextColored(
+						physengine::getIsRunPhysicsSimulation() ? ImVec4(0.0f, 1.0f, 0.0f, 1.0f) : ImVec4(1.0f, 0.0f, 0.0f, 1.0f),
+						physengine::getIsRunPhysicsSimulation() ? "ON" : "OFF"
+					);
+					ImGui::SameLine();
+					ImGui::Text(" (Shift+F1)");
+
+					ImGui::Text("Game Camera: ");
+					bool isCameraOn = (_camera->getCameraMode() == _camera->_cameraMode_mainCamMode);
+					ImGui::SameLine();
+					ImGui::TextColored(
+						isCameraOn ? ImVec4(0.0f, 1.0f, 0.0f, 1.0f) : ImVec4(1.0f, 0.0f, 0.0f, 1.0f),
+						isCameraOn ? "ON" : "OFF"
+					);
+					ImGui::SameLine();
+					ImGui::Text(" (F2)");
+				}
+				ImGui::End();
+			}
+
+			// Left side props windows.
+			ImGui::SetNextWindowPos(ImVec2(0.0f, MAIN_MENU_PADDING), ImGuiCond_Always);
+			ImGui::SetNextWindowSizeConstraints(ImVec2(-1.0f, 0.0f), ImVec2(-1.0f, _windowExtent.height - MAIN_MENU_PADDING));
+			ImGui::Begin("Level Editor##Left side props windows", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+			{
+				// PBR Shading props.
+				if (ImGui::CollapsingHeader("PBR Shading Properties", ImGuiTreeNodeFlags_DefaultOpen))
+				{
+					if (ImGui::DragFloat3("Light Direction", _pbrRendering.gpuSceneShadingProps.lightDir))
+					glm_normalize(_pbrRendering.gpuSceneShadingProps.lightDir);		
+
+					ImGui::DragFloat("Exposure", &_pbrRendering.gpuSceneShadingProps.exposure, 0.1f, 0.1f, 10.0f);
+					ImGui::DragFloat("Gamma", &_pbrRendering.gpuSceneShadingProps.gamma, 0.1f, 0.1f, 4.0f);
+					ImGui::DragFloat("IBL Strength", &_pbrRendering.gpuSceneShadingProps.scaleIBLAmbient, 0.1f, 0.0f, 2.0f);
+
+					ImGui::DragFloat("Shadow Jitter Strength", &_pbrRendering.gpuSceneShadingProps.shadowJitterMapOffsetScale, 0.1f);
+
+					static int debugViewIndex = 0;
+					if (ImGui::Combo("Debug View Input", &debugViewIndex, "none\0Base color\0Normal\0Occlusion\0Emissive\0Metallic\0Roughness"))
+						_pbrRendering.gpuSceneShadingProps.debugViewInputs = (float_t)debugViewIndex;
+
+					static int debugViewEquation = 0;
+					if (ImGui::Combo("Debug View Equation", &debugViewEquation, "none\0Diff (l,n)\0F (l,h)\0G (l,v,h)\0D (h)\0Specular"))
+						_pbrRendering.gpuSceneShadingProps.debugViewEquation = (float_t)debugViewEquation;
+
+					ImGui::Text(("Prefiltered Cubemap Miplevels: " + std::to_string((int32_t)_pbrRendering.gpuSceneShadingProps.prefilteredCubemapMipLevels)).c_str());
+
+					ImGui::Separator();
+
+					ImGui::Text("Toggle Layers");
+
+					static const ImVec2 imageButtonSize = ImVec2(64, 64);
+					static const ImVec4 tintColorActive = ImVec4(1, 1, 1, 1);
+					static const ImVec4 tintColorInactive = ImVec4(1, 1, 1, 0.25);
+
+					//
+					// Toggle Layers (Section: Rendering)
+					//
+					ImTextureID renderingLayersButtonIcons[] = {
+						(ImTextureID)_imguiData.textureLayerVisible,
+						(ImTextureID)_imguiData.textureLayerInvisible,
+						(ImTextureID)_imguiData.textureLayerBuilder,
+						(ImTextureID)_imguiData.textureLayerCollision,
+					};
+					std::string buttonTurnOnSfx[] = {
+						"res/sfx/_develop/layer_visible_sfx.ogg",
+						"res/sfx/_develop/layer_invisible_sfx.ogg",
+						"res/sfx/_develop/layer_builder_sfx.ogg",
+						"res/sfx/_develop/layer_collision_sfx.ogg",
+					};
+
+					for (size_t i = 0; i < std::size(renderingLayersButtonIcons); i++)
+					{
+						bool isLayerActive = false;
+						switch (i)
+						{
+						case 0:
+						case 1:
+						case 2:
+							isLayerActive = _roManager->_renderObjectLayersEnabled[i];
+							break;
+
+						case 3:
+							isLayerActive = generateCollisionDebugVisualization;
+							break;
+						}
+
+						if (ImGui::ImageButton(renderingLayersButtonIcons[i], imageButtonSize, ImVec2(0, 0), ImVec2(1, 1), -1, ImVec4(0, 0, 0, 0), isLayerActive ? tintColorActive : tintColorInactive))
+						{
+							switch (i)
+							{
+							case 0:
+							case 1:
+							case 2:
+							{
+								// Toggle render layer
+								_roManager->_renderObjectLayersEnabled[i] = !_roManager->_renderObjectLayersEnabled[i];
+								_roManager->flagMetaMeshListAsUnoptimized();
+								if (!_roManager->_renderObjectLayersEnabled[i])
+								{
+									// Find object that matrixToMove is pulling from (if any)
+									for (size_t poolIndex : _roManager->_renderObjectsIndices)
+									{
+										auto& ro = _roManager->_renderObjectPool[poolIndex];
+										if (_movingMatrix.matrixToMove == &ro.transformMatrix)
+										{
+											// @HACK: Reset the _movingMatrix.matrixToMove
+											//        if it's for one of the objects that just got disabled
+											if ((size_t)ro.renderLayer == i)
+												_movingMatrix.matrixToMove = nullptr;
+											break;
+										}
+									}
+								}
+								break;
+							}
+
+							case 3:
+								// Collision Layer debug draw toggle
+								generateCollisionDebugVisualization = !generateCollisionDebugVisualization;
+								break;
+							}
+
+							// Assume toggle occurred (so if layer wasn't active)
+							if (!isLayerActive)
+								AudioEngine::getInstance().playSound(buttonTurnOnSfx[i]);
+						}
+
+						if ((int32_t)fmodf((float_t)(i + 1), 3.0f) != 0)
+							ImGui::SameLine();
+					}
+				}
+
+				// Physics Props.
+				ImGui::Separator();
+				if (ImGui::CollapsingHeader("Physics Properties", ImGuiTreeNodeFlags_DefaultOpen))
+				{
+					static vec3 worldGravity = GLM_VEC3_ZERO_INIT;
+					static bool first = true;  // @HACK
+					if (first)
+					{
+						physengine::getWorldGravity(worldGravity);
+						first = false;
+					}                          // End @HACK
+					if (ImGui::DragFloat3("worldGravity", worldGravity))
+						physengine::setWorldGravity(worldGravity);
+				}
+
+				// Camera props.
+				ImGui::Separator();
+				if (ImGui::CollapsingHeader("Camera Properties", ImGuiTreeNodeFlags_DefaultOpen))
+				{
+					ImGui::Text("NOTE: press F10 to change camera types");
+
+					ImGui::SliderFloat("lookDistance", &_camera->mainCamMode.lookDistance, 1.0f, 100.0f);
+					ImGui::DragFloat("lookDistanceSmoothTime", &_camera->mainCamMode.lookDistanceSmoothTime, 0.01f);
+					ImGui::DragFloat("focusSmoothTimeXZ", &_camera->mainCamMode.focusSmoothTimeXZ, 0.01f);
+					ImGui::DragFloat("focusSmoothTimeY", &_camera->mainCamMode.focusSmoothTimeY, 0.01f);
+					ImGui::DragFloat3("focusPositionOffset", _camera->mainCamMode.focusPositionOffset);
+					ImGui::DragFloat("opponentTargetTransition.targetYOrbitAngleSideOffset", &_camera->mainCamMode.opponentTargetTransition.targetYOrbitAngleSideOffset, 0.01f);
+					ImGui::DragFloat("opponentTargetTransition.xOrbitAngleSmoothTime", &_camera->mainCamMode.opponentTargetTransition.xOrbitAngleSmoothTime, 0.01f);
+					ImGui::DragFloat("opponentTargetTransition.yOrbitAngleSmoothTimeSlow", &_camera->mainCamMode.opponentTargetTransition.yOrbitAngleSmoothTimeSlow, 0.01f);
+					ImGui::DragFloat("opponentTargetTransition.yOrbitAngleSmoothTimeFast", &_camera->mainCamMode.opponentTargetTransition.yOrbitAngleSmoothTimeFast, 0.01f);
+					ImGui::DragFloat("opponentTargetTransition.slowFastTransitionRadius", &_camera->mainCamMode.opponentTargetTransition.slowFastTransitionRadius, 0.1f);
+					ImGui::DragFloat("opponentTargetTransition.lookDistanceBaseAmount", &_camera->mainCamMode.opponentTargetTransition.lookDistanceBaseAmount, 0.1f);
+					ImGui::DragFloat("opponentTargetTransition.lookDistanceObliqueAmount", &_camera->mainCamMode.opponentTargetTransition.lookDistanceObliqueAmount, 0.1f);
+					ImGui::DragFloat("opponentTargetTransition.lookDistanceHeightAmount", &_camera->mainCamMode.opponentTargetTransition.lookDistanceHeightAmount, 0.1f);
+					ImGui::DragFloat("opponentTargetTransition.focusPositionExtraYOffsetWhenTargeting", &_camera->mainCamMode.opponentTargetTransition.focusPositionExtraYOffsetWhenTargeting, 0.1f);
+					ImGui::DragFloat("opponentTargetTransition.depthOfFieldSmoothTime", &_camera->mainCamMode.opponentTargetTransition.depthOfFieldSmoothTime, 0.1f);
+					ImGui::DragFloat3("opponentTargetTransition.DOFPropsRelaxedState", _camera->mainCamMode.opponentTargetTransition.DOFPropsRelaxedState, 0.1f);
+				}
+
+				// DOF props.
+				ImGui::Separator();
+				if (ImGui::CollapsingHeader("Depth of Field Properties", ImGuiTreeNodeFlags_DefaultOpen))
+				{
+					ImGui::DragFloat("CoC Focus Depth", &globalState::DOFFocusDepth, 0.1f);
+					ImGui::DragFloat("CoC Focus Extent", &globalState::DOFFocusExtent, 0.1f);
+					ImGui::DragFloat("CoC Blur Extent", &globalState::DOFBlurExtent, 0.1f);
+					ImGui::DragFloat("DOF Gather Sample Radius", &_DOFSampleRadiusMultiplier, 0.1f);
+				}
+
+				// Textbox props.
+				ImGui::Separator();
+				if (ImGui::CollapsingHeader("Textbox Properties", ImGuiTreeNodeFlags_DefaultOpen))
+				{
+					ImGui::DragFloat3("mainRenderPosition", textbox::mainRenderPosition);
+					ImGui::DragFloat3("mainRenderExtents", textbox::mainRenderExtents);
+					ImGui::DragFloat3("querySelectionsRenderPosition", textbox::querySelectionsRenderPosition);
+				}
+
+				// Entity creation. @TODO: this needs to be moved out.
+				ImGui::Separator();
+				if (ImGui::CollapsingHeader("Create Entity", ImGuiTreeNodeFlags_DefaultOpen))
+				{
+					static int32_t entityToCreateIndex = 1;  // @NOTE: don't want default setting to be `:player` or else you could accidentally create another player entity... and that is not needed for the levels
+					std::vector<std::string> listEntityTypes = scene::getListOfEntityTypes();
+					std::stringstream allEntityTypes;
+					for (auto entType : listEntityTypes)
+						allEntityTypes << entType << '\0';
+
+					ImGui::Combo("##Entity to create", &entityToCreateIndex, allEntityTypes.str().c_str());
+
+					static Entity* _flagAttachToThisEntity = nullptr;  // One frame lag fetch bc the `INTERNALaddRemoveRequestedEntities()` gets run once a frame instead of immediate add when an entity gets constructed.
+					if (_flagAttachToThisEntity)
+					{
+						for (size_t poolIndex : _roManager->_renderObjectsIndices)
+						{
+							auto& ro = _roManager->_renderObjectPool[poolIndex];
+							if (ro.attachedEntityGuid == _flagAttachToThisEntity->getGUID())
+								_movingMatrix.matrixToMove = &ro.transformMatrix;
+						}
+						_flagAttachToThisEntity = nullptr;
+					}
+
+					static bool showCreateObjectTooltip = false;
+					if (ImGui::Button("Create!"))
+					{
+						showCreateObjectTooltip = true;
+					}
+					if (showCreateObjectTooltip)
+					{
+						// Figure out linecast for .
+						ImGuiIO& io = ImGui::GetIO();
+						bool raycastSuccess = false;
+						std::string raycastGuid;
+						vec3 initPosition;
+						{
+							vec3 linecastPt1, linecastPt2;
+							glm_unproject(
+								vec3{ io.MousePos.x, io.MousePos.y, 0.0f },
+								_camera->sceneCamera.gpuCameraData.projectionView,
+								vec4{ 0, 0, (float_t)_windowExtent.width, (float_t)_windowExtent.height },
+								linecastPt1
+							);
+							glm_unproject(
+								vec3{ io.MousePos.x, io.MousePos.y, 1.0f },
+								_camera->sceneCamera.gpuCameraData.projectionView,
+								vec4{ 0, 0, (float_t)_windowExtent.width, (float_t)_windowExtent.height },
+								linecastPt2
+							);
+
+							vec3 delta;
+							glm_vec3_sub(linecastPt2, linecastPt1, delta);
+							float_t frac;
+							raycastSuccess = physengine::raycast(linecastPt1, delta, raycastGuid, frac);
+							if (raycastSuccess)
+							{
+								glm_vec3_scale(delta, frac, delta);
+								glm_vec3_add(linecastPt1, delta, initPosition);
+							}
+							else
+							{
+								glm_vec3_scale_as(delta, 20.0f, delta);
+								glm_vec3_add(linecastPt1, delta, initPosition);
+							}
+						}
+
+						// Render tooltip.
+						ImGui::BeginTooltip();
+						std::string tip =
+							"Click LMB to instantiate the object `" +
+							listEntityTypes[(size_t)entityToCreateIndex] +
+							"`\nOr Esc to cancel.\n";
+						if (raycastSuccess)
+							tip += "On top of `" + raycastGuid.substr(0, 6) + "` at (" + std::to_string((int32_t)initPosition[0]) + ", " + std::to_string((int32_t)initPosition[1]) + ", " + std::to_string((int32_t)initPosition[2]) + ").";
+						else
+							tip += "At cursor (" + std::to_string((int32_t)io.MousePos.x) + ", " + std::to_string((int32_t)io.MousePos.y) + "), 20m away.";
+						ImGui::TextUnformatted(tip.c_str());
+						ImGui::EndTooltip();
+
+						if (input::editorInputSet().pickObject.onAction)
+						{
+							// Spin up new entity.
+							auto newEnt = scene::spinupNewObject(listEntityTypes[(size_t)entityToCreateIndex], nullptr);
+							newEnt->teleportToPosition(initPosition);
+							_flagAttachToThisEntity = newEnt;  // @HACK: ... but if it works?
+							showCreateObjectTooltip = false;
+						}
+						if (input::editorInputSet().cancel.onAction)
+						{
+							// Cancel creating entity.
+							showCreateObjectTooltip = false;
+						}
+					}
+
+					// Manipulate the selected entity
+					Entity* selectedEntity = nullptr;
+					for (size_t poolIndex : _roManager->_renderObjectsIndices)
+					{
+						auto& ro = _roManager->_renderObjectPool[poolIndex];
+						if (_movingMatrix.matrixToMove == &ro.transformMatrix)
+							for (auto& ent : _entityManager->_entities)
+								if (ro.attachedEntityGuid == ent->getGUID())
+								{
+									selectedEntity = ent;
+									break;
+								}
+						if (selectedEntity)
+							break;
+					}
+					if (selectedEntity)
+					{
+						// Duplicate
+						static bool canRunDuplicateProc = true;
+						if (ImGui::Button("Duplicate Selected Entity") || (allowKeyboardShortcuts && input::editorInputSet().duplicateObject.onAction))
+						{
+							if (canRunDuplicateProc)
+							{
+								DataSerializer ds;
+								selectedEntity->dump(ds);
+								auto dsd = ds.getSerializedData();
+								auto newEnt = scene::spinupNewObject(selectedEntity->getTypeName(), &dsd);
+								_flagAttachToThisEntity = newEnt;
+							}
+
+							canRunDuplicateProc = false;
+						}
+						else
+							canRunDuplicateProc = true;
+
+						// Delete
+						static bool canRunDeleteProc = true;
+						
+						ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0.0f, 0.5f, 0.6f));
+						ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0.0f, 0.7f, 0.7f));
+						ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0.0f, 0.8f, 0.8f));
+
+						if (ImGui::Button("Delete Selected Entity!") || (allowKeyboardShortcuts && input::editorInputSet().deleteObject.onAction))
+						{
+							if (canRunDeleteProc)
+							{
+								_entityManager->destroyEntity(selectedEntity);
+								_movingMatrix.matrixToMove = nullptr;
+							}
+
+							canRunDeleteProc = false;
+						}
+						else
+							canRunDeleteProc = true;
+
+						ImGui::PopStyleColor(3);
+					}
+				}
+
+				if (_movingMatrix.matrixToMove != nullptr)
+				{
+					// Move the picked matrix via ImGuizmo.
+					mat4 projection;
+					glm_mat4_copy(_camera->sceneCamera.gpuCameraData.projection, projection);
+					projection[1][1] *= -1.0f;
+
+					static ImGuizmo::OPERATION manipulateOperation = ImGuizmo::OPERATION::TRANSLATE;
+					static ImGuizmo::MODE manipulateMode           = ImGuizmo::MODE::WORLD;
+
+					vec3 snapValues(0.0f);
+					if (input::editorInputSet().snapModifier.holding)
+						if (manipulateOperation == ImGuizmo::OPERATION::ROTATE)
+							snapValues[0] = snapValues[1] = snapValues[2] = 45.0f;
+						else
+							snapValues[0] = snapValues[1] = snapValues[2] = 0.5f;
+
+					bool matrixToMoveMoved =
+						ImGuizmo::Manipulate(
+							(const float_t*)_camera->sceneCamera.gpuCameraData.view,
+							(const float_t*)projection,
+							manipulateOperation,
+							manipulateMode,
+							(float_t*)*_movingMatrix.matrixToMove,
+							nullptr,
+							(const float_t*)snapValues
+						);
+
+					// Edit Selected Entity.
+					ImGui::Separator();
+					if (ImGui::CollapsingHeader("Edit Selected Entity", ImGuiTreeNodeFlags_DefaultOpen))
+					{
+						if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen))
+						{
+							vec3 position, eulerAngles, scale;
+							ImGuizmo::DecomposeMatrixToComponents(
+								(const float_t*)* _movingMatrix.matrixToMove,
+								position,
+								eulerAngles,
+								scale
+							);
+
+							bool changed = false;
+							changed |= ImGui::DragFloat3("Pos##ASDFASDFASDFJAKSDFKASDHF", position);
+							changed |= ImGui::DragFloat3("Rot##ASDFASDFASDFJAKSDFKASDHF", eulerAngles);
+							changed |= ImGui::DragFloat3("Sca##ASDFASDFASDFJAKSDFKASDHF", scale);
+
+							if (changed)
+							{
+								// Recompose the matrix
+								// @TODO: Figure out when to invalidate the cache bc the euler angles will reset!
+								//        Or... maybe invalidating the cache isn't necessary for this window????
+								ImGuizmo::RecomposeMatrixFromComponents(
+									position,
+									eulerAngles,
+									scale,
+									(float_t*)*_movingMatrix.matrixToMove
+								);
+
+								matrixToMoveMoved = true;
+							}
+						}
+
+						static bool forceRecalculation = false;    // @NOTE: this is a flag for the key bindings below
+						static int operationIndex = 0;
+						static int modeIndex = 0;
+						if (ImGui::CollapsingHeader("Manipulation Gizmo", ImGuiTreeNodeFlags_DefaultOpen))
+						{
+							if (ImGui::Combo("Operation", &operationIndex, "Translate\0Rotate\0Scale") || forceRecalculation)
+							{
+								switch (operationIndex)
+								{
+								case 0:
+									manipulateOperation = ImGuizmo::OPERATION::TRANSLATE;
+									break;
+								case 1:
+									manipulateOperation = ImGuizmo::OPERATION::ROTATE;
+									break;
+								case 2:
+									manipulateOperation = ImGuizmo::OPERATION::SCALE;
+									break;
+								}
+							}
+							if (ImGui::Combo("Mode", &modeIndex, "World\0Local") || forceRecalculation)
+							{
+								switch (modeIndex)
+								{
+								case 0:
+									manipulateMode = ImGuizmo::MODE::WORLD;
+									break;
+								case 1:
+									manipulateMode = ImGuizmo::MODE::LOCAL;
+									break;
+								}
+							}
+						}
+
+						// Key bindings for switching the operation and mode
+						forceRecalculation = false;
+
+						bool hasMouseButtonDown = false;
+						for (size_t i = 0; i < 5; i++)
+							hasMouseButtonDown |= io.MouseDown[i];    // @NOTE: this covers cases of gizmo operation changing while left clicking on the gizmo (or anywhere else) or flying around with right click.  -Timo
+						if (!hasMouseButtonDown && allowKeyboardShortcuts)
+						{
+							static bool qKeyLock = false;
+							if (input::editorInputSet().toggleTransformManipulationMode.onAction)
+							{
+								if (!qKeyLock)
+								{
+									modeIndex = (int)!(bool)modeIndex;
+									qKeyLock = true;
+									forceRecalculation = true;
+								}
+							}
+							else
+							{
+								qKeyLock = false;
+							}
+
+							if (input::editorInputSet().switchToTransformPosition.onAction)
+							{
+								operationIndex = 0;
+								forceRecalculation = true;
+							}
+							if (input::editorInputSet().switchToTransformRotation.onAction)
+							{
+								operationIndex = 1;
+								forceRecalculation = true;
+							}
+							if (input::editorInputSet().switchToTransformScale.onAction)
+							{
+								operationIndex = 2;
+								forceRecalculation = true;
+							}
+						}
+
+						//
+						// Edit props exclusive to render objects
+						//
+						RenderObject* foundRO = nullptr;
 						for (size_t poolIndex : _roManager->_renderObjectsIndices)
 						{
 							auto& ro = _roManager->_renderObjectPool[poolIndex];
 							if (_movingMatrix.matrixToMove == &ro.transformMatrix)
 							{
-								// @HACK: Reset the _movingMatrix.matrixToMove
-								//        if it's for one of the objects that just got disabled
-								if ((size_t)ro.renderLayer == i)
-									_movingMatrix.matrixToMove = nullptr;
+								foundRO = &ro;
 								break;
 							}
 						}
-					}
-					break;
-				}
 
-				case 3:
-					// Collision Layer debug draw toggle
-					generateCollisionDebugVisualization = !generateCollisionDebugVisualization;
-					break;
-				}
-
-				// Assume toggle occurred (so if layer wasn't active)
-				if (!isLayerActive)
-					AudioEngine::getInstance().playSound(buttonTurnOnSfx[i]);
-			}
-
-			if ((int32_t)fmodf((float_t)(i + 1), 3.0f) != 0)
-				ImGui::SameLine();
-		}
-
-		accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
-		maxWindowWidth = std::max(maxWindowWidth, ImGui::GetWindowWidth());
-	}
-	ImGui::End();
-
-	//
-	// Global Properties
-	//
-	ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight + windowOffsetY), ImGuiCond_Always);
-	ImGui::Begin("Global Properties", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
-	{
-		if (ImGui::CollapsingHeader("Debug Properties", ImGuiTreeNodeFlags_DefaultOpen))
-		{
-			ImGui::DragFloat("scrollSpeed", &scrollSpeed);
-		}
-
-		if (ImGui::CollapsingHeader("Physics Properties", ImGuiTreeNodeFlags_DefaultOpen))
-		{
-			static vec3 worldGravity = GLM_VEC3_ZERO_INIT;
-			if (ImGui::DragFloat3("worldGravity", worldGravity))
-				physengine::setWorldGravity(worldGravity);
-		}
-
-		if (ImGui::CollapsingHeader("Camera Properties", ImGuiTreeNodeFlags_DefaultOpen))
-		{
-			ImGui::Text("NOTE: press F10 to change camera types");
-
-			ImGui::SliderFloat("lookDistance", &_camera->mainCamMode.lookDistance, 1.0f, 100.0f);
-			ImGui::DragFloat("lookDistanceSmoothTime", &_camera->mainCamMode.lookDistanceSmoothTime, 0.01f);
-			ImGui::DragFloat("focusSmoothTimeXZ", &_camera->mainCamMode.focusSmoothTimeXZ, 0.01f);
-			ImGui::DragFloat("focusSmoothTimeY", &_camera->mainCamMode.focusSmoothTimeY, 0.01f);
-			ImGui::DragFloat3("focusPositionOffset", _camera->mainCamMode.focusPositionOffset);
-			ImGui::DragFloat("opponentTargetTransition.targetYOrbitAngleSideOffset", &_camera->mainCamMode.opponentTargetTransition.targetYOrbitAngleSideOffset, 0.01f);
-			ImGui::DragFloat("opponentTargetTransition.xOrbitAngleSmoothTime", &_camera->mainCamMode.opponentTargetTransition.xOrbitAngleSmoothTime, 0.01f);
-			ImGui::DragFloat("opponentTargetTransition.yOrbitAngleSmoothTimeSlow", &_camera->mainCamMode.opponentTargetTransition.yOrbitAngleSmoothTimeSlow, 0.01f);
-			ImGui::DragFloat("opponentTargetTransition.yOrbitAngleSmoothTimeFast", &_camera->mainCamMode.opponentTargetTransition.yOrbitAngleSmoothTimeFast, 0.01f);
-			ImGui::DragFloat("opponentTargetTransition.slowFastTransitionRadius", &_camera->mainCamMode.opponentTargetTransition.slowFastTransitionRadius, 0.1f);
-			ImGui::DragFloat("opponentTargetTransition.lookDistanceBaseAmount", &_camera->mainCamMode.opponentTargetTransition.lookDistanceBaseAmount, 0.1f);
-			ImGui::DragFloat("opponentTargetTransition.lookDistanceObliqueAmount", &_camera->mainCamMode.opponentTargetTransition.lookDistanceObliqueAmount, 0.1f);
-			ImGui::DragFloat("opponentTargetTransition.lookDistanceHeightAmount", &_camera->mainCamMode.opponentTargetTransition.lookDistanceHeightAmount, 0.1f);
-			ImGui::DragFloat("opponentTargetTransition.focusPositionExtraYOffsetWhenTargeting", &_camera->mainCamMode.opponentTargetTransition.focusPositionExtraYOffsetWhenTargeting, 0.1f);
-			ImGui::DragFloat("opponentTargetTransition.depthOfFieldSmoothTime", &_camera->mainCamMode.opponentTargetTransition.depthOfFieldSmoothTime, 0.1f);
-			ImGui::DragFloat3("opponentTargetTransition.DOFPropsRelaxedState", _camera->mainCamMode.opponentTargetTransition.DOFPropsRelaxedState, 0.1f);
-		}
-
-		if (ImGui::CollapsingHeader("Depth of Field Properties", ImGuiTreeNodeFlags_DefaultOpen))
-		{
-			ImGui::DragFloat("CoC Focus Depth", &globalState::DOFFocusDepth, 0.1f);
-			ImGui::DragFloat("CoC Focus Extent", &globalState::DOFFocusExtent, 0.1f);
-			ImGui::DragFloat("CoC Blur Extent", &globalState::DOFBlurExtent, 0.1f);
-			ImGui::DragFloat("DOF Gather Sample Radius", &_DOFSampleRadiusMultiplier, 0.1f);
-		}
-
-		if (ImGui::CollapsingHeader("Textbox Properties", ImGuiTreeNodeFlags_DefaultOpen))
-		{
-			ImGui::DragFloat3("mainRenderPosition", textbox::mainRenderPosition);
-			ImGui::DragFloat3("mainRenderExtents", textbox::mainRenderExtents);
-			ImGui::DragFloat3("querySelectionsRenderPosition", textbox::querySelectionsRenderPosition);
-		}
-
-		accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
-		maxWindowWidth = std::max(maxWindowWidth, ImGui::GetWindowWidth());
-	}
-	ImGui::End();
-
-	//
-	// Create Entity
-	//
-	ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight + windowOffsetY), ImGuiCond_Always);
-	ImGui::Begin("Create Entity", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
-	{
-		static int32_t entityToCreateIndex = 1;  // @NOTE: don't want default setting to be `:player` or else you could accidentally create another player entity... and that is not needed for the levels
-		std::vector<std::string> listEntityTypes = scene::getListOfEntityTypes();
-		std::stringstream allEntityTypes;
-		for (auto entType : listEntityTypes)
-			allEntityTypes << entType << '\0';
-
-		ImGui::Combo("##Entity to create", &entityToCreateIndex, allEntityTypes.str().c_str());
-
-		static Entity* _flagAttachToThisEntity = nullptr;  // One frame lag fetch bc the `INTERNALaddRemoveRequestedEntities()` gets run once a frame instead of immediate add when an entity gets constructed.
-		if (_flagAttachToThisEntity)
-		{
-			for (size_t poolIndex : _roManager->_renderObjectsIndices)
-			{
-				auto& ro = _roManager->_renderObjectPool[poolIndex];
-				if (ro.attachedEntityGuid == _flagAttachToThisEntity->getGUID())
-					_movingMatrix.matrixToMove = &ro.transformMatrix;
-			}
-			_flagAttachToThisEntity = nullptr;
-		}
-
-		if (ImGui::Button("Create!"))
-		{
-			auto newEnt = scene::spinupNewObject(listEntityTypes[(size_t)entityToCreateIndex], this, nullptr);
-			_flagAttachToThisEntity = newEnt;  // @HACK: ... but if it works?
-		}
-
-		// Manipulate the selected entity
-		Entity* selectedEntity = nullptr;
-		for (size_t poolIndex : _roManager->_renderObjectsIndices)
-		{
-			auto& ro = _roManager->_renderObjectPool[poolIndex];
-			if (_movingMatrix.matrixToMove == &ro.transformMatrix)
-				for (auto& ent : _entityManager->_entities)
-					if (ro.attachedEntityGuid == ent->getGUID())
-					{
-						selectedEntity = ent;
-						break;
-					}
-			if (selectedEntity)
-				break;
-		}
-		if (selectedEntity)
-		{
-			// Duplicate
-			static bool canRunDuplicateProc = true;
-			if (ImGui::Button("Duplicate Selected Entity") || (allowKeyboardShortcuts && input::keyCtrlPressed && input::keyDPressed))
-			{
-				if (canRunDuplicateProc)
-				{
-					DataSerializer ds;
-					selectedEntity->dump(ds);
-					auto dsd = ds.getSerializedData();
-					auto newEnt = scene::spinupNewObject(selectedEntity->getTypeName(), this, &dsd);
-					_flagAttachToThisEntity = newEnt;
-				}
-
-				canRunDuplicateProc = false;
-			}
-			else
-				canRunDuplicateProc = true;
-
-			// Delete
-			static bool canRunDeleteProc = true;
-			
-            ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0.0f, 0.5f, 0.6f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0.0f, 0.7f, 0.7f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0.0f, 0.8f, 0.8f));
-
-			if (ImGui::Button("Delete Selected Entity!") || (allowKeyboardShortcuts && input::keyDelPressed))
-			{
-				if (canRunDeleteProc)
-				{
-					_entityManager->destroyEntity(selectedEntity);
-					_movingMatrix.matrixToMove = nullptr;
-				}
-
-				canRunDeleteProc = false;
-			}
-			else
-				canRunDeleteProc = true;
-
-            ImGui::PopStyleColor(3);
-		}
-
-
-		accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
-		maxWindowWidth = std::max(maxWindowWidth, ImGui::GetWindowWidth());
-	}
-	ImGui::End();
-
-	//
-	// Moving stuff around window (using ImGuizmo)
-	//
-	if (_movingMatrix.matrixToMove != nullptr)
-	{
-		//
-		// Move the matrix via ImGuizmo
-		//
-		mat4 projection;
-		glm_mat4_copy(_camera->sceneCamera.gpuCameraData.projection, projection);
-		projection[1][1] *= -1.0f;
-
-		static ImGuizmo::OPERATION manipulateOperation = ImGuizmo::OPERATION::TRANSLATE;
-		static ImGuizmo::MODE manipulateMode           = ImGuizmo::MODE::WORLD;
-
-		vec3 snapValues(0.0f);
-		if (input::keyCtrlPressed)
-			if (manipulateOperation == ImGuizmo::OPERATION::ROTATE)
-				snapValues[0] = snapValues[1] = snapValues[2] = 45.0f;
-			else
-				snapValues[0] = snapValues[1] = snapValues[2] = 0.5f;
-
-		bool matrixToMoveMoved =
-			ImGuizmo::Manipulate(
-				(const float_t*)_camera->sceneCamera.gpuCameraData.view,
-				(const float_t*)projection,
-				manipulateOperation,
-				manipulateMode,
-				(float_t*)*_movingMatrix.matrixToMove,
-				nullptr,
-				(const float_t*)snapValues
-			);
-
-		//
-		// Move the matrix via the decomposed values
-		//
-		ImGui::SetNextWindowPos(ImVec2(0, accumulatedWindowHeight + windowOffsetY), ImGuiCond_Always);
-		ImGui::Begin("Edit Selected", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
-		{
-			if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen))
-			{
-				vec3 position, eulerAngles, scale;
-				ImGuizmo::DecomposeMatrixToComponents(
-					(const float_t*)* _movingMatrix.matrixToMove,
-					position,
-					eulerAngles,
-					scale
-				);
-
-				bool changed = false;
-				changed |= ImGui::DragFloat3("Pos##ASDFASDFASDFJAKSDFKASDHF", position);
-				changed |= ImGui::DragFloat3("Rot##ASDFASDFASDFJAKSDFKASDHF", eulerAngles);
-				changed |= ImGui::DragFloat3("Sca##ASDFASDFASDFJAKSDFKASDHF", scale);
-
-				if (changed)
-				{
-					// Recompose the matrix
-					// @TODO: Figure out when to invalidate the cache bc the euler angles will reset!
-					//        Or... maybe invalidating the cache isn't necessary for this window????
-					ImGuizmo::RecomposeMatrixFromComponents(
-						position,
-						eulerAngles,
-						scale,
-						(float_t*)*_movingMatrix.matrixToMove
-					);
-
-					matrixToMoveMoved = true;
-				}
-			}
-
-			static bool forceRecalculation = false;    // @NOTE: this is a flag for the key bindings below
-			static int operationIndex = 0;
-			static int modeIndex = 0;
-			if (ImGui::CollapsingHeader("Manipulation Gizmo", ImGuiTreeNodeFlags_DefaultOpen))
-			{
-				if (ImGui::Combo("Operation", &operationIndex, "Translate\0Rotate\0Scale") || forceRecalculation)
-				{
-					switch (operationIndex)
-					{
-					case 0:
-						manipulateOperation = ImGuizmo::OPERATION::TRANSLATE;
-						break;
-					case 1:
-						manipulateOperation = ImGuizmo::OPERATION::ROTATE;
-						break;
-					case 2:
-						manipulateOperation = ImGuizmo::OPERATION::SCALE;
-						break;
-					}
-				}
-				if (ImGui::Combo("Mode", &modeIndex, "World\0Local") || forceRecalculation)
-				{
-					switch (modeIndex)
-					{
-					case 0:
-						manipulateMode = ImGuizmo::MODE::WORLD;
-						break;
-					case 1:
-						manipulateMode = ImGuizmo::MODE::LOCAL;
-						break;
-					}
-				}
-			}
-
-			// Key bindings for switching the operation and mode
-			forceRecalculation = false;
-
-			bool hasMouseButtonDown = false;
-			for (size_t i = 0; i < 5; i++)
-				hasMouseButtonDown |= io.MouseDown[i];    // @NOTE: this covers cases of gizmo operation changing while left clicking on the gizmo (or anywhere else) or flying around with right click.  -Timo
-			if (!hasMouseButtonDown && allowKeyboardShortcuts)
-			{
-				static bool qKeyLock = false;
-				if (input::keyQPressed)
-				{
-					if (!qKeyLock)
-					{
-						modeIndex = (int)!(bool)modeIndex;
-						qKeyLock = true;
-						forceRecalculation = true;
-					}
-				}
-				else
-				{
-					qKeyLock = false;
-				}
-
-				if (input::keyWPressed)
-				{
-					operationIndex = 0;
-					forceRecalculation = true;
-				}
-				if (input::keyEPressed)
-				{
-					operationIndex = 1;
-					forceRecalculation = true;
-				}
-				if (input::keyRPressed)
-				{
-					operationIndex = 2;
-					forceRecalculation = true;
-				}
-			}
-
-			//
-			// Edit props exclusive to render objects
-			//
-			RenderObject* foundRO = nullptr;
-			for (size_t poolIndex : _roManager->_renderObjectsIndices)
-			{
-				auto& ro = _roManager->_renderObjectPool[poolIndex];
-				if (_movingMatrix.matrixToMove == &ro.transformMatrix)
-				{
-					foundRO = &ro;
-					break;
-				}
-			}
-
-			if (foundRO)
-			{
-				if (ImGui::CollapsingHeader("Render Object", ImGuiTreeNodeFlags_DefaultOpen))
-				{
-					int32_t temp = (int32_t)foundRO->renderLayer;
-					if (ImGui::Combo("Render Layer##asdfasdfasgasgcombo", &temp, "VISIBLE\0INVISIBLE\0BUILDER"))
-						foundRO->renderLayer = RenderLayer(temp);
-				}
-
-				//
-				// @TODO: see if you can't implement one for physics objects
-				// @REPLY: I can't. I don't want to. I don't see a point.
-				//
-
-				//
-				// @NOTE: first see if there is an entity attached to the renderobject via guid
-				// Edit props connected to the entity
-				//
-				Entity* foundEnt = nullptr;
-				if (!foundRO->attachedEntityGuid.empty())
-				{
-					for (auto& ent : _entityManager->_entities)
-					{
-						if (ent->getGUID() == foundRO->attachedEntityGuid)
+						if (foundRO)
 						{
-							foundEnt = ent;
-							break;
+							if (ImGui::CollapsingHeader("Render Object", ImGuiTreeNodeFlags_DefaultOpen))
+							{
+								int32_t temp = (int32_t)foundRO->renderLayer;
+								if (ImGui::Combo("Render Layer##asdfasdfasgasgcombo", &temp, "VISIBLE\0INVISIBLE\0BUILDER"))
+									foundRO->renderLayer = RenderLayer(temp);
+							}
+
+							//
+							// @TODO: see if you can't implement one for physics objects
+							// @REPLY: I can't. I don't want to. I don't see a point.
+							//
+
+							//
+							// @NOTE: first see if there is an entity attached to the renderobject via guid
+							// Edit props connected to the entity
+							//
+							Entity* foundEnt = nullptr;
+							if (!foundRO->attachedEntityGuid.empty())
+							{
+								for (auto& ent : _entityManager->_entities)
+								{
+									if (ent->getGUID() == foundRO->attachedEntityGuid)
+									{
+										foundEnt = ent;
+										break;
+									}
+								}
+
+								if (foundEnt && ImGui::CollapsingHeader(("Entity " + foundEnt->getGUID()).c_str(), ImGuiTreeNodeFlags_DefaultOpen))
+								{
+									if (matrixToMoveMoved)
+										foundEnt->reportMoved(_movingMatrix.matrixToMove);
+
+									std::string guidCopy = foundEnt->getGUID();
+									ImGui::InputText("GUID", &guidCopy);
+
+									foundEnt->renderImGui();
+								}
+							}
 						}
 					}
-
-					if (foundEnt && ImGui::CollapsingHeader(("Entity " + foundEnt->getGUID()).c_str(), ImGuiTreeNodeFlags_DefaultOpen))
-					{
-						if (matrixToMoveMoved)
-							foundEnt->reportMoved(_movingMatrix.matrixToMove);
-
-						std::string guidCopy = foundEnt->getGUID();
-						ImGui::InputText("GUID", &guidCopy);
-
-						foundEnt->renderImGui();
-					}
 				}
 			}
+			ImGui::End();
+		} break;
 
-			accumulatedWindowHeight += ImGui::GetWindowHeight() + windowPadding;
-			maxWindowWidth = std::max(maxWindowWidth, ImGui::GetWindowWidth());
-		}
-		ImGui::End();
+		case EditorModes::MATERIAL_EDITOR:
+		{
+			ImGui::SetNextWindowPos(ImVec2(0.0f, MAIN_MENU_PADDING), ImGuiCond_Always);
+			ImGui::SetNextWindowSizeConstraints(ImVec2(-1.0f, 0.0f), ImVec2(-1.0f, _windowExtent.height - MAIN_MENU_PADDING));
+			ImGui::Begin(("MATERIAL EDITOR (" + materialorganizer::getMaterialName(INTERNALVULKANENGINEASSIGNEDMATERIAL_dmpsIdx) + ")##Material editor window.").c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+			{
+				bool disableNormalControls = materialorganizer::isDMPSDirty();
+				if (disableNormalControls)
+					ImGui::BeginDisabled();
+
+				static std::string newMaterialName;
+				if (ImGui::Button("Make copy of current material.."))
+				{
+					newMaterialName = "New Material.hderriere";
+					ImGui::OpenPopup("new_material_popup");
+				}
+				ImGui::SameLine();
+
+				static std::vector<std::string> listOfMaterials;
+				if (ImGui::Button("Edit material.."))
+				{
+					listOfMaterials = materialorganizer::getListOfDerivedMaterials();
+					ImGui::OpenPopup("edit_material_popup");
+				}
+				if (true)
+				{
+					ImGui::SameLine();
+					ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0.0f, 0.5f, 0.6f));
+					ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0.0f, 0.7f, 0.7f));
+					ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0.0f, 0.8f, 0.8f));
+					bool doIt = ImGui::Button("Delete material!");
+					ImGui::PopStyleColor(3);
+					if (doIt)
+					{
+						ImGui::OpenPopup("delete_material_popup");
+					}
+				}
+				if (disableNormalControls)
+					ImGui::EndDisabled();
+				
+				// Controls only when the material is dirty (i.e. saving or discarding material changes).
+				if (!disableNormalControls)
+					ImGui::BeginDisabled();
+				if (ImGui::Button("Save material changes"))
+				{
+					materialorganizer::saveDMPSToFile(
+						INTERNALVULKANENGINEASSIGNEDMATERIAL_dmpsIdx
+					);
+				}
+				ImGui::SameLine();
+				if (ImGui::Button("Discard material changes"))
+				{
+					_recreateSwapchain = true;
+					materialorganizer::clearDMPSDirtyFlag();
+				}
+				if (!disableNormalControls)
+					ImGui::EndDisabled();
+
+				// Popups.
+				if (ImGui::BeginPopup("new_material_popup"))
+				{
+					ImGui::InputText("New Material Name", &newMaterialName);
+					if (std::filesystem::exists("res/materials/" + newMaterialName))
+						ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "ERROR: filename exists.");
+
+					static bool showDMPSCopyError = false;
+					if (ImGui::Button("Create material based off of current material"))
+					{
+						showDMPSCopyError =
+							!materialorganizer::makeDMPSFileCopy(
+								INTERNALVULKANENGINEASSIGNEDMATERIAL_dmpsIdx,
+								"res/materials/" + newMaterialName
+							);
+						if (!showDMPSCopyError)
+						{
+							ImGui::CloseCurrentPopup();
+						}
+					}
+					if (showDMPSCopyError)
+						ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "ERROR: copy failed.");
+
+					ImGui::EndPopup();
+				}
+
+				if (ImGui::BeginPopup("edit_material_popup"))
+				{
+					for (auto& path : listOfMaterials)
+						if (ImGui::Button(("Open \"" + path + "\"").c_str()))
+						{
+							INTERNALVULKANENGINEASSIGNEDMATERIAL_umbIdx = materialorganizer::derivedMaterialNameToUMBIdx(path);
+							INTERNALVULKANENGINEASSIGNEDMATERIAL_dmpsIdx = materialorganizer::derivedMaterialNameToDMPSIdx(path);
+							EDITORTextureViewer::setAssignedMaterial(
+								INTERNALVULKANENGINEASSIGNEDMATERIAL_umbIdx,
+								INTERNALVULKANENGINEASSIGNEDMATERIAL_dmpsIdx
+							);
+							ImGui::CloseCurrentPopup();
+						}
+					ImGui::EndPopup();
+				}
+
+				if (ImGui::BeginPopup("delete_material_popup"))
+				{
+					ImGui::Text("Hi, personal message from Dmitri.... this program doesn't have the authority to delete material. Please navigate to the `res/materials/` folder to delete a material");
+					ImGui::EndPopup();
+				}
+
+				// Selected material properties.
+				ImGui::Separator();
+
+				materialorganizer::renderImGuiForMaterial(
+					INTERNALVULKANENGINEASSIGNEDMATERIAL_umbIdx,
+					INTERNALVULKANENGINEASSIGNEDMATERIAL_dmpsIdx
+				);
+			}
+			ImGui::End();
+		} break;
 	}
-
-	//
-	// Scroll the left pane
-	//
-	if (io.MousePos.x <= maxWindowWidth)
-		windowOffsetY += input::mouseScrollDelta[1] * scrollSpeed;
+	
 }
 
 void VulkanEngine::renderImGui(float_t deltaTime)
 {
+	ZoneScoped;
+
 	ImGui_ImplVulkan_NewFrame();
 	ImGui_ImplSDL2_NewFrame(_window);
 	ImGui::NewFrame();
@@ -6243,7 +7251,7 @@ void VulkanEngine::renderImGui(float_t deltaTime)
 	ImGuizmo::SetRect(0, 0, io.DisplaySize.x, io.DisplaySize.y);
 
 	static bool showImguiRender = true;
-	if (input::onKeyF1Press)
+	if (input::editorInputSet().toggleEditorUI.onAction)
 		showImguiRender = !showImguiRender;
 
 	if (showImguiRender)

@@ -1,26 +1,26 @@
 #pragma once
 
-#include <string>
-#include <vector>
-#include <queue>
-#include <mutex>
-
 class Entity;
 class DataSerialized;
+namespace scene
+{
+	void tick();
+}
+namespace physengine
+{
+	void runPhysicsEngineAsync();
+}
 
 
-class EntityManager
+class EntityManager  // @TODO: make this a namespace instead of an object. This way it can be referenced globally.
 {
 private:
 	EntityManager() = default;
 	~EntityManager();
 
 public:
-	void INTERNALphysicsUpdate(const float_t& physicsDeltaTime);
+	void INTERNALsimulationUpdate(float_t simDeltaTime);
 private:
-	void update(const float_t& deltaTime);
-	void lateUpdate(const float_t& deltaTime);
-
     void INTERNALaddEntity(Entity* entity);
 	void INTERNALdestroyEntity(Entity* entity);
 	void INTERNALaddRemoveRequestedEntities();
@@ -41,4 +41,6 @@ private:
 
 	friend class VulkanEngine;
 	friend class Entity;
+	friend void scene::tick();
+	friend void physengine::runPhysicsEngineAsync();
 };

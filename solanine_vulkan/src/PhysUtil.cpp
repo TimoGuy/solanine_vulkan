@@ -1,7 +1,6 @@
-#include "PhysUtil.h"
+#include "pch.h"
 
-#include <cmath>
-#include <algorithm>
+#include "PhysUtil.h"
 
 
 namespace physutil

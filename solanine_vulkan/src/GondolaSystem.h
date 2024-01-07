@@ -15,20 +15,20 @@ public:
 
     static VulkanEngine* _engine;
 
-    GondolaSystem(EntityManager* em, RenderObjectManager* rom, VulkanEngine* engineRef, DataSerialized* ds);
+    GondolaSystem(EntityManager* em, RenderObjectManager* rom, DataSerialized* ds);
     ~GondolaSystem();
 
-    void physicsUpdate(const float_t& physicsDeltaTime);
-    void update(const float_t& deltaTime);
-    void lateUpdate(const float_t& deltaTime);
+    void simulationUpdate(float_t simDeltaTime) override;
+    void update(float_t deltaTime);
+    void lateUpdate(float_t deltaTime);
 
     void dump(DataSerializer& ds);
     void load(DataSerialized& ds);
     bool processMessage(DataSerialized& message);
 
+    void teleportToPosition(vec3 position) override;
     void reportMoved(mat4* matrixMoved);
     void renderImGui();
-
 
 private:
     GondolaSystem_XData* _data;
