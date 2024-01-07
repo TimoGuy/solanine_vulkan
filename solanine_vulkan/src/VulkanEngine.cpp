@@ -116,9 +116,6 @@ void VulkanEngine::init()
 	changeEditorMode(_currentEditorMode);
 }
 
-constexpr size_t numPerfs = 15;
-uint64_t perfs[numPerfs];
-
 vec4 lightDir = { 0.144958f, 0.849756f, 0.506855f, 0.0f };
 
 void VulkanEngine::run()
@@ -153,24 +150,17 @@ void VulkanEngine::run()
 
 	while (isRunning)
 	{
-		perfs[2] = SDL_GetPerformanceCounter();
 		// Update DeltaTime
 		uint64_t currentFrame = SDL_GetPerformanceCounter();
 		const float_t deltaTime = (float_t)(currentFrame - lastFrame) * ticksFrequency;
 		const float_t scaledDeltaTime = deltaTime * globalState::timescale;
 		lastFrame = currentFrame;
-		perfs[2] = SDL_GetPerformanceCounter() - perfs[2];
 
-
-		perfs[0] = SDL_GetPerformanceCounter();
 		// Poll events from the window
 		input::processInput(&isRunning, &_isWindowMinimized);
 		input::editorInputSet().update();
 		input::renderInputSet().update(deltaTime);
-		perfs[0] = SDL_GetPerformanceCounter() - perfs[0];
 
-
-		perfs[1] = SDL_GetPerformanceCounter();
 		// Toggle fullscreen.
 		if (input::renderInputSet().toggleFullscreen.onAction)
 			setWindowFullscreen(!_windowFullscreen);
@@ -197,10 +187,7 @@ void VulkanEngine::run()
 			}
 		}
 #endif
-		perfs[1] = SDL_GetPerformanceCounter() - perfs[1];
 
-
-		perfs[3] = SDL_GetPerformanceCounter();
 		// Stop anything from updating when window is minimized
 		// @NOTE: this prevents the VK_ERROR_DEVICE_LOST(-4) error
 		//        once the rendering code gets run while the window
@@ -213,34 +200,18 @@ void VulkanEngine::run()
 
 		// Collect debug stats
 		updateDebugStats(deltaTime);
-		perfs[3] = SDL_GetPerformanceCounter() - perfs[3];
 
-
-		perfs[4] = SDL_GetPerformanceCounter();
 		// Update textbox
 		textbox::update(deltaTime);
-		perfs[4] = SDL_GetPerformanceCounter() - perfs[4];
 
-
-		perfs[5] = SDL_GetPerformanceCounter();
 		// Update render objects.
 		physengine::recalcInterpolatedTransformsSet();
 		_roManager->updateSimTransforms();
 		_roManager->updateAnimators(scaledDeltaTime);
-		perfs[5] = SDL_GetPerformanceCounter() - perfs[5];
 
-
-		perfs[6] = SDL_GetPerformanceCounter();
-		perfs[6] = SDL_GetPerformanceCounter() - perfs[6];
-
-
-		perfs[7] = SDL_GetPerformanceCounter();
 		// Update camera
 		_camera->update(deltaTime);
-		perfs[7] = SDL_GetPerformanceCounter() - perfs[7];
 
-
-		perfs[8] = SDL_GetPerformanceCounter();
 		// Allow scene management to tear down or load scenes.
 		scene::tick();
 
@@ -249,10 +220,7 @@ void VulkanEngine::run()
 
 		// Add/Change/Remove text meshes
 		// textmesh::INTERNALprocessChangeQueue();
-		perfs[8] = SDL_GetPerformanceCounter() - perfs[8];
 
-
-		perfs[9] = SDL_GetPerformanceCounter();
 		// Update global state
 		saveGlobalStateTimeElapsed += deltaTime;
 		if (saveGlobalStateTimeElapsed > saveGlobalStateTime)
@@ -260,19 +228,11 @@ void VulkanEngine::run()
 			saveGlobalStateTimeElapsed = 0.0f;
 			globalState::launchAsyncWriteTask();
 		}
-		perfs[9] = SDL_GetPerformanceCounter() - perfs[9];
 
-
-		perfs[10] = SDL_GetPerformanceCounter();
 		// Update Audio Engine
 		AudioEngine::getInstance().update();
-		perfs[10] = SDL_GetPerformanceCounter() - perfs[10];
 
-
-		perfs[11] = SDL_GetPerformanceCounter();
-		//
 		// Render
-		//
 #ifdef _DEVELOP
 		{
 			std::lock_guard<std::mutex> lg(*hotswapMutex);
@@ -280,37 +240,14 @@ void VulkanEngine::run()
 
 			if (_recreateSwapchain)
 				recreateSwapchain();
-			perfs[11] = SDL_GetPerformanceCounter() - perfs[11];
-
-
-			perfs[12] = SDL_GetPerformanceCounter();
 			renderImGui(deltaTime);
-			perfs[12] = SDL_GetPerformanceCounter() - perfs[12];
-
-
-			perfs[13] = SDL_GetPerformanceCounter();
 			render();
-			perfs[13] = SDL_GetPerformanceCounter() - perfs[13];
 
 #ifdef _DEVELOP
 		}
+
+		FrameMark;
 #endif
-
-		//
-		// Calculate performance
-		//
-		if (input::editorInputSet().snapModifier.holding)  // @DEBUG: @INCOMPLETE: Change to tracy profiler instead of this hodge podge.
-		{
-			uint64_t totalPerf = 0;
-			for (size_t i = 0; i < numPerfs; i++)
-				totalPerf += perfs[i];
-
-			std::cout << "Performance:";
-			for (size_t i = 0; i < numPerfs; i++)
-				std::cout << "\t" << (perfs[i] * 100 / totalPerf) << "% (" << perfs[i] << ")";
-			std::cout << "\tCPS: " << SDL_GetPerformanceFrequency();
-			std::cout << std::endl;
-		}
 	}
 }
 
@@ -369,6 +306,8 @@ void VulkanEngine::cleanup()
 
 void VulkanEngine::setWindowFullscreen(bool isFullscreen)
 {
+	ZoneScoped;
+
 	_windowFullscreen = isFullscreen;
 	SDL_SetWindowFullscreen(_window, _windowFullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
 }
@@ -386,6 +325,9 @@ static bool doCullingStuff = true;
 
 void VulkanEngine::computeShadowCulling(const FrameData& currentFrame, VkCommandBuffer cmd)
 {
+	ZoneScoped;
+	TracyVkZone(currentFrame.mainCommandBufferTracyVk, cmd, "Compute shadow culling");
+
 	// Set up frustum culling params.
 	mat4 reverseOrtho;
 	glm_ortho(
@@ -453,6 +395,9 @@ void VulkanEngine::computeShadowCulling(const FrameData& currentFrame, VkCommand
 
 void VulkanEngine::computeMainCulling(const FrameData& currentFrame, VkCommandBuffer cmd)
 {
+	ZoneScoped;
+	TracyVkZone(currentFrame.mainCommandBufferTracyVk, cmd, "Compute main culling");
+
 	// Set up frustum culling params.
 	mat4 reverseProjectionTransposed;
 	glm_mat4_transpose_to(_camera->sceneCamera.gpuCameraData.projection, reverseProjectionTransposed);
@@ -517,6 +462,9 @@ void VulkanEngine::computeMainCulling(const FrameData& currentFrame, VkCommandBu
 
 void VulkanEngine::computeSkinnedMeshes(const FrameData& currentFrame, VkCommandBuffer cmd)
 {
+	ZoneScoped;
+	TracyVkZone(currentFrame.mainCommandBufferTracyVk, cmd, "Compute mesh skinning");
+
 	if (_roManager->_renderObjectsWithAnimatorIndices.empty())
 		return;  // Omit skinning meshes if no meshes to skin.
 
@@ -542,6 +490,8 @@ void VulkanEngine::computeSkinnedMeshes(const FrameData& currentFrame, VkCommand
 
 void VulkanEngine::renderPickingRenderpass(const FrameData& currentFrame)
 {
+	ZoneScoped;
+
 	VK_CHECK(vkResetFences(_device, 1, &currentFrame.pickingRenderFence));
 
 	// Reset the command buffer and start the render pass
@@ -663,6 +613,9 @@ void VulkanEngine::renderPickingRenderpass(const FrameData& currentFrame)
 
 void VulkanEngine::renderShadowRenderpass(const FrameData& currentFrame, VkCommandBuffer cmd)
 {
+	ZoneScoped;
+	TracyVkZone(currentFrame.mainCommandBufferTracyVk, cmd, "Render shadow pass");
+
 	VkClearValue depthClear;
 	depthClear.depthStencil = { 1.0f, 0 };
 
@@ -709,6 +662,9 @@ void VulkanEngine::renderShadowRenderpass(const FrameData& currentFrame, VkComma
 
 void VulkanEngine::renderMainRenderpass(const FrameData& currentFrame, VkCommandBuffer cmd, const std::vector<ModelWithIndirectDrawId>& pickingIndirectDrawCommandIds)
 {
+	ZoneScoped;
+	TracyVkZone(currentFrame.mainCommandBufferTracyVk, cmd, "Render main pass");
+
 	VkClearValue clearValue;
 	clearValue.color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
 
@@ -774,8 +730,11 @@ void VulkanEngine::renderMainRenderpass(const FrameData& currentFrame, VkCommand
 	vkCmdEndRenderPass(cmd);
 }
 
-void VulkanEngine::renderUIRenderpass(VkCommandBuffer cmd)
+void VulkanEngine::renderUIRenderpass(const FrameData& currentFrame, VkCommandBuffer cmd)
 {
+	ZoneScoped;
+	TracyVkZone(currentFrame.mainCommandBufferTracyVk, cmd, "Render UI pass");
+
 	VkClearValue clearValue;
 	clearValue.color = { { 0.0f, 0.0f, 0.0f, 0.0f } };
 
@@ -807,6 +766,8 @@ void VulkanEngine::renderUIRenderpass(VkCommandBuffer cmd)
 
 void ppBlitBloom(VkCommandBuffer cmd, Texture& mainImage, VkExtent2D& windowExtent, Texture& bloomImage, VkExtent2D& bloomImageExtent)
 {
+	ZoneScoped;
+
 	//
 	// Blit bloom
 	// @NOTE: @IMPROVE: the bloom render pass has obvious artifacts when a camera pans slowly.
@@ -991,6 +952,8 @@ void ppBlitBloom(VkCommandBuffer cmd, Texture& mainImage, VkExtent2D& windowExte
 
 void ppDepthOfField_GenerateCircleOfConfusion(VkCommandBuffer cmd, VkRenderPass CoCRenderPass, VkFramebuffer CoCFramebuffer, Material& CoCMaterial, GPUCoCParams& CoCParams, VkExtent2D& windowExtent)
 {
+	ZoneScoped;
+
 	VkClearValue clearValues[1];
 	clearValues[0].color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
 
@@ -1022,6 +985,8 @@ void ppDepthOfField_GenerateCircleOfConfusion(VkCommandBuffer cmd, VkRenderPass 
 
 void ppDepthOfField_HalveCircleOfConfusionWhileGeneratingNearFar(VkCommandBuffer cmd, VkRenderPass halveCoCRenderPass, VkFramebuffer halveCoCFramebuffer, Material& halveCoCMaterial, VkExtent2D& halfResImageExtent)
 {
+	ZoneScoped;
+
 	VkClearValue clearValues[2];
 	clearValues[0].color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
 	clearValues[1].color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
@@ -1060,6 +1025,8 @@ struct IncrementalHalveCoCParams
 
 void ppDepthOfField_IncrementalReductionHalveCircleOfConfusion(VkCommandBuffer cmd, VkRenderPass incrementalReductionHalveCoCRenderPass, std::vector<IncrementalHalveCoCParams>& incrementalReductions)
 {
+	ZoneScoped;
+
 	for (IncrementalHalveCoCParams& ihcp : incrementalReductions)
 	{
 		VkFramebuffer incrementalReductionHalveCoCFramebuffer = ihcp.framebuffer;
@@ -1097,6 +1064,8 @@ void ppDepthOfField_IncrementalReductionHalveCircleOfConfusion(VkCommandBuffer c
 
 void ppDepthOfField_BlurNearsideCoC(VkCommandBuffer cmd, VkRenderPass blurXNearsideCoCRenderPass, VkFramebuffer blurXNearsideCoCFramebuffer, Material& blurXMaterial, VkRenderPass blurYNearsideCoCRenderPass, VkFramebuffer blurYNearsideCoCFramebuffer, Material& blurYMaterial, GPUBlurParams& blurParams, VkExtent2D& incrementalReductionHalveResImageExtent)
 {
+	ZoneScoped;
+
 	// Blur the downsized nearside CoC using ping-pong technique.
 	VkRenderPass blurPasses[] = { blurXNearsideCoCRenderPass, blurYNearsideCoCRenderPass };
 	VkFramebuffer blurFramebuffers[] = { blurXNearsideCoCFramebuffer, blurYNearsideCoCFramebuffer };
@@ -1138,6 +1107,8 @@ void ppDepthOfField_BlurNearsideCoC(VkCommandBuffer cmd, VkRenderPass blurXNears
 
 void ppDepthOfField_GatherDepthOfField(VkCommandBuffer cmd, VkRenderPass gatherDOFRenderPass, VkFramebuffer gatherDOFFramebuffer, Material& gatherDOFMaterial, GPUGatherDOFParams& dofParams, VkExtent2D& halfResImageExtent)
 {
+	ZoneScoped;
+
 	// Downsize nearside CoC.
 	VkClearValue clearValues[2];
 	clearValues[0].color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
@@ -1170,6 +1141,8 @@ void ppDepthOfField_GatherDepthOfField(VkCommandBuffer cmd, VkRenderPass gatherD
 
 void ppDepthOfField_DepthOfFieldFloodFill(VkCommandBuffer cmd, VkRenderPass dofFloodFillRenderPass, VkFramebuffer dofFloodFillFramebuffer, Material& dofFloodFillMaterial, GPUBlurParams& floodfillParams, VkExtent2D& halfResImageExtent)
 {
+	ZoneScoped;
+
 	// Downsize nearside CoC.
 	VkClearValue clearValues[2];
 	clearValues[0].color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
@@ -1210,6 +1183,8 @@ void ppDepthOfField(
 	VkRenderPass gatherDOFRenderPass, VkFramebuffer gatherDOFFramebuffer, Material& gatherDOFMaterial, GPUGatherDOFParams& dofParams,
 	VkRenderPass dofFloodFillRenderPass, VkFramebuffer dofFloodFillFramebuffer, Material& dofFloodFillMaterial, GPUBlurParams& floodfillParams)
 {
+	ZoneScoped;
+
 	ppDepthOfField_GenerateCircleOfConfusion(
 		cmd,
 		CoCRenderPass,
@@ -1268,6 +1243,8 @@ void ppCombinePostprocesses(
 	VkCommandBuffer cmd,
 	VkRenderPass postprocessRenderPass, VkFramebuffer postprocessFramebuffer, Material& postprocessMaterial, VkExtent2D& windowExtent, VkDescriptorSet currentFrameGlobalDescriptor, bool applyTonemap, bool applyImGui)
 {
+	ZoneScoped;
+
 	// Combine all postprocessing
 	GPUPostProcessParams CoCParams = {
 		.applyTonemap = applyTonemap,
@@ -1309,6 +1286,9 @@ void ppCombinePostprocesses(
 
 void VulkanEngine::renderPostprocessRenderpass(const FrameData& currentFrame, VkCommandBuffer cmd, uint32_t swapchainImageIndex)
 {
+	ZoneScoped;
+	TracyVkZone(currentFrame.mainCommandBufferTracyVk, cmd, "Render postprocess pass");
+
 	// Generate postprocessing.
 	ppBlitBloom(
 		cmd,
@@ -1516,6 +1496,8 @@ void VulkanEngine::renderPostprocessRenderpass(const FrameData& currentFrame, Vk
 
 void VulkanEngine::render()
 {
+	ZoneScoped;
+
 	const auto& currentFrame = getCurrentFrame();
 	VkResult result;
 
@@ -1555,75 +1537,80 @@ void VulkanEngine::render()
 		.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
 		.pInheritanceInfo = nullptr,
 	};
+
 	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
-
-	//
-	// Upload current frame to GPU and compact into draw calls
-	//
-	recreateVoxelLightingDescriptor();
-	uploadCurrentFrameToGPU(currentFrame);
-	textmesh::uploadUICameraDataToGPU();
-
-#ifdef _DEVELOP
-	std::vector<size_t> pickedPoolIndices = { 0 };
-	if (!searchForPickedObjectPoolIndex(pickedPoolIndices[0]))
-		pickedPoolIndices.clear();
-	std::vector<ModelWithIndirectDrawId> pickingIndirectDrawCommandIds;
-#endif
-
-	perfs[14] = SDL_GetPerformanceCounter();
-	if (_roManager->checkIsMetaMeshListUnoptimized())
 	{
-		_roManager->optimizeMetaMeshList();
-		for (size_t i = 0; i < FRAME_OVERLAP; i++)
-			_frames[i].skinning.recalculateSkinningBuffers = true;
+		TracyVkZone(currentFrame.mainCommandBufferTracyVk, cmd, "Render");
+
+		//
+		// Upload current frame to GPU and compact into draw calls
+		//
+		recreateVoxelLightingDescriptor();
+		uploadCurrentFrameToGPU(currentFrame);
+		textmesh::uploadUICameraDataToGPU();
+
+	#ifdef _DEVELOP
+		std::vector<size_t> pickedPoolIndices = { 0 };
+		if (!searchForPickedObjectPoolIndex(pickedPoolIndices[0]))
+			pickedPoolIndices.clear();
+		std::vector<ModelWithIndirectDrawId> pickingIndirectDrawCommandIds;
+	#endif
+
+		if (_roManager->checkIsMetaMeshListUnoptimized())
+		{
+			_roManager->optimizeMetaMeshList();
+			for (size_t i = 0; i < FRAME_OVERLAP; i++)
+				_frames[i].skinning.recalculateSkinningBuffers = true;
+		}
+		if (currentFrame.skinning.recalculateSkinningBuffers)
+			createSkinningBuffers(getCurrentFrame());
+
+		if (doCullingStuff)
+			compactRenderObjectsIntoDraws(getCurrentFrame(), pickedPoolIndices, pickingIndirectDrawCommandIds);
+
+		// Render render passes.
+		if (doCullingStuff)
+		{
+			computeShadowCulling(currentFrame, cmd);
+			computeMainCulling(currentFrame, cmd);
+		}
+		computeSkinnedMeshes(currentFrame, cmd);
+		renderShadowRenderpass(currentFrame, cmd);
+		renderMainRenderpass(currentFrame, cmd, pickingIndirectDrawCommandIds);
+		renderUIRenderpass(currentFrame, cmd);
+		renderPostprocessRenderpass(currentFrame, cmd, swapchainImageIndex);
 	}
-	if (currentFrame.skinning.recalculateSkinningBuffers)
-		createSkinningBuffers(getCurrentFrame());
 
-	if (doCullingStuff)
-		compactRenderObjectsIntoDraws(getCurrentFrame(), pickedPoolIndices, pickingIndirectDrawCommandIds);
-	perfs[14] = SDL_GetPerformanceCounter() - perfs[14];
-
-	// Render render passes.
-	if (doCullingStuff)
+	// Submit command buffer to gpu for execution.
 	{
-		computeShadowCulling(currentFrame, cmd);
-		computeMainCulling(currentFrame, cmd);
-	}
-	computeSkinnedMeshes(currentFrame, cmd);
-	renderShadowRenderpass(currentFrame, cmd);
-	renderMainRenderpass(currentFrame, cmd, pickingIndirectDrawCommandIds);
-	renderUIRenderpass(cmd);
-	renderPostprocessRenderpass(currentFrame, cmd, swapchainImageIndex);
+		ZoneScopedN("Submit vk command buffer to gpu");
+		TracyVkCollect(currentFrame.mainCommandBufferTracyVk, cmd);  // Collect vulkan profiling before command buffer recording ends.
 
-	//
-	// Submit command buffer to gpu for execution
-	//
-	VK_CHECK(vkEndCommandBuffer(cmd));
+		VK_CHECK(vkEndCommandBuffer(cmd));
 
-	VkSubmitInfo submit = {};
-	submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-	submit.pNext = nullptr;
+		VkSubmitInfo submit = {};
+		submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		submit.pNext = nullptr;
 
-	VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-	submit.pWaitDstStageMask = &waitStage;
+		VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+		submit.pWaitDstStageMask = &waitStage;
 
-	submit.waitSemaphoreCount = 1;
-	submit.pWaitSemaphores = &currentFrame.presentSemaphore;
+		submit.waitSemaphoreCount = 1;
+		submit.pWaitSemaphores = &currentFrame.presentSemaphore;
 
-	submit.signalSemaphoreCount = 1;
-	submit.pSignalSemaphores = &currentFrame.renderSemaphore;
+		submit.signalSemaphoreCount = 1;
+		submit.pSignalSemaphores = &currentFrame.renderSemaphore;
 
-	submit.commandBufferCount = 1;
-	submit.pCommandBuffers = &cmd;
+		submit.commandBufferCount = 1;
+		submit.pCommandBuffers = &cmd;
 
-	// Submit work to gpu
-	result = vkQueueSubmit(_graphicsQueue, 1, &submit, currentFrame.renderFence);
-	if (result == VK_ERROR_DEVICE_LOST)
-	{
-		std::cerr << "ERROR: VULKAN DEVICE LOST." << std::endl;
-		return;
+		// Submit work to gpu
+		result = vkQueueSubmit(_graphicsQueue, 1, &submit, currentFrame.renderFence);
+		if (result == VK_ERROR_DEVICE_LOST)
+		{
+			std::cerr << "ERROR: VULKAN DEVICE LOST." << std::endl;
+			return;
+		}
 	}
 
 	//
@@ -1642,30 +1629,32 @@ void VulkanEngine::render()
 		renderPickingRenderpass(currentFrame);
 	}
 
-	//
-	// Present the rendered frame to the screen
-	//
-	VkPresentInfoKHR presentInfo = {
-		.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-		.pNext = nullptr,
-
-		.waitSemaphoreCount = 1,
-		.pWaitSemaphores = &currentFrame.renderSemaphore,
-
-		.swapchainCount = 1,
-		.pSwapchains = &_swapchain,
-
-		.pImageIndices = &swapchainImageIndex,
-	};
-
-	result = vkQueuePresentKHR(_graphicsQueue, &presentInfo);
-	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
+	// Present the rendered frame to the screen.
 	{
-		_recreateSwapchain = true;
-	}
-	else if (result != VK_SUCCESS)
-	{
-		throw std::runtime_error("ERROR: failed to present swap chain image!");
+		ZoneScopedN("Present rendered frame");
+
+		VkPresentInfoKHR presentInfo = {
+			.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+			.pNext = nullptr,
+
+			.waitSemaphoreCount = 1,
+			.pWaitSemaphores = &currentFrame.renderSemaphore,
+
+			.swapchainCount = 1,
+			.pSwapchains = &_swapchain,
+
+			.pImageIndices = &swapchainImageIndex,
+		};
+
+		result = vkQueuePresentKHR(_graphicsQueue, &presentInfo);
+		if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
+		{
+			_recreateSwapchain = true;
+		}
+		else if (result != VK_SUCCESS)
+		{
+			throw std::runtime_error("ERROR: failed to present swap chain image!");
+		}
 	}
 
 	//
@@ -1891,6 +1880,8 @@ void VulkanEngine::initVoxelLightingDescriptor()
 
 void VulkanEngine::recreateVoxelLightingDescriptor()
 {
+	ZoneScoped;
+
 	// Upload transforms.
 	void* data;
 	vmaMapMemory(_allocator, _voxelFieldLightingGridTextureSet.transformsBuffer._allocation, &data);
@@ -1961,6 +1952,8 @@ Material* VulkanEngine::attachTextureSetToMaterial(VkDescriptorSet textureSet, c
 
 Material* VulkanEngine::getMaterial(const std::string& name)
 {
+	ZoneScoped;
+
 	auto it = _materials.find(name);
 	if (it == _materials.end())
 		return nullptr;
@@ -2203,6 +2196,12 @@ void VulkanEngine::initCommands()
 		// Create picking command buffer  @NOTE: commandbufferallocateinfo just says we're gonna allocate 1 commandbuffer from the pool
 		VK_CHECK(vkAllocateCommandBuffers(_device, &cmdAllocInfo, &_frames[i].pickingCommandBuffer));
 
+#if TRACY_ENABLE
+		// Create tracy vulkan context.
+		_frames[i].mainCommandBufferTracyVk =
+			TracyVkContext(_chosenGPU, _device, _graphicsQueue, _frames[i].mainCommandBuffer);
+#endif
+
 		// Create indirect draw command buffer
 		_frames[i].indirectDrawCommandRawBuffer = createBuffer(sizeof(VkDrawIndexedIndirectCommand) * INSTANCE_PTR_MAX_CAPACITY, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 		_frames[i].indirectShadowPass.indirectDrawCommandsBuffer = createBuffer(sizeof(VkDrawIndexedIndirectCommand) * INSTANCE_PTR_MAX_CAPACITY, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
@@ -2214,6 +2213,7 @@ void VulkanEngine::initCommands()
 		// Add destroy command for cleanup
 		_mainDeletionQueue.pushFunction([=]() {
 			vkDestroyCommandPool(_device, _frames[i].commandPool, nullptr);
+			TracyVkDestroy(_frames[i].mainCommandBufferTracyVk);
 			vmaDestroyBuffer(_allocator, _frames[i].indirectDrawCommandRawBuffer._buffer, _frames[i].indirectDrawCommandRawBuffer._allocation);
 			vmaDestroyBuffer(_allocator, _frames[i].indirectShadowPass.indirectDrawCommandsBuffer._buffer, _frames[i].indirectShadowPass.indirectDrawCommandsBuffer._allocation);
 			vmaDestroyBuffer(_allocator, _frames[i].indirectMainPass.indirectDrawCommandsBuffer._buffer, _frames[i].indirectMainPass.indirectDrawCommandsBuffer._allocation);
@@ -5528,6 +5528,8 @@ void VulkanEngine::initImgui()
 
 void VulkanEngine::recreateSwapchain()
 {
+	ZoneScoped;
+
 	int w, h;
 	SDL_GetWindowSize(_window, &w, &h);
 
@@ -5563,6 +5565,7 @@ void VulkanEngine::recreateSwapchain()
 
 FrameData& VulkanEngine::getCurrentFrame()
 {
+	ZoneScoped;
 	return _frames[_frameNumber % FRAME_OVERLAP];
 }
 
@@ -5633,6 +5636,8 @@ void VulkanEngine::loadMeshes()
 
 void VulkanEngine::uploadCurrentFrameToGPU(const FrameData& currentFrame)
 {
+	ZoneScoped;
+
 	//
 	// Upload Camera Data to GPU
 	//
@@ -5696,6 +5701,8 @@ void VulkanEngine::uploadCurrentFrameToGPU(const FrameData& currentFrame)
 
 void VulkanEngine::createSkinningBuffers(FrameData& currentFrame)
 {
+	ZoneScoped;
+
 	destroySkinningBuffersIfCreated(currentFrame);
 
 	if (!_roManager->_skinnedMeshEntriesExist)
@@ -5722,70 +5729,76 @@ void VulkanEngine::createSkinningBuffers(FrameData& currentFrame)
 	std::vector<SkinnedMesh> skinnedMeshes;
 	std::map<size_t, MeshVerticesIndices> modelMeshHashToVerticesIndices;
 
-	for (size_t i = 0; i < _roManager->_numUmbBuckets; i++)
 	{
-		auto& umbBucket = _roManager->_umbBuckets[i];
-		size_t j = 0;  // Only do skinned pass.
+		ZoneScopedN("Traverse buckets");
+
+		for (size_t i = 0; i < _roManager->_numUmbBuckets; i++)
 		{
-			bool isSkinnedPass = (j == 0);
-			for (size_t k = 0; k < _roManager->_numModelBuckets; k++)
+			auto& umbBucket = _roManager->_umbBuckets[i];
+			size_t j = 0;  // Only do skinned pass.
 			{
-				auto& modelBucket = umbBucket.modelBucketSets[j].modelBuckets[k];
-				for (size_t l = 0; l < _roManager->_numMeshBucketsByModelIdx[k]; l++)
+				bool isSkinnedPass = (j == 0);
+				for (size_t k = 0; k < _roManager->_numModelBuckets; k++)
 				{
-					auto& meshBucket = modelBucket.meshBuckets[l];
-					if (meshBucket.renderObjectIndices.empty())
-						continue;
-
-					auto& meshDraw = _roManager->_modelMeshDraws[k][l];
-
-					// Fetch/calc num vertices in mesh.
-					size_t modelMeshHash = k | l << 32;
-					if (modelMeshHashToVerticesIndices.find(modelMeshHash) == modelMeshHashToVerticesIndices.end())
+					auto& modelBucket = umbBucket.modelBucketSets[j].modelBuckets[k];
+					for (size_t l = 0; l < _roManager->_numMeshBucketsByModelIdx[k]; l++)
 					{
-						// Calculate, then add into cache.
-						std::set<uint32_t> uniqueVertexIndices;
-						std::vector<uint32_t> indicesNormalized;
+						auto& meshBucket = modelBucket.meshBuckets[l];
+						if (meshBucket.renderObjectIndices.empty())
+							continue;
 
-						// Insert in indices to create sorted, unique set.
-						for (size_t vertex = meshDraw.meshFirstIndex;
-							vertex < meshDraw.meshFirstIndex + meshDraw.meshIndexCount;
-							vertex++)
+						auto& meshDraw = _roManager->_modelMeshDraws[k][l];
+
+						// Fetch/calc num vertices in mesh.
+						size_t modelMeshHash = k | l << 32;
+						if (modelMeshHashToVerticesIndices.find(modelMeshHash) == modelMeshHashToVerticesIndices.end())
 						{
-							uint32_t index = meshDraw.model->loaderInfo.indexBuffer[vertex];
-							uniqueVertexIndices.emplace(index);
-							indicesNormalized.push_back(index);
+							ZoneScopedN("Calculate unique vertices and normalized indices");
+
+							// Calculate, then add into cache.
+							std::set<uint32_t> uniqueVertexIndices;
+							std::vector<uint32_t> indicesNormalized;
+
+							// Insert in indices to create sorted, unique set.
+							for (size_t vertex = meshDraw.meshFirstIndex;
+								vertex < meshDraw.meshFirstIndex + meshDraw.meshIndexCount;
+								vertex++)
+							{
+								uint32_t index = meshDraw.model->loaderInfo.indexBuffer[vertex];
+								uniqueVertexIndices.emplace(index);
+								indicesNormalized.push_back(index);
+							}
+
+							// Normalize indices using sorted set.
+							uint32_t nextIndex = 0;
+							for (uint32_t uniqueIndex : uniqueVertexIndices)
+							{
+								for (auto& normalizedIndex : indicesNormalized)
+									if (uniqueIndex == normalizedIndex)
+										normalizedIndex = nextIndex;
+								nextIndex++;
+							}
+
+							// Cache.
+							modelMeshHashToVerticesIndices[modelMeshHash] = {
+								.uniqueVertexIndices = uniqueVertexIndices,
+								.indicesNormalized = indicesNormalized,
+							};
 						}
 
-						// Normalize indices using sorted set.
-						uint32_t nextIndex = 0;
-						for (uint32_t uniqueIndex : uniqueVertexIndices)
+						// Insert stats into skinnedMeshes and counts.
+						size_t meshVertexCount = modelMeshHashToVerticesIndices[modelMeshHash].uniqueVertexIndices.size();
+						for (auto& roIdx : meshBucket.renderObjectIndices)
 						{
-							for (auto& normalizedIndex : indicesNormalized)
-								if (uniqueIndex == normalizedIndex)
-									normalizedIndex = nextIndex;
-							nextIndex++;
+							s.numVertices += meshVertexCount;
+							s.numIndices += meshDraw.meshIndexCount;
+							skinnedMeshes.push_back({
+								.modelIdx = k,
+								.meshIdx = l,
+								.animatorNodeID = _roManager->_renderObjectPool[roIdx].calculatedModelInstances[l].animatorNodeID,
+								.model = meshDraw.model,
+							});
 						}
-
-						// Cache.
-						modelMeshHashToVerticesIndices[modelMeshHash] = {
-							.uniqueVertexIndices = uniqueVertexIndices,
-							.indicesNormalized = indicesNormalized,
-						};
-					}
-
-					// Insert stats into skinnedMeshes and counts.
-					size_t meshVertexCount = modelMeshHashToVerticesIndices[modelMeshHash].uniqueVertexIndices.size();
-					for (auto& roIdx : meshBucket.renderObjectIndices)
-					{
-						s.numVertices += meshVertexCount;
-						s.numIndices += meshDraw.meshIndexCount;
-						skinnedMeshes.push_back({
-							.modelIdx = k,
-							.meshIdx = l,
-							.animatorNodeID = _roManager->_renderObjectPool[roIdx].calculatedModelInstances[l].animatorNodeID,
-							.model = meshDraw.model,
-						});
 					}
 				}
 			}
@@ -5795,16 +5808,27 @@ void VulkanEngine::createSkinningBuffers(FrameData& currentFrame)
 	// Create buffers.
 	// @TODO: turn these into transfer/staging buffers.
 	size_t inputVerticesBufferSize = sizeof(GPUInputSkinningMeshPrefixData) + sizeof(GPUInputSkinningMeshData) * s.numVertices;
-	s.inputVerticesBuffer = createBuffer(inputVerticesBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+	{
+		ZoneScopedN("Create input vertices buffer");
+		s.inputVerticesBuffer = createBuffer(inputVerticesBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+	}
 
 	s.outputBufferSize = sizeof(GPUOutputSkinningMeshData) * s.numVertices;
-	s.outputVerticesBuffer = createBuffer(s.outputBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);  // @NOTE: no staging buffer for this bc all the data is loaded via compute shader on the gpu!
+	{
+		ZoneScopedN("Create output vertices buffer");
+		s.outputVerticesBuffer = createBuffer(s.outputBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);  // @NOTE: no staging buffer for this bc all the data is loaded via compute shader on the gpu!
+	}
 
 	size_t indicesBufferSize = sizeof(uint32_t) * s.numIndices;
-	s.indicesBuffer = createBuffer(indicesBufferSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+	{
+		ZoneScopedN("Create combined skinned indices buffer");
+		s.indicesBuffer = createBuffer(indicesBufferSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+	}
 
 	// Upload input vertices.
 	{
+		ZoneScopedN("Upload unique vertices");
+
 		uint8_t* data;
 		vmaMapMemory(_allocator, s.inputVerticesBuffer._allocation, (void**)&data);
 
@@ -5844,6 +5868,8 @@ void VulkanEngine::createSkinningBuffers(FrameData& currentFrame)
 
 	// Upload indices.
 	{
+		ZoneScopedN("Upload normalized indices");
+
 		uint8_t* data;
 		vmaMapMemory(_allocator, s.indicesBuffer._allocation, (void**)&data);
 
@@ -5866,20 +5892,24 @@ void VulkanEngine::createSkinningBuffers(FrameData& currentFrame)
 	}
 
 	// Create descriptors.
-	VkDescriptorBufferInfo inputVerticesBufferInfo = {
-		.buffer = s.inputVerticesBuffer._buffer,
-		.offset = 0,
-		.range = inputVerticesBufferSize,
-	};
-	VkDescriptorBufferInfo outputVerticesBufferInfo = {
-		.buffer = s.outputVerticesBuffer._buffer,
-		.offset = 0,
-		.range = s.outputBufferSize,
-	};
-	vkutil::DescriptorBuilder::begin()
-		.bindBuffer(0, &inputVerticesBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT)
-		.bindBuffer(1, &outputVerticesBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT)
-		.build(s.inoutVerticesDescriptor);
+	{
+		ZoneScopedN("Create compute skinning descriptors");
+
+		VkDescriptorBufferInfo inputVerticesBufferInfo = {
+			.buffer = s.inputVerticesBuffer._buffer,
+			.offset = 0,
+			.range = inputVerticesBufferSize,
+		};
+		VkDescriptorBufferInfo outputVerticesBufferInfo = {
+			.buffer = s.outputVerticesBuffer._buffer,
+			.offset = 0,
+			.range = s.outputBufferSize,
+		};
+		vkutil::DescriptorBuilder::begin()
+			.bindBuffer(0, &inputVerticesBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT)
+			.bindBuffer(1, &outputVerticesBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT)
+			.build(s.inoutVerticesDescriptor);
+	}
 
 	// Finish.
 	s.created = true;
@@ -5888,6 +5918,8 @@ void VulkanEngine::createSkinningBuffers(FrameData& currentFrame)
 
 void VulkanEngine::destroySkinningBuffersIfCreated(FrameData& currentFrame)
 {
+	ZoneScoped;
+
 	auto& s = currentFrame.skinning;
 	if (s.created)
 	{
@@ -5900,6 +5932,8 @@ void VulkanEngine::destroySkinningBuffersIfCreated(FrameData& currentFrame)
 
 void VulkanEngine::compactRenderObjectsIntoDraws(FrameData& currentFrame, std::vector<size_t> onlyPoolIndices, std::vector<ModelWithIndirectDrawId>& outIndirectDrawCommandIdsForPoolIndex)
 {
+	ZoneScoped;
+
 	GPUInstancePointer* instancePtrSSBO;
 	vmaMapMemory(_allocator, currentFrame.instancePtrBuffer._allocation, (void**)&instancePtrSSBO);
 	VkDrawIndexedIndirectCommand* indirectDrawCommands;
@@ -6012,6 +6046,8 @@ void VulkanEngine::compactRenderObjectsIntoDraws(FrameData& currentFrame, std::v
 
 void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& currentFrame, bool materialOverride, bool useShadowIndirectPass)
 {
+	ZoneScoped;
+
 	auto& pass = useShadowIndirectPass ? currentFrame.indirectShadowPass : currentFrame.indirectMainPass;
 
 	// Iterate thru all the batches
@@ -6022,8 +6058,12 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 	uint32_t countIdx = 0;
 	for (IndirectBatch& batch : indirectBatches)
 	{
+		ZoneScopedN("Draw indirect batch");
+
 		if (lastModel != batch.model)
 		{
+			ZoneScopedN("Bind model");
+
 			if (batch.model == (vkglTF::Model*)&_roManager->_skinnedMeshModelMemAddr)
 			{
 				// Bind the compute skinned intermediate buffer.
@@ -6037,6 +6077,8 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 		}
 		if (!materialOverride && lastUMBIdx != batch.uniqueMaterialBaseId)
 		{
+			ZoneScopedN("Bind pipeline");
+
 			// Bind material
 			// @TODO: put this into its own function!
 			Material& uMaterial = *getMaterial(materialorganizer::umbIdxToUniqueMaterialName(batch.uniqueMaterialBaseId));    // @HACK: @TODO: currently, the way that the pipeline is getting used is by just hardcode using it in the draw commands for models... however, each model should get its pipeline set to this material instead (or whatever material its using... that's why we can't hardcode stuff!!!)   @TODO: create some kind of way to propagate the newly created pipeline to the primMat (calculated material in the gltf model) instead of using uMaterial directly.  -Timo
@@ -6050,16 +6092,23 @@ void VulkanEngine::renderRenderObjects(VkCommandBuffer cmd, const FrameData& cur
 			
 			lastUMBIdx = batch.uniqueMaterialBaseId;
 		}
-		VkDeviceSize indirectOffset = batch.first * drawStride;
-		VkDeviceSize countOffset = countIdx * countStride;
-		// vkCmdDrawIndexedIndirect(cmd, currentFrame.indirectDrawCommandRawBuffer._buffer, indirectOffset, batch.count, drawStride);
-		vkCmdDrawIndexedIndirectCount(cmd, pass.indirectDrawCommandsBuffer._buffer, indirectOffset, pass.indirectDrawCommandCountsBuffer._buffer, countOffset, batch.count, drawStride);
-		countIdx++;
+
+		{
+			ZoneScopedN("Vk Cmd Draw Indirect Count");
+
+			VkDeviceSize indirectOffset = batch.first * drawStride;
+			VkDeviceSize countOffset = countIdx * countStride;
+			// vkCmdDrawIndexedIndirect(cmd, currentFrame.indirectDrawCommandRawBuffer._buffer, indirectOffset, batch.count, drawStride);
+			vkCmdDrawIndexedIndirectCount(cmd, pass.indirectDrawCommandsBuffer._buffer, indirectOffset, pass.indirectDrawCommandCountsBuffer._buffer, countOffset, batch.count, drawStride);
+			countIdx++;
+		}
 	}
 }
 
 bool VulkanEngine::searchForPickedObjectPoolIndex(size_t& outPoolIndex)
 {
+	ZoneScoped;
+
 	for (size_t i = 0; i < _roManager->_renderObjectsIndices.size(); i++)
 	{
 		size_t poolIndex = _roManager->_renderObjectsIndices[i];
@@ -6125,6 +6174,8 @@ void VulkanEngine::renderPickedObject(VkCommandBuffer cmd, const FrameData& curr
 #ifdef _DEVELOP
 void VulkanEngine::updateDebugStats(float_t deltaTime)
 {
+	ZoneScoped;
+
 	_debugStats.currentFPS = (uint32_t)std::roundf(1.0f / deltaTime);
 	_debugStats.renderTimesMSHeadIndex = (size_t)std::fmodf((float_t)_debugStats.renderTimesMSHeadIndex + 1, (float_t)_debugStats.renderTimesMSCount);
 
@@ -6149,6 +6200,8 @@ void VulkanEngine::updateDebugStats(float_t deltaTime)
 
 void VulkanEngine::submitSelectedRenderObjectId(int32_t poolIndex)
 {
+	ZoneScoped;
+
 	if (poolIndex < 0)
 	{
 		// Nullify the matrixToMove pointer
@@ -6214,6 +6267,8 @@ void VulkanEngine::changeEditorMode(EditorModes newEditorMode)
 
 void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 {
+	ZoneScoped;
+
 	constexpr float_t MAIN_MENU_PADDING = 18.0f;
 	static bool showDemoWindows = false;
 	static bool showPerfWindow = true;
@@ -7183,6 +7238,8 @@ void VulkanEngine::renderImGuiContent(float_t deltaTime, ImGuiIO& io)
 
 void VulkanEngine::renderImGui(float_t deltaTime)
 {
+	ZoneScoped;
+
 	ImGui_ImplVulkan_NewFrame();
 	ImGui_ImplSDL2_NewFrame(_window);
 	ImGui::NewFrame();

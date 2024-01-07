@@ -65,6 +65,8 @@ namespace scene
     bool loadSceneImmediate(const std::string& name);
     void tick()
     {
+        ZoneScoped;
+
         if (performingDeleteAllLoadSceneProcedure)
         {
             // Delete all entities.

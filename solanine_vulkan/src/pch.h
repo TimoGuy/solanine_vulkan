@@ -88,3 +88,9 @@
 #else
     #define HAWSOO_CRASH()
 #endif
+
+#if TRACY_ENABLE
+    #include "tracy/tracy/Tracy.hpp"
+    #include "tracy/tracy/TracyVulkan.hpp"
+    #include "tracy/common/TracySystem.hpp"
+#endif

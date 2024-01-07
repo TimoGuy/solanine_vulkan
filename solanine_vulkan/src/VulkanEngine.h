@@ -155,6 +155,10 @@ struct FrameData
 	VkCommandBuffer mainCommandBuffer;
 	VkCommandBuffer pickingCommandBuffer;
 
+#if TRACY_ENABLE
+	TracyVkCtx mainCommandBufferTracyVk;
+#endif
+
 	struct IndirectPass
 	{
 		AllocatedBuffer indirectDrawCommandsBuffer;
@@ -479,7 +483,7 @@ private:
 	void renderPickingRenderpass(const FrameData& currentFrame);
 	void renderShadowRenderpass(const FrameData& currentFrame, VkCommandBuffer cmd);
 	void renderMainRenderpass(const FrameData& currentFrame, VkCommandBuffer cmd, const std::vector<ModelWithIndirectDrawId>& pickingIndirectDrawCommandIds);
-	void renderUIRenderpass(VkCommandBuffer cmd);
+	void renderUIRenderpass(const FrameData& currentFrame, VkCommandBuffer cmd);
 	void renderPostprocessRenderpass(const FrameData& currentFrame, VkCommandBuffer cmd, uint32_t swapchainImageIndex);
 
 public:

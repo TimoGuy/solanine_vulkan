@@ -17,6 +17,8 @@ EntityManager::~EntityManager()
 
 void EntityManager::INTERNALsimulationUpdate(float_t simDeltaTime)
 {
+	ZoneScoped;
+
 	std::lock_guard<std::mutex> lg(_entityCollectionMutex);
 
 	// @TODO: multithread this sucker!
@@ -56,6 +58,8 @@ void EntityManager::INTERNALdestroyEntity(Entity* entity)
 
 void EntityManager::INTERNALaddRemoveRequestedEntities()
 {
+	ZoneScoped;
+
 	if (_entitiesToDestroyQueue.size() == 0 && _entitiesToAddQueue.size() == 0)
 		return;
 

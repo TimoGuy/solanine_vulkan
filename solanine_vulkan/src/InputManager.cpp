@@ -44,6 +44,8 @@ namespace input
 
 	void processInput(bool* isRunning, bool* isWindowMinimized)
 	{
+		ZoneScoped;
+
 		// Reset deltas.
 		glm_vec2_zero(keyMouseState.mouseDelta);
 		glm_vec2_zero(keyMouseState.mouseScrollDelta);
@@ -195,6 +197,8 @@ namespace input
 	// Input Sets.
 	void EditorInputSet::update()
 	{
+		ZoneScoped;
+
 		togglePlayEditMode.update(!keyMouseState.lShift && keyMouseState.F1);
 		playModeToggleSimulation.update(keyMouseState.lShift && keyMouseState.F1);  // @NOTE: Ctrl+F1 doesn't work for some reason. Maybe a Windows/printer-related thing?
 		playModeCycleCameraModes.update(!keyMouseState.lShift && keyMouseState.F2);
@@ -254,6 +258,8 @@ namespace input
 
 	void RenderThreadInputSet::update(float_t deltaTime)
 	{
+		ZoneScoped;
+
 		UIGoLeft.update(keyMouseState.a);
 		UIGoRight.update(keyMouseState.d);
 		UIGoUp.update(keyMouseState.w);
@@ -297,6 +303,8 @@ namespace input
 	
 	void SimulationThreadInputSet::update(float_t deltaTime)
 	{
+		ZoneScoped;
+
 		float_t h = 0.0f, v = 0.0f;
 		h += keyMouseState.a ? -1.0f : 0.0f;
 		h += keyMouseState.d ?  1.0f : 0.0f;
