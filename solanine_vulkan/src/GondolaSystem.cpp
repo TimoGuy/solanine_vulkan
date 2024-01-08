@@ -515,6 +515,13 @@ GondolaSystem::GondolaSystem(EntityManager* em, RenderObjectManager* rom, DataSe
     for (auto& cp : _data->controlPoints)
         outROs.push_back(&cp.renderObj);
     _data->rom->registerRenderObjects(inROs, outROs);
+    
+    // Set render obj positions.
+    for (auto& cp : _data->controlPoints)
+    {
+        glm_mat4_identity(cp.renderObj->transformMatrix);
+        glm_translate(cp.renderObj->transformMatrix, cp.position);
+    }
 
     // Set up stations.
     calculateStationSecAuxCPIndices(_data);
@@ -1084,35 +1091,36 @@ void GondolaSystem::update(float_t deltaTime)
 
 void GondolaSystem::lateUpdate(float_t deltaTime)
 {
-    glm_mat4_identity(_data->controlRenderObj->transformMatrix);
-    glm_translate(_data->controlRenderObj->transformMatrix, _data->position);
+    // @NOTE: all this code doesn't execute!
+    // glm_mat4_identity(_data->controlRenderObj->transformMatrix);
+    // glm_translate(_data->controlRenderObj->transformMatrix, _data->position);
 
-    for (auto& cp : _data->controlPoints)
-    {
-        glm_mat4_identity(cp.renderObj->transformMatrix);
-        glm_translate(cp.renderObj->transformMatrix, cp.position);
-    }
+    // for (auto& cp : _data->controlPoints)
+    // {
+    //     glm_mat4_identity(cp.renderObj->transformMatrix);
+    //     glm_translate(cp.renderObj->transformMatrix, cp.position);
+    // }
 
-    for (auto& sim : _data->simulations)
-        for (size_t i = 0; i < sim.renderObjs.size(); i++)
-        {
-            auto& ro = sim.renderObjs[i];
-            glm_mat4_identity(ro->transformMatrix);
-            glm_translate(ro->transformMatrix, sim.carts[i].calcCurrentROPos);
-            glm_quat_rotate(ro->transformMatrix, sim.carts[i].calcCurrentRORot, ro->transformMatrix);
-        }
+    // for (auto& sim : _data->simulations)
+    //     for (size_t i = 0; i < sim.renderObjs.size(); i++)
+    //     {
+    //         auto& ro = sim.renderObjs[i];
+    //         glm_mat4_identity(ro->transformMatrix);
+    //         glm_translate(ro->transformMatrix, sim.carts[i].calcCurrentROPos);
+    //         glm_quat_rotate(ro->transformMatrix, sim.carts[i].calcCurrentRORot, ro->transformMatrix);
+    //     }
     
-    if (_data->detailedStation.prevClosestStation != (size_t)-1)
-    {
-        mat4 physicsInterpolTransform;
-        _data->detailedStation.collision->getTransform(physicsInterpolTransform);
-        vec3 offset;
-        _data->detailedStation.collision->getSize(offset);
-        glm_vec3_scale(offset, 0.5f, offset);
-        glm_translate(physicsInterpolTransform, offset);
-        mat4& renderObjTransform = _data->stations[_data->detailedStation.prevClosestStation].renderObj->transformMatrix;
-        glm_mat4_copy(physicsInterpolTransform, renderObjTransform);
-    }
+    // if (_data->detailedStation.prevClosestStation != (size_t)-1)
+    // {
+    //     mat4 physicsInterpolTransform;
+    //     _data->detailedStation.collision->getTransform(physicsInterpolTransform);
+    //     vec3 offset;
+    //     _data->detailedStation.collision->getSize(offset);
+    //     glm_vec3_scale(offset, 0.5f, offset);
+    //     glm_translate(physicsInterpolTransform, offset);
+    //     mat4& renderObjTransform = _data->stations[_data->detailedStation.prevClosestStation].renderObj->transformMatrix;
+    //     glm_mat4_copy(physicsInterpolTransform, renderObjTransform);
+    // }
 }
 
 void GondolaSystem::dump(DataSerializer& ds)

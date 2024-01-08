@@ -1910,6 +1910,11 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
         d->prevPerformedJump = true;
         d->characterRenderObj->animator->setTrigger("goto_jump");
     }
+    bool damperJump = (isPlayer(d) && input::simInputSet().jump.onRelease);
+    if (!d->prevIsGrounded && !wazaInputFocus && damperJump && velocity[1] > 0.0f)
+    {
+        velocity[1] *= 0.5f;
+    }
 
     if (d->currentWaza == nullptr)
     {
