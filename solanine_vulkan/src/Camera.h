@@ -36,6 +36,8 @@ struct SceneCamera
 	float_t   zFarShadow      = 60.0f;
 	vec3      wholeShadowMinExtents;
 	vec3      wholeShadowMaxExtents;
+	vec3      wholeShadowMinCorner;
+	vec3      wholeShadowMaxCorner;
 	mat4      wholeShadowLightViewMatrix;
 #ifdef _DEVELOP
 	bool isPerspective = true;

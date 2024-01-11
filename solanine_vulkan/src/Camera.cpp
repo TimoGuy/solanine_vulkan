@@ -127,8 +127,20 @@ void SceneCamera::recalculateCascadeViewProjs(GPUPBRShadingProps& pbrShadingProp
 
 		// Get frustum center
 		vec3 frustumCenter = GLM_VEC3_ZERO_INIT;
-		for (uint32_t i = 0; i < 8; i++)
-			glm_vec3_add(frustumCenter, frustumCorners[i], frustumCenter);
+		for (uint32_t j = 0; j < 8; j++)
+		{
+			glm_vec3_add(frustumCenter, frustumCorners[j], frustumCenter);
+			if (i == 0 && j == 0)
+			{
+				glm_vec3_copy(frustumCorners[j], wholeShadowMinCorner);
+				glm_vec3_copy(frustumCorners[j], wholeShadowMaxCorner);
+			}
+			else
+			{
+				glm_vec3_minv(frustumCorners[j], wholeShadowMinCorner, wholeShadowMinCorner);
+				glm_vec3_maxv(frustumCorners[j], wholeShadowMaxCorner, wholeShadowMaxCorner);
+			}
+		}
 		glm_vec3_scale(frustumCenter, 1.0f / 8.0f, frustumCenter);
 
 		float_t radius = 0.0f;
@@ -175,7 +187,7 @@ void SceneCamera::recalculateCascadeViewProjs(GPUPBRShadingProps& pbrShadingProp
 		if (i == SHADOWMAP_CASCADES - 1)
 		{
 			vec3 wholeFrustumCenter;
-			glm_vec3_add(wholeShadowMinExtents, wholeShadowMaxExtents, wholeFrustumCenter);
+			glm_vec3_add(wholeShadowMinCorner, wholeShadowMaxCorner, wholeFrustumCenter);
 			glm_vec3_scale(wholeFrustumCenter, 0.5f, wholeFrustumCenter);
 
 			vec3 wholeFrustumEye;
