@@ -1266,6 +1266,7 @@ namespace physengine
             // @NOTE: this was in the past 0.0f, but after introducing the slightest slope, the character starts sliding down.
             //        This gives everything a bit of a tacky feel, but I feel like that makes the physics for the characters
             //        feel real (gives character lol). Plus, the characters can hold up to a rotating moving platform.  -Timo 2023/09/30
+            // @AMEND: The friction level is set to 0.0f, bc 0.5f 
             settings->mFriction = 0.0f;
 
             settings->mSupportingVolume = Plane(Vec3::sAxisY(), -(0.5f * height));
@@ -1284,6 +1285,7 @@ namespace physengine
         else
         {
             std::cerr << "ERROR: capsule creation has reached its limit" << std::endl;
+            HAWSOO_CRASH();
             return nullptr;
         }
     }
@@ -1331,6 +1333,14 @@ namespace physengine
     void setCharacterPosition(CapsulePhysicsData& cpd, vec3 position)
     {
         cpd.character->SetPosition(RVec3(position[0], position[1] - collisionTolerance * 0.5f, position[2]));
+    }
+
+    void getCharacterPosition(const CapsulePhysicsData& cpd, vec3& outPosition)
+    {
+        RVec3 pos = cpd.character->GetCenterOfMassPosition();
+        outPosition[0] = pos.GetX();
+        outPosition[1] = pos.GetY();
+        outPosition[2] = pos.GetZ();
     }
 
     void moveCharacter(CapsulePhysicsData& cpd, vec3 velocity)
@@ -1457,13 +1467,7 @@ namespace physengine
         return 0;  // @INCOMPLETE: for now, just ignore the collision layers and check everything.
     }
 
-    bool raycast(vec3 origin, vec3 directionAndMagnitude, std::string& outHitGuid)
-    {
-        float_t _;
-        return raycast(origin, directionAndMagnitude, outHitGuid, _);
-    }
-
-    bool raycast(vec3 origin, vec3 directionAndMagnitude, std::string& outHitGuid, float_t& outFraction)
+    bool INTERNALRaycastFunction(vec3 origin, vec3 directionAndMagnitude, std::string& outHitGuid, float_t& outFraction, bool collectSurfNormal, vec3& outSurfaceNormal)
     {
 #ifdef _DEVELOP
         if (engine->generateCollisionDebugVisualization)
@@ -1493,10 +1497,40 @@ namespace physengine
             {
                 outHitGuid = bodyIdToEntityGuidMap[bodyIdIdx];
             }
+
+            if (collectSurfNormal)
+            {
+                Vec3 surfNormal =
+                    physicsSystem->GetBodyInterface()
+                        .GetShape(result.mBodyID)->GetSurfaceNormal(result.mSubShapeID2, ray.mOrigin + ray.mDirection * result.GetEarlyOutFraction());
+                outSurfaceNormal[0] = -surfNormal.GetX();  // @CHECK: for some reason surface normal is the direction INTO the shape??? Seems sus/wrong.  -Timo 2024/01/11
+                outSurfaceNormal[1] = -surfNormal.GetY();
+                outSurfaceNormal[2] = -surfNormal.GetZ();
+            }
+
             return true;
         }
         return false;
     }
+
+    bool raycast(vec3 origin, vec3 directionAndMagnitude, std::string& outHitGuid, float_t& outFraction, vec3& outSurfaceNormal)
+    {
+        return INTERNALRaycastFunction(origin, directionAndMagnitude, outHitGuid, outFraction, true, outSurfaceNormal);
+    }
+
+    bool raycast(vec3 origin, vec3 directionAndMagnitude, std::string& outHitGuid, float_t& outFraction)
+    {
+        vec3 _;
+        return INTERNALRaycastFunction(origin, directionAndMagnitude, outHitGuid, outFraction, false, _);
+    }
+
+    bool raycast(vec3 origin, vec3 directionAndMagnitude, std::string& outHitGuid)
+    {
+        float_t _;
+        vec3 __;
+        return INTERNALRaycastFunction(origin, directionAndMagnitude, outHitGuid, _, false, __);
+    }
+
 
 #ifdef _DEVELOP
     void drawDebugVisLine(vec3 pt1, vec3 pt2, DebugVisLineType type)
@@ -1542,12 +1576,16 @@ namespace physengine
             for (size_t i = 0; i < numCapsCreated; i++)
             {
                 CapsulePhysicsData& cpd = capsulePool[capsuleIndices[i]];
+
+                vec3 comPosition;
+                physengine::getCharacterPosition(cpd, comPosition);
+
                 GPUVisInstancePushConst pc = {};
                 glm_vec4_copy(vec4{ 0.25f, 1.0f, 0.0f, 1.0f }, pc.color1);
                 glm_vec4_copy(pc.color1, pc.color2);
-                glm_vec4(cpd.currentCOMPosition, 0.0f, pc.pt1);
+                glm_vec4(comPosition, 0.0f, pc.pt1);
                 glm_vec4_add(pc.pt1, vec4{ 0.0f, -cpd.height * 0.5f, 0.0f, 0.0f }, pc.pt1);
-                glm_vec4(cpd.currentCOMPosition, 0.0f, pc.pt2);
+                glm_vec4(comPosition, 0.0f, pc.pt2);
                 glm_vec4_add(pc.pt2, vec4{ 0.0f, cpd.height * 0.5f, 0.0f, 0.0f }, pc.pt2);
                 pc.capsuleRadius = cpd.radius;
                 vkCmdPushConstants(cmd, debugVisPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUVisInstancePushConst), &pc);

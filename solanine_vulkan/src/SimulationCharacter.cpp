@@ -1,4 +1,4 @@
-    #include "pch.h"
+#include "pch.h"
 
 #include "SimulationCharacter.h"
 
@@ -253,6 +253,9 @@ struct SimulationCharacter_XData
 #endif
     float_t attackTwitchAngle = 0.0f;
     float_t attackTwitchAngleReturnSpeed = 3.0f;
+    vec3    prevGroundNormal = GLM_VEC3_ZERO_INIT;
+    bool    prevGroundNormalSet = false;
+    int32_t TEMPASDFASDFTICKSMIDAIR = 0;
     bool    prevIsGrounded = false;
     bool    prevPrevIsGrounded = false;
 
@@ -1641,6 +1644,11 @@ std::string currentText;
 
 void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, EntityManager* em, const std::string& myGuid)
 {
+    // Update grounded state.
+    glm_vec3_copy(d->cpd->currentCOMPosition, d->position);  // @DEPRECATED: use getCharacterPosition in physengine instead.
+    d->prevPrevIsGrounded = d->prevIsGrounded;
+    d->prevIsGrounded = physengine::isGrounded(*d->cpd);
+
     if (isPlayer(d))
     {
         // Handle Respawn action.
@@ -1774,11 +1782,10 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
                 d->characterRenderObj->animator->setTrigger("goto_run");
         }
         if (!d->prevIsGrounded &&
-            d->prevIsGrounded != d->prevPrevIsGrounded &&
+            d->prevPrevIsGrounded &&
             !d->prevPerformedJump)
             d->characterRenderObj->animator->setTrigger("goto_fall");
         d->prevIsMoving = isMoving;
-        d->prevPrevIsGrounded = d->prevIsGrounded;
     }
     else
     {
@@ -1900,6 +1907,95 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
         glm_vec3_muladds(mpa.prevDeltaPosition, -1.0f / simDeltaTime, velocity);  // Subtract previous tick's attachment deltaposition.
 
     physengine::setGravityFactor(*d->cpd, d->currentWaza != nullptr ? d->currentWaza->gravityMultiplier : 1.0f);
+
+    // @DEBUG
+    vec3 gravity;
+    physengine::getWorldGravity(gravity);
+    float_t gravMagnitude = glm_vec3_norm(gravity);
+
+
+    // @ASDFASDF: Try to stick the landing!!!!
+    // @NOTE: this doesn't appear to be doing anything really. The issue is the seams between each box collider. Either they have to be perfectly aligned, no movement (but... Idk whether that would fix it either!), or something has to change. Idk.
+    // @REPLY: @TODO: I think that the best thing to do at this point is to just have a way to approximate being on the ground. Set some rules so that leaving the ground for a little bit doesn't count as falling:
+    //                  - 
+    //         @RESEARCH: I found that walking over a seam takes around 2 physics ticks before landing on the ground. Walking up a ramp and letting go, or walking up to the top of a ramp, or walking down a ramp usually takes 6 steps before landing on the ground, though YMMV.
+    //                    Therefore, I feel like doing a simple raycast out the bottom of the character could be good enough for solving these steps. After all, they can get covered up anyways.
+    //                    @TODO: so, here is the rule from this research: If sim char left the ground, do a simple raycast straight down. If there is ground there, then set a flag that's like "not grounded, but found ground below!", which would give all the animations and stuff seemingly as if it were grounded, and none the wiser.
+    if (d->prevIsGrounded)
+        d->TEMPASDFASDFTICKSMIDAIR = 0;
+    else
+    {
+        d->TEMPASDFASDFTICKSMIDAIR++;
+        std::cout << "AHHH!!: " << d->TEMPASDFASDFTICKSMIDAIR << std::endl;
+    }
+
+    vec3 jojo = GLM_VEC3_ZERO_INIT;
+    if (!d->prevIsGrounded && d->prevPrevIsGrounded)
+    {
+        std::cout << "TRY TO STICK... ?!?!?!?" << std::endl << "\t";
+        std::string guid;
+        float_t frac;
+
+        vec3 comPosition;
+        physengine::getCharacterPosition(*d->cpd, comPosition);
+        vec3 bottom;
+        glm_vec3_add(comPosition, vec3{ 0.0f, -(d->cpd->height * 0.5f + d->cpd->radius + 0.001f), 0.0f }, bottom);
+
+        vec3 direction = { 0.0f, -0.5f, 0.0f };
+
+        vec3 surfNormal;
+        bool success = false;
+        if (physengine::raycast(bottom, direction, guid, frac, surfNormal))
+        {
+            std::cout << "LETS SEE... "; HAWSOO_PRINT_VEC3(surfNormal);
+            if (surfNormal[1] < 0.999f)  // Check whether surf normal isn't straight down.
+            {
+                // Redo cast but in direction of surface.
+                glm_vec3_add(comPosition, vec3{ 0.0f, -(d->cpd->height * 0.5f), 0.0f }, bottom);
+                glm_vec3_muladds(surfNormal, -(d->cpd->radius + 0.001f), bottom);
+                glm_vec3_scale(surfNormal, -0.5f, direction);
+                success = physengine::raycast(bottom, direction, guid, frac, surfNormal);
+            }
+            else
+                success = true;
+        }
+        if (success)
+        {
+            std::cout << "HIT! " << frac << std::endl;
+            glm_vec3_muladds(direction, frac / simDeltaTime, jojo);
+
+            // std::cout << "\tCURRENTVELO: "; HAWSOO_PRINT_VEC3(velocity);
+            constexpr float_t maxVertVelocityBeforeFlyingOff = 8.0f;  // @HARDCODE: uncomment the line above to find out new value or figure out a formula!  -Timo 2024/01/11
+            if (velocity[1] > 0.0f && velocity[1] < maxVertVelocityBeforeFlyingOff)
+                velocity[1] = 0.0f;
+        }
+    }
+
+    // So it's unfortunate, but it happens (i.e. getting that the character is grounded,
+    // but there was no collision manifolds that accurately showed being grounded).
+    // Just use the previous ground normal set.  -Timo 2024/01/10
+    if (d->prevGroundNormalSet/* ||
+        (d->prevIsGrounded && d->prevGroundNormalSet && glm_vec3_norm2(d->prevGroundNormal) > 0.1f) ||
+        justLeft*/)
+    {
+        // glm_vec3_muladds(d->prevGroundNormal, -gravMagnitude * simDeltaTime, jojo);  // @NOTE: I tried out doing the magnitude of the gravity into the direction of the normal (0.98f), however, that didn't make a difference. 0.1f is enough.
+        glm_vec3_muladds(d->prevGroundNormal, -0.1f, jojo);  // @NOTE: I tried out doing the magnitude of the gravity into the direction of the normal (0.98f), however, that didn't make a difference. 0.1f is enough.
+        // jojo[1] = 0.0f;  // Have gravity factor take care of that.
+        physengine::setGravityFactor(*d->cpd, 0.0f);
+    }
+    else
+        physengine::setGravityFactor(*d->cpd, 1.0f);
+
+    // physengine::setGravityFactor(*d->cpd, (d->prevIsGrounded ? d->prevGroundNormal[1] : 1.0f));
+    // @NOTE: this situation does the exact same thing as before, where gravity gets applied to the lin velocity before doing the physics step. I think I'll leave it for now, but you should really just set gravity factor to 0.0f and then manually set the ground-stick value vec3.  -Timo 2024/01/10
+
+
+    // PART II, stick to the surfaces if you got kicked off last frame.
+
+    // @NOTE: BUGS FOR THIS IMPLEMENTATION.
+    //        - If standing on top of another sim char, it pushes the sim char in a direction depending
+    //          on where you are standing.
+    //////////
 
     d->prevPerformedJump = false;  // For animation state machine (differentiate goto_jump and goto_fall)
     bool doJump = (isPlayer(d) && input::simInputSet().jump.onAction);
@@ -2101,11 +2197,13 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
         mpa.attachmentIsStale = true;
     }
 
-    // Execute character simulation.
-    physengine::moveCharacter(*d->cpd, velocity);
+    // Add ground sticking.
+    //if (isPlayer(d))
+        //HAWSOO_PRINT_VEC3(jojo);
+    glm_vec3_add(velocity, jojo, velocity);
 
-    glm_vec3_copy(d->cpd->currentCOMPosition, d->position);
-    d->prevIsGrounded = physengine::isGrounded(*d->cpd);
+    // Update character velocity.
+    physengine::moveCharacter(*d->cpd, velocity);
 
     // Update facing direction with cosmetic simulation transform.
     vec3 eulerAngles = { 0.0f, d->facingDirection, 0.0f };
@@ -2114,6 +2212,10 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
     versor rotationV;
     glm_mat4_quat(rotation, rotationV);
     physengine::updateSimulationTransformRotation(d->cpd->simTransformId, rotationV);
+
+    d->prevGroundNormalSet = false;
+    if (!d->prevIsGrounded && !d->prevPrevIsGrounded)
+        glm_vec3_zero(d->prevGroundNormal);
 }
 
 void calculateBladeStartEndFromHandAttachment(SimulationCharacter_XData* d, vec3& bladeStart, vec3& bladeEnd)
@@ -3071,6 +3173,17 @@ void SimulationCharacter::renderImGui()
 
 void SimulationCharacter::reportPhysicsContact(const JPH::Body& otherBody, const JPH::ContactManifold& manifold, JPH::ContactSettings* ioSettings)
 {
+    JPH::Vec3 attachmentNormal = -manifold.mWorldSpaceNormal;
+    bool isSlopeTooSteep = physengine::isSlopeTooSteepForCharacter(*_data->cpd, attachmentNormal);
+    if (!_data->prevGroundNormalSet && !isSlopeTooSteep)
+    {
+        glm_vec3_copy(
+            vec3{ attachmentNormal.GetX(), attachmentNormal.GetY(), attachmentNormal.GetZ() },
+            _data->prevGroundNormal
+        );
+        _data->prevGroundNormalSet = true;
+    }
+
     SimulationCharacter_XData::MovingPlatformAttachment& mpa = _data->movingPlatformAttachment;
 
     if (otherBody.IsStatic())
@@ -3079,8 +3192,7 @@ void SimulationCharacter::reportPhysicsContact(const JPH::Body& otherBody, const
         return;
     }
 
-    JPH::Vec3 attachmentNormal = -manifold.mWorldSpaceNormal;
-    if (physengine::isSlopeTooSteepForCharacter(*_data->cpd, attachmentNormal))
+    if (isSlopeTooSteep)
     {
         mpa.attachmentStage = SimulationCharacter_XData::MovingPlatformAttachment::AttachmentStage::NO_ATTACHMENT;
         return;

@@ -1,6 +1,11 @@
 - [ ] Double down on physically based character controller.
     - [ ] Issues
 
+        - [x] isPrevGrounded lags by one frame. Updating that information should happen in another function like `PostSimulationUpdate()` or something like that for simulation character instead of after setting the linear velocity (since that doesn't immediately update the physics world).
+            > Or it could happen by querying the information at the beginning of the frame instead of the end after setting velocity.
+            > This immediately makes everything so much tighter.
+            - [ ] @TODO: Test if this change makes a difference with moving platforms.
+
         - [ ] Seams where one box collider begins and one ends makes weird non-collisions for 3 ticks.
             - [ ] 
 

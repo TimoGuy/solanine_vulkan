@@ -92,10 +92,10 @@ namespace physengine
 
         float_t radius;
         float_t height;
-        vec3 currentCOMPosition = GLM_VEC3_ZERO_INIT;
-        vec3 prevCOMPosition = GLM_VEC3_ZERO_INIT;
-        vec3 interpolCOMPosition = GLM_VEC3_ZERO_INIT;
-        bool COMPositionDifferent = false;
+        vec3 currentCOMPosition = GLM_VEC3_ZERO_INIT;  // @DEPRECATED: doesn't work anymore!
+        vec3 prevCOMPosition = GLM_VEC3_ZERO_INIT;  // @DEPRECATED: doesn't work anymore!
+        vec3 interpolCOMPosition = GLM_VEC3_ZERO_INIT;  // @DEPRECATED: doesn't work anymore!
+        bool COMPositionDifferent = false;  // @DEPRECATED: doesn't work anymore!
         JPH::Character* character = nullptr;
         size_t simTransformId;
     };
@@ -106,6 +106,7 @@ namespace physengine
     CapsulePhysicsData* getCapsuleByIndex(size_t index);
     float_t getLengthOffsetToBase(const CapsulePhysicsData& cpd);
     void setCharacterPosition(CapsulePhysicsData& cpd, vec3 position);
+    void getCharacterPosition(const CapsulePhysicsData& cpd, vec3& outPosition);
     void moveCharacter(CapsulePhysicsData& cpd, vec3 velocity);
     void setGravityFactor(CapsulePhysicsData& cpd, float_t newGravityFactor);
     void getLinearVelocity(const CapsulePhysicsData& cpd, vec3& outVelocity);
@@ -117,6 +118,7 @@ namespace physengine
     void setWorldGravity(vec3 newGravity);
     void getWorldGravity(vec3& outGravity);
     size_t getCollisionLayer(const std::string& layerName);
+    bool raycast(vec3 origin, vec3 directionAndMagnitude, std::string& outHitGuid, float_t& outFraction, vec3& outSurfaceNormal);
     bool raycast(vec3 origin, vec3 directionAndMagnitude, std::string& outHitGuid, float_t& outFraction);
     bool raycast(vec3 origin, vec3 directionAndMagnitude, std::string& outHitGuid);
 
