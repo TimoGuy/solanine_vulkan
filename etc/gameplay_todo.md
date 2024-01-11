@@ -16,6 +16,9 @@
         - [ ] Running down ramps at first causes char to be midair for like 6 ticks.
             - [ ] If starting on a ramp already, just rotate the movement direction downward whenever moving downwards.
             - [ ] If starting on flat and then moving to ramp, raycast down the moment !grounded and move char down to where raycast hit.
+                > It's kinda shotty, and I even tried to fix it with a second raycast... but maybe the best thing is to just use a spherecast?
+                > Or another idea I have is using the surface normal, calc a bunch of down raycasts from the bottom of the char in the opposite direction of the surface normal to see which one is lowest distance?
+                    > I think this one is best. (Refer to `try_midair_correction_method.png` in etc directory)
 
 - [x] Engine Issues that need to get fixed (Add more and uncheck the box as needed).
     - [x] No shadows over in spawn point #2??????
