@@ -75,6 +75,7 @@
 #include <Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h>
 #include <Jolt/Physics/Collision/Shape/StaticCompoundShape.h>
 #include <Jolt/Physics/Character/Character.h>
+#include <Jolt/Physics/Character/CharacterVirtual.h>
 #include <Jolt/Physics/Body/Body.h>
 #include <Jolt/Physics/Body/BodyID.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
@@ -85,8 +86,10 @@
 
 #ifdef _DEVELOP
     #define HAWSOO_CRASH() abort()
+    #define HAWSOO_PRINT_VEC3(v) std::cout << "X: " << v[0] << "\tY: " << v[1] << "\tZ: " << v[2] << std::endl
 #else
     #define HAWSOO_CRASH()
+    #define HAWSOO_PRINT_VEC3(v)
 #endif
 
 #if TRACY_ENABLE

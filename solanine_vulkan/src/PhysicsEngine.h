@@ -96,7 +96,9 @@ namespace physengine
         vec3 prevCOMPosition = GLM_VEC3_ZERO_INIT;
         vec3 interpolCOMPosition = GLM_VEC3_ZERO_INIT;
         bool COMPositionDifferent = false;
-        JPH::Character* character = nullptr;
+        vec3 centerOfMass;
+        float_t gravityFactor = 1.0f;
+        JPH::CharacterVirtual* character = nullptr;
         size_t simTransformId;
     };
 
@@ -109,6 +111,7 @@ namespace physengine
     void moveCharacter(CapsulePhysicsData& cpd, vec3 velocity);
     void setGravityFactor(CapsulePhysicsData& cpd, float_t newGravityFactor);
     void getLinearVelocity(const CapsulePhysicsData& cpd, vec3& outVelocity);
+    void getCapsuleGravity(const CapsulePhysicsData& cpd, vec3& outGravity);
     bool isGrounded(const CapsulePhysicsData& cpd);
     bool isSlopeTooSteepForCharacter(const CapsulePhysicsData& cpd, JPH::Vec3Arg normal);
 

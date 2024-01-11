@@ -1895,9 +1895,9 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
     vec3 velocity;
     physengine::getLinearVelocity(*d->cpd, velocity);
 
-    SimulationCharacter_XData::MovingPlatformAttachment& mpa = d->movingPlatformAttachment;
-    if (mpa.attachmentStage >= SimulationCharacter_XData::MovingPlatformAttachment::AttachmentStage::RECURRING_ATTACHMENT)
-        glm_vec3_muladds(mpa.prevDeltaPosition, -1.0f / simDeltaTime, velocity);  // Subtract previous tick's attachment deltaposition.
+    // SimulationCharacter_XData::MovingPlatformAttachment& mpa = d->movingPlatformAttachment;
+    // if (mpa.attachmentStage >= SimulationCharacter_XData::MovingPlatformAttachment::AttachmentStage::RECURRING_ATTACHMENT)
+    //     glm_vec3_muladds(mpa.prevDeltaPosition, -1.0f / simDeltaTime, velocity);  // Subtract previous tick's attachment deltaposition.
 
     physengine::setGravityFactor(*d->cpd, d->currentWaza != nullptr ? d->currentWaza->gravityMultiplier : 1.0f);
 
@@ -2088,18 +2088,24 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
         d->triggerSuckIn = false;
     }
 
-    if (mpa.attachmentIsStale)
-    {
-        // Reset attachment.
-        mpa.attachmentStage = SimulationCharacter_XData::MovingPlatformAttachment::AttachmentStage::NO_ATTACHMENT;
-        mpa.attachedBodyId = JPH::BodyID();  // Invalidate body id.
-    }
-    if (mpa.attachmentStage >= SimulationCharacter_XData::MovingPlatformAttachment::AttachmentStage::FIRST_DELTA_ATTACHMENT)
-    {
-        glm_vec3_muladds(mpa.nextDeltaPosition, 1.0f / simDeltaTime, velocity);  // Apply attachment delta position.
-        glm_vec3_copy(mpa.nextDeltaPosition, mpa.prevDeltaPosition);
-        mpa.attachmentIsStale = true;
-    }
+    // if (mpa.attachmentIsStale)
+    // {
+    //     // Reset attachment.
+    //     mpa.attachmentStage = SimulationCharacter_XData::MovingPlatformAttachment::AttachmentStage::NO_ATTACHMENT;
+    //     mpa.attachedBodyId = JPH::BodyID();  // Invalidate body id.
+    // }
+    // if (mpa.attachmentStage >= SimulationCharacter_XData::MovingPlatformAttachment::AttachmentStage::FIRST_DELTA_ATTACHMENT)
+    // {
+    //     glm_vec3_muladds(mpa.nextDeltaPosition, 1.0f / simDeltaTime, velocity);  // Apply attachment delta position.
+    //     glm_vec3_copy(mpa.nextDeltaPosition, mpa.prevDeltaPosition);
+    //     mpa.attachmentIsStale = true;
+    // }
+
+    // Apply gravity.
+    vec3 cookedGravity;
+    physengine::getCapsuleGravity(*d->cpd, cookedGravity);
+    glm_vec3_scale(cookedGravity, simDeltaTime, cookedGravity);
+    glm_vec3_add(velocity, cookedGravity, velocity);
 
     // Execute character simulation.
     physengine::moveCharacter(*d->cpd, velocity);

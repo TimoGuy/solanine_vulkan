@@ -27,6 +27,10 @@ namespace physengine
 {
     bool isInitialized = false;
 
+    constexpr size_t PHYSICS_OBJECTS_MAX_CAPACITY = 10000;
+    CapsulePhysicsData capsulePool[PHYSICS_OBJECTS_MAX_CAPACITY];
+    size_t capsuleIndices[PHYSICS_OBJECTS_MAX_CAPACITY];
+    size_t numCapsCreated = 0;
     //
     // Physics engine works
     //
@@ -645,6 +649,17 @@ namespace physengine
         }
     } contactListener;
 
+    // My character contact listener.
+    class MyCharacterContactListener : public CharacterContactListener
+    {
+    public:
+        virtual void OnContactSolve(const CharacterVirtual *inCharacter, const BodyID &inBodyID2, const SubShapeID &inSubShapeID2, RVec3Arg inContactPosition, Vec3Arg inContactNormal, Vec3Arg inContactVelocity, const PhysicsMaterial *inContactMaterial, Vec3Arg inCharacterVelocity, Vec3 &ioNewCharacterVelocity)
+        {
+            if (inContactVelocity.IsNearZero() && !inCharacter->IsSlopeTooSteep(inContactNormal))
+                ioNewCharacterVelocity = Vec3::sZero();
+        }
+    } characterContactListener;
+
     // An example activation listener
     class MyBodyActivationListener : public BodyActivationListener
     {
@@ -747,8 +762,30 @@ namespace physengine
             entityManager->INTERNALsimulationUpdate(simDeltaTime);  // @NOTE: if timescale changes, then the system just waits longer/shorter per loop.
             if (runPhysicsSimulations)
             {
-                ZoneScopedN("Update Jolt phys sys");
-                physicsSystem->Update(simDeltaTime, 1, 1, &tempAllocator, &jobSystem);
+                {
+                    ZoneScopedN("Update Jolt virtual characters");
+
+                    Vec3 gravity = physicsSystem->GetGravity();
+
+                    for (size_t i = 0; i < numCapsCreated; i++)
+                    {
+                        CapsulePhysicsData& cpd = capsulePool[capsuleIndices[i]];
+                        cpd.character->ExtendedUpdate(
+                            simDeltaTime,
+                            gravity * cpd.gravityFactor,
+                            { },
+                            physicsSystem->GetDefaultBroadPhaseLayerFilter(Layers::MOVING),
+                            physicsSystem->GetDefaultLayerFilter(Layers::MOVING),
+                            { },
+                            { },
+                            tempAllocator
+                        );
+                    }
+                }
+                {
+                    ZoneScopedN("Update Jolt phys sys");
+                    physicsSystem->Update(simDeltaTime, 1, 1, &tempAllocator, &jobSystem);
+                }
             }
             copyResultTransforms();
 
@@ -800,7 +837,7 @@ namespace physengine
     //
     // Voxel field pool
     //
-    constexpr size_t PHYSICS_OBJECTS_MAX_CAPACITY = 10000;
+    // constexpr size_t PHYSICS_OBJECTS_MAX_CAPACITY = 10000;
 
     VoxelFieldPhysicsData voxelFieldPool[PHYSICS_OBJECTS_MAX_CAPACITY];
     size_t voxelFieldIndices[PHYSICS_OBJECTS_MAX_CAPACITY];
@@ -1231,9 +1268,9 @@ namespace physengine
     //
     // Capsule pool
     //
-    CapsulePhysicsData capsulePool[PHYSICS_OBJECTS_MAX_CAPACITY];
-    size_t capsuleIndices[PHYSICS_OBJECTS_MAX_CAPACITY];
-    size_t numCapsCreated = 0;
+    // CapsulePhysicsData capsulePool[PHYSICS_OBJECTS_MAX_CAPACITY];
+    // size_t capsuleIndices[PHYSICS_OBJECTS_MAX_CAPACITY];
+    // size_t numCapsCreated = 0;
 
     CapsulePhysicsData* createCharacter(const std::string& entityGuid, vec3 position, const float_t& radius, const float_t& height, bool enableCCD)
     {
@@ -1257,27 +1294,24 @@ namespace physengine
 
             // Create physics capsule.
             ShapeRefC capsuleShape = RotatedTranslatedShapeSettings(Vec3(0, 0.5f * height + radius, 0), Quat::sIdentity(), new CapsuleShape(0.5f * height, radius)).Create().Get();
+            Vec3 com = capsuleShape->GetCenterOfMass();
+            glm_vec3_copy(vec3{ com.GetX(), com.GetY(), com.GetZ() }, cpd.centerOfMass);
 
-            Ref<CharacterSettings> settings = new CharacterSettings;
+            Ref<CharacterVirtualSettings> settings = new CharacterVirtualSettings;
             settings->mMaxSlopeAngle = glm_rad(45.0f);
-            settings->mLayer = Layers::MOVING;
             settings->mShape = capsuleShape;
 
-            // @NOTE: this was in the past 0.0f, but after introducing the slightest slope, the character starts sliding down.
-            //        This gives everything a bit of a tacky feel, but I feel like that makes the physics for the characters
-            //        feel real (gives character lol). Plus, the characters can hold up to a rotating moving platform.  -Timo 2023/09/30
-            settings->mFriction = 0.0f;
-
             settings->mSupportingVolume = Plane(Vec3::sAxisY(), -(0.5f * height));
-            cpd.character = new JPH::Character(settings, RVec3(position[0], position[1], position[2]), Quat::sIdentity(), (int64_t)UserDataMeaning::IS_CHARACTER, physicsSystem);
-            if (enableCCD)
-                physicsSystem->GetBodyInterface().SetMotionQuality(cpd.character->GetBodyID(), EMotionQuality::LinearCast);
+            cpd.character = new JPH::CharacterVirtual(settings, RVec3(position[0], position[1], position[2]), Quat::sIdentity(), physicsSystem);
+            cpd.character->SetListener(&characterContactListener);
+            // if (enableCCD)
+            //     physicsSystem->GetBodyInterface().SetMotionQuality(cpd.character->GetBodyID(), EMotionQuality::LinearCast);
 
-            cpd.character->AddToPhysicsSystem(EActivation::Activate);
+            // cpd.character->AddToPhysicsSystem(EActivation::Activate);
             cpd.simTransformId = registerSimulationTransform();
 
-            // Add guid into references.
-            bodyIdToEntityGuidMap[cpd.character->GetBodyID().GetIndex()] = entityGuid;
+            // // Add guid into references.
+            // bodyIdToEntityGuidMap[cpd.character->GetBodyID().GetIndex()] = entityGuid;
 
             return &cpd;
         }
@@ -1304,7 +1338,7 @@ namespace physengine
                 numCapsCreated--;
 
                 // Remove and delete the physics capsule.
-                cpd->character->RemoveFromPhysicsSystem();
+                // cpd->character->RemoveFromPhysicsSystem();
                 unregisterSimulationTransform(cpd->simTransformId);
 
                 return true;
@@ -1340,16 +1374,32 @@ namespace physengine
 
     void setGravityFactor(CapsulePhysicsData& cpd, float_t newGravityFactor)
     {
-        BodyInterface& bodyInterface = physicsSystem->GetBodyInterface();
-        bodyInterface.SetGravityFactor(cpd.character->GetBodyID(), newGravityFactor);
+        // BodyInterface& bodyInterface = physicsSystem->GetBodyInterface();
+        // bodyInterface.SetGravityFactor(cpd.character->GetBodyID(), newGravityFactor);
+        cpd.gravityFactor = newGravityFactor;
     }
 
     void getLinearVelocity(const CapsulePhysicsData& cpd, vec3& outVelocity)
     {
+        cpd.character->UpdateGroundVelocity();
+
         Vec3 velo = cpd.character->GetLinearVelocity();
+        Vec3 groundVelo = cpd.character->GetGroundVelocity();
+        if (cpd.character->GetGroundState() == CharacterVirtual::EGroundState::OnGround &&
+            velo.GetY() - groundVelo.GetY() < 0.1f)
+            velo = groundVelo;  // Use ground velo when on ground and not moving away from ground.
+
         outVelocity[0] = velo.GetX();
         outVelocity[1] = velo.GetY();
         outVelocity[2] = velo.GetZ();
+    }
+
+    void getCapsuleGravity(const CapsulePhysicsData& cpd, vec3& outGravity)
+    {
+        Vec3 gravityCooked = physicsSystem->GetGravity() * cpd.gravityFactor;
+        outGravity[0] = gravityCooked.GetX();
+        outGravity[1] = gravityCooked.GetY();
+        outGravity[2] = gravityCooked.GetZ();
     }
 
     bool isGrounded(const CapsulePhysicsData& cpd)
@@ -1398,10 +1448,13 @@ namespace physengine
             if (cpd.character == nullptr)
                 continue;
 
-            cpd.character->PostSimulation(collisionTolerance);
+            // cpd.character->PostSimulation(collisionTolerance);  // @NOTE: only for non-kinematic .
 
-            RVec3 pos = cpd.character->GetCenterOfMassPosition();  // @NOTE: I thought that `GetPosition` would be quicker/lighter than `GetCenterOfMassPosition`, but getting the position negates the center of mass, thus causing an extra subtract operation.
-            updateSimulationTransformPosition(cpd.simTransformId, vec3{ pos.GetX(), pos.GetY(), pos.GetZ() });
+            // RVec3 pos = cpd.character->GetCenterOfMassPosition();  // @NOTE: I thought that `GetPosition` would be quicker/lighter than `GetCenterOfMassPosition`, but getting the position negates the center of mass, thus causing an extra subtract operation.
+            RVec3 pos = cpd.character->GetPosition();
+            vec3 comPos;
+            glm_vec3_add(vec3{ pos.GetX(), pos.GetY(), pos.GetZ() }, cpd.centerOfMass, comPos);
+            updateSimulationTransformPosition(cpd.simTransformId, comPos);
 
             cpd.COMPositionDifferent = (glm_vec3_distance2(cpd.currentCOMPosition, cpd.prevCOMPosition) > 0.000001f);
         }
