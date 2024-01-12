@@ -1935,34 +1935,69 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
         std::cout << "TRY TO STICK... ?!?!?!?" << std::endl << "\t";
         std::string guid;
         float_t frac;
+        float_t minFrac;
 
         vec3 comPosition;
         physengine::getCharacterPosition(*d->cpd, comPosition);
+        vec3 baseOrigin;
+        glm_vec3_add(comPosition, vec3{ 0.0f, -(d->cpd->height * 0.5f), 0.0f }, baseOrigin);
         vec3 bottom;
-        glm_vec3_add(comPosition, vec3{ 0.0f, -(d->cpd->height * 0.5f + d->cpd->radius + 0.001f), 0.0f }, bottom);
+        glm_vec3_add(baseOrigin, vec3{ 0.0f, -(d->cpd->radius + 0.001f), 0.0f }, bottom);
 
         vec3 direction = { 0.0f, -0.5f, 0.0f };
 
         vec3 surfNormal;
-        bool success = false;
         if (physengine::raycast(bottom, direction, guid, frac, surfNormal))
         {
             std::cout << "LETS SEE... "; HAWSOO_PRINT_VEC3(surfNormal);
+            minFrac = frac;
+
             if (surfNormal[1] < 0.999f)  // Check whether surf normal isn't straight down.
             {
-                // Redo cast but in direction of surface.
-                glm_vec3_add(comPosition, vec3{ 0.0f, -(d->cpd->height * 0.5f), 0.0f }, bottom);
-                glm_vec3_muladds(surfNormal, -(d->cpd->radius + 0.001f), bottom);
-                glm_vec3_scale(surfNormal, -0.5f, direction);
-                success = physengine::raycast(bottom, direction, guid, frac, surfNormal);
+                // Do collection of raycasts up the direction of the surf normal.
+                vec3 checkDirection;
+                glm_vec3_negate_to(surfNormal, checkDirection);
+                checkDirection[1] = 0.0f;
+                glm_vec3_normalize(checkDirection);
+
+                // Reference: https://iquilezles.org/articles/sincos/
+                size_t iterations = 4;
+                float_t cosB = std::cosf(glm_rad(90.0f / (float_t)iterations));
+                float_t sinB = std::sinf(glm_rad(90.0f / (float_t)iterations));
+
+                float_t cosA = 0.0f;
+                float_t sinA = -1.0f;
+
+                float_t radiusPadded = d->cpd->radius + 0.001f;
+
+                for (size_t i = 0; i < iterations; i++)
+                {
+                    float_t newCosA = cosA * cosB - sinA * sinB;
+                    float_t newSinA = sinA * cosB + cosA * sinB;
+
+                    vec3 offset;
+                    glm_vec3_scale(checkDirection, newCosA * radiusPadded, offset);
+                    glm_vec3_add(vec3{ 0.0f, newSinA * radiusPadded, 0.0f }, offset, offset);
+
+                    glm_vec3_add(baseOrigin, offset, bottom);
+                    if (physengine::raycast(bottom, direction, guid, frac))
+                    {
+                        minFrac = glm_min(minFrac, frac);
+                    }
+
+                    cosA = newCosA;
+                    sinA = newSinA;
+                }
+
+                // glm_vec3_add(comPosition, vec3{ 0.0f, -(d->cpd->height * 0.5f), 0.0f }, bottom);
+                // glm_vec3_muladds(surfNormal, -(d->cpd->radius + 0.001f), bottom);
+                // glm_vec3_scale(surfNormal, -0.5f, direction);
+                // success = physengine::raycast(bottom, direction, guid, frac, surfNormal);
             }
-            else
-                success = true;
-        }
-        if (success)
-        {
-            std::cout << "HIT! " << frac << std::endl;
-            glm_vec3_muladds(direction, frac / simDeltaTime, jojo);
+
+            // Process successful hit.
+            std::cout << "HIT! " << minFrac << std::endl;
+            glm_vec3_muladds(direction, minFrac / simDeltaTime, jojo);
 
             // std::cout << "\tCURRENTVELO: "; HAWSOO_PRINT_VEC3(velocity);
             constexpr float_t maxVertVelocityBeforeFlyingOff = 8.0f;  // @HARDCODE: uncomment the line above to find out new value or figure out a formula!  -Timo 2024/01/11
@@ -1979,7 +2014,7 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
         justLeft*/)
     {
         // glm_vec3_muladds(d->prevGroundNormal, -gravMagnitude * simDeltaTime, jojo);  // @NOTE: I tried out doing the magnitude of the gravity into the direction of the normal (0.98f), however, that didn't make a difference. 0.1f is enough.
-        glm_vec3_muladds(d->prevGroundNormal, -0.1f, jojo);  // @NOTE: I tried out doing the magnitude of the gravity into the direction of the normal (0.98f), however, that didn't make a difference. 0.1f is enough.
+        glm_vec3_muladds(d->prevGroundNormal, -0.001f, jojo);  // @NOTE: I tried out doing the magnitude of the gravity into the direction of the normal (0.98f), however, that didn't make a difference. 0.1f is enough.
         // jojo[1] = 0.0f;  // Have gravity factor take care of that.
         physengine::setGravityFactor(*d->cpd, 0.0f);
     }
@@ -2075,8 +2110,20 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
         }
 
         // Apply X and Z to velocity.
-        velocity[0] = flatVelocity[0];
-        velocity[2] = flatVelocity[2];
+        if (d->prevIsGrounded && d->prevGroundNormalSet && glm_vec3_norm2(flatVelocity) > 0.000001f)
+        {
+            float_t magnitude = glm_vec3_norm(flatVelocity);
+            glm_vec3_normalize(flatVelocity);
+            vec3 right;
+            glm_vec3_crossn(flatVelocity, d->prevGroundNormal, right);
+            glm_vec3_crossn(d->prevGroundNormal, right, velocity);
+            glm_vec3_scale(velocity, magnitude, velocity);
+        }
+        else
+        {
+            velocity[0] = flatVelocity[0];
+            velocity[2] = flatVelocity[2];
+        }
     }
     else
     {
@@ -2200,7 +2247,14 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
     // Add ground sticking.
     //if (isPlayer(d))
         //HAWSOO_PRINT_VEC3(jojo);
-    glm_vec3_add(velocity, jojo, velocity);
+    static bool inccccccc = true;
+    if (isPlayer(d) && input::editorInputSet().actionC.onAction)
+    {
+        inccccccc = !inccccccc;
+        std::cout << "Toggle use jojo: " << inccccccc << std::endl;
+    }
+    if (inccccccc)
+        glm_vec3_add(velocity, jojo, velocity);
 
     // Update character velocity.
     physengine::moveCharacter(*d->cpd, velocity);

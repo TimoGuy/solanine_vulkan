@@ -20,7 +20,8 @@
                 > Or another idea I have is using the surface normal, calc a bunch of down raycasts from the bottom of the char in the opposite direction of the surface normal to see which one is lowest distance?
                     > I think this one is best. (Refer to `try_midair_correction_method.png` in etc directory)
 
-- [x] Engine Issues that need to get fixed (Add more and uncheck the box as needed).
+- [ ] Engine Issues that need to get fixed (Add more and uncheck the box as needed).
     - [x] No shadows over in spawn point #2??????
         > So all the objects being drawn are the ones still in area #1... so something wrong is happening for sure. Culling issue maybe?
         > Issue was that the culling light view matrix was using the extents to calc the frustum center instead of the corners of the frustum to calc the frustum center. That quick fix fixed it!
+    - [ ] Sometimes voxelfield will have `:` as a numeric thing... that's not allowed!!!

@@ -1269,7 +1269,7 @@ namespace physengine
             // @AMEND: The friction level is set to 0.0f, bc 0.5f 
             settings->mFriction = 0.0f;
 
-            settings->mSupportingVolume = Plane(Vec3::sAxisY(), -(0.5f * height));
+            settings->mSupportingVolume = Plane(Vec3::sAxisY(), -(0.5f * height + (1.0f - std::sinf(settings->mMaxSlopeAngle))));
             cpd.character = new JPH::Character(settings, RVec3(position[0], position[1], position[2]), Quat::sIdentity(), (int64_t)UserDataMeaning::IS_CHARACTER, physicsSystem);
             if (enableCCD)
                 physicsSystem->GetBodyInterface().SetMotionQuality(cpd.character->GetBodyID(), EMotionQuality::LinearCast);
