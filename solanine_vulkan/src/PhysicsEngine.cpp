@@ -1259,7 +1259,7 @@ namespace physengine
             ShapeRefC capsuleShape = RotatedTranslatedShapeSettings(Vec3(0, 0.5f * height + radius, 0), Quat::sIdentity(), new CapsuleShape(0.5f * height, radius)).Create().Get();
 
             Ref<CharacterSettings> settings = new CharacterSettings;
-            settings->mMaxSlopeAngle = glm_rad(45.0f);
+            settings->mMaxSlopeAngle = glm_rad(46.0f);
             settings->mLayer = Layers::MOVING;
             settings->mShape = capsuleShape;
 
@@ -1469,6 +1469,8 @@ namespace physengine
 
     bool INTERNALRaycastFunction(vec3 origin, vec3 directionAndMagnitude, std::string& outHitGuid, float_t& outFraction, bool collectSurfNormal, vec3& outSurfaceNormal)
     {
+        ZoneScoped;
+
 #ifdef _DEVELOP
         if (engine->generateCollisionDebugVisualization)
         {
@@ -1500,12 +1502,13 @@ namespace physengine
 
             if (collectSurfNormal)
             {
-                Vec3 surfNormal =
-                    physicsSystem->GetBodyInterface()
-                        .GetShape(result.mBodyID)->GetSurfaceNormal(result.mSubShapeID2, ray.mOrigin + ray.mDirection * result.GetEarlyOutFraction());
-                outSurfaceNormal[0] = -surfNormal.GetX();  // @CHECK: for some reason surface normal is the direction INTO the shape??? Seems sus/wrong.  -Timo 2024/01/11
-                outSurfaceNormal[1] = -surfNormal.GetY();
-                outSurfaceNormal[2] = -surfNormal.GetZ();
+                // @CHECK: for some reason surface normal is the direction INTO the shape??? Seems sus/wrong.  -Timo 2024/01/11
+                // @REPLY: Ummmm, so for some things it's the correct normal and sometimes it's not???  -Timo 2024/01/13
+                // @REPLY: so getting the shape space surface normal was what was happening. Using transformed shape, now we can use `GetWorldSpaceSurfaceNormal`, which is the way I was using the previous function. This should do it.  -Timo 2024/01/13
+                Vec3 surfNormal = physicsSystem->GetBodyInterface().GetTransformedShape(result.mBodyID).GetWorldSpaceSurfaceNormal(result.mSubShapeID2, ray.GetPointOnRay(outFraction));
+                outSurfaceNormal[0] = surfNormal.GetX();
+                outSurfaceNormal[1] = surfNormal.GetY();
+                outSurfaceNormal[2] = surfNormal.GetZ();
             }
 
             return true;

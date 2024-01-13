@@ -38,6 +38,7 @@ struct SimulationCharacter_XData
     std::string              weaponAttachmentJointName;
 
     physengine::CapsulePhysicsData* cpd;
+    std::vector<vec3s> basePoints;
 
     struct MovingPlatformAttachment
     {
@@ -1406,6 +1407,31 @@ SimulationCharacter::SimulationCharacter(EntityManager* em, RenderObjectManager*
     bool useCCD = (isPlayer(_data));
     _data->cpd = physengine::createCharacter(getGUID(), _data->position, 0.375f, 1.25f, useCCD);  // Total height is 2, but r*2 is subtracted to get the capsule height (i.e. the line segment length that the capsule rides along)
 
+    // Calculate base points.
+    float_t b = std::sinf(glm_rad(45.0f));
+    _data->basePoints = {
+        vec3s{     std::cosf(glm_rad(0.0f)),      0.0f,        std::sinf(glm_rad(0.0f))   },
+        vec3s{     std::cosf(glm_rad(45.0f)),     0.0f,        std::sinf(glm_rad(45.0f))  },
+        vec3s{     std::cosf(glm_rad(90.0f)),     0.0f,        std::sinf(glm_rad(90.0f))  },
+        vec3s{     std::cosf(glm_rad(135.0f)),    0.0f,        std::sinf(glm_rad(135.0f)) },
+        vec3s{     std::cosf(glm_rad(180.0f)),    0.0f,        std::sinf(glm_rad(180.0f)) },
+        vec3s{     std::cosf(glm_rad(225.0f)),    0.0f,        std::sinf(glm_rad(225.0f)) },
+        vec3s{     std::cosf(glm_rad(270.0f)),    0.0f,        std::sinf(glm_rad(270.0f)) },
+        vec3s{     std::cosf(glm_rad(315.0f)),    0.0f,        std::sinf(glm_rad(315.0f)) },
+        vec3s{ b * std::cosf(glm_rad(0.0f)),     -b,       b * std::sinf(glm_rad(0.0f))   },
+        vec3s{ b * std::cosf(glm_rad(60.0f)),    -b,       b * std::sinf(glm_rad(60.0f))  },
+        vec3s{ b * std::cosf(glm_rad(120.0f)),   -b,       b * std::sinf(glm_rad(120.0f)) },
+        vec3s{ b * std::cosf(glm_rad(180.0f)),   -b,       b * std::sinf(glm_rad(180.0f)) },
+        vec3s{ b * std::cosf(glm_rad(240.0f)),   -b,       b * std::sinf(glm_rad(240.0f)) },
+        vec3s{ b * std::cosf(glm_rad(300.0f)),   -b,       b * std::sinf(glm_rad(300.0f)) },
+        vec3s{     0.0f,                         -1.0f,        0.0f                       },
+    };
+    for (auto& base : _data->basePoints)
+    {
+        glm_vec3_scale(base.raw, _data->cpd->radius, base.raw);
+        glm_vec3_add(base.raw, vec3{ 0.0f, -_data->cpd->height * 0.5f, 0.0f}, base.raw);
+    }
+
     if (isPlayer(_data))
     {
         globalState::playerGUID = getGUID();
@@ -1644,6 +1670,218 @@ std::string currentText;
 
 void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, EntityManager* em, const std::string& myGuid)
 {
+    // @DEBUG: NEW AND REWRITTEN CHARACTER CONTROLLER!
+
+
+    // Check if grounded (sample disk).
+    float_t pushFromGroundDistance = 1.0f;
+    float_t pullToGroundDistance = 1.0f;
+    float_t rayLength = pushFromGroundDistance + pullToGroundDistance;
+    float_t fracBoundary = pushFromGroundDistance / rayLength;
+    vec3 position;
+    physengine::getCharacterPosition(*d->cpd, position);
+    vec3 direction = { 0.0f, -rayLength, 0.0f };
+
+    bool isGrounded = false;
+    vec3 groundNormal = GLM_VEC3_ZERO_INIT;
+    float_t minGroundedFrac = std::numeric_limits<float_t>::max();
+
+    bool needsDisplacement = false;
+    vec3 displacementVector = GLM_VEC3_ZERO_INIT;
+    uint32_t displacementCount = 0;
+
+    for (auto& base : d->basePoints)
+    {
+        vec3 origin;
+        glm_vec3_add(position, base.raw, origin);
+        glm_vec3_add(vec3{ 0.0f, -0.01f, 0.0f }, origin, origin);
+
+        std::string guid;
+        float_t frac;
+        vec3 surfNormal;
+        if (physengine::raycast(origin, direction, guid, frac, surfNormal))
+        {
+            // @NOTE: there seems to be two types of ray hits. One is where it's ground, and you need to fix
+            //        the character to the right height above the ground (push away from the ground or pull to the ground
+            //        if overcorrecting (`|| prevIsGrounded` check)).
+            //        The other is where it's more wall and it's too steep. Keeping the character at the right height
+            //        is still an issue here, however, moreso getting them away from the detected "wall".
+            //        Thus instead of 1 degree of displacement, in this case all 3 will be used.  -Timo 2024/01/13
+            bool isSlopeTooSteep = physengine::isSlopeTooSteepForCharacter(*d->cpd, JPH::Vec3(surfNormal[0], surfNormal[1], surfNormal[2]));
+
+            if ((frac <= fracBoundary || d->prevIsGrounded) &&  // If raycast hit in the grounded part (within distance to ground, which is `fracBoundary` of frac), or the raycast hit but in the not grounded part but last frame it was grounded (i.e. going down stairs, etc.).
+                !isSlopeTooSteep)
+            {
+                // Grounded!
+                isGrounded = true;
+                glm_vec3_add(surfNormal, groundNormal, groundNormal);
+                minGroundedFrac = glm_min(minGroundedFrac, frac);
+            }
+
+            if (frac <= fracBoundary && isSlopeTooSteep)
+            {
+                // Is colliding with wall! (probably)
+                vec3 castPoint;
+                glm_vec3_copy(origin, castPoint);
+                glm_vec3_muladds(direction, frac, castPoint);
+
+                vec3 displacementOrigin = {
+                    position[0],
+                    glm_max(castPoint[1], position[1] - d->cpd->height * 0.5f - pushFromGroundDistance),
+                    position[2],
+                };
+
+                vec3 penetrationVector;
+                glm_vec3_sub(castPoint, displacementOrigin, penetrationVector);
+
+                if (glm_vec3_norm2(penetrationVector) < d->cpd->radius * d->cpd->radius)  // @NOTE: since the ray hit, this check isn't needed. Feel free to take it out if wanted.
+                {
+                    // Is in fact colliding with wall!
+                    needsDisplacement = true;
+
+                    // Do a quick sphere to point penetration test and add in the result to penetration vector collection.
+                    float_t penetrationMagnitude = glm_vec3_norm(penetrationVector);
+                    float_t displacementAmount = penetrationMagnitude - d->cpd->radius;
+                    if (penetrationMagnitude > 0.000001f)
+                        glm_vec3_muladds(penetrationVector, displacementAmount / penetrationMagnitude, displacementVector);
+                    else
+                        glm_vec3_muladds(surfNormal, displacementAmount, displacementVector);
+
+                    if (std::isnan(displacementVector[0]))
+                        int jojo = 123;
+
+                    displacementCount++;
+                }
+            }
+        }
+    }
+    if (isGrounded)
+        glm_vec3_normalize(groundNormal);
+    if (needsDisplacement)
+        glm_vec3_scale(displacementVector, 1.0f / ((float_t)displacementCount * simDeltaTime), displacementVector);
+
+    if (isPlayer(d))
+        int ian = 70;
+
+    // Calculate y correction if grounded.
+    bool overrideY = false;
+    float_t yCorrectionVelocity = 0.0f;
+    if (isGrounded)
+    {
+        yCorrectionVelocity = pushFromGroundDistance - rayLength * minGroundedFrac;
+        yCorrectionVelocity *= 1.0f / simDeltaTime;
+        overrideY = true;
+    }
+    if (needsDisplacement)
+        overrideY = true;
+
+    // Calculate xz velocity.
+    bool inputVelocityUsed = false;
+    vec3 inputVelocity = GLM_VEC3_ZERO_INIT;
+    {
+        // Get input.
+        vec2 input = GLM_VEC2_ZERO_INIT;
+
+        if (isPlayer(d) && !d->disableInput)
+        {
+            input[0] = input::simInputSet().flatPlaneMovement.axisX;
+            input[1] = input::simInputSet().flatPlaneMovement.axisY;
+        }
+
+        if (glm_vec2_norm2(input) > 0.000001f)
+        {
+            // Transform input to world space.
+            vec3 flatCameraFacingDirection = {
+                d->camera->sceneCamera.facingDirection[0],
+                0.0f,
+                d->camera->sceneCamera.facingDirection[2],
+            };
+            glm_normalize(flatCameraFacingDirection);
+
+            vec3 worldSpaceInput;
+            glm_vec3_scale(flatCameraFacingDirection, input[1], worldSpaceInput);
+            vec3 flatCamRight;
+            glm_vec3_crossn(flatCameraFacingDirection, vec3{ 0.0f, 1.0f, 0.0f }, flatCamRight);
+            glm_vec3_muladds(flatCamRight, input[0], worldSpaceInput);
+
+            // Transform input to velocity.
+            if (isGrounded && groundNormal[1] < 0.999f)
+            {
+                // Transform input to velocity on ground normal.
+                vec3 flatVelocity;
+                glm_vec3_scale(worldSpaceInput, d->inputMaxXZSpeed, flatVelocity);
+
+                vec3 forward;
+                vec3 right;
+                glm_vec3_crossn(vec3{ 0.0f, 1.0f, 0.0f }, groundNormal, right);
+                glm_vec3_crossn(groundNormal, right, forward);
+
+                glm_vec3_muladds(forward, glm_vec3_dot(forward, flatVelocity), inputVelocity);
+                glm_vec3_muladds(right, glm_vec3_dot(right, flatVelocity), inputVelocity);
+            }
+            else
+            {
+                // Transform input to midair velocity.
+                glm_vec3_scale(worldSpaceInput, d->inputMaxXZSpeed, inputVelocity);
+            }
+
+            inputVelocityUsed = true;
+        }
+    }
+
+    // Mix and set velocity.
+    vec3 prevVelocity;
+    physengine::getLinearVelocity(*d->cpd, prevVelocity);
+
+    if (needsDisplacement && inputVelocityUsed)
+    {
+        vec3 displacementNormalized;
+        glm_vec3_normalize_to(displacementVector, displacementNormalized);
+        vec3 inputNormalized;
+        glm_vec3_normalize_to(inputVelocity, inputNormalized);
+
+        // @TODO: START HERE!!!!! It's good, but not perfect. Figure out what you need to completely block off the input going against displacement vector!!!!
+        if (glm_vec3_dot(inputVelocity, displacementVector) < 0.0f)
+            glm_vec3_muladds(displacementVector, 1.0f, inputVelocity);  // Completely remove input movement to let displacement thru.
+    }
+
+    vec3 mixedVelocity = {
+        inputVelocity[0] + displacementVector[0],
+        inputVelocity[1] + displacementVector[1] + (overrideY ? yCorrectionVelocity : prevVelocity[1]),
+        inputVelocity[2] + displacementVector[2],
+    };
+
+    physengine::moveCharacter(*d->cpd, mixedVelocity);
+
+    // @DEBUG
+    if (isPlayer(d))
+    {
+        // std::cout << yCorrectionVelocity << std::endl;
+        // std::cout << isGrounded << std::endl;
+        // HAWSOO_PRINT_VEC3(mixedVelocity);
+        HAWSOO_PRINT_VEC3(displacementVector);
+    }
+
+    // Update facing direction with cosmetic simulation transform.
+    vec3 eulerAngles = { 0.0f, d->facingDirection, 0.0f };
+    mat4 rotation;
+    glm_euler_zyx(eulerAngles, rotation);
+    versor rotationV;
+    glm_mat4_quat(rotation, rotationV);
+    physengine::updateSimulationTransformRotation(d->cpd->simTransformId, rotationV);
+
+    // Update prev state.
+    d->prevIsGrounded = isGrounded;
+    // d->prevDisplacement[0] = displacementVector[0];
+    // d->prevDisplacement[1] = displacementVector[1];
+    // d->prevDisplacement[2] = displacementVector[2];
+
+
+////////////////////////////////////////////////////////
+
+
+
+#if 0
     // Update grounded state.
     glm_vec3_copy(d->cpd->currentCOMPosition, d->position);  // @DEPRECATED: use getCharacterPosition in physengine instead.
     d->prevPrevIsGrounded = d->prevIsGrounded;
@@ -2270,6 +2508,7 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
     d->prevGroundNormalSet = false;
     if (!d->prevIsGrounded && !d->prevPrevIsGrounded)
         glm_vec3_zero(d->prevGroundNormal);
+#endif
 }
 
 void calculateBladeStartEndFromHandAttachment(SimulationCharacter_XData* d, vec3& bladeStart, vec3& bladeEnd)
