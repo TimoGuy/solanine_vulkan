@@ -74,10 +74,10 @@ void main()
             nodeCollection.nodes[nodeID].jointMatrix[int(joint.w)] * weight.w;
 
         // Spit out the data!
-        outputData.indices[gID].pos = inputData.indices[gID].pos;  // @DEBUG
-        // outputData.indices[gID].pos = vec3(nodeMatrix * skinMat * vec4(inputData.indices[gID].pos, 1.0));
-        outputData.indices[gID].normal = inputData.indices[gID].normal;  // @DEBUG
-        // outputData.indices[gID].normal = normalize(transpose(inverse(mat3(nodeMatrix * skinMat))) * inputData.indices[gID].normal);
+        // outputData.indices[gID].pos = inputData.indices[gID].pos;  // @DEBUG
+        outputData.indices[gID].pos = vec3(nodeMatrix * skinMat * vec4(inputData.indices[gID].pos, 1.0));
+        // outputData.indices[gID].normal = inputData.indices[gID].normal;  // @DEBUG
+        outputData.indices[gID].normal = normalize(transpose(inverse(mat3(nodeMatrix * skinMat))) * inputData.indices[gID].normal);
         outputData.indices[gID].UV0 = inputData.indices[gID].UV0;
         outputData.indices[gID].UV1 = inputData.indices[gID].UV1;
         outputData.indices[gID].color0 = inputData.indices[gID].color0;

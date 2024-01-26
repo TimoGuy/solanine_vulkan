@@ -43,33 +43,41 @@ void VulkanEngine::init()
 	//
 	// Read build number for window title
 	//
-	std::ifstream buildNumberFile;
-	buildNumberFile.open("build_number.txt", std::ios::in);
 	std::string buildNumber;
-	if (buildNumberFile.is_open())
 	{
-		getline(buildNumberFile, buildNumber);
-		buildNumberFile.close();
+		ZoneScopedN("Read Build Number");
+
+		std::ifstream buildNumberFile;
+		buildNumberFile.open("build_number.txt", std::ios::in);
+		if (buildNumberFile.is_open())
+		{
+			getline(buildNumberFile, buildNumber);
+			buildNumberFile.close();
+		}
+		if (!buildNumber.empty())
+			buildNumber = " - Build " + buildNumber;		// Prepend a good looking tag to the build number
 	}
-	if (!buildNumber.empty())
-		buildNumber = " - Build " + buildNumber;		// Prepend a good looking tag to the build number
 
 	//
 	// Initialization routine
 	//
-	SDL_Init(SDL_INIT_VIDEO);
-	SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN);
-	if (_windowFullscreen)
-		window_flags = (SDL_WindowFlags)(window_flags | SDL_WINDOW_FULLSCREEN_DESKTOP);
+	{
+		ZoneScopedN("Initialize SDL2");
 
-	_window = SDL_CreateWindow(
-		("Solanine Prealpha - Vulkan" + buildNumber).c_str(),
-		SDL_WINDOWPOS_CENTERED,
-		SDL_WINDOWPOS_CENTERED,
-		_windowExtent.width,
-		_windowExtent.height,
-		window_flags
-	);
+		SDL_Init(SDL_INIT_VIDEO);
+		SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN);
+		if (_windowFullscreen)
+			window_flags = (SDL_WindowFlags)(window_flags | SDL_WINDOW_FULLSCREEN_DESKTOP);
+
+		_window = SDL_CreateWindow(
+			("Solanine Prealpha - Vulkan" + buildNumber).c_str(),
+			SDL_WINDOWPOS_CENTERED,
+			SDL_WINDOWPOS_CENTERED,
+			_windowExtent.width,
+			_windowExtent.height,
+			window_flags
+		);
+	}
 
 	_roManager = new RenderObjectManager(_allocator);
 	_entityManager = new EntityManager();
@@ -107,7 +115,10 @@ void VulkanEngine::init()
 	scene::init(this);
 	GondolaSystem::_engine = this;
 
-	while (!physengine::isInitialized);  // Spin lock so that new scene doesn't get loaded before physics are finished initializing.
+	{
+		ZoneScopedN("Wait for physics to finish init.");
+		while (!physengine::isInitialized);  // Spin lock so that new scene doesn't get loaded before physics are finished initializing.
+	}
 
 	SDL_ShowWindow(_window);
 
@@ -1665,6 +1676,8 @@ void VulkanEngine::render()
 
 void VulkanEngine::loadImages()
 {
+	ZoneScoped;
+
 	// @NOTE: @NOCHECKIN: This needs to be resolved. Do we keep this or discard this? Images should be loaded in with ktx loaders now.
 	// // Load empty
 	// {
@@ -2011,6 +2024,8 @@ void VulkanEngine::immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& fu
 
 void VulkanEngine::initVulkan()
 {
+	ZoneScoped;
+
 	//
 	// Setup vulkan instance and debug messenger
 	//
@@ -2131,6 +2146,8 @@ void VulkanEngine::initVulkan()
 
 void VulkanEngine::initSwapchain()
 {
+	ZoneScoped;
+
 	vkb::SwapchainBuilder swapchainBuilder{ _chosenGPU, _device, _surface };
 	vkb::Swapchain vkbSwapchain = swapchainBuilder
 		.use_default_format_selection()
@@ -2182,6 +2199,8 @@ void VulkanEngine::initSwapchain()
 
 void VulkanEngine::initCommands()
 {
+	ZoneScoped;
+
 	VkCommandPoolCreateInfo commandPoolInfo = vkinit::commandPoolCreateInfo(_graphicsQueueFamily, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
 
 	for (size_t i = 0; i < FRAME_OVERLAP; i++)
@@ -2292,6 +2311,8 @@ void createFramebuffer(VkDevice device, VkFramebuffer& framebuffer, VkRenderPass
 
 void VulkanEngine::initShadowRenderpass()  // @COPYPASTA
 {
+	ZoneScoped;
+
 	//
 	// Initialize the renderpass object
 	//
@@ -2369,6 +2390,8 @@ void VulkanEngine::initShadowRenderpass()  // @COPYPASTA
 
 void VulkanEngine::initShadowImages()
 {
+	ZoneScoped;
+
 	//
 	// Initialize the shadow images
 	// @NOTE: I know that this is kind of a waste, and that
@@ -2432,6 +2455,8 @@ void VulkanEngine::initShadowImages()
 
 void VulkanEngine::initMainRenderpass()
 {
+	ZoneScoped;
+
 	//
 	// Color Attachment
 	//
@@ -2566,6 +2591,8 @@ void VulkanEngine::initMainRenderpass()
 
 void VulkanEngine::initUIRenderpass()    // @NOTE: @COPYPASTA: This is really copypasta of the above function (initMainRenderpass)
 {
+	ZoneScoped;
+
 	//
 	// Color Attachment
 	//
@@ -3122,6 +3149,8 @@ void initDOF_DOFFloodFillRenderPass(VkDevice device, VkRenderPass& renderPass)
 
 void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is really copypasta of the above function (initMainRenderpass)
 {
+	ZoneScoped;
+
 	initPostprocessCombineRenderPass(_device, _swapchainImageFormat, _postprocessRenderPass);
 	initDOF_CoCRenderPass(_device, _CoCRenderPass);
 	initDOF_HalveCoCRenderPass(_device, _halveCoCRenderPass);
@@ -3146,6 +3175,8 @@ void VulkanEngine::initPostprocessRenderpass()    // @NOTE: @COPYPASTA: This is 
 
 void VulkanEngine::initPostprocessImages()
 {
+	ZoneScoped;
+
 	//
 	// Create bloom image
 	//
@@ -3635,6 +3666,8 @@ void VulkanEngine::initPickingRenderpass()    // @NOTE: @COPYPASTA: This is real
 
 void VulkanEngine::initFramebuffers()
 {
+	ZoneScoped;
+
 	_swapchainFramebuffers = std::vector<VkFramebuffer>(_swapchainImages.size());
 	for (size_t i = 0; i < _swapchainImages.size(); i++)
 	{
@@ -3756,6 +3789,8 @@ void VulkanEngine::initFramebuffers()
 
 void VulkanEngine::initSyncStructures()
 {
+	ZoneScoped;
+
 	VkFenceCreateInfo fenceCreateInfo = {
 		.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
 		.pNext = nullptr,
@@ -3806,6 +3841,8 @@ void VulkanEngine::initSyncStructures()
 
 void VulkanEngine::initDescriptors()    // @NOTE: don't destroy and then recreate descriptors when recreating the swapchain. Only pipelines (not even pipelinelayouts), framebuffers, and the corresponding image/imageviews/samplers need to get recreated.  -Timo
 {
+	ZoneScoped;
+
 	//
 	// Materials for ImGui
 	//
@@ -4035,6 +4072,8 @@ void VulkanEngine::initDescriptors()    // @NOTE: don't destroy and then recreat
 
 void VulkanEngine::initPipelines()
 {
+	ZoneScoped;
+
 	// Common values
 	vkglTF::VertexInputDescription modelVertexDescription = vkglTF::Model::Vertex::getVertexDescription();
 	VkViewport screenspaceViewport = {
@@ -4540,6 +4579,8 @@ void VulkanEngine::initPipelines()
 
 void VulkanEngine::generatePBRCubemaps()
 {
+	ZoneScoped;
+
 	//
 	// @NOTE: this function was copied and very slightly modified from Sascha Willem's Vulkan-glTF-PBR example.
 	//
@@ -5186,6 +5227,8 @@ void VulkanEngine::generatePBRCubemaps()
 
 void VulkanEngine::generateBRDFLUT()
 {
+	ZoneScoped;
+
 	//
 	// @NOTE: this function was copied and very slightly modified from Sascha Willem's Vulkan-glTF-PBR example.
 	//
@@ -5461,6 +5504,8 @@ void VulkanEngine::generateBRDFLUT()
 
 void VulkanEngine::initImgui()
 {
+	ZoneScoped;
+
 	//
 	// Create descriptor pool for imgui
 	//
@@ -5571,6 +5616,8 @@ FrameData& VulkanEngine::getCurrentFrame()
 
 void VulkanEngine::loadMaterials()
 {
+	ZoneScoped;
+
 	for (const auto& entry : std::filesystem::recursive_directory_iterator("res/materials/"))
 	{
 		const auto& path = entry.path();
@@ -5592,6 +5639,8 @@ void VulkanEngine::loadMaterials()
 
 void VulkanEngine::loadMeshes()
 {
+	ZoneScoped;
+
 	// @NOTE: `MULTITHREAD_MESH_LOADING` cannot be used if rapidjson is the json parser for tiny_gltf.h
 #define MULTITHREAD_MESH_LOADING 0
 #if MULTITHREAD_MESH_LOADING

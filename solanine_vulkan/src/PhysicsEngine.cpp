@@ -1505,6 +1505,9 @@ namespace physengine
                 // @CHECK: for some reason surface normal is the direction INTO the shape??? Seems sus/wrong.  -Timo 2024/01/11
                 // @REPLY: Ummmm, so for some things it's the correct normal and sometimes it's not???  -Timo 2024/01/13
                 // @REPLY: so getting the shape space surface normal was what was happening. Using transformed shape, now we can use `GetWorldSpaceSurfaceNormal`, which is the way I was using the previous function. This should do it.  -Timo 2024/01/13
+                // @NOCHECKIN: the test code below:
+                // physicsSystem->GetBodyInterface().GetTransformedShape(result.mBodyID).CastShape
+                // physicsSystem->GetNarrowPhaseQuery().CastShape()
                 Vec3 surfNormal = physicsSystem->GetBodyInterface().GetTransformedShape(result.mBodyID).GetWorldSpaceSurfaceNormal(result.mSubShapeID2, ray.GetPointOnRay(outFraction));
                 outSurfaceNormal[0] = surfNormal.GetX();
                 outSurfaceNormal[1] = surfNormal.GetY();
