@@ -1507,7 +1507,6 @@ namespace physengine
                 // @REPLY: so getting the shape space surface normal was what was happening. Using transformed shape, now we can use `GetWorldSpaceSurfaceNormal`, which is the way I was using the previous function. This should do it.  -Timo 2024/01/13
                 // @NOCHECKIN: the test code below:
                 // physicsSystem->GetBodyInterface().GetTransformedShape(result.mBodyID).CastShape
-                // physicsSystem->GetNarrowPhaseQuery().CastShape()
                 Vec3 surfNormal = physicsSystem->GetBodyInterface().GetTransformedShape(result.mBodyID).GetWorldSpaceSurfaceNormal(result.mSubShapeID2, ray.GetPointOnRay(outFraction));
                 outSurfaceNormal[0] = surfNormal.GetX();
                 outSurfaceNormal[1] = surfNormal.GetY();
@@ -1535,6 +1534,72 @@ namespace physengine
         float_t _;
         vec3 __;
         return INTERNALRaycastFunction(origin, directionAndMagnitude, outHitGuid, _, false, __);
+    }
+
+    bool capsuleCast(vec3 origin, float_t radius, float_t height, vec3 directionAndMagnitude, float_t& outFraction, vec3& outSurfaceNormal)
+    {
+        RShapeCast sc(
+            new CapsuleShape(height * 0.5f, radius),
+            Vec3(1.0f, 1.0f, 1.0f),
+            Mat44::sTranslation(Vec3(origin[0], origin[1], origin[2])),
+            Vec3(directionAndMagnitude[0], directionAndMagnitude[1], directionAndMagnitude[2])
+        );
+        ShapeCastSettings scs;
+
+        class MyCollector : public CastShapeCollector
+        {
+        public:
+            MyCollector(PhysicsSystem &inPhysicsSystem, const RShapeCast &inShapeCast) :
+                mPhysicsSystem(inPhysicsSystem),
+                mShapeCast(inShapeCast) { }
+
+            virtual void AddHit(const ShapeCastResult &inResult) override
+            {
+                // Test if this collision is closer than the previous one
+                if (inResult.mFraction < GetEarlyOutFraction())
+                {
+                    // Lock the body
+                    BodyLockRead lock(mPhysicsSystem.GetBodyLockInterfaceNoLock(), inResult.mBodyID2);
+                    JPH_ASSERT(lock.Succeeded());  // When this runs all bodies are locked so this should not fail
+                    const Body *body = &lock.GetBody();
+
+                    if (body->IsSensor())
+                        return;
+
+                    // Update early out fraction to this hit
+                    UpdateEarlyOutFraction(inResult.mFraction);
+
+                    // Get the contact properties
+                    mBody = body;
+                    mSubShapeID2 = inResult.mSubShapeID2;
+                    mContactPosition = mShapeCast.mCenterOfMassStart.GetTranslation() + inResult.mContactPointOn2;
+                    mContactNormal = -inResult.mPenetrationAxis.Normalized();
+                }
+            }
+
+            // Configuration
+            PhysicsSystem&      mPhysicsSystem;
+            const RShapeCast&   mShapeCast;
+
+            // Resulting closest collision
+            const Body*        mBody = nullptr;
+            SubShapeID         mSubShapeID2;
+            RVec3              mContactPosition;
+            Vec3               mContactNormal;
+        };
+        MyCollector collector(*physicsSystem, sc);
+
+        physicsSystem->GetNarrowPhaseQuery().CastShape(sc, scs, Vec3::sZero(), collector);
+        if (collector.mBody != nullptr)
+        {
+            outFraction = collector.GetEarlyOutFraction();
+            outSurfaceNormal[0] = collector.mContactNormal.GetX();
+            outSurfaceNormal[1] = collector.mContactNormal.GetY();
+            outSurfaceNormal[2] = collector.mContactNormal.GetZ();
+            return true;
+        }
+
+        return false;
     }
 
 

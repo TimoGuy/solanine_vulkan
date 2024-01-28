@@ -1405,7 +1405,7 @@ SimulationCharacter::SimulationCharacter(EntityManager* em, RenderObjectManager*
     _data->staminaData.currentStamina = (float_t)_data->staminaData.maxStamina;
 
     // Create physics character.
-    bool useCCD = (isPlayer(_data));
+    bool useCCD = false;  // @NOTE: since there's the change to base movement off collide and slide, ccd needs to be turned off, at least during c&s-style movement.  //(isPlayer(_data));
     _data->cpd = physengine::createCharacter(getGUID(), _data->position, 0.375f, 1.25f, useCCD);  // Total height is 2, but r*2 is subtracted to get the capsule height (i.e. the line segment length that the capsule rides along)
 
     // Calculate base points.
@@ -1691,8 +1691,143 @@ std::vector<GUIDWithVerb> interactionGUIDPriorityQueue;
 textmesh::TextMesh* interactionUIText;
 std::string currentText;
 
+void projectAndScale(vec3 delta, vec3 planeNormal, vec3& outDelta)
+{
+    float_t deltaMag = glm_vec3_norm(delta);
+
+    float_t sqrMag = glm_vec3_norm2(planeNormal);
+    if (sqrMag < GLM_FLT_EPSILON)
+    {
+        glm_vec3_copy(delta, outDelta);
+    }
+    else
+    {
+        float_t dot = glm_vec3_dot(delta, planeNormal);
+        outDelta[0] = delta[0] - planeNormal[0] * dot / sqrMag;
+        outDelta[1] = delta[1] - planeNormal[1] * dot / sqrMag;
+        outDelta[2] = delta[2] - planeNormal[2] * dot / sqrMag;
+    }
+
+    glm_vec3_scale_as(outDelta, deltaMag, outDelta);
+}
+
 void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, EntityManager* em, const std::string& myGuid)
 {
+    // @DEBUG: NEW NEW CHARACTER CONTROLLER!
+
+    vec3 velocity = GLM_VEC3_ZERO_INIT;
+
+    // Gather movement input.
+    bool inputVelocityUsed = false;
+    vec3 inputVelocity = GLM_VEC3_ZERO_INIT;
+    {
+        // Get input.
+        vec2 input = GLM_VEC2_ZERO_INIT;
+
+        if (isPlayer(d) && !d->disableInput)
+        {
+            input[0] = input::simInputSet().flatPlaneMovement.axisX;
+            input[1] = input::simInputSet().flatPlaneMovement.axisY;
+        }
+
+        if (glm_vec2_norm2(input) > 0.000001f)
+        {
+            // Transform input to world space.
+            vec3 flatCameraFacingDirection = {
+                d->camera->sceneCamera.facingDirection[0],
+                0.0f,
+                d->camera->sceneCamera.facingDirection[2],
+            };
+            glm_normalize(flatCameraFacingDirection);
+
+            vec3 worldSpaceInput;
+            glm_vec3_scale(flatCameraFacingDirection, input[1], worldSpaceInput);
+            vec3 flatCamRight;
+            glm_vec3_crossn(flatCameraFacingDirection, vec3{ 0.0f, 1.0f, 0.0f }, flatCamRight);
+            glm_vec3_muladds(flatCamRight, input[0], worldSpaceInput);
+
+            d->facingDirection = atan2f(worldSpaceInput[0], worldSpaceInput[2]);
+
+            // Transform input to velocity.
+            glm_vec3_scale(worldSpaceInput, d->inputMaxXZSpeed, inputVelocity);
+
+            inputVelocityUsed = true;
+        }
+    }
+
+    // Use collide and slide algorithm.
+    if (inputVelocityUsed)
+    {
+        constexpr size_t NUM_ITERATIONS = 5;
+        constexpr float_t SKIN_WIDTH = 0.015f;
+
+        vec3 accumDelta = GLM_VEC3_ZERO_INIT;
+        vec3 currentDelta;
+        vec3 currentPosition;
+
+        glm_vec3_scale(inputVelocity, simDeltaTime, currentDelta);
+        physengine::getCharacterPosition(*d->cpd, currentPosition);
+        glm_vec3_add(currentPosition, vec3{ 0.0f, d->cpd->radius + d->cpd->height * 0.5f, 0.0f }, currentPosition);  // Offset position to put capsule origin in center of character capsule.
+
+        for (size_t i = 0; i < NUM_ITERATIONS; i++)
+        {
+            float_t castDist = glm_vec3_norm(currentDelta) + SKIN_WIDTH;
+
+            vec3 currentDeltaN;
+            glm_vec3_normalize_to(currentDelta, currentDeltaN);
+
+            vec3 dirAndMag;
+            glm_vec3_scale(currentDeltaN, castDist, dirAndMag);
+
+            float_t hitFrac;
+            vec3 hitNormal;
+            if (physengine::capsuleCast(currentPosition, d->cpd->radius - SKIN_WIDTH, d->cpd->height, dirAndMag, hitFrac, hitNormal))
+            {
+                std::cout << "\t" << hitFrac << std::endl;
+                std::cout << "\t"; HAWSOO_PRINT_VEC3(hitNormal);
+
+                float_t snapDist = castDist * hitFrac - SKIN_WIDTH;
+                vec3 snapDelta;
+                glm_vec3_scale(currentDeltaN, snapDist, snapDelta);
+
+                // Subtract currentDelta with raw snapDelta.
+                glm_vec3_sub(currentDelta, snapDelta, currentDelta);
+
+                if (snapDist <= SKIN_WIDTH)
+                    glm_vec3_zero(snapDelta);
+
+                // Adjust currentDelta.
+                projectAndScale(currentDelta, hitNormal, currentDelta);
+
+                // Move as far as possible.
+                glm_vec3_add(currentPosition, snapDelta, currentPosition);
+                glm_vec3_add(accumDelta, snapDelta, accumDelta);
+            }
+            else
+            {
+                // Free to continue.
+                glm_vec3_add(accumDelta, currentDelta, accumDelta);
+                break;
+            }
+        }
+
+        HAWSOO_PRINT_VEC3(accumDelta);
+        glm_vec3_muladds(accumDelta, 1.0f / simDeltaTime, velocity);
+    }
+
+    // Move.
+    physengine::moveCharacter(*d->cpd, velocity);
+
+    // Update facing direction with cosmetic simulation transform.
+    vec3 eulerAngles = { 0.0f, d->facingDirection, 0.0f };
+    mat4 rotation;
+    glm_euler_zyx(eulerAngles, rotation);
+    versor rotationV;
+    glm_mat4_quat(rotation, rotationV);
+    physengine::updateSimulationTransformRotation(d->cpd->simTransformId, rotationV);
+
+
+#if 0
     // @DEBUG: NEW AND REWRITTEN CHARACTER CONTROLLER!
 
     bool isGrounded = false;
@@ -1996,7 +2131,7 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
 
 
 ////////////////////////////////////////////////////////
-
+#endif
 
 
 #if 0
