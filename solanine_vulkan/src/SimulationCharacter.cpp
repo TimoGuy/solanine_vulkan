@@ -40,6 +40,8 @@ struct SimulationCharacter_XData
     physengine::CapsulePhysicsData* cpd;
     std::vector<vec3s> basePoints;
     std::vector<vec3s> extrapolatingBasePoints;
+    
+    float_t airtime = 0.0f;
 
     struct MovingPlatformAttachment
     {
@@ -1711,11 +1713,161 @@ void projectAndScale(vec3 delta, vec3 planeNormal, vec3& outDelta)
     glm_vec3_scale_as(outDelta, deltaMag, outDelta);
 }
 
+constexpr size_t NUM_ITERATIONS = 5;
+constexpr float_t SKIN_WIDTH = 0.015f;
+
+void moveFromXZInput(vec3& inoutPosition, vec3 paramDeltaPosition, float_t capsuleRadius, float_t capsuleHeight, JPH::BodyID ignoreBodyId, float_t cosMaxSlopeAngle)
+{
+    vec3 deltaPosition;
+    glm_vec3_copy(paramDeltaPosition, deltaPosition);
+
+    vec3 initReverseFlatDeltaPositionN;
+    glm_vec3_normalize_to(vec3{ -deltaPosition[0], 0.0f, -deltaPosition[2] }, initReverseFlatDeltaPositionN);
+
+    for (size_t i = 0; i < NUM_ITERATIONS; i++)
+    {
+        float_t castDist = glm_vec3_norm(deltaPosition) + SKIN_WIDTH;
+
+        vec3 currentDeltaN;
+        glm_vec3_normalize_to(deltaPosition, currentDeltaN);
+
+        vec3 dirAndMag;
+        glm_vec3_scale(currentDeltaN, castDist, dirAndMag);
+
+        float_t hitFrac;
+        vec3 hitNormal;
+        if (physengine::capsuleCast(inoutPosition, capsuleRadius - SKIN_WIDTH, capsuleHeight, ignoreBodyId, dirAndMag, hitFrac, hitNormal))
+        {
+            float_t snapDist = castDist * hitFrac - SKIN_WIDTH;
+            vec3 snapDelta;
+            glm_vec3_scale(currentDeltaN, snapDist, snapDelta);
+
+            {
+                // @DEBUG:
+                vec3 p1, p2;
+                glm_vec3_add(inoutPosition, snapDelta, p1);
+                glm_vec3_copy(p1, p2);
+                glm_vec3_muladds(hitNormal, 1.0f, p2);
+                physengine::drawDebugVisLine(p1, p2, physengine::DebugVisLineType::VELOCITY);
+            }
+
+            // Subtract deltaPosition with raw snapDelta.
+            glm_vec3_sub(deltaPosition, snapDelta, deltaPosition);
+
+            if (snapDist <= SKIN_WIDTH)
+                glm_vec3_zero(snapDelta);
+
+            // Adjust deltaPosition.
+            if (glm_vec3_dot(vec3{ 0.0f, 1.0f, 0.0f }, hitNormal) > cosMaxSlopeAngle)
+            {
+                // Flat ground.
+                projectAndScale(deltaPosition, hitNormal, deltaPosition);
+                // std::cout << "\tFLAT" << std::endl;
+            }
+            else
+            {
+                // Steep wall.
+                // std::cout << "\tSTEEP" << std::endl;
+                vec3 flatHitNormalN;
+                glm_vec3_normalize_to(vec3{ hitNormal[0], 0.0f, hitNormal[2] }, flatHitNormalN);
+
+                float_t scale = 1.0f - glm_vec3_dot(flatHitNormalN, initReverseFlatDeltaPositionN);
+
+                projectAndScale(vec3{ deltaPosition[0], 0.0f, deltaPosition[2] }, vec3{ hitNormal[0], 0.0f, hitNormal[2] }, deltaPosition);
+                glm_vec3_scale_as(deltaPosition, scale, deltaPosition);
+            }
+
+            // Move as far as possible.
+            glm_vec3_add(inoutPosition, snapDelta, inoutPosition);
+        }
+        else
+        {
+            // Free to continue.
+            glm_vec3_add(inoutPosition, deltaPosition, inoutPosition);
+            break;
+        }
+    }
+}
+
+bool moveFromGravity(vec3& inoutPosition, vec3 paramDeltaPosition, float_t capsuleRadius, float_t capsuleHeight, JPH::BodyID ignoreBodyId, float_t cosMaxSlopeAngle)
+{
+    vec3 deltaPosition;
+    glm_vec3_copy(paramDeltaPosition, deltaPosition);
+
+    bool grounded = false;
+
+    for (size_t i = 0; i < NUM_ITERATIONS; i++)
+    {
+        float_t castDist = glm_vec3_norm(deltaPosition) + SKIN_WIDTH;
+
+        vec3 currentDeltaN;
+        glm_vec3_normalize_to(deltaPosition, currentDeltaN);
+
+        // HAWSOO_PRINT_VEC3(deltaPosition);
+
+        vec3 dirAndMag;
+        glm_vec3_scale(currentDeltaN, castDist, dirAndMag);
+
+        float_t hitFrac;
+        vec3 hitNormal;
+        if (physengine::capsuleCast(inoutPosition, capsuleRadius - SKIN_WIDTH, capsuleHeight, ignoreBodyId, dirAndMag, hitFrac, hitNormal))
+        {
+            float_t snapDist = castDist * hitFrac - SKIN_WIDTH;
+            vec3 snapDelta;
+            glm_vec3_scale(currentDeltaN, snapDist, snapDelta);
+
+            {
+                // @DEBUG:
+                vec3 p1, p2;
+                glm_vec3_add(inoutPosition, snapDelta, p1);
+                glm_vec3_copy(p1, p2);
+                glm_vec3_muladds(hitNormal, 1.0f, p2);
+                physengine::drawDebugVisLine(p1, p2, physengine::DebugVisLineType::KIKKOARMY);
+            }
+
+            // Subtract deltaPosition with raw snapDelta.
+            glm_vec3_sub(deltaPosition, snapDelta, deltaPosition);
+
+            if (snapDist <= SKIN_WIDTH)
+                glm_vec3_zero(snapDelta);
+
+            // Adjust deltaPosition.
+            // std::cout << "\t:: " << glm_vec3_dot(vec3{ 0.0f, 1.0f, 0.0f }, hitNormal) << " > " << cosMaxSlopeAngle << std::endl;
+            if (glm_vec3_dot(vec3{ 0.0f, 1.0f, 0.0f }, hitNormal) > cosMaxSlopeAngle)
+            {
+                // Flat ground.
+                // std::cout << "\tFLAT" << std::endl;
+                glm_vec3_add(inoutPosition, snapDelta, inoutPosition);
+                grounded = true;
+                break;
+            }
+            else
+            {
+                // Steep wall.
+                // std::cout << "\tWALL" << std::endl;
+                glm_vec3_add(inoutPosition, snapDelta, inoutPosition);
+                projectAndScale(deltaPosition, hitNormal, deltaPosition);
+            }
+        }
+        else
+        {
+            // Free to continue.
+            glm_vec3_add(inoutPosition, deltaPosition, inoutPosition);
+            break;
+        }
+    }
+
+    // std::cout << "===================================================" << std::endl;
+
+    return grounded;
+}
+
 void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, EntityManager* em, const std::string& myGuid)
 {
-    // @DEBUG: NEW NEW CHARACTER CONTROLLER!
+    if (!isPlayer(d))
+        return;  // @NOCHECKIN.
 
-    vec3 velocity = GLM_VEC3_ZERO_INIT;
+    // @DEBUG: NEW NEW CHARACTER CONTROLLER!
 
     // Gather movement input.
     bool inputVelocityUsed = false;
@@ -1745,6 +1897,8 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
             vec3 flatCamRight;
             glm_vec3_crossn(flatCameraFacingDirection, vec3{ 0.0f, 1.0f, 0.0f }, flatCamRight);
             glm_vec3_muladds(flatCamRight, input[0], worldSpaceInput);
+            if (glm_vec3_norm2(worldSpaceInput) > 1.0f)
+                glm_vec3_normalize(worldSpaceInput);
 
             d->facingDirection = atan2f(worldSpaceInput[0], worldSpaceInput[2]);
 
@@ -1756,66 +1910,39 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
     }
 
     // Use collide and slide algorithm.
+    vec3 currentPosition;
+    physengine::getCharacterPosition(*d->cpd, currentPosition);
+
+    vec3 prevPosition;
+    glm_vec3_copy(currentPosition, prevPosition);
+
+    float_t cosMaxSlopeAngle = std::cosf(glm_rad(46.0f));
+
     if (inputVelocityUsed)
     {
-        constexpr size_t NUM_ITERATIONS = 5;
-        constexpr float_t SKIN_WIDTH = 0.015f;
+        vec3 deltaPosition;
+        glm_vec3_scale(inputVelocity, simDeltaTime, deltaPosition);
+        moveFromXZInput(currentPosition, deltaPosition, d->cpd->radius, d->cpd->height, d->cpd->character->GetBodyID(), cosMaxSlopeAngle);
+    }
 
-        vec3 accumDelta = GLM_VEC3_ZERO_INIT;
-        vec3 currentDelta;
-        vec3 currentPosition;
-
-        glm_vec3_scale(inputVelocity, simDeltaTime, currentDelta);
-        physengine::getCharacterPosition(*d->cpd, currentPosition);
-        glm_vec3_add(currentPosition, vec3{ 0.0f, d->cpd->radius + d->cpd->height * 0.5f, 0.0f }, currentPosition);  // Offset position to put capsule origin in center of character capsule.
-
-        for (size_t i = 0; i < NUM_ITERATIONS; i++)
-        {
-            float_t castDist = glm_vec3_norm(currentDelta) + SKIN_WIDTH;
-
-            vec3 currentDeltaN;
-            glm_vec3_normalize_to(currentDelta, currentDeltaN);
-
-            vec3 dirAndMag;
-            glm_vec3_scale(currentDeltaN, castDist, dirAndMag);
-
-            float_t hitFrac;
-            vec3 hitNormal;
-            if (physengine::capsuleCast(currentPosition, d->cpd->radius - SKIN_WIDTH, d->cpd->height, dirAndMag, hitFrac, hitNormal))
-            {
-                std::cout << "\t" << hitFrac << std::endl;
-                std::cout << "\t"; HAWSOO_PRINT_VEC3(hitNormal);
-
-                float_t snapDist = castDist * hitFrac - SKIN_WIDTH;
-                vec3 snapDelta;
-                glm_vec3_scale(currentDeltaN, snapDist, snapDelta);
-
-                // Subtract currentDelta with raw snapDelta.
-                glm_vec3_sub(currentDelta, snapDelta, currentDelta);
-
-                if (snapDist <= SKIN_WIDTH)
-                    glm_vec3_zero(snapDelta);
-
-                // Adjust currentDelta.
-                projectAndScale(currentDelta, hitNormal, currentDelta);
-
-                // Move as far as possible.
-                glm_vec3_add(currentPosition, snapDelta, currentPosition);
-                glm_vec3_add(accumDelta, snapDelta, accumDelta);
-            }
-            else
-            {
-                // Free to continue.
-                glm_vec3_add(accumDelta, currentDelta, accumDelta);
-                break;
-            }
-        }
-
-        HAWSOO_PRINT_VEC3(accumDelta);
-        glm_vec3_muladds(accumDelta, 1.0f / simDeltaTime, velocity);
+    // if (0)  // @NOCHECKIN: for now.
+    {
+        vec3 deltaPosition;
+        physengine::getWorldGravity(deltaPosition);
+        glm_vec3_scale(deltaPosition, d->airtime * simDeltaTime, deltaPosition);  // @TODO: replace `1.0f` with the accumulated gravity amount.
+        // HAWSOO_PRINT_VEC3(deltaPosition);
+        bool grounded = moveFromGravity(currentPosition, deltaPosition, d->cpd->radius, d->cpd->height, d->cpd->character->GetBodyID(), cosMaxSlopeAngle);
+        if (grounded)
+            d->airtime = simDeltaTime;
+        else
+            d->airtime += simDeltaTime;
+        // std::cout << "AT: " << d->airtime << std::endl;
     }
 
     // Move.
+    vec3 velocity;
+    glm_vec3_sub(currentPosition, prevPosition, velocity);
+    glm_vec3_scale(velocity, 1.0f / simDeltaTime, velocity);
     physengine::moveCharacter(*d->cpd, velocity);
 
     // Update facing direction with cosmetic simulation transform.

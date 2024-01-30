@@ -1262,6 +1262,7 @@ namespace physengine
             settings->mMaxSlopeAngle = glm_rad(46.0f);
             settings->mLayer = Layers::MOVING;
             settings->mShape = capsuleShape;
+            settings->mGravityFactor = 0.0f;  // @NOCHECKIN: this is for the collide and slide algorithm. It should work best having grav factor be 0.  -Timo 2024/01/28
 
             // @NOTE: this was in the past 0.0f, but after introducing the slightest slope, the character starts sliding down.
             //        This gives everything a bit of a tacky feel, but I feel like that makes the physics for the characters
@@ -1536,7 +1537,7 @@ namespace physengine
         return INTERNALRaycastFunction(origin, directionAndMagnitude, outHitGuid, _, false, __);
     }
 
-    bool capsuleCast(vec3 origin, float_t radius, float_t height, vec3 directionAndMagnitude, float_t& outFraction, vec3& outSurfaceNormal)
+    bool capsuleCast(vec3 origin, float_t radius, float_t height, JPH::BodyID ignoreBodyId, vec3 directionAndMagnitude, float_t& outFraction, vec3& outSurfaceNormal)
     {
         RShapeCast sc(
             new CapsuleShape(height * 0.5f, radius),
@@ -1549,15 +1550,19 @@ namespace physengine
         class MyCollector : public CastShapeCollector
         {
         public:
-            MyCollector(PhysicsSystem &inPhysicsSystem, const RShapeCast &inShapeCast) :
+            MyCollector(PhysicsSystem &inPhysicsSystem, const RShapeCast &inShapeCast, JPH::BodyID ignoreBodyId) :
                 mPhysicsSystem(inPhysicsSystem),
-                mShapeCast(inShapeCast) { }
+                mShapeCast(inShapeCast),
+                mIgnoreBodyId(ignoreBodyId) { }
 
             virtual void AddHit(const ShapeCastResult &inResult) override
             {
                 // Test if this collision is closer than the previous one
                 if (inResult.mFraction < GetEarlyOutFraction())
                 {
+                    if (inResult.mBodyID2 == mIgnoreBodyId)
+                        return;
+
                     // Lock the body
                     BodyLockRead lock(mPhysicsSystem.GetBodyLockInterfaceNoLock(), inResult.mBodyID2);
                     JPH_ASSERT(lock.Succeeded());  // When this runs all bodies are locked so this should not fail
@@ -1580,6 +1585,7 @@ namespace physengine
             // Configuration
             PhysicsSystem&      mPhysicsSystem;
             const RShapeCast&   mShapeCast;
+            JPH::BodyID         mIgnoreBodyId;
 
             // Resulting closest collision
             const Body*        mBody = nullptr;
@@ -1587,7 +1593,7 @@ namespace physengine
             RVec3              mContactPosition;
             Vec3               mContactNormal;
         };
-        MyCollector collector(*physicsSystem, sc);
+        MyCollector collector(*physicsSystem, sc, ignoreBodyId);
 
         physicsSystem->GetNarrowPhaseQuery().CastShape(sc, scs, Vec3::sZero(), collector);
         if (collector.mBody != nullptr)
