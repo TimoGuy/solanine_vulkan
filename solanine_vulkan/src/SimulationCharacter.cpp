@@ -42,6 +42,8 @@ struct SimulationCharacter_XData
     std::vector<vec3s> extrapolatingBasePoints;
     
     float_t airtime = 0.0f;
+    float_t stickToGroundMaxDelta = 0.5f;
+    bool prevGrounded = false;
 
     struct MovingPlatformAttachment
     {
@@ -1718,6 +1720,8 @@ constexpr float_t SKIN_WIDTH = 0.015f;
 
 void moveFromXZInput(vec3& inoutPosition, vec3 paramDeltaPosition, float_t capsuleRadius, float_t capsuleHeight, JPH::BodyID ignoreBodyId, float_t cosMaxSlopeAngle)
 {
+    ZoneScoped;
+
     vec3 deltaPosition;
     glm_vec3_copy(paramDeltaPosition, deltaPosition);
 
@@ -1743,7 +1747,7 @@ void moveFromXZInput(vec3& inoutPosition, vec3 paramDeltaPosition, float_t capsu
             glm_vec3_scale(currentDeltaN, snapDist, snapDelta);
 
             {
-                // @DEBUG:
+                // @DEBUG hit visualization.
                 vec3 p1, p2;
                 glm_vec3_add(inoutPosition, snapDelta, p1);
                 glm_vec3_copy(p1, p2);
@@ -1762,19 +1766,18 @@ void moveFromXZInput(vec3& inoutPosition, vec3 paramDeltaPosition, float_t capsu
             {
                 // Flat ground.
                 projectAndScale(deltaPosition, hitNormal, deltaPosition);
-                // std::cout << "\tFLAT" << std::endl;
             }
             else
             {
                 // Steep wall.
-                // std::cout << "\tSTEEP" << std::endl;
                 vec3 flatHitNormalN;
                 glm_vec3_normalize_to(vec3{ hitNormal[0], 0.0f, hitNormal[2] }, flatHitNormalN);
 
                 float_t scale = 1.0f - glm_vec3_dot(flatHitNormalN, initReverseFlatDeltaPositionN);
 
-                projectAndScale(vec3{ deltaPosition[0], 0.0f, deltaPosition[2] }, vec3{ hitNormal[0], 0.0f, hitNormal[2] }, deltaPosition);
-                glm_vec3_scale_as(deltaPosition, scale, deltaPosition);
+                projectAndScale(vec3{ deltaPosition[0], 0.0f, deltaPosition[2] }, flatHitNormalN, deltaPosition);
+                if (glm_vec3_norm2(deltaPosition) > scale * scale)
+                    glm_vec3_scale_as(deltaPosition, scale, deltaPosition);
             }
 
             // Move as far as possible.
@@ -1791,6 +1794,8 @@ void moveFromXZInput(vec3& inoutPosition, vec3 paramDeltaPosition, float_t capsu
 
 bool moveFromGravity(vec3& inoutPosition, vec3 paramDeltaPosition, float_t capsuleRadius, float_t capsuleHeight, JPH::BodyID ignoreBodyId, float_t cosMaxSlopeAngle)
 {
+    ZoneScoped;
+
     vec3 deltaPosition;
     glm_vec3_copy(paramDeltaPosition, deltaPosition);
 
@@ -1802,8 +1807,6 @@ bool moveFromGravity(vec3& inoutPosition, vec3 paramDeltaPosition, float_t capsu
 
         vec3 currentDeltaN;
         glm_vec3_normalize_to(deltaPosition, currentDeltaN);
-
-        // HAWSOO_PRINT_VEC3(deltaPosition);
 
         vec3 dirAndMag;
         glm_vec3_scale(currentDeltaN, castDist, dirAndMag);
@@ -1817,7 +1820,7 @@ bool moveFromGravity(vec3& inoutPosition, vec3 paramDeltaPosition, float_t capsu
             glm_vec3_scale(currentDeltaN, snapDist, snapDelta);
 
             {
-                // @DEBUG:
+                // @DEBUG visualization.
                 vec3 p1, p2;
                 glm_vec3_add(inoutPosition, snapDelta, p1);
                 glm_vec3_copy(p1, p2);
@@ -1832,11 +1835,9 @@ bool moveFromGravity(vec3& inoutPosition, vec3 paramDeltaPosition, float_t capsu
                 glm_vec3_zero(snapDelta);
 
             // Adjust deltaPosition.
-            // std::cout << "\t:: " << glm_vec3_dot(vec3{ 0.0f, 1.0f, 0.0f }, hitNormal) << " > " << cosMaxSlopeAngle << std::endl;
             if (glm_vec3_dot(vec3{ 0.0f, 1.0f, 0.0f }, hitNormal) > cosMaxSlopeAngle)
             {
                 // Flat ground.
-                // std::cout << "\tFLAT" << std::endl;
                 glm_vec3_add(inoutPosition, snapDelta, inoutPosition);
                 grounded = true;
                 break;
@@ -1844,7 +1845,6 @@ bool moveFromGravity(vec3& inoutPosition, vec3 paramDeltaPosition, float_t capsu
             else
             {
                 // Steep wall.
-                // std::cout << "\tWALL" << std::endl;
                 glm_vec3_add(inoutPosition, snapDelta, inoutPosition);
                 projectAndScale(deltaPosition, hitNormal, deltaPosition);
             }
@@ -1857,13 +1857,86 @@ bool moveFromGravity(vec3& inoutPosition, vec3 paramDeltaPosition, float_t capsu
         }
     }
 
-    // std::cout << "===================================================" << std::endl;
+    return grounded;
+}
+
+bool moveToTryStickToGround(vec3& inoutPosition, vec3 paramDeltaPosition, float_t capsuleRadius, float_t capsuleHeight, JPH::BodyID ignoreBodyId, float_t cosMaxSlopeAngle)
+{
+    ZoneScoped;
+
+    vec3 deltaPosition;
+    glm_vec3_copy(paramDeltaPosition, deltaPosition);
+
+    vec3 possibleNewPosition;
+    glm_vec3_copy(inoutPosition, possibleNewPosition);
+
+    bool grounded = false;
+
+    for (size_t i = 0; i < NUM_ITERATIONS; i++)
+    {
+        float_t castDist = glm_vec3_norm(deltaPosition) + SKIN_WIDTH;
+
+        vec3 currentDeltaN;
+        glm_vec3_normalize_to(deltaPosition, currentDeltaN);
+
+        vec3 dirAndMag;
+        glm_vec3_scale(currentDeltaN, castDist, dirAndMag);
+
+        float_t hitFrac;
+        vec3 hitNormal;
+        if (physengine::capsuleCast(possibleNewPosition, capsuleRadius - SKIN_WIDTH, capsuleHeight, ignoreBodyId, dirAndMag, hitFrac, hitNormal))
+        {
+            float_t snapDist = castDist * hitFrac - SKIN_WIDTH;
+            vec3 snapDelta;
+            glm_vec3_scale(currentDeltaN, snapDist, snapDelta);
+
+            {
+                // @DEBUG visualization.
+                vec3 p1, p2;
+                glm_vec3_add(possibleNewPosition, snapDelta, p1);
+                glm_vec3_copy(p1, p2);
+                glm_vec3_muladds(hitNormal, 1.0f, p2);
+                physengine::drawDebugVisLine(p1, p2, physengine::DebugVisLineType::KIKKOARMY);
+            }
+
+            // Subtract deltaPosition with raw snapDelta.
+            glm_vec3_sub(deltaPosition, snapDelta, deltaPosition);
+
+            if (snapDist <= SKIN_WIDTH)
+                glm_vec3_zero(snapDelta);
+
+            // Adjust deltaPosition.
+            if (glm_vec3_dot(vec3{ 0.0f, 1.0f, 0.0f }, hitNormal) > cosMaxSlopeAngle)
+            {
+                // Flat ground. Confirmed ground to stick to.
+                glm_vec3_add(possibleNewPosition, snapDelta, possibleNewPosition);
+                grounded = true;
+                break;
+            }
+            else
+            {
+                // Steep wall. Possibly there is ground to stick to, so continue on!
+                glm_vec3_add(possibleNewPosition, snapDelta, possibleNewPosition);
+                projectAndScale(deltaPosition, hitNormal, deltaPosition);
+            }
+        }
+        else
+        {
+            // No collision. Confirmed no ground to stick to.
+            break;
+        }
+    }
+
+    if (grounded)
+        glm_vec3_copy(possibleNewPosition, inoutPosition);
 
     return grounded;
 }
 
 void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, EntityManager* em, const std::string& myGuid)
 {
+    ZoneScoped;
+
     if (!isPlayer(d))
         return;  // @NOCHECKIN.
 
@@ -1926,18 +1999,34 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
     }
 
     // if (0)  // @NOCHECKIN: for now.
+    bool grounded;
+    float_t gravityDelta;
     {
         vec3 deltaPosition;
         physengine::getWorldGravity(deltaPosition);
-        glm_vec3_scale(deltaPosition, d->airtime * simDeltaTime, deltaPosition);  // @TODO: replace `1.0f` with the accumulated gravity amount.
-        // HAWSOO_PRINT_VEC3(deltaPosition);
-        bool grounded = moveFromGravity(currentPosition, deltaPosition, d->cpd->radius, d->cpd->height, d->cpd->character->GetBodyID(), cosMaxSlopeAngle);
-        if (grounded)
-            d->airtime = simDeltaTime;
-        else
-            d->airtime += simDeltaTime;
-        // std::cout << "AT: " << d->airtime << std::endl;
+        glm_vec3_scale(deltaPosition, d->airtime * simDeltaTime, deltaPosition);
+        gravityDelta = glm_vec3_norm(deltaPosition);
+        grounded = moveFromGravity(currentPosition, deltaPosition, d->cpd->radius, d->cpd->height, d->cpd->character->GetBodyID(), cosMaxSlopeAngle);
     }
+
+    if (!grounded && d->prevGrounded && d->stickToGroundMaxDelta > gravityDelta)
+    {
+        // Check remaining room to see if there's flat ground beneath.
+        vec3 deltaPosition;
+        physengine::getWorldGravity(deltaPosition);
+        glm_vec3_normalize(deltaPosition);
+        glm_vec3_scale(deltaPosition, d->stickToGroundMaxDelta - gravityDelta, deltaPosition);
+        grounded = moveToTryStickToGround(currentPosition, deltaPosition, d->cpd->radius, d->cpd->height, d->cpd->character->GetBodyID(), cosMaxSlopeAngle);
+    }
+
+
+    // Handle airtime.
+    if (grounded)
+        d->airtime = simDeltaTime;
+    else
+        d->airtime += simDeltaTime;
+
+    std::cout << grounded << std::endl;
 
     // Move.
     vec3 velocity;
@@ -1952,6 +2041,9 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
     versor rotationV;
     glm_mat4_quat(rotation, rotationV);
     physengine::updateSimulationTransformRotation(d->cpd->simTransformId, rotationV);
+
+    // End cycle.
+    d->prevGrounded = grounded;
 
 
 #if 0
