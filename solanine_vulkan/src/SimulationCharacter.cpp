@@ -1770,39 +1770,6 @@ void moveFromXZInput(vec3& inoutPosition, vec3 paramDeltaPosition, float_t capsu
                 float_t scale = glm_vec3_norm(deltaPosition);
                 deltaPosition[1] = -glm_vec3_dot(hitNormal, vec3{ deltaPosition[0], 0.0f, deltaPosition[2] }) / hitNormal[1];
                 glm_vec3_scale_as(deltaPosition, scale, deltaPosition);
-
-
-
-
-
-                // // Flat ground.
-                // vec3 adjustedHitNormal;
-
-                // vec3 flatInvDeltaPositionN;
-                // glm_vec3_normalize_to(vec3{ -deltaPosition[0], 0.0f, -deltaPosition[2] }, flatInvDeltaPositionN);
-
-                // if (glm_vec3_dot(flatInvDeltaPositionN, hitNormal) > 0.0f)
-                // {
-                //     // Adjust the hit normal so char will climb straight up slopes.
-                //     // @NOTE: Adapted from line-plane intersection algorithm.
-
-
-
-
-                //     // vec3 flatHitNormalN;
-                //     // glm_vec3_normalize_to(vec3{ hitNormal[0], 0.0f, hitNormal[2] }, flatHitNormalN);
-                    
-                //     // float_t similarity = glm_vec3_dot(flatInvDeltaPositionN, flatHitNormalN);
-                //     // glm_vec3_scale(flatInvDeltaPositionN, similarity, adjustedHitNormal);
-                //     // // // adjustedHitNormal[1] = std::sqrtf(1.0f - similarity * similarity);
-                //     // // adjustedHitNormal[1] = hitNormal[1];
-                //     // // glm_vec3_normalize(adjustedHitNormal);
-                // }
-                // else
-                //     // Proceed as normal.
-                //     glm_vec3_copy(hitNormal, adjustedHitNormal);
-
-                // projectAndScale(deltaPosition, adjustedHitNormal, deltaPosition);
             }
             else
             {
@@ -2032,17 +1999,7 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
     {
         vec3 deltaPosition;
         glm_vec3_scale(inputVelocity, simDeltaTime, deltaPosition);
-        vec3 JASDFASDF;
-        glm_vec3_copy(currentPosition, JASDFASDF);
-        vec3 JJJJJJ;
-        glm_vec3_add(JASDFASDF, deltaPosition, JJJJJJ);
-
         moveFromXZInput(currentPosition, deltaPosition, d->cpd->radius, d->cpd->height, d->cpd->character->GetBodyID(), cosMaxSlopeAngle);
-        vec3 AJFJFJ;
-        glm_vec3_sub(currentPosition, JASDFASDF, AJFJFJ);
-        HAWSOO_PRINT_VEC3(AJFJFJ);
-        physengine::drawDebugVisLine(JASDFASDF, currentPosition);
-        physengine::drawDebugVisLine(JASDFASDF, JJJJJJ);
     }
 
     // if (0)  // @NOCHECKIN: for now.
@@ -2072,8 +2029,6 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
         d->airtime = simDeltaTime;
     else
         d->airtime += simDeltaTime;
-
-    // std::cout << grounded << std::endl;
 
     // Move.
     vec3 velocity;
