@@ -1758,11 +1758,71 @@ void moveFromXZInput(vec3& inoutPosition, vec3 paramDeltaPosition, float_t capsu
             // Subtract deltaPosition with raw snapDelta.
             glm_vec3_sub(deltaPosition, snapDelta, deltaPosition);
 
+            // Check for steps/stairs.
+            // @TODO: @NOCHECKIN: For stairs, this system in the code block below is insufficient. There are too many times that the char doesn't climb the step. Also, I would really like to increase the step height, but this system relies on the step height being less than the capsuleRadius. In order to support the better step height, maybe doing a spherecast from where the top of the capsule would be down to the bottom and then checking that there are no steep collisions could be good? Idk. But either way, @TODO figure out why the step up only happens half the time when it looks like the char is getting the right normal angle to perform the stair.
+            float_t slopeAngle = glm_vec3_dot(vec3{ 0.0f, 1.0f, 0.0f }, hitNormal);
+            if (/*glm_vec3_norm2(deltaPosition) > 0.000001f && */ slopeAngle <= cosMaxSlopeAngle && hitNormal[1] > 0.001f)
+            {
+                // Steep wall that could be a stair.
+                float_t stairDistance = glm_vec2_norm(vec2{ hitNormal[0], hitNormal[2] }) * capsuleRadius;
+                float_t climbDistance = (1.0f - hitNormal[1]) * capsuleRadius;
+
+                // float_t deltaPositionDist2 = glm_vec3_norm2(deltaPosition);
+                // if (deltaPositionDist2 < stairDistance * stairDistance)
+                // {
+                //     // Not going to move as far as fully clearing the stair.
+                //     stairDistance -= std::sqrtf(deltaPositionDist2);
+                //     climbDistance = (1.0f - std::sqrtf(1.0f - stairDistance / capsuleRadius)) * capsuleRadius;
+                // }
+
+                vec3 stairQueryPos;
+                glm_vec3_add(inoutPosition, vec3{ 0.0f, climbDistance, 0.0f }, stairQueryPos);
+
+                vec3 invHitNormalN;
+                glm_normalize_to(vec3{ -hitNormal[0], 0.0f, -hitNormal[2] }, invHitNormalN);
+
+                vec3 stairDirAndMag;
+                float_t stairCastDist = stairDistance + SKIN_WIDTH;
+                glm_vec3_scale(invHitNormalN, stairCastDist, stairDirAndMag);
+
+                float_t stairHitFrac;
+                vec3 stairHitNormal;
+                if (physengine::capsuleCast(stairQueryPos, capsuleRadius - SKIN_WIDTH, capsuleHeight, ignoreBodyId, stairDirAndMag, stairHitFrac, stairHitNormal))
+                {
+                    if (glm_vec3_dot(vec3{ 0.0f, 1.0f, 0.0f }, stairHitNormal) > cosMaxSlopeAngle)
+                    {
+                        // Flat floor. Include this move!
+                        float_t supplementarySnapDist = stairCastDist * stairHitFrac - SKIN_WIDTH;
+                        vec3 supplementarySnapDelta;
+                        glm_vec3_scale(invHitNormalN, supplementarySnapDist, supplementarySnapDelta);
+
+                        // glm_vec3_sub(deltaPosition, supplementarySnapDelta, deltaPosition);
+                        if (supplementarySnapDist <= SKIN_WIDTH)
+                            glm_vec3_zero(supplementarySnapDelta);
+
+                        supplementarySnapDelta[1] += climbDistance;
+                        glm_vec3_add(snapDelta, supplementarySnapDelta, snapDelta);
+                    }
+                    // With steep wall case, do nothing. Don't include this move.
+                }
+                else
+                {
+                    // Include this move!
+                    // glm_vec3_muladds(invHitNormalN, -stairDistance, deltaPosition);
+
+                    vec3 supplementaryStairMvt;
+                    glm_vec3_scale(invHitNormalN, stairDistance, supplementaryStairMvt);
+                    supplementaryStairMvt[1] += climbDistance;
+                    glm_vec3_add(snapDelta, supplementaryStairMvt, snapDelta);
+                }
+            }
+
+            // Prevent movement that would make shape casts unreliable.
             if (snapDist <= SKIN_WIDTH)
                 glm_vec3_zero(snapDelta);
 
             // Adjust deltaPosition.
-            if (glm_vec3_dot(vec3{ 0.0f, 1.0f, 0.0f }, hitNormal) > cosMaxSlopeAngle)
+            if (slopeAngle > cosMaxSlopeAngle)
             {
                 // Adjust the hit normal so char will climb straight up slopes.
                 // @NOTE: Adapted from line-plane intersection algorithm.
