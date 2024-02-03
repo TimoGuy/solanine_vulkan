@@ -1539,6 +1539,12 @@ namespace physengine
 
     bool capsuleCast(vec3 origin, float_t radius, float_t height, JPH::BodyID ignoreBodyId, vec3 directionAndMagnitude, float_t& outFraction, vec3& outSurfaceNormal)
     {
+        vec3 _;
+        return capsuleCast(origin, radius, height, ignoreBodyId, directionAndMagnitude, outFraction, outSurfaceNormal, _);
+    }
+
+    bool capsuleCast(vec3 origin, float_t radius, float_t height, JPH::BodyID ignoreBodyId, vec3 directionAndMagnitude, float_t& outFraction, vec3& outSurfaceNormal, vec3& outLocalContactPosition)
+    {
         RShapeCast sc(
             new CapsuleShape(height * 0.5f, radius),
             Vec3(1.0f, 1.0f, 1.0f),
@@ -1577,7 +1583,7 @@ namespace physengine
                     // Get the contact properties
                     mBody = body;
                     mSubShapeID2 = inResult.mSubShapeID2;
-                    mContactPosition = mShapeCast.mCenterOfMassStart.GetTranslation() + inResult.mContactPointOn2;
+                    mLocalContactPosition = inResult.mContactPointOn2;
                     mContactNormal = -inResult.mPenetrationAxis.Normalized();
                 }
             }
@@ -1590,18 +1596,21 @@ namespace physengine
             // Resulting closest collision
             const Body*        mBody = nullptr;
             SubShapeID         mSubShapeID2;
-            RVec3              mContactPosition;
+            RVec3              mLocalContactPosition;
             Vec3               mContactNormal;
         };
         MyCollector collector(*physicsSystem, sc, ignoreBodyId);
 
-        physicsSystem->GetNarrowPhaseQuery().CastShape(sc, scs, Vec3::sZero(), collector);
+        physicsSystem->GetNarrowPhaseQuery().CastShape(sc, scs, Vec3(origin[0], origin[1], origin[2]), collector);
         if (collector.mBody != nullptr)
         {
             outFraction = collector.GetEarlyOutFraction();
             outSurfaceNormal[0] = collector.mContactNormal.GetX();
             outSurfaceNormal[1] = collector.mContactNormal.GetY();
             outSurfaceNormal[2] = collector.mContactNormal.GetZ();
+            outLocalContactPosition[0] = collector.mLocalContactPosition.GetX();
+            outLocalContactPosition[1] = collector.mLocalContactPosition.GetY();
+            outLocalContactPosition[2] = collector.mLocalContactPosition.GetZ();
             return true;
         }
 
