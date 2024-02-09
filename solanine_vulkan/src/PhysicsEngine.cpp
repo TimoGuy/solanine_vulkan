@@ -1537,13 +1537,13 @@ namespace physengine
         return INTERNALRaycastFunction(origin, directionAndMagnitude, outHitGuid, _, false, __);
     }
 
-    bool capsuleCast(vec3 origin, float_t radius, float_t height, JPH::BodyID ignoreBodyId, vec3 directionAndMagnitude, float_t& outFraction, vec3& outSurfaceNormal)
+    bool cylinderCast(vec3 origin, float_t radius, float_t height, JPH::BodyID ignoreBodyId, vec3 directionAndMagnitude, float_t& outFraction, vec3& outSurfaceNormal)
     {
         vec3 _;
-        return capsuleCast(origin, radius, height, ignoreBodyId, directionAndMagnitude, outFraction, outSurfaceNormal, _);
+        return cylinderCast(origin, radius, height, ignoreBodyId, directionAndMagnitude, outFraction, outSurfaceNormal, _);
     }
 
-    bool capsuleCast(vec3 origin, float_t radius, float_t height, JPH::BodyID ignoreBodyId, vec3 directionAndMagnitude, float_t& outFraction, vec3& outSurfaceNormal, vec3& outLocalContactPosition)
+    bool cylinderCast(vec3 origin, float_t radius, float_t height, JPH::BodyID ignoreBodyId, vec3 directionAndMagnitude, float_t& outFraction, vec3& outSurfaceNormal, vec3& outLocalContactPosition)
     {
         RShapeCast sc(
             new CylinderShape(height * 0.5f + radius, radius),

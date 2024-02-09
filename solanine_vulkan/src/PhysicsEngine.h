@@ -121,8 +121,8 @@ namespace physengine
     bool raycast(vec3 origin, vec3 directionAndMagnitude, std::string& outHitGuid, float_t& outFraction, vec3& outSurfaceNormal);
     bool raycast(vec3 origin, vec3 directionAndMagnitude, std::string& outHitGuid, float_t& outFraction);
     bool raycast(vec3 origin, vec3 directionAndMagnitude, std::string& outHitGuid);
-    bool capsuleCast(vec3 origin, float_t radius, float_t height, JPH::BodyID ignoreBodyId, vec3 directionAndMagnitude, float_t& outFraction, vec3& outSurfaceNormal);
-    bool capsuleCast(vec3 origin, float_t radius, float_t height, JPH::BodyID ignoreBodyId, vec3 directionAndMagnitude, float_t& outFraction, vec3& outSurfaceNormal, vec3& outLocalContactPosition);
+    bool cylinderCast(vec3 origin, float_t radius, float_t height, JPH::BodyID ignoreBodyId, vec3 directionAndMagnitude, float_t& outFraction, vec3& outSurfaceNormal);
+    bool cylinderCast(vec3 origin, float_t radius, float_t height, JPH::BodyID ignoreBodyId, vec3 directionAndMagnitude, float_t& outFraction, vec3& outSurfaceNormal, vec3& outLocalContactPosition);
 
 #ifdef _DEVELOP
     enum class DebugVisLineType { PURPTEAL, AUDACITY, SUCCESS, VELOCITY, KIKKOARMY, YUUJUUFUDAN };

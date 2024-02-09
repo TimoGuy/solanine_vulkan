@@ -1410,7 +1410,7 @@ SimulationCharacter::SimulationCharacter(EntityManager* em, RenderObjectManager*
 
     // Create physics character.
     bool useCCD = false;  // @NOTE: since there's the change to base movement off collide and slide, ccd needs to be turned off, at least during c&s-style movement.  //(isPlayer(_data));
-    _data->cpd = physengine::createCharacter(getGUID(), _data->position, 0.375f, 1.25f, useCCD);  // Total height is 2, but r*2 is subtracted to get the capsule height (i.e. the line segment length that the capsule rides along)
+    _data->cpd = physengine::createCharacter(getGUID(), _data->position, 0.25f, 1.5f, useCCD);  // Total height is 2, but r*2 is subtracted to get the capsule height (i.e. the line segment length that the capsule rides along)
 
     // Calculate base points.
     float_t b = std::sinf(glm_rad(45.0f));
@@ -1741,7 +1741,7 @@ void moveFromXZInput(vec3& inoutPosition, vec3 paramDeltaPosition, float_t capsu
         float_t hitFrac;
         vec3 hitNormal;
         vec3 contactPosition;
-        if (physengine::capsuleCast(inoutPosition, capsuleRadius - SKIN_WIDTH, capsuleHeight, ignoreBodyId, dirAndMag, hitFrac, hitNormal, contactPosition))
+        if (physengine::cylinderCast(inoutPosition, capsuleRadius - SKIN_WIDTH, capsuleHeight, ignoreBodyId, dirAndMag, hitFrac, hitNormal, contactPosition))
         {
             float_t snapDist = castDist * hitFrac - SKIN_WIDTH;
             vec3 snapDelta;
@@ -1785,7 +1785,7 @@ void moveFromXZInput(vec3& inoutPosition, vec3 paramDeltaPosition, float_t capsu
 
                     float_t stairHitFrac;
                     vec3 stairHitNormal;
-                    if (physengine::capsuleCast(stairQueryPos, capsuleRadius - SKIN_WIDTH, capsuleHeight, ignoreBodyId, xzDirectionToTopOfStep, stairHitFrac, stairHitNormal))
+                    if (physengine::cylinderCast(stairQueryPos, capsuleRadius - SKIN_WIDTH, capsuleHeight, ignoreBodyId, xzDirectionToTopOfStep, stairHitFrac, stairHitNormal))
                     {
                         if (glm_vec3_dot(vec3{ 0.0f, 1.0f, 0.0f }, stairHitNormal) > cosMaxSlopeAngle)
                         {
@@ -1822,7 +1822,7 @@ void moveFromXZInput(vec3& inoutPosition, vec3 paramDeltaPosition, float_t capsu
 
                             float_t downwardCastDist = STAIR_CLIMB_HEIGHT_MAX + SKIN_WIDTH;
 
-                            if (physengine::capsuleCast(downwardQueryPos, capsuleRadius - SKIN_WIDTH, capsuleHeight, ignoreBodyId, vec3{ 0.0f, -downwardCastDist, 0.0f }, stairHitFrac, stairHitNormal))
+                            if (physengine::cylinderCast(downwardQueryPos, capsuleRadius - SKIN_WIDTH, capsuleHeight, ignoreBodyId, vec3{ 0.0f, -downwardCastDist, 0.0f }, stairHitFrac, stairHitNormal))
                             {
                                 int ian = 32;
                                 if (glm_vec3_dot(vec3{ 0.0f, 1.0f, 0.0f }, stairHitNormal) > cosMaxSlopeAngle)
@@ -1897,7 +1897,7 @@ bool moveFromGravity(vec3& inoutPosition, vec3 paramDeltaPosition, float_t capsu
 
         float_t hitFrac;
         vec3 hitNormal;
-        if (physengine::capsuleCast(inoutPosition, capsuleRadius - SKIN_WIDTH, capsuleHeight, ignoreBodyId, dirAndMag, hitFrac, hitNormal))
+        if (physengine::cylinderCast(inoutPosition, capsuleRadius - SKIN_WIDTH, capsuleHeight, ignoreBodyId, dirAndMag, hitFrac, hitNormal))
         {
             float_t snapDist = castDist * hitFrac - SKIN_WIDTH;
             vec3 snapDelta;
@@ -1968,7 +1968,7 @@ bool moveToTryStickToGround(vec3& inoutPosition, vec3 paramDeltaPosition, float_
 
         float_t hitFrac;
         vec3 hitNormal;
-        if (physengine::capsuleCast(possibleNewPosition, capsuleRadius - SKIN_WIDTH, capsuleHeight, ignoreBodyId, dirAndMag, hitFrac, hitNormal))
+        if (physengine::cylinderCast(possibleNewPosition, capsuleRadius - SKIN_WIDTH, capsuleHeight, ignoreBodyId, dirAndMag, hitFrac, hitNormal))
         {
             float_t snapDist = castDist * hitFrac - SKIN_WIDTH;
             vec3 snapDelta;
