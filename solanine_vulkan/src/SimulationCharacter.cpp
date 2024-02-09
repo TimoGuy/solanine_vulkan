@@ -1767,13 +1767,13 @@ void moveFromXZInput(vec3& inoutPosition, vec3 paramDeltaPosition, float_t capsu
             float_t slopeAngle = glm_vec3_dot(vec3{ 0.0f, 1.0f, 0.0f }, hitNormal);
             constexpr float_t STAIR_CLIMB_HEIGHT_MAX = 1.0f;  // @HARDCODE
             if (slopeAngle <= cosMaxSlopeAngle &&  // @NOTE: this prevents stair climbing from happening in the stead of slope climbing.
-                contactPosition[1] + capsuleHeight * 0.5f + capsuleRadius <= STAIR_CLIMB_HEIGHT_MAX)
+                true)//contactPosition[1] + capsuleHeight * 0.5f + capsuleRadius <= STAIR_CLIMB_HEIGHT_MAX)  @NOTE: this was to check whether it is impossible to climb the stairs or not. However, we should just try the cylinder cast is!
             {
                 vec3 anticipatedPosition;
                 glm_vec3_add(inoutPosition, snapDelta, anticipatedPosition);
                 
                 vec3 xzDirectionToTopOfStep;
-                glm_vec3_copy(contactPosition, xzDirectionToTopOfStep);
+                glm_vec3_copy(deltaPosition, xzDirectionToTopOfStep);
                 xzDirectionToTopOfStep[1] = 0.0f;
 
                 float_t xzDistance = glm_vec3_norm(xzDirectionToTopOfStep);
@@ -1795,6 +1795,8 @@ void moveFromXZInput(vec3& inoutPosition, vec3 paramDeltaPosition, float_t capsu
                             vec3 supplementarySnapDelta;
                             glm_vec3_scale_as(xzDirectionToTopOfStep, supplementarySnapDist, supplementarySnapDelta);
                             supplementarySnapDelta[1] += STAIR_CLIMB_HEIGHT_MAX;
+
+                            glm_vec3_sub(xzDirectionToTopOfStep, supplementarySnapDelta, deltaPosition);
 
                             if (supplementarySnapDist < 0.0f)
                                 glm_vec3_zero(supplementarySnapDelta);  // Prevent char from moving backwards.
@@ -1828,6 +1830,8 @@ void moveFromXZInput(vec3& inoutPosition, vec3 paramDeltaPosition, float_t capsu
                                     // Success. Flat floor. Include the move!
                                     float_t supplementarySnapDist2 = downwardCastDist * stairHitFrac - SKIN_WIDTH;
                                     vec3 supplementarySnapDelta2 = { 0.0f, -supplementarySnapDist2, 0.0f };
+
+                                    glm_vec3_sub(xzDirectionToTopOfStep, supplementarySnapDelta1, deltaPosition);
 
                                     glm_vec3_addadd(supplementarySnapDelta1, supplementarySnapDelta2, snapDelta);
                                 }

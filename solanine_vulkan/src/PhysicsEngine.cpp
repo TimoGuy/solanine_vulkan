@@ -1256,7 +1256,7 @@ namespace physengine
             cpd.height = height;
 
             // Create physics capsule.
-            ShapeRefC capsuleShape = RotatedTranslatedShapeSettings(Vec3(0, 0.5f * height + radius, 0), Quat::sIdentity(), new CapsuleShape(0.5f * height, radius)).Create().Get();
+            ShapeRefC capsuleShape = RotatedTranslatedShapeSettings(Vec3(0, 0.5f * height + radius, 0), Quat::sIdentity(), new CylinderShape(0.5f * height + radius, radius)).Create().Get();
 
             Ref<CharacterSettings> settings = new CharacterSettings;
             settings->mMaxSlopeAngle = glm_rad(46.0f);
@@ -1546,7 +1546,7 @@ namespace physengine
     bool capsuleCast(vec3 origin, float_t radius, float_t height, JPH::BodyID ignoreBodyId, vec3 directionAndMagnitude, float_t& outFraction, vec3& outSurfaceNormal, vec3& outLocalContactPosition)
     {
         RShapeCast sc(
-            new CapsuleShape(height * 0.5f, radius),
+            new CylinderShape(height * 0.5f + radius, radius),
             Vec3(1.0f, 1.0f, 1.0f),
             Mat44::sTranslation(Vec3(origin[0], origin[1], origin[2])),
             Vec3(directionAndMagnitude[0], directionAndMagnitude[1], directionAndMagnitude[2])
