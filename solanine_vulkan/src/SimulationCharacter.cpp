@@ -1860,8 +1860,13 @@ void moveFromXZInput(vec3& inoutPosition, vec3 paramDeltaPosition, float_t capsu
                 float_t scale = 1.0f - glm_vec3_dot(flatHitNormalN, initReverseFlatDeltaPositionN);
 
                 projectAndScale(vec3{ deltaPosition[0], 0.0f, deltaPosition[2] }, flatHitNormalN, deltaPosition);
-                if (glm_vec3_norm2(deltaPosition) > scale * scale)
-                    glm_vec3_scale_as(deltaPosition, scale, deltaPosition);
+
+                vec3 deltaPositionN;
+                glm_vec3_normalize_to(deltaPosition, deltaPositionN);
+                if (glm_vec3_dot(deltaPositionN, initReverseFlatDeltaPositionN) > 0.0f)  // >0 bc reversed init flat delta.
+                    glm_vec3_zero(deltaPosition);  // @NOTE: Remove further iterations of delta position so that if collide and slide algorithm thinks going against the input direction is okay, this prevents it.  -Timo 2024/02/09
+                else if (glm_vec3_norm2(deltaPosition) > scale * scale)
+                    glm_vec3_scale(deltaPositionN, scale, deltaPosition);  // @NOTE: this is for limiting the distance of the slide when running up against walls.  -Timo 2024/02/09
             }
 
             // Move as far as possible.
