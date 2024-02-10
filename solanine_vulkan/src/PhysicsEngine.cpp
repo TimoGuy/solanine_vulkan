@@ -1262,7 +1262,7 @@ namespace physengine
             settings->mMaxSlopeAngle = glm_rad(46.0f);
             settings->mLayer = Layers::MOVING;
             settings->mShape = cylinderShape;
-            settings->mGravityFactor = 0.0f;  // @NOCHECKIN: this is for the collide and slide algorithm. It should work best having grav factor be 0.  -Timo 2024/01/28
+            settings->mGravityFactor = 0.0f;  // @NOTE: this is for the collide and slide algorithm. It works having grav factor be 0.  -Timo 2024/01/28 (EDIT: 2024/02/10)
 
             // @NOTE: this was in the past 0.0f, but after introducing the slightest slope, the character starts sliding down.
             //        This gives everything a bit of a tacky feel, but I feel like that makes the physics for the characters
