@@ -1255,13 +1255,13 @@ namespace physengine
             cpd.radius = radius;
             cpd.height = height;
 
-            // Create physics capsule.
-            ShapeRefC capsuleShape = RotatedTranslatedShapeSettings(Vec3(0, 0.5f * height + radius, 0), Quat::sIdentity(), new CylinderShape(0.5f * height + radius, radius)).Create().Get();
+            // Create physics cylinder.
+            ShapeRefC cylinderShape = RotatedTranslatedShapeSettings(Vec3(0, 0.5f * height + radius, 0), Quat::sIdentity(), new CylinderShape(0.5f * height + radius, radius)).Create().Get();
 
             Ref<CharacterSettings> settings = new CharacterSettings;
             settings->mMaxSlopeAngle = glm_rad(46.0f);
             settings->mLayer = Layers::MOVING;
-            settings->mShape = capsuleShape;
+            settings->mShape = cylinderShape;
             settings->mGravityFactor = 0.0f;  // @NOCHECKIN: this is for the collide and slide algorithm. It should work best having grav factor be 0.  -Timo 2024/01/28
 
             // @NOTE: this was in the past 0.0f, but after introducing the slightest slope, the character starts sliding down.
