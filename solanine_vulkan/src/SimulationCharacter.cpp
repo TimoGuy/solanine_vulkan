@@ -1881,14 +1881,15 @@ void moveFromXZInput(vec3& inoutPosition, vec3 paramDeltaPosition, float_t capsu
     }
 }
 
-bool moveFromGravity(vec3& inoutPosition, vec3 paramDeltaPosition, float_t capsuleRadius, float_t capsuleHeight, JPH::BodyID ignoreBodyId, float_t cosMaxSlopeAngle)
+void moveFromYInput(vec3& inoutPosition, vec3 paramDeltaPosition, float_t capsuleRadius, float_t capsuleHeight, JPH::BodyID ignoreBodyId, float_t cosMaxGroundSlopeAngle, float_t cosMaxCeilingSlopeAngle, bool& outGrounded, bool& outHitCeiling)
 {
     ZoneScoped;
 
     vec3 deltaPosition;
     glm_vec3_copy(paramDeltaPosition, deltaPosition);
 
-    bool grounded = false;
+    outGrounded = false;
+    outHitCeiling = false;
 
     for (size_t i = 0; i < NUM_ITERATIONS; i++)
     {
@@ -1924,11 +1925,19 @@ bool moveFromGravity(vec3& inoutPosition, vec3 paramDeltaPosition, float_t capsu
                 glm_vec3_zero(snapDelta);
 
             // Adjust deltaPosition.
-            if (glm_vec3_dot(vec3{ 0.0f, 1.0f, 0.0f }, hitNormal) > cosMaxSlopeAngle)
+            float_t upDNormal = glm_vec3_dot(vec3{ 0.0f, 1.0f, 0.0f }, hitNormal);
+            if (upDNormal > cosMaxGroundSlopeAngle)
             {
                 // Flat ground.
                 glm_vec3_add(inoutPosition, snapDelta, inoutPosition);
-                grounded = true;
+                outGrounded = true;
+                break;
+            }
+            else if (-upDNormal > cosMaxCeilingSlopeAngle)
+            {
+                // Flat ceiling.
+                glm_vec3_add(inoutPosition, snapDelta, inoutPosition);
+                outHitCeiling = true;
                 break;
             }
             else
@@ -1945,8 +1954,6 @@ bool moveFromGravity(vec3& inoutPosition, vec3 paramDeltaPosition, float_t capsu
             break;
         }
     }
-
-    return grounded;
 }
 
 bool moveToTryStickToGround(vec3& inoutPosition, vec3 paramDeltaPosition, float_t capsuleRadius, float_t capsuleHeight, JPH::BodyID ignoreBodyId, float_t cosMaxSlopeAngle)
@@ -2079,6 +2086,7 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
     glm_vec3_copy(currentPosition, prevPosition);
 
     float_t cosMaxSlopeAngle = std::cosf(glm_rad(46.0f));
+    float_t cosMaxCeilingSlopeAngle = std::cosf(glm_rad(35.0f));
 
     if (inputVelocityUsed)
     {
@@ -2087,14 +2095,14 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
         moveFromXZInput(currentPosition, deltaPosition, d->cpd->radius, d->cpd->height, d->cpd->character->GetBodyID(), cosMaxSlopeAngle);
     }
 
-    bool grounded;
+    bool grounded, hitCeiling;
     float_t gravityDelta;
     {
         vec3 deltaPosition;
         physengine::getWorldGravity(deltaPosition);
         glm_vec3_scale(deltaPosition, d->airtime * simDeltaTime, deltaPosition);
-        gravityDelta = glm_vec3_norm(deltaPosition);
-        grounded = moveFromGravity(currentPosition, deltaPosition, d->cpd->radius, d->cpd->height, d->cpd->character->GetBodyID(), cosMaxSlopeAngle);
+        gravityDelta = (d->airtime > 0.0f ? glm_vec3_norm(deltaPosition) : 0.0f);  // Don't include sticking to ground when moving upward.
+        moveFromYInput(currentPosition, deltaPosition, d->cpd->radius, d->cpd->height, d->cpd->character->GetBodyID(), cosMaxSlopeAngle, cosMaxCeilingSlopeAngle, grounded, hitCeiling);
     }
 
     if (!grounded && d->attemptStickToGround && d->stickToGroundMaxDelta > gravityDelta)
@@ -2109,10 +2117,14 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
 
 
     // Handle airtime.
-    if (grounded)
+    if (grounded || hitCeiling)
         d->airtime = simDeltaTime;
     else
         d->airtime += simDeltaTime;
+
+    // @NOCHECKIN: stupid way of setting vertical movement.
+    if (input::simInputSet().jump.onAction)
+        d->airtime = -1.0f;
 
     // Move.
     vec3 velocity;
