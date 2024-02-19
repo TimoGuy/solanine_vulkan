@@ -10,4 +10,11 @@
         > @NOTE5: REPLY: It seems like there can be some fudging with something like a 0.2s window to allow for multiple attacks to be clanged off. There are times where the attacks don't line up, and in those cases, having to take the hit or one of the parties realizing that they need to dodge and dodging.
         > @NOTE6: Enemy also have weapon durability, which means you can break their weapon, and you as the player can't take their weapon bc of your contract with your ancient weapon. It has to be copied then materialized to be able to be used by player.
 
-    - [ ] FOR NOW: "Chirp" can be created with just a simple animated transparent sphere.
+    - [ ] Create pulse with visual and audio.
+        - [ ] FOR NOW: "Chirp" can be created with just a simple animated transparent sphere.
+
+- [ ] Attacking with rhythm.
+    - [ ] .
+
+- [ ] Weapon clashing with enemy.
+    - [ ] Add attack hitboxes.
