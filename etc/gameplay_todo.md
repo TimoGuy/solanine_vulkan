@@ -1,27 +1,14 @@
-- [ ] Double down on physically based character controller.
-    - [ ] Issues
+# Weapon attack art.
 
-        - [x] isPrevGrounded lags by one frame. Updating that information should happen in another function like `PostSimulationUpdate()` or something like that for simulation character instead of after setting the linear velocity (since that doesn't immediately update the physics world).
-            > Or it could happen by querying the information at the beginning of the frame instead of the end after setting velocity.
-            > This immediately makes everything so much tighter.
-            - [ ] @TODO: Test if this change makes a difference with moving platforms.
+- [ ] Rhythm ticking while sword is out.
+    > This rhythm is used to help with timing attacks for yourself. It shows up as a pulsing decal on the floor. Most attacks will require holding the attack button for one beat in the metronome (just have default be 120bpm for now). During this one beat, the entity places themselves into a stance to attack, and they don't change the direction of their move. Right when the next pulse clicks they release the stance, unleashing an attack (params: whether the attack was released too fast or too slow | the direction they're pushing the input joystick, since that will change what move they do next... the move ends in the direction they were pushing though).
+    > @NOTE: the same weapon types will generally have the same range of their bpm, but the bpm of the attacking rhythm will change depending on a stat in the weapon. The enemies will definitely vary slightly too. Be sure to pay attention to their attack rhythm too and maybe you could awaseru yours with theirs! If you do that, then swords will clang for sure.
+    > @NOTE2: the battle rhythm is definitely going on at all times. There isn't a way to change it. When an entity draws their sword, the draw is slow or fast in order to land on the next beat to initiate an attack. If the entity decides to start running off-rhythm, they will stumble for a sec. If they start their stance off-beat, then they will get a weak stance. 
+    > @NOTE3: some special hidden moves will require starting on an offbeat or doing something for an offset, or doing something over a triplet. This will definitely require good rhythm sense.
+    > @NOTE4: QUESTION: so what happens when an enemy and a player are fighting and their weapon types are different, and their rhythms are different? There will not be clanging in those cases???
+        > @NOTE5: REPLY: It seems like there can be some fudging with something like a 0.2s window to allow for multiple attacks to be clanged off. There are times where the attacks don't line up, and in those cases, having to take the hit or one of the parties realizing that they need to dodge and dodging.
+        > @NOTE6: Enemy also have weapon durability, which means you can break their weapon, and you as the player can't take their weapon bc of your contract with your ancient weapon. It has to be copied then materialized to be able to be used by player.
 
-        - [ ] Seams where one box collider begins and one ends makes weird non-collisions for 3 ticks.
-            - [ ] 
+    - [ ] 
 
-        - [ ] Running up ramps then stopping causes char to jump up a little bit.
-        - [ ] Running up ramps and making it to a flat top causes char to jump up a little bit.
-            - [ ] Both of these need some kind of "if Y velo is > this, then leave the ground surface, if not, then stick to the ground and cancel out any upwards momentum"
-
-        - [ ] Running down ramps at first causes char to be midair for like 6 ticks.
-            - [ ] If starting on a ramp already, just rotate the movement direction downward whenever moving downwards.
-            - [ ] If starting on flat and then moving to ramp, raycast down the moment !grounded and move char down to where raycast hit.
-                > It's kinda shotty, and I even tried to fix it with a second raycast... but maybe the best thing is to just use a spherecast?
-                > Or another idea I have is using the surface normal, calc a bunch of down raycasts from the bottom of the char in the opposite direction of the surface normal to see which one is lowest distance?
-                    > I think this one is best. (Refer to `try_midair_correction_method.png` in etc directory)
-
-- [ ] Engine Issues that need to get fixed (Add more and uncheck the box as needed).
-    - [x] No shadows over in spawn point #2??????
-        > So all the objects being drawn are the ones still in area #1... so something wrong is happening for sure. Culling issue maybe?
-        > Issue was that the culling light view matrix was using the extents to calc the frustum center instead of the corners of the frustum to calc the frustum center. That quick fix fixed it!
-    - [ ] Sometimes voxelfield will have `:` as a numeric thing... that's not allowed!!!
+- [ ] 

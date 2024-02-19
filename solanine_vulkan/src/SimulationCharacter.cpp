@@ -1410,7 +1410,7 @@ SimulationCharacter::SimulationCharacter(EntityManager* em, RenderObjectManager*
 
     // Create physics character.
     bool useCCD = false;  // @NOTE: since there's the change to base movement off collide and slide, ccd needs to be turned off, at least during c&s-style movement.  //(isPlayer(_data));
-    _data->cpd = physengine::createCharacter(getGUID(), _data->position, 0.25f, 1.5f, useCCD);  // Total height is 2, but r*2 is subtracted to get the capsule height (i.e. the line segment length that the capsule rides along)
+    _data->cpd = physengine::createCharacter(getGUID(), _data->position, 0.25f, 1.4f, useCCD);  // Total height is 1.9, but r*2 is subtracted to get the capsule height (i.e. the line segment length that the capsule rides along)
 
     // Calculate base points.
     float_t b = std::sinf(glm_rad(45.0f));
@@ -1765,7 +1765,7 @@ void moveFromXZInput(vec3& inoutPosition, vec3 paramDeltaPosition, float_t capsu
 
             // Check for steps/stairs.
             float_t slopeAngle = glm_vec3_dot(vec3{ 0.0f, 1.0f, 0.0f }, hitNormal);
-            constexpr float_t STAIR_CLIMB_HEIGHT_MAX = 1.0f;  // @HARDCODE
+            constexpr float_t STAIR_CLIMB_HEIGHT_MAX = 0.6f;  //1.0f;  // @HARDCODE
             if (slopeAngle <= cosMaxSlopeAngle &&  // @NOTE: this prevents stair climbing from happening in the stead of slope climbing.
                 true)//contactPosition[1] + capsuleHeight * 0.5f + capsuleRadius <= STAIR_CLIMB_HEIGHT_MAX)  @NOTE: this was to check whether it is impossible to climb the stairs or not. However, we should just try the cylinder cast is!
             {
