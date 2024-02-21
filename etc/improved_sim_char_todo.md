@@ -12,12 +12,18 @@
         - [x] Ceiling detection. Reset vertical velocity when ceiling is detected too.
 
 - [ ] Front end movement system (player).
-    - [ ] Grounded
-        - [ ] Move in specific direction and turn instead of directly changing velocity.
-        - [ ] If move in opposite direction, skid and turn around.
-        - [ ] Face character in the direction heading.
-    - [ ] Air
-        - [ ] Whatever direction held, velocity is added. No turning.
+    - [x] Grounded
+        - [x] Move in specific direction and turn instead of directly changing velocity.
+        - [x] If move in opposite direction, skid and turn around.
+        - [x] Face character in the direction heading.
+    - [x] Air
+        - [x] Whatever direction held, velocity is added. No turning.
+    - [x] Landing
+        - [x] Whatever direction is moving when landing is immediate set facing direction.
+    - [ ] Jumping
+        - [ ] Immediate change in facing direction of what direction is held.
+    - [ ] Misc.
+        - [ ] Moving up slopes makes movement super slow. Ignore previous frame's velocity and just base off of grounded, standing normal.
 
 
 

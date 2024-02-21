@@ -30,38 +30,38 @@ namespace physutil
 			return current + maxDistanceDelta;
 	}
 
-	// float_t moveTowardsAngle(float_t currentAngle, float_t targetAngle, float_t maxTurnDelta)
-	// {
-	// 	float_t result;
-	// 	float_t diff = targetAngle - currentAngle;
-	// 	if (diff < -180.0f)
-	// 	{
-	// 		// Move upwards past 360
-	// 		targetAngle += 360.0f;
-	// 		result = moveTowards(currentAngle, targetAngle, maxTurnDelta);
-	// 		if (result >= 360.0f)
-	// 		{
-	// 			result -= 360.0f;
-	// 		}
-	// 	}
-	// 	else if (diff > 180.0f)
-	// 	{
-	// 		// Move downwards past 0
-	// 		targetAngle -= 360.0f;
-	// 		result = moveTowards(currentAngle, targetAngle, maxTurnDelta);
-	// 		if (result < 0.0f)
-	// 		{
-	// 			result += 360.0f;
-	// 		}
-	// 	}
-	// 	else
-	// 	{
-	// 		// Straight move
-	// 		result = moveTowards(currentAngle, targetAngle, maxTurnDelta);
-	// 	}
+	float_t moveTowardsAngle(float_t currentAngle, float_t targetAngle, float_t maxTurnDelta)
+	{
+		float_t result;
+		float_t diff = targetAngle - currentAngle;
+		if (diff < -glm_rad(180.0f))
+		{
+			// Move upwards past 360
+			targetAngle += glm_rad(360.0f);
+			result = moveTowards(currentAngle, targetAngle, maxTurnDelta);
+			if (result >= glm_rad(360.0f))
+			{
+				result -= glm_rad(360.0f);
+			}
+		}
+		else if (diff > glm_rad(180.0f))
+		{
+			// Move downwards past 0
+			targetAngle -= glm_rad(360.0f);
+			result = moveTowards(currentAngle, targetAngle, maxTurnDelta);
+			if (result < 0.0f)
+			{
+				result += glm_rad(360.0f);
+			}
+		}
+		else
+		{
+			// Straight move
+			result = moveTowards(currentAngle, targetAngle, maxTurnDelta);
+		}
 
-	// 	return result;
-	// }
+		return result;
+	}
 
 	// glm::vec2 moveTowardsVec2(glm::vec2 current, glm::vec2 target, float_t maxDistanceDelta)
 	// {

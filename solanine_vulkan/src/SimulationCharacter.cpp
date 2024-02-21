@@ -61,6 +61,18 @@ struct SimulationCharacter_XData
         }
     } bmis;
 
+    struct FrontendMovementInputState
+    {
+        float_t maxSpeed = 7.5f;
+        float_t currentSpeed = 0.0f;
+        vec2 groundedAccelDecel = { 30.0f, 28.0f };
+        vec2 negGroundedAccelDecel = { 60.0f, 56.0f };
+        vec2 airborneAccelDecel = { 30.0f, 10.0f };
+        float_t turningSpeed = glm_rad(270.0f);
+
+        bool prevIsGrounded;
+    } fmis;
+
     struct MovingPlatformAttachment
     {
         enum class AttachmentStage
@@ -2074,7 +2086,7 @@ bool moveToTryStickToGround(vec3& inoutPosition, vec3 paramDeltaPosition, float_
     return grounded;
 }
 
-void processBackendMovement(SimulationCharacter_XData::BackendMovementInputState& bmis, physengine::CapsulePhysicsData* cpd, float_t simDeltaTime)
+void processCollideAndSlideBackend(SimulationCharacter_XData::BackendMovementInputState& bmis, physengine::CapsulePhysicsData* cpd, float_t simDeltaTime)
 {
     // Use collide and slide algorithm.
     vec3 currentPosition;
@@ -2083,7 +2095,7 @@ void processBackendMovement(SimulationCharacter_XData::BackendMovementInputState
     vec3 prevPosition;
     glm_vec3_copy(currentPosition, prevPosition);
 
-    if (glm_vec3_norm2(bmis.inputVelocity))
+    if (glm_vec3_norm2(bmis.inputVelocity) > 0.000001f)
     {
         vec3 deltaPosition;
         glm_vec3_scale(bmis.inputVelocity, simDeltaTime, deltaPosition);
@@ -2116,7 +2128,11 @@ void processBackendMovement(SimulationCharacter_XData::BackendMovementInputState
     physengine::moveCharacter(*cpd, velocity);
 
     // Set state & outputs.
-    glm_vec3_zero(bmis.inputVelocity);
+    glm_vec3_copy(velocity, bmis.inputVelocity);
+    bmis.inputVelocity[1] = 0.0f;
+    if (glm_vec3_norm2(bmis.inputVelocity) < 0.000001f)
+        glm_vec3_zero(bmis.inputVelocity);
+
     if (grounded || hitCeiling)
         bmis.verticalVelocity = -simDeltaTime;
     else
@@ -2135,14 +2151,90 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
     if (isPlayer(d) && !d->disableInput)
     {
         vec3 rawInput;
+        float_t rawFacingDirection;
         getCameraOrientedInput(
             d->camera->sceneCamera.facingDirection,
             rawInput,
-            d->facingDirection
+            rawFacingDirection
         );
+        bool isMoving = (glm_vec3_norm2(rawInput) > 0.000001f);
 
-        // @TODO: turn character in direction if grounded, adjust velocity if airborne.
+        // Read backend movement state to frontend.
+        d->fmis.currentSpeed = glm_vec3_norm(d->bmis.inputVelocity);
+
+        // Frontend movement.
+        if (d->bmis.isGrounded)
+        {
+            // Update facing direction.
+            if (d->fmis.prevIsGrounded && glm_vec3_norm2(d->bmis.inputVelocity) > 0.000001f)
+            {
+                if (isMoving)
+                {
+                    // Turn around if input direction is opposite of current moving direction.
+                    vec3 inputVeloN;
+                    glm_vec3_normalize_to(d->bmis.inputVelocity, inputVeloN);
+                    vec3 rawInputN;
+                    glm_vec3_normalize_to(rawInput, rawInputN);
+                    if (glm_vec3_dot(inputVeloN, rawInputN) < -std::cosf(glm_rad(30.0f)))  // @HARDCODE
+                    {
+                        d->facingDirection = rawFacingDirection;
+                        d->fmis.currentSpeed *= -1.0f;
+                    }
+
+                    // Turn towards input direction with max turning angle.
+                    d->facingDirection =
+                        physutil::moveTowardsAngle(d->facingDirection, rawFacingDirection, d->fmis.turningSpeed * simDeltaTime);
+                }
+            }
+            else
+            {
+                // Start moving.
+                if (isMoving)
+                    d->facingDirection = rawFacingDirection;
+            }
+
+            // Accelerate/decelerate.
+            float_t targetSpeed = glm_vec3_norm(rawInput) * d->fmis.maxSpeed;
+            size_t accelOrDecel = (targetSpeed > d->fmis.currentSpeed ? 0 : 1);
+            float_t maxDeltaSpeed =
+                (d->fmis.currentSpeed < 0.0f ?
+                    d->fmis.negGroundedAccelDecel[accelOrDecel] :
+                    d->fmis.groundedAccelDecel[accelOrDecel])
+                    * simDeltaTime;
+            d->fmis.currentSpeed =
+                physutil::moveTowards(d->fmis.currentSpeed, targetSpeed, maxDeltaSpeed);
+
+            // Write backend input.
+            vec3 eulerAngles = { 0.0f, d->facingDirection, 0.0f };
+            mat4 rotation;
+            glm_euler_zyx(eulerAngles, rotation);
+            mat3 rotation3;
+            glm_mat4_pick3(rotation, rotation3);
+            vec3 moveDirection;
+            glm_mat3_mulv(rotation3, vec3{ 0.0f, 0.0f, 1.0f }, moveDirection);
+            glm_vec3_scale(moveDirection, d->fmis.currentSpeed, d->bmis.inputVelocity);
+        }
+        else
+        {
+            // Find target input.
+            vec3 targetInput;
+            glm_vec3_scale(rawInput, d->fmis.maxSpeed, targetInput);
+
+            // Find max delta speed.
+            size_t accelOrDecel =
+                (glm_vec3_norm2(targetInput) > d->fmis.currentSpeed * d->fmis.currentSpeed ? 0 : 1);
+            float_t maxDeltaSpeed =
+                d->fmis.airborneAccelDecel[accelOrDecel] * simDeltaTime;
+
+            // Move towards target input.
+            vec3 deltaToTargetInput;
+            glm_vec3_sub(targetInput, d->bmis.inputVelocity, deltaToTargetInput);
+            if (glm_vec3_norm2(deltaToTargetInput) > maxDeltaSpeed * maxDeltaSpeed)
+                glm_vec3_scale_as(deltaToTargetInput, maxDeltaSpeed, deltaToTargetInput);
+            glm_vec3_add(d->bmis.inputVelocity, deltaToTargetInput, d->bmis.inputVelocity);
+        }
     }
+    d->fmis.prevIsGrounded = d->bmis.isGrounded;
 
     // Update facing direction with cosmetic simulation transform.
     vec3 eulerAngles = { 0.0f, d->facingDirection, 0.0f };
@@ -2152,8 +2244,8 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
     glm_mat4_quat(rotation, rotationV);
     physengine::updateSimulationTransformRotation(d->cpd->simTransformId, rotationV);
 
-    // Run backend movement.
-    processBackendMovement(d->bmis, d->cpd, simDeltaTime);
+    // Run movement backend.
+    processCollideAndSlideBackend(d->bmis, d->cpd, simDeltaTime);
 }
 
 void calculateBladeStartEndFromHandAttachment(SimulationCharacter_XData* d, vec3& bladeStart, vec3& bladeEnd)
@@ -2780,6 +2872,34 @@ void defaultRenderImGui(SimulationCharacter_XData* d)
 {
     if (ImGui::CollapsingHeader("Tweak Props", ImGuiTreeNodeFlags_DefaultOpen))
     {
+        if (ImGui::CollapsingHeader("Backend Movement", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            ImGui::DragFloat3("inputVelocity", d->bmis.inputVelocity);
+            ImGui::DragFloat("verticalVelocity", &d->bmis.verticalVelocity);
+            ImGui::DragFloat("cosMaxGroundSlopeAngle", &d->bmis.cosMaxGroundSlopeAngle);
+            ImGui::DragFloat("cosMaxCeilingSlopeAngle", &d->bmis.cosMaxCeilingSlopeAngle);
+            ImGui::DragFloat("stickToGroundMaxDelta", &d->bmis.stickToGroundMaxDelta);
+            ImGui::DragFloat3("gravity", d->bmis.gravity);
+
+            ImGui::Checkbox("isGrounded", &d->bmis.isGrounded);
+            ImGui::Checkbox("hitCeiling", &d->bmis.hitCeiling);
+            ImGui::Checkbox("attemptStickToGround", &d->bmis.attemptStickToGround);
+        }
+
+        ImGui::Separator();
+
+        if (ImGui::CollapsingHeader("Frontend Movement", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            ImGui::DragFloat("maxSpeed", &d->fmis.maxSpeed);
+            ImGui::DragFloat("currentSpeed", &d->fmis.currentSpeed);
+            ImGui::DragFloat2("groundedAccelDecel", d->fmis.groundedAccelDecel);
+            ImGui::DragFloat2("negGroundedAccelDecel", d->fmis.negGroundedAccelDecel);
+            ImGui::DragFloat2("airborneAccelDecel", d->fmis.airborneAccelDecel);
+            ImGui::DragFloat("turningSpeed", &d->fmis.turningSpeed);
+        }
+
+        ImGui::Separator();
+
         ImGui::DragFloat("modelSize", &d->modelSize);
         ImGui::DragFloat("jumpHeight", &d->jumpHeight);
         ImGui::InputInt("health", &d->health);

@@ -11,7 +11,7 @@ namespace physutil
     // float_t smoothStep(float_t edge0, float_t edge1, float_t t);
 	float_t moveTowards(float_t current, float_t target, float_t maxDistanceDelta);
 	int32_t moveTowards(int32_t current, int32_t target, int32_t maxDistanceDelta);
-	// float_t moveTowardsAngle(float_t currentAngle, float_t targetAngle, float_t maxTurnDelta);
+	float_t moveTowardsAngle(float_t currentAngle, float_t targetAngle, float_t maxTurnDelta);
 	// glm::vec2 moveTowardsVec2(glm::vec2 current, glm::vec2 target, float_t maxDistanceDelta);
 	// vec3 moveTowardsVec3(vec3 current, vec3 target, float_t maxDistanceDelta);
 	// vec3 clampVector(vec3 vector, float_t min, float_t max);
