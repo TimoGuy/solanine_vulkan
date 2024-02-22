@@ -2351,8 +2351,8 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
 {
     ZoneScoped;
 
-    // Gather movement input.
-    if (isPlayer(d) && !d->disableInput)
+    // Frontend movement state machine.
+    if (isPlayer(d) && !d->disableInput)  // @INCOMPLETE: should have `disableInput` be connected to the actual inputs of this, not part of this if statement.
     {
         SimulationCharacter_XData::FrontendMovementInputState::MovementType mvtTypeCopy;
         do
