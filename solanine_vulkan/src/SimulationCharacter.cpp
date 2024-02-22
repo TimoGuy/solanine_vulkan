@@ -43,12 +43,13 @@ struct SimulationCharacter_XData
 
     struct BackendMovementInputState
     {
-        vec3 inputVelocity = GLM_VEC3_ZERO_INIT;
+        vec3    inputVelocity = GLM_VEC3_ZERO_INIT;
         float_t verticalVelocity = 0.0f;
         float_t cosMaxGroundSlopeAngle = std::cosf(glm_rad(46.0f));
         float_t cosMaxCeilingSlopeAngle = std::cosf(glm_rad(35.0f));
         float_t stickToGroundMaxDelta = 0.5f;
-        vec3 gravity;
+        vec3    gravityDirection;
+        float_t gravityMagnitude;
 
         bool isGrounded;
         bool hitCeiling;
@@ -56,8 +57,10 @@ struct SimulationCharacter_XData
 
         BackendMovementInputState()
         {
-            physengine::getWorldGravity(gravity);
-            glm_vec3_negate(gravity);  // So that `verticalVelocity` is down when negative.
+            physengine::getWorldGravity(gravityDirection);
+            glm_vec3_negate(gravityDirection);  // So that `verticalVelocity` is down when negative.
+            gravityMagnitude = glm_vec3_norm(gravityDirection);
+            glm_vec3_normalize(gravityDirection);
         }
     } bmis;
 
@@ -2106,7 +2109,7 @@ void processCollideAndSlideBackend(SimulationCharacter_XData::BackendMovementInp
     float_t gravityDelta;
     {
         vec3 deltaPosition;
-        glm_vec3_scale(bmis.gravity, bmis.verticalVelocity * simDeltaTime, deltaPosition);
+        glm_vec3_scale(bmis.gravityDirection, bmis.verticalVelocity * simDeltaTime, deltaPosition);
         gravityDelta = (bmis.verticalVelocity > 0.0f ? glm_vec3_norm(deltaPosition) : 0.0f);  // Don't include sticking to ground when moving upward.
         moveFromYInput(currentPosition, deltaPosition, cpd->radius, cpd->height, cpd->character->GetBodyID(), bmis.cosMaxGroundSlopeAngle, bmis.cosMaxCeilingSlopeAngle, grounded, hitCeiling);
     }
@@ -2134,9 +2137,9 @@ void processCollideAndSlideBackend(SimulationCharacter_XData::BackendMovementInp
         glm_vec3_zero(bmis.inputVelocity);
 
     if (grounded || hitCeiling)
-        bmis.verticalVelocity = -simDeltaTime;
+        bmis.verticalVelocity = -bmis.gravityMagnitude * simDeltaTime;
     else
-        bmis.verticalVelocity -= simDeltaTime;
+        bmis.verticalVelocity -= bmis.gravityMagnitude * simDeltaTime;
     bmis.attemptStickToGround = grounded;
 
     bmis.isGrounded = grounded;
@@ -2150,6 +2153,16 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
     // Gather movement input.
     if (isPlayer(d) && !d->disableInput)
     {
+        // Jump.
+        bool performedJump = false;
+        if (d->bmis.isGrounded && input::simInputSet().jump.onAction)
+        {
+            d->bmis.verticalVelocity = 14.0f;  // @HARDCODE.
+            d->bmis.attemptStickToGround = false;  // To prevent sticking to ground to allow jump to happen.
+            performedJump = true;
+        }
+
+        // XZ Movement.
         vec3 rawInput;
         float_t rawFacingDirection;
         getCameraOrientedInput(
@@ -2159,14 +2172,13 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
         );
         bool isMoving = (glm_vec3_norm2(rawInput) > 0.000001f);
 
-        // Read backend movement state to frontend.
+        // Pull current speed from backend feedback state.
         d->fmis.currentSpeed = glm_vec3_norm(d->bmis.inputVelocity);
 
-        // Frontend movement.
         if (d->bmis.isGrounded)
         {
             // Update facing direction.
-            if (d->fmis.prevIsGrounded && glm_vec3_norm2(d->bmis.inputVelocity) > 0.000001f)
+            if (d->fmis.prevIsGrounded && !performedJump && glm_vec3_norm2(d->bmis.inputVelocity) > 0.000001f)
             {
                 if (isMoving)
                 {
@@ -2189,6 +2201,8 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
             else
             {
                 // Start moving.
+                // OR just landed, so set facing direction to direction of velocity.
+                // OR just jumped, so set facing direction to jumping direction.
                 if (isMoving)
                     d->facingDirection = rawFacingDirection;
             }
@@ -2879,7 +2893,8 @@ void defaultRenderImGui(SimulationCharacter_XData* d)
             ImGui::DragFloat("cosMaxGroundSlopeAngle", &d->bmis.cosMaxGroundSlopeAngle);
             ImGui::DragFloat("cosMaxCeilingSlopeAngle", &d->bmis.cosMaxCeilingSlopeAngle);
             ImGui::DragFloat("stickToGroundMaxDelta", &d->bmis.stickToGroundMaxDelta);
-            ImGui::DragFloat3("gravity", d->bmis.gravity);
+            ImGui::DragFloat3("gravityDirection", d->bmis.gravityDirection);
+            ImGui::DragFloat("gravityMagnitude", &d->bmis.gravityMagnitude);
 
             ImGui::Checkbox("isGrounded", &d->bmis.isGrounded);
             ImGui::Checkbox("hitCeiling", &d->bmis.hitCeiling);

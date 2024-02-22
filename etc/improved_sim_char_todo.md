@@ -20,8 +20,9 @@
         - [x] Whatever direction held, velocity is added. No turning.
     - [x] Landing
         - [x] Whatever direction is moving when landing is immediate set facing direction.
-    - [ ] Jumping
-        - [ ] Immediate change in facing direction of what direction is held.
+            > REGRESSION
+    - [x] Jumping
+        - [x] Immediate change in facing direction of what direction is held.
     - [ ] Misc.
         - [ ] Moving up slopes makes movement super slow. Ignore previous frame's velocity and just base off of grounded, standing normal.
 
