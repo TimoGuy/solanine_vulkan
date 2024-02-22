@@ -73,7 +73,20 @@ struct SimulationCharacter_XData
         vec2 airborneAccelDecel = { 30.0f, 10.0f };
         float_t turningSpeed = glm_rad(270.0f);
 
-        bool prevIsGrounded;
+        enum class MovementType
+        {
+            STANDING = 0,
+            RUNNING,
+            FALLING,
+            JUMPING,
+        } currentMvtType = MovementType::STANDING;
+        int32_t mvtTypeSteps = 0;
+
+        void setMvtType(MovementType mt)
+        {
+            currentMvtType = mt;
+            mvtTypeSteps = 0;
+        }
     } fmis;
 
     struct MovingPlatformAttachment
@@ -1726,12 +1739,16 @@ std::vector<GUIDWithVerb> interactionGUIDPriorityQueue;
 textmesh::TextMesh* interactionUIText;
 std::string currentText;
 
+void getRawXZInput(vec2& outInput)
+{
+    outInput[0] = input::simInputSet().flatPlaneMovement.axisX;
+    outInput[1] = input::simInputSet().flatPlaneMovement.axisY;
+}
+
 void getCameraOrientedInput(vec3 cameraFacingDirection, vec3& outFlatInput, float_t& outFacingDirection)
 {
-    vec2 input = {
-        input::simInputSet().flatPlaneMovement.axisX,
-        input::simInputSet().flatPlaneMovement.axisY,
-    };
+    vec2 input;
+    getRawXZInput(input);
     if (glm_vec2_norm2(input) > 0.000001f)
     {
         // Transform input to world space.
@@ -2146,6 +2163,190 @@ void processCollideAndSlideBackend(SimulationCharacter_XData::BackendMovementInp
     bmis.hitCeiling = hitCeiling;
 }
 
+inline void frontendMovementStanding(SimulationCharacter_XData* d)
+{
+    // Falling.
+    if (!d->bmis.isGrounded)
+    {
+        d->fmis.setMvtType(
+            SimulationCharacter_XData::FrontendMovementInputState::MovementType::FALLING
+        );
+        return;
+    }
+
+    // Jumping.
+    if (input::simInputSet().jump.onAction)
+    {
+        d->fmis.setMvtType(
+            SimulationCharacter_XData::FrontendMovementInputState::MovementType::JUMPING
+        );
+        return;
+    }
+
+    // XZ Movement.
+    vec2 rawInput;
+    getRawXZInput(rawInput);
+    if (glm_vec2_norm2(rawInput) > 0.000001f)
+    {
+        d->fmis.setMvtType(
+            SimulationCharacter_XData::FrontendMovementInputState::MovementType::RUNNING
+        );
+        return;
+    }
+
+    // Write out XZ movement.
+    glm_vec3_zero(d->bmis.inputVelocity);
+}
+
+inline void frontendMovementRunning(SimulationCharacter_XData* d, float_t simDeltaTime)
+{
+    // Falling.
+    if (!d->bmis.isGrounded)
+    {
+        d->fmis.setMvtType(
+            SimulationCharacter_XData::FrontendMovementInputState::MovementType::FALLING
+        );
+        return;
+    }
+
+    // Jumping.
+    if (input::simInputSet().jump.onAction)
+    {
+        d->fmis.setMvtType(
+            SimulationCharacter_XData::FrontendMovementInputState::MovementType::JUMPING
+        );
+        return;
+    }
+
+    // XZ Movement.
+    vec3 rawInput;
+    float_t rawFacingDirection;
+    getCameraOrientedInput(
+        d->camera->sceneCamera.facingDirection,
+        rawInput,
+        rawFacingDirection
+    );
+    bool isMoving = (glm_vec3_norm2(rawInput) > 0.000001f);
+
+    // Turn around if input direction is opposite of current moving direction.
+    if (d->fmis.mvtTypeSteps == 0)
+    {
+        if (glm_vec3_norm2(d->bmis.inputVelocity) > 0.000001f)
+        {
+            // Inherit velocity direction of landing.
+            d->facingDirection = std::atan2f(d->bmis.inputVelocity[0], d->bmis.inputVelocity[2]);
+            d->fmis.currentSpeed = glm_vec3_norm(d->bmis.inputVelocity);
+        }
+        else
+        {
+            // Face input direction first frame of start-run.
+            if (isMoving)
+                d->facingDirection = rawFacingDirection;
+            d->fmis.currentSpeed = 0.0f;
+        }
+    }
+    else
+    {
+        if (isMoving)
+        {
+            vec3 inputVeloN;
+            glm_vec3_normalize_to(d->bmis.inputVelocity, inputVeloN);
+            vec3 rawInputN;
+            glm_vec3_normalize_to(rawInput, rawInputN);
+            if (glm_vec3_dot(inputVeloN, rawInputN) < -std::cosf(glm_rad(30.0f)))  // @HARDCODE
+            {
+                d->facingDirection = rawFacingDirection;
+                d->fmis.currentSpeed *= -1.0f;
+            }
+
+            // Turn towards input direction with max turning angle.
+            d->facingDirection =
+                physutil::moveTowardsAngle(d->facingDirection, rawFacingDirection, d->fmis.turningSpeed * simDeltaTime);
+        }
+    }
+
+    // Accelerate/decelerate.
+    float_t targetSpeed = glm_vec3_norm(rawInput) * d->fmis.maxSpeed;
+    size_t accelOrDecel = (targetSpeed > d->fmis.currentSpeed ? 0 : 1);
+    float_t maxDeltaSpeed =
+        (d->fmis.currentSpeed < 0.0f ?
+            d->fmis.negGroundedAccelDecel[accelOrDecel] :
+            d->fmis.groundedAccelDecel[accelOrDecel])
+            * simDeltaTime;
+    d->fmis.currentSpeed =
+        physutil::moveTowards(d->fmis.currentSpeed, targetSpeed, maxDeltaSpeed);
+
+    // Standing.
+    if (!isMoving && std::abs(d->fmis.currentSpeed) < 0.000001f)
+    {
+        d->fmis.setMvtType(
+            SimulationCharacter_XData::FrontendMovementInputState::MovementType::STANDING
+        );
+        return;
+    }
+
+    // Write backend input.
+    vec3 eulerAngles = { 0.0f, d->facingDirection, 0.0f };
+    mat4 rotation;
+    glm_euler_zyx(eulerAngles, rotation);
+    mat3 rotation3;
+    glm_mat4_pick3(rotation, rotation3);
+    vec3 moveDirection;
+    glm_mat3_mulv(rotation3, vec3{ 0.0f, 0.0f, 1.0f }, moveDirection);
+    glm_vec3_scale(moveDirection, d->fmis.currentSpeed, d->bmis.inputVelocity);
+}
+
+inline void frontendMovementFallingAndJumping(SimulationCharacter_XData* d, float_t simDeltaTime)
+{
+    // Landed.
+    if (d->fmis.mvtTypeSteps > 0 && d->bmis.isGrounded)
+    {
+        vec2 rawInput;
+        getRawXZInput(rawInput);
+        d->fmis.setMvtType(
+            SimulationCharacter_XData::FrontendMovementInputState::MovementType::RUNNING
+        );
+        return;
+    }
+
+    // Jumping Movement.
+    if (d->fmis.mvtTypeSteps == 0 &&
+        d->fmis.currentMvtType == SimulationCharacter_XData::FrontendMovementInputState::MovementType::JUMPING)
+    {
+        d->bmis.verticalVelocity = 14.0f;  // @HARDCODE.
+    }
+
+    // XZ Movement.
+    vec3 rawInput;
+    float_t rawFacingDirection;
+    getCameraOrientedInput(
+        d->camera->sceneCamera.facingDirection,
+        rawInput,
+        rawFacingDirection
+    );
+    bool isMoving = (glm_vec3_norm2(rawInput) > 0.000001f);
+
+    if (d->fmis.mvtTypeSteps == 0 && isMoving)
+        d->facingDirection = rawFacingDirection;  // Face input direction first tick of jump/fall.
+
+    // Find target input.
+    vec3 targetInput;
+    glm_vec3_scale(rawInput, d->fmis.maxSpeed, targetInput);
+
+    // Find max delta speed.
+    size_t accelOrDecel =
+        (glm_vec3_norm2(targetInput) > d->fmis.currentSpeed * d->fmis.currentSpeed ? 0 : 1);
+    float_t maxDeltaSpeed =
+        d->fmis.airborneAccelDecel[accelOrDecel] * simDeltaTime;
+
+    // Move towards target input.
+    vec3 deltaToTargetInput;
+    glm_vec3_sub(targetInput, d->bmis.inputVelocity, deltaToTargetInput);
+    if (glm_vec3_norm2(deltaToTargetInput) > maxDeltaSpeed * maxDeltaSpeed)
+        glm_vec3_scale_as(deltaToTargetInput, maxDeltaSpeed, deltaToTargetInput);
+    glm_vec3_add(d->bmis.inputVelocity, deltaToTargetInput, d->bmis.inputVelocity);
+}
+
 void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, EntityManager* em, const std::string& myGuid)
 {
     ZoneScoped;
@@ -2153,102 +2354,122 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
     // Gather movement input.
     if (isPlayer(d) && !d->disableInput)
     {
-        // Jump.
-        bool performedJump = false;
-        if (d->bmis.isGrounded && input::simInputSet().jump.onAction)
+        SimulationCharacter_XData::FrontendMovementInputState::MovementType mvtTypeCopy;
+        do
         {
-            d->bmis.verticalVelocity = 14.0f;  // @HARDCODE.
-            d->bmis.attemptStickToGround = false;  // To prevent sticking to ground to allow jump to happen.
-            performedJump = true;
-        }
-
-        // XZ Movement.
-        vec3 rawInput;
-        float_t rawFacingDirection;
-        getCameraOrientedInput(
-            d->camera->sceneCamera.facingDirection,
-            rawInput,
-            rawFacingDirection
-        );
-        bool isMoving = (glm_vec3_norm2(rawInput) > 0.000001f);
-
-        // Pull current speed from backend feedback state.
-        d->fmis.currentSpeed = glm_vec3_norm(d->bmis.inputVelocity);
-
-        if (d->bmis.isGrounded)
-        {
-            // Update facing direction.
-            if (d->fmis.prevIsGrounded && !performedJump && glm_vec3_norm2(d->bmis.inputVelocity) > 0.000001f)
+            mvtTypeCopy = d->fmis.currentMvtType;
+            switch (d->fmis.currentMvtType)
             {
-                if (isMoving)
-                {
-                    // Turn around if input direction is opposite of current moving direction.
-                    vec3 inputVeloN;
-                    glm_vec3_normalize_to(d->bmis.inputVelocity, inputVeloN);
-                    vec3 rawInputN;
-                    glm_vec3_normalize_to(rawInput, rawInputN);
-                    if (glm_vec3_dot(inputVeloN, rawInputN) < -std::cosf(glm_rad(30.0f)))  // @HARDCODE
-                    {
-                        d->facingDirection = rawFacingDirection;
-                        d->fmis.currentSpeed *= -1.0f;
-                    }
-
-                    // Turn towards input direction with max turning angle.
-                    d->facingDirection =
-                        physutil::moveTowardsAngle(d->facingDirection, rawFacingDirection, d->fmis.turningSpeed * simDeltaTime);
-                }
+                case SimulationCharacter_XData::FrontendMovementInputState::MovementType::STANDING:
+                    frontendMovementStanding(d);
+                    break;
+                case SimulationCharacter_XData::FrontendMovementInputState::MovementType::RUNNING:
+                    frontendMovementRunning(d, simDeltaTime);
+                    break;
+                case SimulationCharacter_XData::FrontendMovementInputState::MovementType::FALLING:
+                case SimulationCharacter_XData::FrontendMovementInputState::MovementType::JUMPING:
+                    frontendMovementFallingAndJumping(d, simDeltaTime);
+                    break;
             }
-            else
-            {
-                // Start moving.
-                // OR just landed, so set facing direction to direction of velocity.
-                // OR just jumped, so set facing direction to jumping direction.
-                if (isMoving)
-                    d->facingDirection = rawFacingDirection;
-            }
+        } while (mvtTypeCopy != d->fmis.currentMvtType);
+        d->fmis.mvtTypeSteps++;
 
-            // Accelerate/decelerate.
-            float_t targetSpeed = glm_vec3_norm(rawInput) * d->fmis.maxSpeed;
-            size_t accelOrDecel = (targetSpeed > d->fmis.currentSpeed ? 0 : 1);
-            float_t maxDeltaSpeed =
-                (d->fmis.currentSpeed < 0.0f ?
-                    d->fmis.negGroundedAccelDecel[accelOrDecel] :
-                    d->fmis.groundedAccelDecel[accelOrDecel])
-                    * simDeltaTime;
-            d->fmis.currentSpeed =
-                physutil::moveTowards(d->fmis.currentSpeed, targetSpeed, maxDeltaSpeed);
+        // // Jump.
+        // bool performedJump = false;
+        // if (d->bmis.isGrounded && input::simInputSet().jump.onAction)
+        // {
+        //     d->bmis.verticalVelocity = 14.0f;  // @HARDCODE.
+        //     d->bmis.attemptStickToGround = false;  // To prevent sticking to ground to allow jump to happen.
+        //     performedJump = true;
+        // }
 
-            // Write backend input.
-            vec3 eulerAngles = { 0.0f, d->facingDirection, 0.0f };
-            mat4 rotation;
-            glm_euler_zyx(eulerAngles, rotation);
-            mat3 rotation3;
-            glm_mat4_pick3(rotation, rotation3);
-            vec3 moveDirection;
-            glm_mat3_mulv(rotation3, vec3{ 0.0f, 0.0f, 1.0f }, moveDirection);
-            glm_vec3_scale(moveDirection, d->fmis.currentSpeed, d->bmis.inputVelocity);
-        }
-        else
-        {
-            // Find target input.
-            vec3 targetInput;
-            glm_vec3_scale(rawInput, d->fmis.maxSpeed, targetInput);
+        // // XZ Movement.
+        // vec3 rawInput;
+        // float_t rawFacingDirection;
+        // getCameraOrientedInput(
+        //     d->camera->sceneCamera.facingDirection,
+        //     rawInput,
+        //     rawFacingDirection
+        // );
+        // bool isMoving = (glm_vec3_norm2(rawInput) > 0.000001f);
 
-            // Find max delta speed.
-            size_t accelOrDecel =
-                (glm_vec3_norm2(targetInput) > d->fmis.currentSpeed * d->fmis.currentSpeed ? 0 : 1);
-            float_t maxDeltaSpeed =
-                d->fmis.airborneAccelDecel[accelOrDecel] * simDeltaTime;
+        // // Pull current speed from backend feedback state.
+        // d->fmis.currentSpeed = glm_vec3_norm(d->bmis.inputVelocity);
 
-            // Move towards target input.
-            vec3 deltaToTargetInput;
-            glm_vec3_sub(targetInput, d->bmis.inputVelocity, deltaToTargetInput);
-            if (glm_vec3_norm2(deltaToTargetInput) > maxDeltaSpeed * maxDeltaSpeed)
-                glm_vec3_scale_as(deltaToTargetInput, maxDeltaSpeed, deltaToTargetInput);
-            glm_vec3_add(d->bmis.inputVelocity, deltaToTargetInput, d->bmis.inputVelocity);
-        }
+        // if (d->bmis.isGrounded)
+        // {
+        //     // Update facing direction.
+        //     if (d->fmis.prevIsGrounded && !performedJump && glm_vec3_norm2(d->bmis.inputVelocity) > 0.000001f)
+        //     {
+        //         if (isMoving)
+        //         {
+        //             // Turn around if input direction is opposite of current moving direction.
+        //             vec3 inputVeloN;
+        //             glm_vec3_normalize_to(d->bmis.inputVelocity, inputVeloN);
+        //             vec3 rawInputN;
+        //             glm_vec3_normalize_to(rawInput, rawInputN);
+        //             if (glm_vec3_dot(inputVeloN, rawInputN) < -std::cosf(glm_rad(30.0f)))  // @HARDCODE
+        //             {
+        //                 d->facingDirection = rawFacingDirection;
+        //                 d->fmis.currentSpeed *= -1.0f;
+        //             }
+
+        //             // Turn towards input direction with max turning angle.
+        //             d->facingDirection =
+        //                 physutil::moveTowardsAngle(d->facingDirection, rawFacingDirection, d->fmis.turningSpeed * simDeltaTime);
+        //         }
+        //     }
+        //     else
+        //     {
+        //         // Start moving.
+        //         // OR just landed, so set facing direction to direction of velocity.
+        //         // OR just jumped, so set facing direction to jumping direction.
+        //         if (isMoving)
+        //             d->facingDirection = rawFacingDirection;
+        //     }
+
+        //     // Accelerate/decelerate.
+        //     float_t targetSpeed = glm_vec3_norm(rawInput) * d->fmis.maxSpeed;
+        //     size_t accelOrDecel = (targetSpeed > d->fmis.currentSpeed ? 0 : 1);
+        //     float_t maxDeltaSpeed =
+        //         (d->fmis.currentSpeed < 0.0f ?
+        //             d->fmis.negGroundedAccelDecel[accelOrDecel] :
+        //             d->fmis.groundedAccelDecel[accelOrDecel])
+        //             * simDeltaTime;
+        //     d->fmis.currentSpeed =
+        //         physutil::moveTowards(d->fmis.currentSpeed, targetSpeed, maxDeltaSpeed);
+
+        //     // Write backend input.
+        //     vec3 eulerAngles = { 0.0f, d->facingDirection, 0.0f };
+        //     mat4 rotation;
+        //     glm_euler_zyx(eulerAngles, rotation);
+        //     mat3 rotation3;
+        //     glm_mat4_pick3(rotation, rotation3);
+        //     vec3 moveDirection;
+        //     glm_mat3_mulv(rotation3, vec3{ 0.0f, 0.0f, 1.0f }, moveDirection);
+        //     glm_vec3_scale(moveDirection, d->fmis.currentSpeed, d->bmis.inputVelocity);
+        // }
+        // else
+        // {
+        //     // Find target input.
+        //     vec3 targetInput;
+        //     glm_vec3_scale(rawInput, d->fmis.maxSpeed, targetInput);
+
+        //     // Find max delta speed.
+        //     size_t accelOrDecel =
+        //         (glm_vec3_norm2(targetInput) > d->fmis.currentSpeed * d->fmis.currentSpeed ? 0 : 1);
+        //     float_t maxDeltaSpeed =
+        //         d->fmis.airborneAccelDecel[accelOrDecel] * simDeltaTime;
+
+        //     // Move towards target input.
+        //     vec3 deltaToTargetInput;
+        //     glm_vec3_sub(targetInput, d->bmis.inputVelocity, deltaToTargetInput);
+        //     if (glm_vec3_norm2(deltaToTargetInput) > maxDeltaSpeed * maxDeltaSpeed)
+        //         glm_vec3_scale_as(deltaToTargetInput, maxDeltaSpeed, deltaToTargetInput);
+        //     glm_vec3_add(d->bmis.inputVelocity, deltaToTargetInput, d->bmis.inputVelocity);
+        // }
     }
-    d->fmis.prevIsGrounded = d->bmis.isGrounded;
+    // d->fmis.prevIsGrounded = d->bmis.isGrounded;
 
     // Update facing direction with cosmetic simulation transform.
     vec3 eulerAngles = { 0.0f, d->facingDirection, 0.0f };
