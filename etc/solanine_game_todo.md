@@ -8,7 +8,7 @@
 ## MVP Development.
 
 - [ ] Movement, Combat, Materialization.
-    - [ ] `improved_sim_char_todo.md`
+    - [x] `improved_sim_char_todo.md`
     - [ ] `weapon_gameplay_todo.md`
     - [ ] `harvesting_and_weapon_materialization_todo.md`
 - [ ] Time, Seasons, Scarcity & Abundance.

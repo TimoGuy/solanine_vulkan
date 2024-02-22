@@ -2108,6 +2108,8 @@ bool moveToTryStickToGround(vec3& inoutPosition, vec3 paramDeltaPosition, float_
 
 void processCollideAndSlideBackend(SimulationCharacter_XData::BackendMovementInputState& bmis, physengine::CapsulePhysicsData* cpd, float_t simDeltaTime)
 {
+    ZoneScoped;
+
     // Use collide and slide algorithm.
     vec3 currentPosition;
     physengine::getCharacterPosition(*cpd, currentPosition);
@@ -2354,6 +2356,8 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
     // Frontend movement state machine.
     if (isPlayer(d) && !d->disableInput)  // @INCOMPLETE: should have `disableInput` be connected to the actual inputs of this, not part of this if statement.
     {
+        ZoneScopedN("Frontend mvt state machine");
+
         SimulationCharacter_XData::FrontendMovementInputState::MovementType mvtTypeCopy;
         do
         {

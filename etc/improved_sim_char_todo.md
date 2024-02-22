@@ -11,7 +11,7 @@
     - [x] Airborne collide and slide.
         - [x] Ceiling detection. Reset vertical velocity when ceiling is detected too.
 
-- [ ] Front end movement system (player).
+- [x] Front end movement system (player).
     - [x] Grounded
         - [x] Move in specific direction and turn instead of directly changing velocity.
         - [x] If move in opposite direction, skid and turn around.
@@ -20,11 +20,11 @@
         - [x] Whatever direction held, velocity is added. No turning.
     - [x] Landing
         - [x] Whatever direction is moving when landing is immediate set facing direction.
-            > REGRESSION
     - [x] Jumping
         - [x] Immediate change in facing direction of what direction is held.
-    - [ ] Misc.
-        - [ ] Moving up slopes makes movement super slow. Ignore previous frame's velocity and just base off of grounded, standing normal.
+    - [x] Misc.
+        - [x] Moving up slopes makes movement super slow. Ignore previous frame's velocity and just base off of grounded, standing normal.
+    > @NOTE: in the future you'll have to improve the sim char when implementing moving platforms, high velocity, etc. bc there's nothing that "resets" their velocity, so if they move really fast into a wall, the velocity doesn't get zero'd out.  -Timo 2024/02/22
 
 
 
