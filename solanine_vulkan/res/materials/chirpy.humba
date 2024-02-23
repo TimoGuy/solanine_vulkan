@@ -1,11 +1,8 @@
 Hawsoo Unique Material BAse
-dev_collision.vert.spv
+chirpy.vert.spv
 ---
-dev_collision.frag.spv
+chirpy.frag.spv
 
 # Var Type  | Mapping to   | MaterialCollection :: MaterialParam :: member name
-sampler2D    texture_idx    textureMapIndex
-vec4         121            standableColor
-vec4         121            steepColor
-float        121            slopeAngleSin
+vec4         121            colorWFresnel
 ---

@@ -1664,7 +1664,7 @@ SimulationCharacter::SimulationCharacter(EntityManager* em, RenderObjectManager*
             "EventPlayChirpSFX", [&]() {
                 if (isPlayer(_data))
                     AudioEngine::getInstance().playSoundFromList({
-                        "res/sfx/wip_hollow_knight_sfx/hero_shade_dash_1.wav",
+                        "res/sfx/wip_metronome_tick.wav",
                     });
             }
         },

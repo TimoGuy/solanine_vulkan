@@ -2,7 +2,4 @@ Hawsoo DERived MateRIal parametER Entry
 HUMBA                           chirpy.humba
 
 # MaterialCollection :: MaterialParam :: members
-textureMapIndex    grid256
-standableColor     0.000000,1.000000,0.000000,1.000000
-steepColor         1.000000,0.000000,0.000000,1.000000
-slopeAngleSin      0.69465837045    # @NOTE: Using sin 44 degrees so that 45 deg can be sure to be green. Sin 45: 0.70710678118
+colorWFresnel      1.000000,1.000000,1.000000,0.750000
