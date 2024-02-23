@@ -36,6 +36,7 @@ struct SimulationCharacter_XData
     RenderObject*            handleRenderObj;
     RenderObject*            weaponRenderObj;
     std::string              weaponAttachmentJointName;
+    RenderObject*            chirpySphereRenderObj;
 
     physengine::CapsulePhysicsData* cpd;
     std::vector<vec3s> basePoints;
@@ -1658,9 +1659,21 @@ SimulationCharacter::SimulationCharacter(EntityManager* em, RenderObjectManager*
         },*/
     };
 
+    std::vector<vkglTF::Animator::AnimatorCallback> chirpSphereAnimatorCallbacks = {
+        {
+            "EventPlayChirpSFX", [&]() {
+                if (isPlayer(_data))
+                    AudioEngine::getInstance().playSoundFromList({
+                        "res/sfx/wip_hollow_knight_sfx/hero_shade_dash_1.wav",
+                    });
+            }
+        },
+    };
+
     vkglTF::Model* characterModel = _data->rom->getModel("SlimeGirl", this, [](){});
     vkglTF::Model* handleModel = _data->rom->getModel("Handle", this, [](){});
     vkglTF::Model* weaponModel = _data->rom->getModel("WingWeapon", this, [](){});
+    vkglTF::Model* chirpSphereModel = _data->rom->getModel("ChirpAnimatedSphere", this, [](){});
 
     _data->rom->registerRenderObjects({
             {
@@ -1680,8 +1693,15 @@ SimulationCharacter::SimulationCharacter(EntityManager* em, RenderObjectManager*
                 .renderLayer = RenderLayer::INVISIBLE,
                 .attachedEntityGuid = getGUID(),
             },
+            {
+                .model = chirpSphereModel,
+                .animator = new vkglTF::Animator(chirpSphereModel, chirpSphereAnimatorCallbacks),
+                .simTransformId = _data->cpd->simTransformId,
+                .renderLayer = RenderLayer::VISIBLE,
+                .attachedEntityGuid = getGUID(),
+            },
         },
-        { &_data->characterRenderObj, &_data->handleRenderObj, &_data->weaponRenderObj }
+        { &_data->characterRenderObj, &_data->handleRenderObj, &_data->weaponRenderObj, &_data->chirpySphereRenderObj }
     );
 
     glm_mat4_identity(_data->characterRenderObj->simTransformOffset);
@@ -1713,7 +1733,7 @@ SimulationCharacter::~SimulationCharacter()
     }
 
     delete _data->characterRenderObj->animator;
-    _data->rom->unregisterRenderObjects({ _data->characterRenderObj, _data->handleRenderObj, _data->weaponRenderObj });
+    _data->rom->unregisterRenderObjects({ _data->characterRenderObj, _data->handleRenderObj, _data->weaponRenderObj, _data->chirpySphereRenderObj });
     _data->rom->removeModelCallbacks(this);
 
     physengine::destroyCapsule(_data->cpd);

@@ -12,6 +12,11 @@
 
     - [ ] Create pulse with visual and audio.
         - [ ] FOR NOW: "Chirp" can be created with just a simple animated transparent sphere.
+        - [ ] Create the shader.
+        - [ ] ~~Fix events not running @0.0 when looping animation.~~
+            > I think this is actually supposed to be the case?
+        - [x] Add chirp sfx.
+
 
 - [ ] Attacking with rhythm.
     - [ ] .

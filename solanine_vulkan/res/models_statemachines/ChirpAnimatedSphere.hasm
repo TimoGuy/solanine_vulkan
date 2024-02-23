@@ -1,0 +1,5 @@
+:DefaultState
+  animation DefaultAnim
+  loop      0
+  event     0.0    EventPlayChirpSFX
+  on_finish DefaultState
