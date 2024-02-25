@@ -13,6 +13,7 @@ struct InstancePointer
 	uint materialID;
 	uint animatorNodeID;
 	uint voxelFieldLightingGridID;
+	// float ditherAmount;  // @TODO: for displaying an object partially transparent/dithered out, implement this! For sure something like a character getting too close to the camera so they fade away will use this!  -Timo 2024/02/24
 };
 
 layout(std140, set = 2, binding = 0) readonly buffer InstancePtrBuffer

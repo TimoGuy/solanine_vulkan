@@ -11,12 +11,17 @@
         > @NOTE6: Enemy also have weapon durability, which means you can break their weapon, and you as the player can't take their weapon bc of your contract with your ancient weapon. It has to be copied then materialized to be able to be used by player.
 
     - [ ] Create pulse with visual and audio.
-        - [ ] FOR NOW: "Chirp" can be created with just a simple animated transparent sphere.
+        - [x] FOR NOW: "Chirp" can be created with just a simple animated transparent sphere.
         - [x] Create the shader.
         - [ ] ~~Fix events not running @0.0 when looping animation.~~
             > I think this is actually supposed to be the case?
         - [x] Add chirp sfx.
-        - [ ] Add cutout shader support (add some ZPrepass shader override).
+        - [ ] ~~Add cutout shader support (add some ZPrepass shader override).~~
+            > The current ZPrepass implementation will likely be the only zprepass implementation for a shader. The best thing you can do is to add a transparency renderpass so that particle effects etc. can be implemented.
+        - [ ] Add transparency renderpass.
+            - [ ] ~~Do ZPrepass for that too.~~
+                > The primary reason why I want a transparency mode is so that I can get water, ice, and particles rendered. Water and ice would definitely be included in some zprepass, but not particles.
+            - [ ] `transparency_renderpass_todo.md` (Just particles)
 
 
 - [ ] Attacking with rhythm.

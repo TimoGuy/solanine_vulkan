@@ -48,30 +48,6 @@ layout (set = 0, binding = 3) uniform samplerCube    prefilteredMap;
 layout (set = 0, binding = 4) uniform sampler2D      samplerBRDFLUT;
 layout (set = 0, binding = 5) uniform sampler2DArray shadowMap;
 layout (set = 0, binding = 6) uniform sampler3D      shadowJitterMap;
-#define SMOOTH_SHADOWS_ON
-// #define SMOOTH_SHADOWS_SAMPLES_SQRT 8  // 8x8 samples
-// #define SMOOTH_SHADOWS_SAMPLES_COUNT 64
-// #define SMOOTH_SHADOWS_INV_SAMPLES_COUNT (1.0 / SMOOTH_SHADOWS_SAMPLES_COUNT)
-// #define SMOOTH_SHADOWS_SAMPLES_COUNT_DIV_2 32
-// #define SMOOTH_SHADOWS_INV_SAMPLES_COUNT_DIV_2 (1.0 / SMOOTH_SHADOWS_SAMPLES_COUNT_DIV_2)
-
-// #define SMOOTH_SHADOWS_SAMPLES_SQRT 6  // 6x6 samples
-// #define SMOOTH_SHADOWS_SAMPLES_COUNT 36
-// #define SMOOTH_SHADOWS_INV_SAMPLES_COUNT (1.0 / SMOOTH_SHADOWS_SAMPLES_COUNT)
-// #define SMOOTH_SHADOWS_SAMPLES_COUNT_DIV_2 18
-// #define SMOOTH_SHADOWS_INV_SAMPLES_COUNT_DIV_2 (1.0 / SMOOTH_SHADOWS_SAMPLES_COUNT_DIV_2)
-
-// #define SMOOTH_SHADOWS_SAMPLES_SQRT 4  // 4x4 samples
-// #define SMOOTH_SHADOWS_SAMPLES_COUNT 16
-// #define SMOOTH_SHADOWS_INV_SAMPLES_COUNT (1.0 / SMOOTH_SHADOWS_SAMPLES_COUNT)
-// #define SMOOTH_SHADOWS_SAMPLES_COUNT_DIV_2 8
-// #define SMOOTH_SHADOWS_INV_SAMPLES_COUNT_DIV_2 (1.0 / SMOOTH_SHADOWS_SAMPLES_COUNT_DIV_2)
-
-#define SMOOTH_SHADOWS_SAMPLES_SQRT 2  // 2x2 samples
-#define SMOOTH_SHADOWS_SAMPLES_COUNT 4
-#define SMOOTH_SHADOWS_INV_SAMPLES_COUNT (1.0 / SMOOTH_SHADOWS_SAMPLES_COUNT)
-#define SMOOTH_SHADOWS_SAMPLES_COUNT_DIV_2 2
-#define SMOOTH_SHADOWS_INV_SAMPLES_COUNT_DIV_2 (1.0 / SMOOTH_SHADOWS_SAMPLES_COUNT_DIV_2)
 
 
 // Instance ID Pointers
@@ -109,12 +85,6 @@ layout (std140, set = 3, binding = 0) readonly buffer MaterialCollection
 } materialCollection;
 
 layout (set = 3, binding = 1) uniform sampler2D textureMaps[];
-
-//
-// Voxel field lighting grid lightmaps
-//
-#define MAX_NUM_VOXEL_FIELD_LIGHTMAPS 8
-layout (set = 4, binding = 1) uniform sampler3D voxelFieldLightmaps[MAX_NUM_VOXEL_FIELD_LIGHTMAPS];
 
 
 void main()
