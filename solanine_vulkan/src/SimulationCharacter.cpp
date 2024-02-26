@@ -1662,10 +1662,10 @@ SimulationCharacter::SimulationCharacter(EntityManager* em, RenderObjectManager*
     std::vector<vkglTF::Animator::AnimatorCallback> chirpSphereAnimatorCallbacks = {
         {
             "EventPlayChirpSFX", [&]() {
-                if (isPlayer(_data))
-                    AudioEngine::getInstance().playSoundFromList({
-                        "res/sfx/wip_metronome_tick.wav",
-                    });
+                // if (isPlayer(_data))
+                //     AudioEngine::getInstance().playSoundFromList({
+                //         "res/sfx/wip_metronome_tick.wav",
+                //     });
             }
         },
     };
@@ -1693,15 +1693,15 @@ SimulationCharacter::SimulationCharacter(EntityManager* em, RenderObjectManager*
                 .renderLayer = RenderLayer::INVISIBLE,
                 .attachedEntityGuid = getGUID(),
             },
-            {
+            /*{
                 .model = chirpSphereModel,
                 .animator = new vkglTF::Animator(chirpSphereModel, chirpSphereAnimatorCallbacks),
                 .simTransformId = _data->cpd->simTransformId,
                 .renderLayer = RenderLayer::VISIBLE,
                 .attachedEntityGuid = getGUID(),
-            },
+            },*/
         },
-        { &_data->characterRenderObj, &_data->handleRenderObj, &_data->weaponRenderObj, &_data->chirpySphereRenderObj }
+        { &_data->characterRenderObj, &_data->handleRenderObj, &_data->weaponRenderObj, /*&_data->chirpySphereRenderObj*/ }
     );
 
     glm_mat4_identity(_data->characterRenderObj->simTransformOffset);
@@ -2372,6 +2372,83 @@ inline void frontendMovementFallingAndJumping(SimulationCharacter_XData* d, floa
 void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, EntityManager* em, const std::string& myGuid)
 {
     ZoneScoped;
+
+    // @NOCHECKIN: @EXPERIMENT /////////////////////////////////////////////////////////////////////////////////////////
+    if (isPlayer(d))
+    {
+        static int32_t jojo = 0;
+        // static int32_t tempo = 30;
+        static int32_t tempo = 20;
+
+        static ivec2 acceptableRange = { -5, 10 };  // @NOTE: based off this data: https://www.desmos.com/calculator/gttn6iwzy6
+
+        static std::vector<int32_t> onActionInputs;
+        static std::vector<int32_t> onReleaseInputs;
+
+        int32_t timing = jojo % tempo;
+        if (timing > tempo / 2)
+            timing -= tempo;  // Wrap to negative if too high.
+
+        if (input::simInputSet().attack.onAction)
+        {
+            if (timing >= acceptableRange[0] && timing <= acceptableRange[1])
+                AudioEngine::getInstance().playSoundFromList({
+                    "res/sfx/wip_hollow_knight_sfx/hero_super_dash_ready.wav",
+                });
+            onActionInputs.push_back(timing);
+            std::cout << timing << std::endl;
+        }
+        else if (input::simInputSet().attack.onRelease)
+        {
+            if (timing >= acceptableRange[0] && timing <= acceptableRange[1])
+                AudioEngine::getInstance().playSoundFromList({
+                    "res/sfx/wip_hollow_knight_sfx/hero_nail_art_great_slash.wav",
+                });
+            onReleaseInputs.push_back(timing);
+            std::cout << timing << std::endl;
+        }
+
+        // Heartbeat sound cue.
+        if (timing == 0)
+            AudioEngine::getInstance().playSoundFromList({
+                "res/sfx/wip_heart_down_0.wav",
+                "res/sfx/wip_heart_down_1.wav",
+                "res/sfx/wip_heart_down_2.wav",
+                "res/sfx/wip_heart_down_3.wav",
+                "res/sfx/wip_heart_down_4.wav",
+            });
+            // AudioEngine::getInstance().playSoundFromList({
+            //     "res/sfx/wip_heart_up_0.wav",
+            //     "res/sfx/wip_heart_up_1.wav",
+            //     "res/sfx/wip_heart_up_2.wav",
+            //     "res/sfx/wip_heart_up_3.wav",
+            //     "res/sfx/wip_heart_up_4.wav",
+            // });
+
+        jojo++;
+
+        // Create input latency report.
+        // @THOUGHT: I think this is gonna have to be needed for every run thru. Some kind of calibration both audibly and visually.  -Timo 2024/02/26
+        if (input::simInputSet().detach.onAction)
+        {
+            std::cout << "ON ACTION:" << std::endl;
+            std::map<int32_t, int32_t> onActionMap;
+            for (auto input : onActionInputs)
+                onActionMap[input]++;
+            for (auto it = onActionMap.begin(); it != onActionMap.end(); it++)
+                std::cout << it->first << ": " << it->second << std::endl;
+
+            std::cout << std::endl;
+
+            std::cout << "ON RELEASE:" << std::endl;
+            std::map<int32_t, int32_t> onReleaseMap;
+            for (auto input : onReleaseInputs)
+                onReleaseMap[input]++;
+            for (auto it = onReleaseMap.begin(); it != onReleaseMap.end(); it++)
+                std::cout << it->first << ": " << it->second << std::endl;
+        }
+    }
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     // Frontend movement state machine.
     if (isPlayer(d) && !d->disableInput)  // @INCOMPLETE: should have `disableInput` be connected to the actual inputs of this, not part of this if statement.
