@@ -9,6 +9,9 @@
             > I feel like if only the timing were more tight it would be a lot less noticable.
             > @POSITIVE_THOUGHT!: I do feel like it would feel just as tight as the player inputting the attacks bc the game already knows what the enemy is going to do on X beat, so as soon as the game knows what the player is gonna do (input on the beat), then the "clang" of both player and enemy performing an attack together will be on a good beat and will probs feel good. If the player does the attack input and the game knows the enemy isn't going to attack, then it's immediate there too. If the enemy is attacking and the player doesn't input an attack, then it will have to be on the last tick of the `acceptableRange`, however, if the player isn't even charging for an attack (i.e. they don't have the attack button already held), then it's impossible to execute an attack and the game won't have to wait until the last tick of `acceptableRange`, and can simply submit the player getting hurt on the beat. That case will surely feel on-beat and strong.
                 > @NOTE: all of this goes out the window if it becomes multiplayer pvp.
+        - [ ] Have enemies do their sound effects (when not relying upon seeing if player is gonna give out an attack if it's possible to even do during the beat) on the downbeat where `tempo == 0`. That would move the tightening to be so much better.
+            - [ ] MAYBE: could even just have all sonds, including the attack animation play out.
+            - [ ] Ummmmm, I don't know what I wrote one above, but I was fighting sleep. So, have all enemies do their action and sound on the downbeat, but if you as the player can unleash an attack before the last 10 ticks of timing window, then the attack from the enemy is blocked by your sword!
 
 
 
