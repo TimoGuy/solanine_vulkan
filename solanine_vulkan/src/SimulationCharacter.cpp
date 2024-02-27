@@ -90,6 +90,31 @@ struct SimulationCharacter_XData
         }
     } fmis;
 
+    struct EXPERIMENTAL__ShouldbeInSeparateClassCombatStateMachine
+    {
+        int32_t currentBeat = 0;
+        int32_t tempo = 20;                       // Number of simulation ticks for one beat (40 ticks per second, 20 tempo: twice per second, i.e. 120bpm)
+
+        ivec2 inputAcceptableRange = { -5, 10 };  // @NOTE: based off this data: https://www.desmos.com/calculator/gttn6iwzy6
+
+        enum class CombatState
+        {
+            IDLE = 0,
+            WEAPON_CHARGING,
+            ATTACK,
+        };
+        CombatState playerCombatState, playerNextCombatState;
+        CombatState enemyCombatState, enemyNextCombatState;
+
+        bool playerInputtedActionThisBeat = false;
+
+        bool interactionProcessed = false;
+    } csm;
+
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
     struct MovingPlatformAttachment
     {
         enum class AttachmentStage
@@ -2369,6 +2394,207 @@ inline void frontendMovementFallingAndJumping(SimulationCharacter_XData* d, floa
     glm_vec3_add(d->bmis.inputVelocity, deltaToTargetInput, d->bmis.inputVelocity);
 }
 
+void EXPERIMENTAL__playerCombatStateMachine(SimulationCharacter_XData* d, int32_t timing)
+{
+    bool timingInAcceptableRange =
+        (timing >= d->csm.inputAcceptableRange[0] && timing <= d->csm.inputAcceptableRange[1]);
+    bool timingBeginningOfInputRange = (timing == d->csm.inputAcceptableRange[0]);
+    bool timingEndOfInputRange = (timing == d->csm.inputAcceptableRange[1]);
+
+    // Allow input for this new beat.
+    if (timingBeginningOfInputRange)
+    {
+        d->csm.playerInputtedActionThisBeat = false;
+    }
+
+    // Process state machine.
+    switch (d->csm.playerCombatState)
+    {
+        typedef SimulationCharacter_XData::EXPERIMENTAL__ShouldbeInSeparateClassCombatStateMachine::CombatState CombatState_e;
+
+        case CombatState_e::IDLE:
+        {
+            // Press attack input for charging weapon.
+            if (timingInAcceptableRange && input::simInputSet().attack.onAction)
+            {
+                d->csm.playerNextCombatState = CombatState_e::WEAPON_CHARGING;
+                d->csm.playerInputtedActionThisBeat = true;
+            }
+
+            // Pretend like attack input press didn't happen.
+            if (d->csm.playerNextCombatState == CombatState_e::WEAPON_CHARGING &&
+                input::simInputSet().attack.onRelease)
+            {
+                d->csm.playerNextCombatState = CombatState_e::IDLE;
+                d->csm.playerInputtedActionThisBeat = false;
+            }
+        } break;
+
+        case CombatState_e::WEAPON_CHARGING:
+        {
+            // Release charge (can't go back into charging state until next beat).
+            if (input::simInputSet().attack.onRelease &&
+                !d->csm.playerInputtedActionThisBeat)
+            {
+                // For real attack.
+                if (timingInAcceptableRange)
+                {
+                    d->csm.playerNextCombatState = CombatState_e::ATTACK;
+                    d->csm.playerInputtedActionThisBeat = true;
+                }
+
+                // For missing attack beat and returning to Idle.
+                else
+                {
+                    d->csm.playerNextCombatState = CombatState_e::IDLE;
+                    d->csm.playerInputtedActionThisBeat = true;
+                }
+            }
+        } break;
+
+        case CombatState_e::ATTACK:
+        {
+            // No input accepted for this round. Don't wait for player.
+            d->csm.playerNextCombatState = CombatState_e::IDLE;
+            d->csm.playerInputtedActionThisBeat = true;
+        } break;
+    }
+}
+
+void EXPERIMENTAL__enemyCombatStateMachine(SimulationCharacter_XData* d, int32_t timing)
+{
+    if (timing != 0)
+        return;  // Only process if on downbeat.
+
+    // Process state machine.
+    switch (d->csm.enemyCombatState)
+    {
+        typedef SimulationCharacter_XData::EXPERIMENTAL__ShouldbeInSeparateClassCombatStateMachine::CombatState CombatState_e;
+
+        case CombatState_e::IDLE:
+        {
+            d->csm.enemyNextCombatState = CombatState_e::WEAPON_CHARGING;
+        } break;
+
+        case CombatState_e::WEAPON_CHARGING:
+        {
+            d->csm.enemyNextCombatState = CombatState_e::ATTACK;
+        } break;
+
+        case CombatState_e::ATTACK:
+        {
+            d->csm.enemyNextCombatState = CombatState_e::IDLE;
+        } break;
+    }
+}
+
+void EXPERIMENTAL__combatInteraction(SimulationCharacter_XData* d, int32_t timing)
+{
+    // Lock interaction criteria.
+    if (timing < 0)
+        d->csm.interactionProcessed = false;
+
+    if (d->csm.interactionProcessed)
+        return;
+
+    // Detect if everything is determined.
+    typedef SimulationCharacter_XData::EXPERIMENTAL__ShouldbeInSeparateClassCombatStateMachine::CombatState CombatState_e;
+    bool readyToCommitBeat =
+        timing >= 0 &&
+        (d->csm.playerCombatState != CombatState_e::WEAPON_CHARGING ||
+            d->csm.playerInputtedActionThisBeat ||
+            timing == d->csm.inputAcceptableRange[1]);
+    if (!readyToCommitBeat)
+        return;
+
+    // Increment player and enemy.
+    d->csm.playerCombatState = d->csm.playerNextCombatState;
+    d->csm.enemyCombatState = d->csm.enemyNextCombatState;
+
+    // Attack each other!
+    if (d->csm.playerCombatState == CombatState_e::ATTACK &&
+        d->csm.enemyCombatState == CombatState_e::ATTACK)
+    {
+        // Block each other.
+        AudioEngine::getInstance().playSoundFromList({
+            "res/sfx/wip_hollow_knight_sfx/hero_parry.wav",
+        });
+    }
+    else if (d->csm.playerCombatState == CombatState_e::ATTACK)
+    {
+        // Hit landed on enemy.
+        AudioEngine::getInstance().playSoundFromList({
+            "res/sfx/wip_hollow_knight_sfx/hero_nail_art_great_slash.wav",
+        });
+        AudioEngine::getInstance().playSoundFromList({
+            "res/sfx/wip_EnemyHit_Critical.wav",
+        });
+    }
+    else if (d->csm.enemyCombatState == CombatState_e::ATTACK)
+    {
+        // Hit landed on player.
+        AudioEngine::getInstance().playSoundFromList({
+            "res/sfx/wip_hollow_knight_sfx/hero_butterfly_blade.wav",
+        });
+        AudioEngine::getInstance().playSoundFromList({
+            "res/sfx/wip_bonk.ogg",
+        });
+    }
+
+    // Charge player weapon.
+    if (d->csm.playerCombatState == CombatState_e::WEAPON_CHARGING)
+    {
+        AudioEngine::getInstance().playSoundFromList({
+            "res/sfx/wip_hollow_knight_sfx/hero_super_dash_ready.wav",
+        });
+    }
+
+    // Charge enemy weapon.
+    if (d->csm.enemyCombatState == CombatState_e::WEAPON_CHARGING)
+    {
+        AudioEngine::getInstance().playSoundFromList({
+            "res/sfx/wip_hollow_knight_sfx/hero_dash.wav",
+        });
+    }
+
+    // Finish.
+    d->csm.interactionProcessed = true;
+}
+
+void EXPERIMENTAL__TickCombatStateMachine(SimulationCharacter_XData* d)
+{
+    int32_t timing = d->csm.currentBeat % d->csm.tempo;
+    if (timing > d->csm.tempo / 2)
+        timing -= d->csm.tempo;
+
+    // Process input state machines.
+    EXPERIMENTAL__playerCombatStateMachine(d, timing);
+    EXPERIMENTAL__enemyCombatStateMachine(d, timing);
+
+    // Process interactions.
+    EXPERIMENTAL__combatInteraction(d, timing);
+
+    // Heartbeat sound cue.
+    if (timing == 0)
+        AudioEngine::getInstance().playSoundFromList({
+            "res/sfx/wip_heart_down_0.wav",
+            "res/sfx/wip_heart_down_1.wav",
+            "res/sfx/wip_heart_down_2.wav",
+            "res/sfx/wip_heart_down_3.wav",
+            "res/sfx/wip_heart_down_4.wav",
+        });
+        // AudioEngine::getInstance().playSoundFromList({
+        //     "res/sfx/wip_heart_up_0.wav",
+        //     "res/sfx/wip_heart_up_1.wav",
+        //     "res/sfx/wip_heart_up_2.wav",
+        //     "res/sfx/wip_heart_up_3.wav",
+        //     "res/sfx/wip_heart_up_4.wav",
+        // });
+
+    // End tick.
+    d->csm.currentBeat++;
+}
+
 void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, EntityManager* em, const std::string& myGuid)
 {
     ZoneScoped;
@@ -2376,6 +2602,9 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
     // @NOCHECKIN: @EXPERIMENT /////////////////////////////////////////////////////////////////////////////////////////
     if (isPlayer(d))
     {
+        EXPERIMENTAL__TickCombatStateMachine(d);
+
+#if 0
         static int32_t jojo = 0;
         // static int32_t tempo = 30;
         static int32_t tempo = 20;
@@ -2385,6 +2614,9 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
         static std::vector<int32_t> onActionInputs;
         static std::vector<int32_t> onReleaseInputs;
 
+        static bool isHoldingAChargedAttack = false;
+        static int32_t startedChargedAttackHoldOnBeat = 0;
+
         int32_t timing = jojo % tempo;
         if (timing > tempo / 2)
             timing -= tempo;  // Wrap to negative if too high.
@@ -2392,21 +2624,70 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
         if (input::simInputSet().attack.onAction)
         {
             if (timing >= acceptableRange[0] && timing <= acceptableRange[1])
+            {
                 AudioEngine::getInstance().playSoundFromList({
                     "res/sfx/wip_hollow_knight_sfx/hero_super_dash_ready.wav",
                 });
+
+                isHoldingAChargedAttack = true;
+                startedChargedAttackHoldOnBeat = jojo;
+            }
             onActionInputs.push_back(timing);
             std::cout << timing << std::endl;
         }
         else if (input::simInputSet().attack.onRelease)
         {
             if (timing >= acceptableRange[0] && timing <= acceptableRange[1])
-                AudioEngine::getInstance().playSoundFromList({
-                    "res/sfx/wip_hollow_knight_sfx/hero_nail_art_great_slash.wav",
-                });
+            {
+                if (isHoldingAChargedAttack && startedChargedAttackHoldOnBeat < jojo)
+                {
+                    AudioEngine::getInstance().playSoundFromList({
+                        "res/sfx/wip_hollow_knight_sfx/hero_nail_art_great_slash.wav",
+                    });
+                }
+            }
+
+            isHoldingAChargedAttack = false;
+            startedChargedAttackHoldOnBeat = 0;
+
             onReleaseInputs.push_back(timing);
             std::cout << timing << std::endl;
         }
+
+        #define _ENEMY_SECTION_IF_YOU_CAN_IMAGINE_
+        #ifdef _ENEMY_SECTION_IF_YOU_CAN_IMAGINE_
+        {
+            static int32_t beatMeasure = 4;  // Enemy's rhythm is 4 beats per measure.
+            static int32_t currentBeat = 0;
+            if (timing == 0)
+            {
+                // Downbeat.
+                switch (currentBeat)
+                {
+                    case 0:
+                        break;
+
+                    case 1:
+                        break;
+
+                    case 2:
+                        AudioEngine::getInstance().playSoundFromList({
+                            "res/sfx/wip_hollow_knight_sfx/hero_dash.wav",
+                        });
+                        break;
+
+                    case 3:
+                        AudioEngine::getInstance().playSoundFromList({
+                            "res/sfx/wip_hollow_knight_sfx/hero_butterfly_blade.wav",
+                        });
+                        break;
+                }
+
+                // Increment.
+                currentBeat = (currentBeat + 1) % beatMeasure;
+            }
+        }
+        #endif  // _ENEMY_SECTION_IF_YOU_CAN_IMAGINE_
 
         // Heartbeat sound cue.
         if (timing == 0)
@@ -2425,6 +2706,7 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
             //     "res/sfx/wip_heart_up_4.wav",
             // });
 
+        // ZA ENDO!!!!
         jojo++;
 
         // Create input latency report.
@@ -2447,6 +2729,9 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
             for (auto it = onReleaseMap.begin(); it != onReleaseMap.end(); it++)
                 std::cout << it->first << ": " << it->second << std::endl;
         }
+
+#endif
+
     }
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
