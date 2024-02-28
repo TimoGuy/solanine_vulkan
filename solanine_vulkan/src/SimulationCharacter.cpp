@@ -96,6 +96,17 @@ struct SimulationCharacter_XData
         int32_t tempo = 20;                       // Number of simulation ticks for one beat (40 ticks per second, 20 tempo: twice per second, i.e. 120bpm)
 
         ivec2 inputAcceptableRange = { -5, 10 };  // @NOTE: based off this data: https://www.desmos.com/calculator/gttn6iwzy6
+        int32_t beatPerfectPosition = 0;
+
+        enum class BeatState
+        {
+            VOID_AREA = 0,
+            NEW_BEAT_START,
+            PRE_DOWN_BEAT,
+            DOWN_BEAT,  // Where modulated `currentBeat` == `beatPerfectPosition` (probably 0).
+            POST_DOWN_BEAT,
+            BEAT_FINAL_TICK,
+        } currentBeatState;
 
         enum class CombatState
         {
@@ -107,6 +118,7 @@ struct SimulationCharacter_XData
         CombatState enemyCombatState, enemyNextCombatState;
 
         bool playerInputtedActionThisBeat = false;
+        bool enemyInputtedActionThisBeat = false;
 
         bool interactionProcessed = false;
     } csm;
@@ -2394,77 +2406,112 @@ inline void frontendMovementFallingAndJumping(SimulationCharacter_XData* d, floa
     glm_vec3_add(d->bmis.inputVelocity, deltaToTargetInput, d->bmis.inputVelocity);
 }
 
-void EXPERIMENTAL__playerCombatStateMachine(SimulationCharacter_XData* d, int32_t timing)
+void EXPERIMENTAL__playerCombatStateMachine(SimulationCharacter_XData* d)
 {
-    bool timingInAcceptableRange =
-        (timing >= d->csm.inputAcceptableRange[0] && timing <= d->csm.inputAcceptableRange[1]);
-    bool timingBeginningOfInputRange = (timing == d->csm.inputAcceptableRange[0]);
-    bool timingEndOfInputRange = (timing == d->csm.inputAcceptableRange[1]);
+    typedef SimulationCharacter_XData::EXPERIMENTAL__ShouldbeInSeparateClassCombatStateMachine::CombatState CombatState_e;
+    typedef SimulationCharacter_XData::EXPERIMENTAL__ShouldbeInSeparateClassCombatStateMachine::BeatState BeatState_e;
 
-    // Allow input for this new beat.
-    if (timingBeginningOfInputRange)
+    bool inputValid = true;
+
+    // Read beat state.
+    switch (d->csm.currentBeatState)
     {
-        d->csm.playerInputtedActionThisBeat = false;
+        case BeatState_e::VOID_AREA:
+            d->csm.playerInputtedActionThisBeat = false;
+            inputValid = false;
+            break;
     }
 
     // Process state machine.
     switch (d->csm.playerCombatState)
     {
-        typedef SimulationCharacter_XData::EXPERIMENTAL__ShouldbeInSeparateClassCombatStateMachine::CombatState CombatState_e;
-
-        case CombatState_e::IDLE:
-        {
-            // Press attack input for charging weapon.
-            if (timingInAcceptableRange && input::simInputSet().attack.onAction)
-            {
-                d->csm.playerNextCombatState = CombatState_e::WEAPON_CHARGING;
-                d->csm.playerInputtedActionThisBeat = true;
-            }
-
-            // Pretend like attack input press didn't happen.
-            if (d->csm.playerNextCombatState == CombatState_e::WEAPON_CHARGING &&
-                input::simInputSet().attack.onRelease)
+        case CombatState_e::ATTACK:
+            // By default go back to idle.
+            if (d->csm.currentBeatState == BeatState_e::NEW_BEAT_START)
             {
                 d->csm.playerNextCombatState = CombatState_e::IDLE;
-                d->csm.playerInputtedActionThisBeat = false;
+                d->csm.playerInputtedActionThisBeat = true;
+            }
+            // @NOTE: so that player can input another weapon charging event right after an attack, 
+        case CombatState_e::IDLE:
+        {
+            if (inputValid)
+            {
+                // Press attack input for charging weapon.
+                bool inputAttack =
+                    (input::simInputSet().attack.onAction ||
+                    (d->csm.currentBeatState == BeatState_e::NEW_BEAT_START &&
+                        input::simInputSet().attack.holding));
+                if (inputAttack)
+                {
+                    d->csm.playerNextCombatState = CombatState_e::WEAPON_CHARGING;
+                    d->csm.playerInputtedActionThisBeat = true;
+                    AudioEngine::getInstance().playSoundFromList({
+                        "res/sfx/wip_hollow_knight_sfx/hero_super_dash_ready.wav",
+                    });
+                }
+
+                // Pretend like attack input press didn't happen.
+                if (d->csm.playerNextCombatState == CombatState_e::WEAPON_CHARGING &&
+                    input::simInputSet().attack.onRelease)
+                {
+                    d->csm.playerNextCombatState = CombatState_e::IDLE;
+                    d->csm.playerInputtedActionThisBeat = false;
+                }
             }
         } break;
 
         case CombatState_e::WEAPON_CHARGING:
         {
             // Release charge (can't go back into charging state until next beat).
-            if (input::simInputSet().attack.onRelease &&
+            bool inputRelease =
+                (input::simInputSet().attack.onRelease ||
+                (d->csm.currentBeatState == BeatState_e::NEW_BEAT_START &&
+                    !input::simInputSet().attack.holding));
+
+            // @DEBUG.
+            // std::cout << (int32_t)d->csm.currentBeatState << "\t" << inputRelease << "\t" << d->csm.playerInputtedActionThisBeat << std::endl;
+
+            if (inputRelease &&
                 !d->csm.playerInputtedActionThisBeat)
             {
                 // For real attack.
-                if (timingInAcceptableRange)
+                if (inputValid)
                 {
                     d->csm.playerNextCombatState = CombatState_e::ATTACK;
-                    d->csm.playerInputtedActionThisBeat = true;
+                    AudioEngine::getInstance().playSoundFromList({
+                        "res/sfx/wip_hollow_knight_sfx/hero_nail_art_great_slash.wav",
+                    });
                 }
 
                 // For missing attack beat and returning to Idle.
                 else
                 {
                     d->csm.playerNextCombatState = CombatState_e::IDLE;
-                    d->csm.playerInputtedActionThisBeat = true;
                 }
-            }
-        } break;
 
-        case CombatState_e::ATTACK:
-        {
-            // No input accepted for this round. Don't wait for player.
-            d->csm.playerNextCombatState = CombatState_e::IDLE;
-            d->csm.playerInputtedActionThisBeat = true;
+                // Either way, an action was inputted/committed to.
+                d->csm.playerInputtedActionThisBeat = true;
+            }
         } break;
     }
 }
 
-void EXPERIMENTAL__enemyCombatStateMachine(SimulationCharacter_XData* d, int32_t timing)
+void EXPERIMENTAL__enemyCombatStateMachine(SimulationCharacter_XData* d)
 {
-    if (timing != 0)
-        return;  // Only process if on downbeat.
+    // Read beat state.
+    switch (d->csm.currentBeatState)
+    {
+        typedef SimulationCharacter_XData::EXPERIMENTAL__ShouldbeInSeparateClassCombatStateMachine::BeatState BeatState_e;
+
+        case BeatState_e::VOID_AREA:
+            d->csm.enemyInputtedActionThisBeat = false;
+        case BeatState_e::NEW_BEAT_START:
+        case BeatState_e::PRE_DOWN_BEAT:
+        case BeatState_e::POST_DOWN_BEAT:
+        case BeatState_e::BEAT_FINAL_TICK:
+            return;  // Exit bc not a downbeat.
+    }
 
     // Process state machine.
     switch (d->csm.enemyCombatState)
@@ -2473,11 +2520,17 @@ void EXPERIMENTAL__enemyCombatStateMachine(SimulationCharacter_XData* d, int32_t
 
         case CombatState_e::IDLE:
         {
+            AudioEngine::getInstance().playSoundFromList({
+                "res/sfx/wip_hollow_knight_sfx/hero_dash.wav",
+            });
             d->csm.enemyNextCombatState = CombatState_e::WEAPON_CHARGING;
         } break;
 
         case CombatState_e::WEAPON_CHARGING:
         {
+            AudioEngine::getInstance().playSoundFromList({
+                "res/sfx/wip_hollow_knight_sfx/hero_butterfly_blade.wav",
+            });
             d->csm.enemyNextCombatState = CombatState_e::ATTACK;
         } break;
 
@@ -2486,30 +2539,103 @@ void EXPERIMENTAL__enemyCombatStateMachine(SimulationCharacter_XData* d, int32_t
             d->csm.enemyNextCombatState = CombatState_e::IDLE;
         } break;
     }
+    d->csm.enemyInputtedActionThisBeat = true;
 }
 
-void EXPERIMENTAL__combatInteraction(SimulationCharacter_XData* d, int32_t timing)
+void EXPERIMENTAL__combatInteraction(SimulationCharacter_XData* d)
 {
-    // Lock interaction criteria.
-    if (timing < 0)
-        d->csm.interactionProcessed = false;
+    typedef SimulationCharacter_XData::EXPERIMENTAL__ShouldbeInSeparateClassCombatStateMachine::BeatState BeatState_e;
+    typedef SimulationCharacter_XData::EXPERIMENTAL__ShouldbeInSeparateClassCombatStateMachine::CombatState CombatState_e;
 
+    // Read beat state.
+    switch (d->csm.currentBeatState)
+    {
+        case BeatState_e::VOID_AREA:
+        case BeatState_e::NEW_BEAT_START:
+        case BeatState_e::PRE_DOWN_BEAT:
+            d->csm.interactionProcessed = false;
+            return;  // Exit bc not allowed to process in these beat states.
+
+        case BeatState_e::BEAT_FINAL_TICK:
+            // Increment combat state.
+            // @NOTE: you would think that incrementing the state is when you commit and do the interaction, however,
+            //        that causes the player input to lag if inputted after the downbeat.  -Timo 2024/02/27
+            d->csm.playerCombatState = d->csm.playerNextCombatState;
+            d->csm.enemyCombatState = d->csm.enemyNextCombatState;
+
+            // @DEBUG.
+            // std::cout << "-------------------------------------" << std::endl;
+            // std::cout << "PLAYER: " << (int32_t)d->csm.playerCombatState << std::endl;
+            // std::cout << "ENEMY : " << (int32_t)d->csm.enemyCombatState << std::endl;
+            break;
+    }
+
+    if (d->csm.interactionProcessed)
+        return;  // Do not process multiple interactions until next reset.
+
+    // Check should process interaction.
+    bool waitForPlayerInput =
+        (d->csm.playerCombatState == CombatState_e::WEAPON_CHARGING);
+    bool gatheredNecessaryInputs =
+        ((!waitForPlayerInput || d->csm.playerInputtedActionThisBeat) &&
+            d->csm.enemyInputtedActionThisBeat);
+    bool isFinalBeat = (d->csm.currentBeatState == BeatState_e::BEAT_FINAL_TICK);
+    bool doInteraction = (gatheredNecessaryInputs || isFinalBeat);
+    if (!doInteraction)
+        return;  // Exit early since determined shouldn't do interaction.
+
+    // Attack each other!
+    if (d->csm.playerNextCombatState == CombatState_e::ATTACK &&
+        d->csm.enemyNextCombatState == CombatState_e::ATTACK)
+    {
+        // Block each other.
+        AudioEngine::getInstance().playSoundFromList({
+            "res/sfx/wip_hollow_knight_sfx/hero_parry.wav",
+        });
+    }
+    else if (d->csm.playerNextCombatState == CombatState_e::ATTACK)
+    {
+        // Hit landed on enemy.
+        AudioEngine::getInstance().playSoundFromList({
+            "res/sfx/wip_EnemyHit_Critical.wav",
+        });
+    }
+    else if (d->csm.enemyNextCombatState == CombatState_e::ATTACK)
+    {
+        // Hit landed on player.
+        AudioEngine::getInstance().playSoundFromList({
+            "res/sfx/wip_bonk.ogg",
+        });
+    }
+
+    // Finish.
+    d->csm.interactionProcessed = true;
+
+
+
+
+#if 0
+    // Unlock interaction criteria.
+    if (timing == d->csm.inputAcceptableRange[0])
+        d->csm.interactionProcessed = false;
     if (d->csm.interactionProcessed)
         return;
 
     // Detect if everything is determined.
-    typedef SimulationCharacter_XData::EXPERIMENTAL__ShouldbeInSeparateClassCombatStateMachine::CombatState CombatState_e;
     bool readyToCommitBeat =
         timing >= 0 &&
-        (d->csm.playerCombatState != CombatState_e::WEAPON_CHARGING ||
+        (//d->csm.playerCombatState != CombatState_e::WEAPON_CHARGING ||
             d->csm.playerInputtedActionThisBeat ||
             timing == d->csm.inputAcceptableRange[1]);
     if (!readyToCommitBeat)
         return;
 
+
     // Increment player and enemy.
-    d->csm.playerCombatState = d->csm.playerNextCombatState;
-    d->csm.enemyCombatState = d->csm.enemyNextCombatState;
+
+    std::cout << "-------------------------------------" << std::endl;
+    std::cout << "PLAYER: " << (int32_t)d->csm.playerCombatState << std::endl;
+    std::cout << "ENEMY : " << (int32_t)d->csm.enemyCombatState << std::endl;
 
     // Attack each other!
     if (d->csm.playerCombatState == CombatState_e::ATTACK &&
@@ -2524,9 +2650,6 @@ void EXPERIMENTAL__combatInteraction(SimulationCharacter_XData* d, int32_t timin
     {
         // Hit landed on enemy.
         AudioEngine::getInstance().playSoundFromList({
-            "res/sfx/wip_hollow_knight_sfx/hero_nail_art_great_slash.wav",
-        });
-        AudioEngine::getInstance().playSoundFromList({
             "res/sfx/wip_EnemyHit_Critical.wav",
         });
     }
@@ -2534,48 +2657,48 @@ void EXPERIMENTAL__combatInteraction(SimulationCharacter_XData* d, int32_t timin
     {
         // Hit landed on player.
         AudioEngine::getInstance().playSoundFromList({
-            "res/sfx/wip_hollow_knight_sfx/hero_butterfly_blade.wav",
-        });
-        AudioEngine::getInstance().playSoundFromList({
             "res/sfx/wip_bonk.ogg",
-        });
-    }
-
-    // Charge player weapon.
-    if (d->csm.playerCombatState == CombatState_e::WEAPON_CHARGING)
-    {
-        AudioEngine::getInstance().playSoundFromList({
-            "res/sfx/wip_hollow_knight_sfx/hero_super_dash_ready.wav",
-        });
-    }
-
-    // Charge enemy weapon.
-    if (d->csm.enemyCombatState == CombatState_e::WEAPON_CHARGING)
-    {
-        AudioEngine::getInstance().playSoundFromList({
-            "res/sfx/wip_hollow_knight_sfx/hero_dash.wav",
         });
     }
 
     // Finish.
     d->csm.interactionProcessed = true;
+#endif
 }
 
 void EXPERIMENTAL__TickCombatStateMachine(SimulationCharacter_XData* d)
 {
+    typedef SimulationCharacter_XData::EXPERIMENTAL__ShouldbeInSeparateClassCombatStateMachine::BeatState BeatState_e;
+
     int32_t timing = d->csm.currentBeat % d->csm.tempo;
-    if (timing > d->csm.tempo / 2)
+    if (timing > d->csm.inputAcceptableRange[1])
         timing -= d->csm.tempo;
 
+    // Compute current beat state.
+    if (timing < d->csm.inputAcceptableRange[0])
+        d->csm.currentBeatState = BeatState_e::VOID_AREA;
+    else if (timing == d->csm.inputAcceptableRange[0])
+        d->csm.currentBeatState = BeatState_e::NEW_BEAT_START;
+    else if (timing < d->csm.beatPerfectPosition)
+        d->csm.currentBeatState = BeatState_e::PRE_DOWN_BEAT;
+    else if (timing == d->csm.beatPerfectPosition)
+        d->csm.currentBeatState = BeatState_e::DOWN_BEAT;
+    else if (timing < d->csm.inputAcceptableRange[1])
+        d->csm.currentBeatState = BeatState_e::POST_DOWN_BEAT;
+    else if (timing == d->csm.inputAcceptableRange[1])
+        d->csm.currentBeatState = BeatState_e::BEAT_FINAL_TICK;
+    else
+        d->csm.currentBeatState = BeatState_e::VOID_AREA;
+
     // Process input state machines.
-    EXPERIMENTAL__playerCombatStateMachine(d, timing);
-    EXPERIMENTAL__enemyCombatStateMachine(d, timing);
+    EXPERIMENTAL__playerCombatStateMachine(d);
+    EXPERIMENTAL__enemyCombatStateMachine(d);
 
     // Process interactions.
-    EXPERIMENTAL__combatInteraction(d, timing);
+    EXPERIMENTAL__combatInteraction(d);
 
     // Heartbeat sound cue.
-    if (timing == 0)
+    if (d->csm.currentBeatState == BeatState_e::DOWN_BEAT)
         AudioEngine::getInstance().playSoundFromList({
             "res/sfx/wip_heart_down_0.wav",
             "res/sfx/wip_heart_down_1.wav",

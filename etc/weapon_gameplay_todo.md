@@ -4,18 +4,33 @@
 - [ ] Prototype/research gameplay.
     - [x] Does inputting button combos feel good in a set rhythm?
         > Yes. There needs to be a lot of wiggle room for input latency, and just bad sense of rhythm overall, but just going along with the "heartbeat" and doing the inputs feels really good.
-    - [ ] Does doing button combos in sync w/ rhythm feel good when fighting another enemy?
+    - [x] Does doing button combos in sync w/ rhythm feel good when fighting another enemy?
         > @PRE_THOUGHTS: Having successful hits getting landed (either by you or by enemy) would feel strong. Also, getting both enemy and player to perform an attack on the same "beat" needs to feel good (I feel like this has the possibility of feeling off of the beat and not very good).
             > I feel like if only the timing were more tight it would be a lot less noticable.
             > @POSITIVE_THOUGHT!: I do feel like it would feel just as tight as the player inputting the attacks bc the game already knows what the enemy is going to do on X beat, so as soon as the game knows what the player is gonna do (input on the beat), then the "clang" of both player and enemy performing an attack together will be on a good beat and will probs feel good. If the player does the attack input and the game knows the enemy isn't going to attack, then it's immediate there too. If the enemy is attacking and the player doesn't input an attack, then it will have to be on the last tick of the `acceptableRange`, however, if the player isn't even charging for an attack (i.e. they don't have the attack button already held), then it's impossible to execute an attack and the game won't have to wait until the last tick of `acceptableRange`, and can simply submit the player getting hurt on the beat. That case will surely feel on-beat and strong.
                 > @NOTE: all of this goes out the window if it becomes multiplayer pvp.
-        - [ ] Have enemies do their sound effects (when not relying upon seeing if player is gonna give out an attack if it's possible to even do during the beat) on the downbeat where `tempo == 0`. That would move the tightening to be so much better.
-            - [ ] MAYBE: could even just have all sonds, including the attack animation play out.
-            - [ ] Ummmmm, I don't know what I wrote one above, but I was fighting sleep. So, have all enemies do their action and sound on the downbeat, but if you as the player can unleash an attack before the last 10 ticks of timing window, then the attack from the enemy is blocked by your sword!
+        - [x] Have enemies do their sound effects (when not relying upon seeing if player is gonna give out an attack if it's possible to even do during the beat) on the downbeat where `tempo == 0`. That would move the tightening to be so much better.
+            - [ ] ~~MAYBE: could even just have all sonds, including the attack animation play out.~~
+            - [x] Ummmmm, I don't know what I wrote one above, but I was fighting sleep. So, have all enemies do their action and sound on the downbeat, but if you as the player can unleash an attack before the last 10 ticks of timing window, then the attack from the enemy is blocked by your sword!
+                > This feels a lot lot better!
+        - [x] Try allowing player to start charging their weapon if they're already holding the attack button on the first frame of the input window.
+            > It felt like my input was getting eaten.
+        
+        > CONCLUSION: I feel like they do feel good, however, I don't think the player should be required to follow the rhythm to attack.
+        >     Instead of being forced to follow the rhythm, have the "breathing technique" attacks be contingent upon good sense of rhythm with charging the attacks and releasing them. It increases poise, attack, defense, and it looks flashy too.
+        >     With being able to start an attack charge and release it at any time, this would feel very responsive. Then, if an attack is coming, the player can at any time block the incoming attack if they release attack at the right time.
+        >     With all this, I still want the player to be required to press and release the input in a certain rhythm for doing a "breathing technique" attack. This will be a learned thing from discovering learning rooms, instructors, etc.
+
+
+- [ ] Plan the new approach and what combat will now look like!
+    > It could be based off of Sekiro, though I haven't played the game. 
+    > I would like some more variety like if the enemy is blocking with their sword horizontal, doing a vertical slice snaps their sword in half; their sword vertical, doing a horizontal slice knocks the sword out of their hands and they run after it.
+    > There is no blocking, just attacking at the same time as an enemy to "parry".
+    > Enemies should be able to follow a visual rhythm of attack the player can dance with with their different moves.
 
 
 
-- [ ] Rhythm ticking while sword is out.
+- [d] ~~Rhythm ticking while sword is out.~~ @NOTE: since the rhythm is going to be internalized into the player itself, the player will decide the rhythm that they attack in. If it's the right tempo for "breathing techniques", then a flair will show up along with the attacks, signifying better attack, defense, poise, etc.
     > This rhythm is used to help with timing attacks for yourself. It shows up as a pulsing decal on the floor. Most attacks will require holding the attack button for one beat in the metronome (just have default be 120bpm for now). During this one beat, the entity places themselves into a stance to attack, and they don't change the direction of their move. Right when the next pulse clicks they release the stance, unleashing an attack (params: whether the attack was released too fast or too slow | the direction they're pushing the input joystick, since that will change what move they do next... the move ends in the direction they were pushing though).
     > @NOTE: the same weapon types will generally have the same range of their bpm, but the bpm of the attacking rhythm will change depending on a stat in the weapon. The enemies will definitely vary slightly too. Be sure to pay attention to their attack rhythm too and maybe you could awaseru yours with theirs! If you do that, then swords will clang for sure.
     > @NOTE2: the battle rhythm is definitely going on at all times. There isn't a way to change it. When an entity draws their sword, the draw is slow or fast in order to land on the next beat to initiate an attack. If the entity decides to start running off-rhythm, they will stumble for a sec. If they start their stance off-beat, then they will get a weak stance. 
@@ -37,10 +52,3 @@
                 > The primary reason why I want a transparency mode is so that I can get water, ice, and particles rendered. Water and ice would definitely be included in some zprepass, but not particles.
             - [ ] `transparency_renderpass_todo.md` (Just particles)
 
-
-
-- [ ] Attacking with rhythm.
-    - [ ] .
-
-- [ ] Weapon clashing with enemy.
-    - [ ] Add attack hitboxes.

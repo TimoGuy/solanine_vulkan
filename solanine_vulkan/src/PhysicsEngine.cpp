@@ -1428,9 +1428,21 @@ namespace physengine
         ZoneScoped;
 
         size_t simSetOffsetCopy = simSetOffset;
+
+        float_t physicsAlpha = getPhysicsAlpha();
+        if (physicsAlpha > 1.0f)
+        {
+            // Move to next set of transforms (it hopefully is added into next set of transforms).
+            // However, the tick that moves to the next set of transforms is handled on the simulation
+            // thread at the beginning of a loop after a delay to line up the 40hz simulation speed.
+            // That means that it's very much possible to get off on the render thread, so edit the
+            // accessing set of transforms here if needed.
+            simSetOffsetCopy++;
+            physicsAlpha -= 1.0f;
+        }
+
         size_t prevSimSet = (simSetOffsetCopy + 0) % 3;
         size_t currentSimSet = (simSetOffsetCopy + 1) % 3;
-        float_t physicsAlpha = getPhysicsAlpha();
 
         for (size_t i = 0; i < registeredSimSetIndices.size(); i++)
         {

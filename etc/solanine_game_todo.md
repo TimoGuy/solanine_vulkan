@@ -10,7 +10,8 @@
 - [ ] Movement, Combat, Materialization.
     - [x] `improved_sim_char_todo.md`
     - [ ] `weapon_gameplay_todo.md`
-        - [ ] `transparency_renderpass_todo.md` (Just particles)
+        - [ ] ~~`transparency_renderpass_todo.md` (Just particles)~~
+            > After prototyping the attack system gameplay feel, need to do different approach.
     - [ ] `harvesting_and_weapon_materialization_todo.md`
 - [ ] Time, Seasons, Scarcity & Abundance.
     - [ ] `time_mechanic_todo.md`
