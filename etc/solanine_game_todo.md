@@ -21,6 +21,10 @@
     - [ ] `villages_and_dungeon_quest_todo.md`
     - [ ] `dungeon_and_island_manipulation_todo.md`
 
+> @NOTES:
+>     IDEA: I felt like having a collectable item called _solanine_ would be really good, where if you consume it you develop a fever, rapid pulse, and rapid breathing (Ref: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9648270/). This from the perspective of the player slows down the game world to a third of the speed. Yes, the player character's heart rate is probably 240bpm (80bpm x 3), but more rhythmic and powerful moves are able to be dealt at the cost of some health. Leaving this state is by spitting out the consumed solanine.
+
+
 ## Art Direction and Engine Dev.
 
 > Finish `MVP Development` first.

@@ -25,8 +25,44 @@
 - [ ] Plan the new approach and what combat will now look like!
     > It could be based off of Sekiro, though I haven't played the game. 
     > I would like some more variety like if the enemy is blocking with their sword horizontal, doing a vertical slice snaps their sword in half; their sword vertical, doing a horizontal slice knocks the sword out of their hands and they run after it.
-    > There is no blocking, just attacking at the same time as an enemy to "parry".
+    > ~~There is no blocking, just attacking at the same time as an enemy to "parry".~~
     > Enemies should be able to follow a visual rhythm of attack the player can dance with with their different moves.
+
+
+- [ ] New combat approach from prototype.
+    > I haven't played Sekiro, but the combat reference (https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9648270/) is very informative and kinda completes the puzzle for how I want to design the combat system.
+
+    > The basic idea of the system of Sekiro's combat:
+        - Posture is spent while receiving attacks and it is dangerous to lose.
+        - Losing all posture puts one into a critical state where they cannot stand and will likely receive a critical blow from their opponent.
+        - Guarding against an attack spends posture.
+        - Getting hurt from an attack spends posture.
+        - Parrying does not spend posture.
+        - Posture slowly regains if it has been awhile since one lost some posture.
+        - There is an aggressive/offensive playstyle and defensive/passive playstyle that cause enemies to react in different ways.
+
+    > Things I want to add/revise:
+        - If both parties in duel clang swords together (both attack at same time), they knock back apart and both lose posture.
+        - If one party is guarding, the other can do a heavy attack (two beat hold) perpendicular to the direction the sword is facing to snap the sword in half.
+        - With all enemies and NPCs, there should be a clear, global metronomic rhythm (@120bpm) such that all these entities are synced up with attack rhythm at all times.
+            - Player will use this to their advantage in attacking and parrying.
+            - Not all enemies will always attack on the downbeat either. Some will attack in various rhythmic patterns, or use offbeats.
+
+    - [ ] Player combat.
+        - [ ] Attack.
+            > There's a weapon-charging state when holding the attack button (LMB), then the moment the attack button is let go of the attack is unleashed.
+            > If attack an enemy at the same time they attack, both player and enemy will get knocked back by a large clang.
+                > Higher level enemies will know to parry the player's attack, however.
+
+        - [ ] Guard.
+            > Holding the block button (RMB) brings the player into a block state. Player will double their defense in this position for the majority of attack types. Receiving an attack while guarding loses some posture.
+            > If player started an attack, at the beginning of the attack they can switch to doing a block, else no way to cancel the attack animation.
+
+        - [ ] Parry.
+            > Tapping the block button (RMB) at the same time as an enemy is attacking allows player to protect themselves from an attack without losing any posture, moreso causing the enemy to lose a bit of posture.
+
+    - [ ] Enemy combat.
+        - [ ] Rhythm based timer.
 
 
 
