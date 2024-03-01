@@ -17,6 +17,8 @@
         > You can just flick the blade off with the pull of a trigger, then pull out another blade from your arsenal.
 
     - [ ] Switching blades.
+        - [ ] #Throwing away the blade.
+        - [ ] Put away blade
 
 - [ ] @TO_DESIGN: blade inscription to add powers.
     > IDEA: discover these kanji characters that hold meaning when learning about the world and reading books. Can consult a carver to inscribe this character onto the _data_ of the blade stored in your Ancient Weapon. Then, the next time you materialize that blade, you can use the inscription.
