@@ -31,6 +31,7 @@
 
 - [ ] New combat approach from prototype.
     > I haven't played Sekiro, but the combat reference (https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9648270/) is very informative and kinda completes the puzzle for how I want to design the combat system.
+    > Other inspo: https://www.youtube.com/watch?v=7A0hj5IdF4A https://www.youtube.com/watch?v=7W4li9yfY3o
 
     > The basic idea of the system of Sekiro's combat:
         - Posture is spent while receiving attacks and it is dangerous to lose.
@@ -49,6 +50,10 @@
             - Not all enemies will always attack on the downbeat either. Some will attack in various rhythmic patterns, or use offbeats.
 
     - [ ] Player combat.
+        - [x] Tuning:
+            - [x] Make attack always fall on a certain point in the beat. Usu. the downbeat.
+                > THOUGHTS: This actually feels really good. You can start the weapon charge anytime, but the release is always going to land on the downbeat (or a little bit after to compensate for input delay).
+
         - [ ] Attack.
             > There's a weapon-charging state when holding the attack button (LMB), then the moment the attack button is let go of the attack is unleashed.
             > If attack an enemy at the same time they attack, both player and enemy will get knocked back by a large clang.
@@ -63,6 +68,12 @@
 
     - [ ] Enemy combat.
         - [ ] Rhythm based timer.
+
+    - [ ] Combat interaction.
+        - [ ] Parry tuning.
+            - [ ] Would wanna have good fudging so that player doesn't have to try to parry earlier than wanted.
+
+        - [ ] 
 
 
 

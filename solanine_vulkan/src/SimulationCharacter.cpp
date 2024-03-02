@@ -105,15 +105,26 @@ struct SimulationCharacter_XData
             struct ChargeUnleash
             {
                 int32_t beatsToCharge;
+                int32_t unleashBeatTick;  // @NOTE: 0 is the downbeat. 10 is the offbeat (if the tempo is 20).
+                int32_t beatsToUnleash;
+            };
+
+            // @TODO: this is for the enemies (move it to where the enemy combat is gonna occur).
+            struct EnemyChargeUnleash
+            {
+                int32_t startChargeBeatTick;
+                int32_t beatsToCharge;
                 int32_t beatsToUnleash;
             };
 
             ChargeUnleash lightAttack = {
                 .beatsToCharge = 20,
-                .beatsToUnleash = 20,
+                .unleashBeatTick = 0,
+                .beatsToUnleash = 10,
             };
             ChargeUnleash heavyAttack = {
                 .beatsToCharge = 40,
+                .unleashBeatTick = 0,
                 .beatsToUnleash = 20,
             };
         } variable;
@@ -123,7 +134,7 @@ struct SimulationCharacter_XData
             int32_t ticksToCancelAttack = 5;  // If a parry is pressed before this number of ticks passes in the attack state, then the state is changed to a parry state. If not, have to go thru the whole attack animation. Can switch to parry anytime during weapon charge.
             int32_t parryCoverTicks = 20;  // From moment press `parry` input, how many frames to wait for attack to come before end parry stance.
             int32_t ticksToWhyNotJustWaitForHeavyAttack = 5;  // If released input a little too soon before the heavy attack is charged enough, this metric just fudges it into a heavy attack.
-            int32_t fudgeAttackOntoDownbeat = 5;
+            int32_t fudgeAttackOntoBeatTick = 5;
         } input;
 
         struct InputState
@@ -2472,7 +2483,6 @@ void EXPERIMENTAL__playerCombatStateMachine(SimulationCharacter_XData* d)
     typedef SimulationCharacter_XData::EXPERIMENTAL__ShouldbeInSeparateClassCombatStateMachine::BeatState BeatState_e;
 
     auto& a = d->playerCombat;
-    bool isDownbeat = (d->csm.currentBeatState == BeatState_e::DOWN_BEAT);
 
     // Increment counters.
     a.state.parryTimer++;
@@ -2497,26 +2507,35 @@ void EXPERIMENTAL__playerCombatStateMachine(SimulationCharacter_XData* d)
             break;
 
         case CombatState_e::WEAPON_CHARGING:
-            if (a.state.chargeAttackTimer == a.variable.heavyAttack.beatsToCharge)
-                AudioEngine::getInstance().playSound("res/sfx/wip_LTTP_Sword_Charge.wav");
-
             if (!input::simInputSet().attack.holding)
             {
                 bool goForHeavyAttack =
                     (a.state.chargeAttackTimer + a.input.ticksToWhyNotJustWaitForHeavyAttack >
                         a.variable.heavyAttack.beatsToCharge);
-                int32_t beatsToCharge =
-                    (goForHeavyAttack ? a.variable.heavyAttack.beatsToCharge : a.variable.lightAttack.beatsToCharge);
+                auto& attack =
+                    (goForHeavyAttack ? a.variable.heavyAttack : a.variable.lightAttack);
 
-                // Finished charging attack. Unleash it.
-                if ((isDownbeat && a.state.chargeAttackTimer + a.input.fudgeAttackOntoDownbeat > beatsToCharge) ||
-                    a.state.chargeAttackTimer > beatsToCharge)
+                int32_t timing = (d->csm.currentBeat % d->csm.tempo) - attack.unleashBeatTick;
+                if ((input::simInputSet().attack.onRelease && timing <= a.input.fudgeAttackOntoBeatTick) ||  // Allow fudging late input release.
+                    timing == 0)
                 {
-                    a.state.combatState = CombatState_e::ATTACK;
-                    a.state.chargeAttackTimer = 0;
-                    a.state.unleashAttackTimer = 0;
-                    a.state.isHeavyAttack = goForHeavyAttack;
+                    int32_t beatsToCharge =
+                        (goForHeavyAttack ? a.variable.heavyAttack.beatsToCharge : a.variable.lightAttack.beatsToCharge);
+                    if (a.state.chargeAttackTimer + a.input.fudgeAttackOntoBeatTick > beatsToCharge)  // Fudge not having quite enough charge.
+                    {
+                        a.state.combatState = CombatState_e::ATTACK;
+                        a.state.chargeAttackTimer = 0;
+                        a.state.unleashAttackTimer = 0;
+                        a.state.isHeavyAttack = goForHeavyAttack;
+                    }
                 }
+
+                // bool withinUnleashAttackBeat = (std::abs() <= a.input.fudgeAttackOntoBeatTick);
+                // bool fudgeAttack = (d->csm.currentBeatState == BeatState_e::DOWN_BEAT);
+
+                // // Finished charging attack. Unleash it.
+                // if ((isDownbeat && a.state.chargeAttackTimer + a.input.fudgeAttackOntoDownbeat > beatsToCharge) ||
+                //     a.state.chargeAttackTimer > beatsToCharge)
             }
 
             // Switch to parry.
@@ -2590,12 +2609,6 @@ void EXPERIMENTAL__playerCombatStateMachine(SimulationCharacter_XData* d)
         // Entered new combat state.
         switch (a.state.combatState)
         {
-            case CombatState_e::IDLE:
-                break;
-
-            case CombatState_e::WEAPON_CHARGING:
-                break;
-
             case CombatState_e::ATTACK:
                 AudioEngine::getInstance().playSound(
                     a.state.isHeavyAttack ?
