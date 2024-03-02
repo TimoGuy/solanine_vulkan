@@ -224,6 +224,7 @@ namespace input
 		TwoAxis             flatPlaneMovement;
 		OnHoldReleaseAction jump;
 		OnHoldReleaseAction attack;
+		OnHoldReleaseAction parry;
 		OnHoldReleaseAction detach;
 		OnHoldReleaseAction focus;
 		OnAction            interact;

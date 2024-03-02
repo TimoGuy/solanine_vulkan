@@ -313,7 +313,8 @@ namespace input
 		flatPlaneMovement.update(h, v);
 		jump.update(keyMouseState.space);
 		attack.update(keyMouseState.LMB);
-		detach.update(keyMouseState.RMB);
+		parry.update(keyMouseState.RMB);
+		detach.update(keyMouseState.MMB);
 		focus.update(keyMouseState.lShift);
 		interact.update(keyMouseState.e);
 		respawn.update(keyMouseState.r, deltaTime);

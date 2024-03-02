@@ -87,10 +87,12 @@
 
 #ifdef _DEVELOP
     #define HAWSOO_CRASH() abort()
-    #define HAWSOO_PRINT_VEC3(v) std::cout << "X: " << v[0] << "\tY: " << v[1] << "\tZ: " << v[2] << std::endl
+    #define HAWSOO_PRINT_VEC3(v) std::cout << #v << ": (x=" << v[0] << "\ty=" << v[1] << "\ty=" << v[2] << ")" << std::endl
+    #define HAWSOO_PRINT_VAR(v) std::cout << #v << ": " << v << std::endl
 #else
     #define HAWSOO_CRASH()
     #define HAWSOO_PRINT_VEC3(v)
+    #define HAWSOO_PRINT_VAR(v)
 #endif
 
 #if TRACY_ENABLE

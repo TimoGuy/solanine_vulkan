@@ -90,10 +90,56 @@ struct SimulationCharacter_XData
         }
     } fmis;
 
+    enum class CombatState
+    {
+        IDLE = 0,
+        WEAPON_CHARGING,
+        ATTACK,
+        PARRYGUARD,
+    };
+
+    struct PlayerCombat
+    {
+        struct BladeDependentSettings
+        {
+            struct ChargeUnleash
+            {
+                int32_t beatsToCharge;
+                int32_t beatsToUnleash;
+            };
+
+            ChargeUnleash lightAttack = {
+                .beatsToCharge = 20,
+                .beatsToUnleash = 20,
+            };
+            ChargeUnleash heavyAttack = {
+                .beatsToCharge = 40,
+                .beatsToUnleash = 20,
+            };
+        } variable;
+
+        struct InputLatencyBufferingSettings
+        {
+            int32_t ticksToCancelAttack = 5;  // If a parry is pressed before this number of ticks passes in the attack state, then the state is changed to a parry state. If not, have to go thru the whole attack animation. Can switch to parry anytime during weapon charge.
+            int32_t parryCoverTicks = 20;  // From moment press `parry` input, how many frames to wait for attack to come before end parry stance.
+            int32_t ticksToWhyNotJustWaitForHeavyAttack = 5;  // If released input a little too soon before the heavy attack is charged enough, this metric just fudges it into a heavy attack.
+            int32_t fudgeAttackOntoDownbeat = 5;
+        } input;
+
+        struct InputState
+        {
+            CombatState combatState = CombatState::IDLE;
+            int32_t chargeAttackTimer = 0;
+            int32_t unleashAttackTimer = 0;
+            int32_t parryTimer = 0;  // Used for parrying and guarding.
+            bool isHeavyAttack = false;
+        } state;
+    } playerCombat;
+
     struct EXPERIMENTAL__ShouldbeInSeparateClassCombatStateMachine
     {
         int32_t currentBeat = 0;
-        int32_t tempo = 20;                       // Number of simulation ticks for one beat (40 ticks per second, 20 tempo: twice per second, i.e. 120bpm)
+        int32_t tempo = 20;  // Number of simulation ticks for one beat (40 ticks per second, 20 tempo: twice per second, i.e. 120bpm)
 
         ivec2 inputAcceptableRange = { -5, 10 };  // @NOTE: based off this data: https://www.desmos.com/calculator/gttn6iwzy6
         int32_t beatPerfectPosition = 0;
@@ -108,13 +154,6 @@ struct SimulationCharacter_XData
             BEAT_FINAL_TICK,
         } currentBeatState;
 
-        enum class CombatState
-        {
-            IDLE = 0,
-            WEAPON_CHARGING,
-            ATTACK,
-        };
-        CombatState playerCombatState, playerNextCombatState;
         CombatState enemyCombatState, enemyNextCombatState;
 
         bool playerInputtedActionThisBeat = false;
@@ -2224,11 +2263,13 @@ void processCollideAndSlideBackend(SimulationCharacter_XData::BackendMovementInp
 
 inline void frontendMovementStanding(SimulationCharacter_XData* d)
 {
+    typedef SimulationCharacter_XData::FrontendMovementInputState::MovementType Movement_t;
+
     // Falling.
     if (!d->bmis.isGrounded)
     {
         d->fmis.setMvtType(
-            SimulationCharacter_XData::FrontendMovementInputState::MovementType::FALLING
+            Movement_t::FALLING
         );
         return;
     }
@@ -2237,7 +2278,7 @@ inline void frontendMovementStanding(SimulationCharacter_XData* d)
     if (input::simInputSet().jump.onAction)
     {
         d->fmis.setMvtType(
-            SimulationCharacter_XData::FrontendMovementInputState::MovementType::JUMPING
+            Movement_t::JUMPING
         );
         return;
     }
@@ -2248,7 +2289,7 @@ inline void frontendMovementStanding(SimulationCharacter_XData* d)
     if (glm_vec2_norm2(rawInput) > 0.000001f)
     {
         d->fmis.setMvtType(
-            SimulationCharacter_XData::FrontendMovementInputState::MovementType::RUNNING
+            Movement_t::RUNNING
         );
         return;
     }
@@ -2259,11 +2300,13 @@ inline void frontendMovementStanding(SimulationCharacter_XData* d)
 
 inline void frontendMovementRunning(SimulationCharacter_XData* d, float_t simDeltaTime)
 {
+    typedef SimulationCharacter_XData::FrontendMovementInputState::MovementType Movement_t;
+
     // Falling.
     if (!d->bmis.isGrounded)
     {
         d->fmis.setMvtType(
-            SimulationCharacter_XData::FrontendMovementInputState::MovementType::FALLING
+            Movement_t::FALLING
         );
         return;
     }
@@ -2272,7 +2315,7 @@ inline void frontendMovementRunning(SimulationCharacter_XData* d, float_t simDel
     if (input::simInputSet().jump.onAction)
     {
         d->fmis.setMvtType(
-            SimulationCharacter_XData::FrontendMovementInputState::MovementType::JUMPING
+            Movement_t::JUMPING
         );
         return;
     }
@@ -2339,7 +2382,7 @@ inline void frontendMovementRunning(SimulationCharacter_XData* d, float_t simDel
     if (!isMoving && std::abs(d->fmis.currentSpeed) < 0.000001f)
     {
         d->fmis.setMvtType(
-            SimulationCharacter_XData::FrontendMovementInputState::MovementType::STANDING
+            Movement_t::STANDING
         );
         return;
     }
@@ -2357,20 +2400,22 @@ inline void frontendMovementRunning(SimulationCharacter_XData* d, float_t simDel
 
 inline void frontendMovementFallingAndJumping(SimulationCharacter_XData* d, float_t simDeltaTime)
 {
+    typedef SimulationCharacter_XData::FrontendMovementInputState::MovementType Movement_t;
+
     // Landed.
     if (d->fmis.mvtTypeSteps > 0 && d->bmis.isGrounded)
     {
         vec2 rawInput;
         getRawXZInput(rawInput);
         d->fmis.setMvtType(
-            SimulationCharacter_XData::FrontendMovementInputState::MovementType::RUNNING
+            Movement_t::RUNNING
         );
         return;
     }
 
     // Jumping Movement.
     if (d->fmis.mvtTypeSteps == 0 &&
-        d->fmis.currentMvtType == SimulationCharacter_XData::FrontendMovementInputState::MovementType::JUMPING)
+        d->fmis.currentMvtType == Movement_t::JUMPING)
     {
         d->bmis.verticalVelocity = 14.0f;  // @HARDCODE.
     }
@@ -2393,10 +2438,25 @@ inline void frontendMovementFallingAndJumping(SimulationCharacter_XData* d, floa
     glm_vec3_scale(rawInput, d->fmis.maxSpeed, targetInput);
 
     // Find max delta speed.
+    float_t targetInputM2 = glm_vec3_norm2(targetInput);
+    float_t currentSpeedM2 = glm_vec3_norm2(d->bmis.inputVelocity);
     size_t accelOrDecel =
-        (glm_vec3_norm2(targetInput) > d->fmis.currentSpeed * d->fmis.currentSpeed ? 0 : 1);
+        (targetInputM2 > currentSpeedM2 ? 0 : 1);
+    float_t movementInfluence = 1.0f;
+    if (accelOrDecel == 0 && targetInputM2 > 0.000001f && currentSpeedM2 > 0.000001f)
+    {
+        // Add more acceleration if moving against the current moving direction.
+        vec3 targetInputN;
+        vec3 velocityN;
+        glm_vec3_normalize_to(targetInput, targetInputN);
+        glm_vec3_normalize_to(d->bmis.inputVelocity, velocityN);
+
+        float_t influence = glm_vec3_dot(targetInputN, velocityN);
+        influence = glm_clamp_zo(influence + 1.0f);  // Get the moving-against part of the dot product.
+        movementInfluence += glm_smoothstep(0.0f, 1.0f, 1.0f - influence);
+    }
     float_t maxDeltaSpeed =
-        d->fmis.airborneAccelDecel[accelOrDecel] * simDeltaTime;
+        d->fmis.airborneAccelDecel[accelOrDecel] * movementInfluence * simDeltaTime;
 
     // Move towards target input.
     vec3 deltaToTargetInput;
@@ -2408,92 +2468,146 @@ inline void frontendMovementFallingAndJumping(SimulationCharacter_XData* d, floa
 
 void EXPERIMENTAL__playerCombatStateMachine(SimulationCharacter_XData* d)
 {
-    typedef SimulationCharacter_XData::EXPERIMENTAL__ShouldbeInSeparateClassCombatStateMachine::CombatState CombatState_e;
+    typedef SimulationCharacter_XData::CombatState CombatState_e;
     typedef SimulationCharacter_XData::EXPERIMENTAL__ShouldbeInSeparateClassCombatStateMachine::BeatState BeatState_e;
 
-    bool inputValid = true;
+    auto& a = d->playerCombat;
+    bool isDownbeat = (d->csm.currentBeatState == BeatState_e::DOWN_BEAT);
 
-    // Read beat state.
-    switch (d->csm.currentBeatState)
+    // Increment counters.
+    a.state.parryTimer++;
+
+    // Process state machine.
+    auto combatStateCopy = a.state.combatState;
+    switch (a.state.combatState)
     {
-        case BeatState_e::VOID_AREA:
-            d->csm.playerInputtedActionThisBeat = false;
-            inputValid = false;
+        case CombatState_e::IDLE:
+            if (input::simInputSet().attack.onAction)
+            {
+                AudioEngine::getInstance().playSound("res/sfx/wip_hollow_knight_sfx/hero_super_dash_charge.wav");
+                a.state.combatState = CombatState_e::WEAPON_CHARGING;
+                a.state.chargeAttackTimer = 0;
+            }
+
+            if (input::simInputSet().parry.onAction)
+            {
+                a.state.combatState = CombatState_e::PARRYGUARD;
+                a.state.parryTimer = 0;  // @TODO: detect spamming. This should hold when the last parry was done to prevent spamming.
+            }
+            break;
+
+        case CombatState_e::WEAPON_CHARGING:
+            if (a.state.chargeAttackTimer == a.variable.heavyAttack.beatsToCharge)
+                AudioEngine::getInstance().playSound("res/sfx/wip_LTTP_Sword_Charge.wav");
+
+            if (!input::simInputSet().attack.holding)
+            {
+                bool goForHeavyAttack =
+                    (a.state.chargeAttackTimer + a.input.ticksToWhyNotJustWaitForHeavyAttack >
+                        a.variable.heavyAttack.beatsToCharge);
+                int32_t beatsToCharge =
+                    (goForHeavyAttack ? a.variable.heavyAttack.beatsToCharge : a.variable.lightAttack.beatsToCharge);
+
+                // Finished charging attack. Unleash it.
+                if ((isDownbeat && a.state.chargeAttackTimer + a.input.fudgeAttackOntoDownbeat > beatsToCharge) ||
+                    a.state.chargeAttackTimer > beatsToCharge)
+                {
+                    a.state.combatState = CombatState_e::ATTACK;
+                    a.state.chargeAttackTimer = 0;
+                    a.state.unleashAttackTimer = 0;
+                    a.state.isHeavyAttack = goForHeavyAttack;
+                }
+            }
+
+            // Switch to parry.
+            if (input::simInputSet().parry.onAction)
+            {
+                a.state.combatState = CombatState_e::PARRYGUARD;
+                a.state.parryTimer = 0;
+            }
+            
+            // Increment timer.
+            if (a.state.combatState == CombatState_e::WEAPON_CHARGING)
+                a.state.chargeAttackTimer++;
+            break;
+
+        case CombatState_e::ATTACK:
+            if (a.state.unleashAttackTimer > (a.state.isHeavyAttack ? a.variable.heavyAttack : a.variable.lightAttack).beatsToUnleash)
+            {
+                // Leave to idle (no charging was done to chain another attack).
+                if (a.state.chargeAttackTimer == 0)
+                {
+                    a.state.combatState = CombatState_e::IDLE;
+                }
+
+                // Leave to continue charging.
+                else
+                {
+                    a.state.combatState = CombatState_e::WEAPON_CHARGING;
+                }
+            }
+
+            // Charge another attack if wanted.
+            if (a.state.chargeAttackTimer > 0 &&
+                a.state.chargeAttackTimer < a.variable.lightAttack.beatsToCharge)  // @NOTE: Don't want to be able to charge a heavy attack while doing another attack. Light attacks can be chained but heavy attacks need to be charged the rest of the way after the attack has finished.  -Timo 2024/03/01
+                a.state.chargeAttackTimer++;
+            if (input::simInputSet().attack.onAction)
+            {
+                AudioEngine::getInstance().playSound("res/sfx/wip_hollow_knight_sfx/hero_super_dash_charge.wav");
+                a.state.chargeAttackTimer = 1;  // Start charging.
+            }
+
+            // Switch to parry.
+            if (input::simInputSet().parry.onAction &&
+                a.state.unleashAttackTimer <= a.input.ticksToCancelAttack)
+            {
+                a.state.combatState = CombatState_e::PARRYGUARD;
+                a.state.parryTimer = 0;
+            }
+
+            // Increment timer.
+            a.state.unleashAttackTimer++;
+            break;
+
+        case CombatState_e::PARRYGUARD:
+            // Leave parryguarding.
+            if (a.state.parryTimer > a.input.parryCoverTicks &&
+                !input::simInputSet().parry.holding)
+            {
+                a.state.combatState = CombatState_e::IDLE;
+                // @NOTE: we don't want to reset parrytimer so that we can detect spamming.
+            }
+
+            // Increment timer.
+            a.state.parryTimer++;
             break;
     }
 
-    // Process state machine.
-    switch (d->csm.playerCombatState)
+    // std::cout << "ASDFASDF: " << a.state.chargeAttackTimer << std::endl;  @NOCHECKIN @TODO @NEXT
+
+    if (combatStateCopy != a.state.combatState)
     {
-        case CombatState_e::ATTACK:
-            // By default go back to idle.
-            if (d->csm.currentBeatState == BeatState_e::NEW_BEAT_START)
-            {
-                d->csm.playerNextCombatState = CombatState_e::IDLE;
-                d->csm.playerInputtedActionThisBeat = true;
-            }
-            // @NOTE: so that player can input another weapon charging event right after an attack, 
-        case CombatState_e::IDLE:
+        // Entered new combat state.
+        switch (a.state.combatState)
         {
-            if (inputValid)
-            {
-                // Press attack input for charging weapon.
-                bool inputAttack =
-                    (input::simInputSet().attack.onAction ||
-                    (d->csm.currentBeatState == BeatState_e::NEW_BEAT_START &&
-                        input::simInputSet().attack.holding));
-                if (inputAttack)
-                {
-                    d->csm.playerNextCombatState = CombatState_e::WEAPON_CHARGING;
-                    d->csm.playerInputtedActionThisBeat = true;
-                    AudioEngine::getInstance().playSoundFromList({
-                        "res/sfx/wip_hollow_knight_sfx/hero_super_dash_ready.wav",
-                    });
-                }
+            case CombatState_e::IDLE:
+                break;
 
-                // Pretend like attack input press didn't happen.
-                if (d->csm.playerNextCombatState == CombatState_e::WEAPON_CHARGING &&
-                    input::simInputSet().attack.onRelease)
-                {
-                    d->csm.playerNextCombatState = CombatState_e::IDLE;
-                    d->csm.playerInputtedActionThisBeat = false;
-                }
-            }
-        } break;
+            case CombatState_e::WEAPON_CHARGING:
+                break;
 
-        case CombatState_e::WEAPON_CHARGING:
-        {
-            // Release charge (can't go back into charging state until next beat).
-            bool inputRelease =
-                (input::simInputSet().attack.onRelease ||
-                (d->csm.currentBeatState == BeatState_e::NEW_BEAT_START &&
-                    !input::simInputSet().attack.holding));
+            case CombatState_e::ATTACK:
+                AudioEngine::getInstance().playSound(
+                    a.state.isHeavyAttack ?
+                    "res/sfx/wip_hollow_knight_sfx/hero_nail_art_great_slash.wav" :
+                    "res/sfx/wip_hollow_knight_sfx/hero_super_dash_air_brake.wav"
+                );
+                break;
 
-            // @DEBUG.
-            // std::cout << (int32_t)d->csm.currentBeatState << "\t" << inputRelease << "\t" << d->csm.playerInputtedActionThisBeat << std::endl;
-
-            if (inputRelease &&
-                !d->csm.playerInputtedActionThisBeat)
-            {
-                // For real attack.
-                if (inputValid)
-                {
-                    d->csm.playerNextCombatState = CombatState_e::ATTACK;
-                    AudioEngine::getInstance().playSoundFromList({
-                        "res/sfx/wip_hollow_knight_sfx/hero_nail_art_great_slash.wav",
-                    });
-                }
-
-                // For missing attack beat and returning to Idle.
-                else
-                {
-                    d->csm.playerNextCombatState = CombatState_e::IDLE;
-                }
-
-                // Either way, an action was inputted/committed to.
-                d->csm.playerInputtedActionThisBeat = true;
-            }
-        } break;
+            case CombatState_e::PARRYGUARD:
+                AudioEngine::getInstance().playSound("res/sfx/wip_LSword_DownSwingAttackStart.wav");
+                break;
+        }
     }
 }
 
@@ -2516,7 +2630,7 @@ void EXPERIMENTAL__enemyCombatStateMachine(SimulationCharacter_XData* d)
     // Process state machine.
     switch (d->csm.enemyCombatState)
     {
-        typedef SimulationCharacter_XData::EXPERIMENTAL__ShouldbeInSeparateClassCombatStateMachine::CombatState CombatState_e;
+        typedef SimulationCharacter_XData::CombatState CombatState_e;
 
         case CombatState_e::IDLE:
         {
@@ -2542,10 +2656,11 @@ void EXPERIMENTAL__enemyCombatStateMachine(SimulationCharacter_XData* d)
     d->csm.enemyInputtedActionThisBeat = true;
 }
 
+#if 0
 void EXPERIMENTAL__combatInteraction(SimulationCharacter_XData* d)
 {
     typedef SimulationCharacter_XData::EXPERIMENTAL__ShouldbeInSeparateClassCombatStateMachine::BeatState BeatState_e;
-    typedef SimulationCharacter_XData::EXPERIMENTAL__ShouldbeInSeparateClassCombatStateMachine::CombatState CombatState_e;
+    typedef SimulationCharacter_XData::CombatState CombatState_e;
 
     // Read beat state.
     switch (d->csm.currentBeatState)
@@ -2665,6 +2780,7 @@ void EXPERIMENTAL__combatInteraction(SimulationCharacter_XData* d)
     d->csm.interactionProcessed = true;
 #endif
 }
+#endif
 
 void EXPERIMENTAL__TickCombatStateMachine(SimulationCharacter_XData* d)
 {
@@ -2692,10 +2808,10 @@ void EXPERIMENTAL__TickCombatStateMachine(SimulationCharacter_XData* d)
 
     // Process input state machines.
     EXPERIMENTAL__playerCombatStateMachine(d);
-    EXPERIMENTAL__enemyCombatStateMachine(d);
+    // EXPERIMENTAL__enemyCombatStateMachine(d);
 
     // Process interactions.
-    EXPERIMENTAL__combatInteraction(d);
+    // EXPERIMENTAL__combatInteraction(d);
 
     // Heartbeat sound cue.
     if (d->csm.currentBeatState == BeatState_e::DOWN_BEAT)
@@ -2863,20 +2979,22 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
     {
         ZoneScopedN("Frontend mvt state machine");
 
-        SimulationCharacter_XData::FrontendMovementInputState::MovementType mvtTypeCopy;
+        typedef SimulationCharacter_XData::FrontendMovementInputState::MovementType Movement_t;
+
+        Movement_t mvtTypeCopy;
         do
         {
             mvtTypeCopy = d->fmis.currentMvtType;
             switch (d->fmis.currentMvtType)
             {
-                case SimulationCharacter_XData::FrontendMovementInputState::MovementType::STANDING:
+                case Movement_t::STANDING:
                     frontendMovementStanding(d);
                     break;
-                case SimulationCharacter_XData::FrontendMovementInputState::MovementType::RUNNING:
+                case Movement_t::RUNNING:
                     frontendMovementRunning(d, simDeltaTime);
                     break;
-                case SimulationCharacter_XData::FrontendMovementInputState::MovementType::FALLING:
-                case SimulationCharacter_XData::FrontendMovementInputState::MovementType::JUMPING:
+                case Movement_t::FALLING:
+                case Movement_t::JUMPING:
                     frontendMovementFallingAndJumping(d, simDeltaTime);
                     break;
             }
