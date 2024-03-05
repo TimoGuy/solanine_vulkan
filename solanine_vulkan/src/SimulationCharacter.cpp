@@ -109,14 +109,6 @@ struct SimulationCharacter_XData
                 int32_t beatsToUnleash;
             };
 
-            // @TODO: this is for the enemies (move it to where the enemy combat is gonna occur).
-            struct EnemyChargeUnleash
-            {
-                int32_t startChargeBeatTick;
-                int32_t beatsToCharge;
-                int32_t beatsToUnleash;
-            };
-
             ChargeUnleash lightAttack = {
                 .beatsToCharge = 20,
                 .unleashBeatTick = 0,
@@ -146,6 +138,42 @@ struct SimulationCharacter_XData
             bool isHeavyAttack = false;
         } state;
     } playerCombat;
+
+    struct EnemyCombat
+    {
+        // List of all attacks to be referenced from.
+        struct ChargeUnleash
+        {
+            int32_t startChargeBeatTick;
+            int32_t beatsToCharge;
+            int32_t beatsToUnleash;
+        };
+        ChargeUnleash* allAttacks = nullptr;
+        size_t numAttacks;
+
+        // Sets of attacks.
+        struct AttackChain
+        {
+            size_t* serialAttackIndices = nullptr;  // Attacks will appear in this order.
+            size_t numIndices;
+            int32_t cooldownBeats;
+        };
+        AttackChain* allChains = nullptr;
+        size_t numChains;
+
+        // State.
+        struct SimulationState
+        {
+            enum class EnemyCombatState
+            {
+                IDLE = 0,  // @TODO: include charging, keeping distance, running away, etc. that isn't necessarily attacking, but more positioning. For now, this is just `IDLE`.
+                PROCESSING_CHAIN,
+                COOLDOWN,
+            } currentState = EnemyCombatState::IDLE;
+            size_t chainIndex;
+            int32_t timer = 0;  // Used for each attack and cooldown.
+        } state;
+    } enemyCombat;
 
     struct EXPERIMENTAL__ShouldbeInSeparateClassCombatStateMachine
     {

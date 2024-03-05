@@ -56,7 +56,7 @@
 
         - [ ] Attack.
             > There's a weapon-charging state when holding the attack button (LMB), then the moment the attack button is let go of the attack is unleashed.
-            > If attack an enemy at the same time they attack, both player and enemy will get knocked back by a large clang.
+            > If attack an enemy at the same time they attack, both player and enemy will get knocked back by a large clang, and posture gets lost by both people.
                 > Higher level enemies will know to parry the player's attack, however.
 
         - [ ] Guard.
@@ -71,7 +71,7 @@
 
     - [ ] Combat interaction.
         - [ ] Parry tuning.
-            - [ ] Would wanna have good fudging so that player doesn't have to try to parry earlier than wanted.
+            - [ ] Would wanna have good fudging so that player doesn't have to try to overcompensate and parry earlier than wanted.
 
         - [ ] 
 

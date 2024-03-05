@@ -177,6 +177,7 @@ copy $(SolutionDir)libs\ktx\lib_$(ConfigurationName)\ktx.dll $(OutDirfullPath)kt
     <ClInclude Include="src\Entity.h" />
     <ClInclude Include="src\DataSerialization.h" />
     <ClInclude Include="src\GLSLToSPIRVHelper.h" />
+    <ClInclude Include="src\CombatInteractionManager.h" />
     <ClInclude Include="src\TextureCooker.h" />
     <ClInclude Include="src\MaterialOrganizer.h" />
     <ClInclude Include="src\imgui\imconfig.h" />
@@ -247,6 +248,7 @@ copy $(SolutionDir)libs\ktx\lib_$(ConfigurationName)\ktx.dll $(OutDirfullPath)kt
     <ClCompile Include="src\SimulationCharacter.cpp" />
     <ClCompile Include="src\DataSerialization.cpp" />
     <ClCompile Include="src\GLSLToSPIRVHelper.cpp" />
+    <ClCompile Include="src\CombatInteractionManager.cpp" />
     <ClCompile Include="src\TextureCooker.cpp" />
     <ClCompile Include="src\MaterialOrganizer.cpp" />
     <ClCompile Include="src\RenderObject.cpp" />
