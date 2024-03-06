@@ -13,6 +13,7 @@
 #include "InputManager.h"
 #include "AudioEngine.h"
 #include "DataSerialization.h"
+#include "RandomNumberGenerator.h"
 #include "GlobalState.h"
 #include "StringHelper.h"
 #include "HarvestableItem.h"
@@ -124,9 +125,10 @@ struct SimulationCharacter_XData
         struct InputLatencyBufferingSettings
         {
             int32_t ticksToCancelAttack = 5;  // If a parry is pressed before this number of ticks passes in the attack state, then the state is changed to a parry state. If not, have to go thru the whole attack animation. Can switch to parry anytime during weapon charge.
-            int32_t parryCoverTicks = 20;  // From moment press `parry` input, how many frames to wait for attack to come before end parry stance.
+            int32_t parryCoverTicks = 10;  // From moment press `parry` input, how many frames to wait for attack to come before end parry stance.
             int32_t ticksToWhyNotJustWaitForHeavyAttack = 5;  // If released input a little too soon before the heavy attack is charged enough, this metric just fudges it into a heavy attack.
-            int32_t fudgeAttackOntoBeatTick = 5;
+            int32_t fudgeAttackOntoBeatTick = 5;  // @NOTE: fudges not enough charge to be able to release attack on beat.
+            int32_t fudgeLateReleaseAttackOntoBeatTick = 2;  // @HARDCODE: must be same as `EnemyCombat::InputLatencyBufferingSettings::parryFudgeTicks`.  @NOTE: fudges a late release to be usable as an attack.
         } input;
 
         struct InputState
@@ -137,10 +139,24 @@ struct SimulationCharacter_XData
             int32_t parryTimer = 0;  // Used for parrying and guarding.
             bool isHeavyAttack = false;
         } state;
+
+        bool isValidParry()  // @TODO: this is in the wrong place. I want to keep functions out of these structs.
+        {
+            return (state.combatState == CombatState::PARRYGUARD &&
+                state.parryTimer <= input.parryCoverTicks);
+        }
+
+        bool isValidAttack()  // @TODO: this is in the wrong place. I want to keep functions out of these structs.
+        {
+            return (state.combatState == CombatState::ATTACK &&
+                state.unleashAttackTimer <= input.fudgeLateReleaseAttackOntoBeatTick);
+        }
     } playerCombat;
 
     struct EnemyCombat
     {
+        // @NOTE: all commented-out code is supposed to be the default (i.e. nullptr's and stuff).
+
         // List of all attacks to be referenced from.
         struct ChargeUnleash
         {
@@ -148,18 +164,44 @@ struct SimulationCharacter_XData
             int32_t beatsToCharge;
             int32_t beatsToUnleash;
         };
-        ChargeUnleash* allAttacks = nullptr;
-        size_t numAttacks;
+        // ChargeUnleash* allAttacks = nullptr;
+        ChargeUnleash* allAttacks = new ChargeUnleash[] {
+            {
+                .startChargeBeatTick = 0,
+                .beatsToCharge = 20,
+                .beatsToUnleash = 20,
+            }
+        };
+        // size_t numAttacks;
+        size_t numAttacks = 1;
 
         // Sets of attacks.
         struct AttackChain
         {
             size_t* serialAttackIndices = nullptr;  // Attacks will appear in this order.
-            size_t numIndices;
+            size_t numSerialAttackIndices;
             int32_t cooldownBeats;
         };
-        AttackChain* allChains = nullptr;
-        size_t numChains;
+        // AttackChain* allChains = nullptr;
+        AttackChain* allChains = new AttackChain[] {
+            {
+                .serialAttackIndices = new size_t[] { 0 },
+                .numSerialAttackIndices = 1,
+                .cooldownBeats = 40,
+            }
+        };
+        // size_t numChains;
+        size_t numChains = 1;
+
+        // Input latency settings.
+        struct InputLatencyBufferingSettings
+        {
+            int32_t parryFudgeTicks = 2;  // How many ticks a parry can be late from the attack unleash and still be considered valid.
+            // @THOUGHTS: I feel like 10 should be it bc of it being forgiving, especially for something like
+            //            tv and console, however, it doesn't play very nice with syncing up the sound and the
+            //            video. Thus, the compromise of 2 should be good. It doesn't feel like it's a 16th beat
+            //            off (like 5), and isn't noticably after the actual heartbeat sound.  -Timo 2024/03/05
+        } input;
 
         // State.
         struct SimulationState
@@ -167,10 +209,14 @@ struct SimulationCharacter_XData
             enum class EnemyCombatState
             {
                 IDLE = 0,  // @TODO: include charging, keeping distance, running away, etc. that isn't necessarily attacking, but more positioning. For now, this is just `IDLE`.
-                PROCESSING_CHAIN,
+                WAITING_TO_BEGIN_ATTACK,  // Attack chain is chosen, kamae is made up, just waiting for entering attack (should be able to switch attacks here too as an option).
+                ATTACK_CHARGING,
+                ATTACK_UNLEASH,
                 COOLDOWN,
             } currentState = EnemyCombatState::IDLE;
             size_t chainIndex;
+            size_t chainSerialIndex;
+            bool gotParried;
             int32_t timer = 0;  // Used for each attack and cooldown.
         } state;
     } enemyCombat;
@@ -2544,8 +2590,10 @@ void EXPERIMENTAL__playerCombatStateMachine(SimulationCharacter_XData* d)
                     (goForHeavyAttack ? a.variable.heavyAttack : a.variable.lightAttack);
 
                 int32_t timing = (d->csm.currentBeat % d->csm.tempo) - attack.unleashBeatTick;
-                if ((input::simInputSet().attack.onRelease && timing <= a.input.fudgeAttackOntoBeatTick) ||  // Allow fudging late input release.
-                    timing == 0)
+                bool fudgedLateRelease =  // Allow fudging late input release.
+                    (input::simInputSet().attack.onRelease &&
+                        timing <= a.input.fudgeLateReleaseAttackOntoBeatTick);
+                if (fudgedLateRelease || timing == 0)  // Try to only do attacks with timing on beat.
                 {
                     int32_t beatsToCharge =
                         (goForHeavyAttack ? a.variable.heavyAttack.beatsToCharge : a.variable.lightAttack.beatsToCharge);
@@ -2557,13 +2605,6 @@ void EXPERIMENTAL__playerCombatStateMachine(SimulationCharacter_XData* d)
                         a.state.isHeavyAttack = goForHeavyAttack;
                     }
                 }
-
-                // bool withinUnleashAttackBeat = (std::abs() <= a.input.fudgeAttackOntoBeatTick);
-                // bool fudgeAttack = (d->csm.currentBeatState == BeatState_e::DOWN_BEAT);
-
-                // // Finished charging attack. Unleash it.
-                // if ((isDownbeat && a.state.chargeAttackTimer + a.input.fudgeAttackOntoDownbeat > beatsToCharge) ||
-                //     a.state.chargeAttackTimer > beatsToCharge)
             }
 
             // Switch to parry.
@@ -2654,47 +2695,130 @@ void EXPERIMENTAL__playerCombatStateMachine(SimulationCharacter_XData* d)
 
 void EXPERIMENTAL__enemyCombatStateMachine(SimulationCharacter_XData* d)
 {
-    // Read beat state.
-    switch (d->csm.currentBeatState)
-    {
-        typedef SimulationCharacter_XData::EXPERIMENTAL__ShouldbeInSeparateClassCombatStateMachine::BeatState BeatState_e;
-
-        case BeatState_e::VOID_AREA:
-            d->csm.enemyInputtedActionThisBeat = false;
-        case BeatState_e::NEW_BEAT_START:
-        case BeatState_e::PRE_DOWN_BEAT:
-        case BeatState_e::POST_DOWN_BEAT:
-        case BeatState_e::BEAT_FINAL_TICK:
-            return;  // Exit bc not a downbeat.
-    }
+    typedef SimulationCharacter_XData::EnemyCombat::SimulationState::EnemyCombatState CombatState_e;
+    typedef SimulationCharacter_XData::CombatState PlayerCombatState_e;
+    auto& ec = d->enemyCombat;
+    auto& s = d->enemyCombat.state;
 
     // Process state machine.
-    switch (d->csm.enemyCombatState)
+    CombatState_e currentStateCopy;
+    do
     {
-        typedef SimulationCharacter_XData::CombatState CombatState_e;
-
-        case CombatState_e::IDLE:
+        currentStateCopy = s.currentState;
+        switch (s.currentState)
         {
-            AudioEngine::getInstance().playSoundFromList({
-                "res/sfx/wip_hollow_knight_sfx/hero_dash.wav",
-            });
-            d->csm.enemyNextCombatState = CombatState_e::WEAPON_CHARGING;
-        } break;
+            case CombatState_e::IDLE:
+                // Immediately choose attack to go for.
+                if (d->csm.currentBeat % d->csm.tempo == 0)
+                {
+                    s.currentState = CombatState_e::WAITING_TO_BEGIN_ATTACK;
+                    s.chainIndex = rng::randomIntegerRange(0, ec.numChains - 1);
+                    s.chainSerialIndex = 0;
+                }
+                break;
 
-        case CombatState_e::WEAPON_CHARGING:
-        {
-            AudioEngine::getInstance().playSoundFromList({
-                "res/sfx/wip_hollow_knight_sfx/hero_butterfly_blade.wav",
-            });
-            d->csm.enemyNextCombatState = CombatState_e::ATTACK;
-        } break;
+            case CombatState_e::WAITING_TO_BEGIN_ATTACK:
+            {
+                size_t attackIdx = ec.allChains[s.chainIndex].serialAttackIndices[s.chainSerialIndex];
+                if (d->csm.currentBeat % d->csm.tempo == ec.allAttacks[attackIdx].startChargeBeatTick)
+                {
+                    // Start attack (charging).
+                    s.currentState = CombatState_e::ATTACK_CHARGING;
+                    s.timer = 0;
+                    AudioEngine::getInstance().playSound("res/sfx/wip_hollow_knight_sfx/hero_unsheath.wav");
+                }
+            } break;
 
-        case CombatState_e::ATTACK:
-        {
-            d->csm.enemyNextCombatState = CombatState_e::IDLE;
-        } break;
-    }
-    d->csm.enemyInputtedActionThisBeat = true;
+            case CombatState_e::ATTACK_CHARGING:
+            {
+                size_t attackIdx = ec.allChains[s.chainIndex].serialAttackIndices[s.chainSerialIndex];
+                if (s.timer == ec.allAttacks[attackIdx].beatsToCharge)
+                {
+                    // Unleash attack.
+                    s.currentState = CombatState_e::ATTACK_UNLEASH;
+                    s.gotParried = false;
+                    s.timer = 0;
+                }
+                else
+                    s.timer++;
+            } break;
+
+            case CombatState_e::ATTACK_UNLEASH:
+            {
+                // @TODO: right here, get list of entities that would get hit by the attack.
+                //        For now, just have the "player" always get attacked.
+
+                // See if got parried or if attacked at same time.
+                if (!s.gotParried && s.timer <= ec.input.parryFudgeTicks)
+                {
+                    if (d->playerCombat.isValidAttack())
+                    {
+                        s.gotParried = true;
+                        // @TODO: add more "posture" to player (opponent).
+                        // @TODO: add more "posture" here to enemy (me).
+                        AudioEngine::getInstance().playSoundFromList({
+                            "res/sfx/wip_clang_1.wav",
+                            "res/sfx/wip_clang_2.wav",
+                            "res/sfx/wip_clang_3.wav",
+                        });
+                    }
+                    if (d->playerCombat.isValidParry())
+                    {
+                        s.gotParried = true;
+                        // @TODO: add more "posture" here to enemy (me).
+                        AudioEngine::getInstance().playSound("res/sfx/wip_hollow_knight_sfx/hero_parry.wav");
+                    }
+                }
+
+                // Actually send attack message (last tick of fudge window).
+                if (!s.gotParried && s.timer == ec.input.parryFudgeTicks)
+                {
+                    // @TODO: create attack sending/receiving interface!
+                    AudioEngine::getInstance().playSound("res/sfx/wip_OOT_YoungLink_Hurt3.wav");
+                }
+
+                // Move to next state.
+                size_t attackIdx = ec.allChains[s.chainIndex].serialAttackIndices[s.chainSerialIndex];
+
+                // @NOTE: assert that the actual attack beat will be able to happen
+                //        (since player can parry during the fudge window, the actual attack has to happen
+                //        on the last beat of the window).
+                assert(ec.input.parryFudgeTicks <= ec.allAttacks[attackIdx].beatsToUnleash);
+
+                if (s.timer == ec.allAttacks[attackIdx].beatsToUnleash)
+                {
+                    s.chainSerialIndex++;
+
+                    // Start next attack.
+                    if (s.chainSerialIndex < ec.allChains[s.chainIndex].numSerialAttackIndices)
+                    {
+                        s.currentState = CombatState_e::WAITING_TO_BEGIN_ATTACK;
+                    }
+
+                    // Cool down.
+                    else
+                    {
+                        s.currentState = CombatState_e::COOLDOWN;
+                        s.timer = 0;
+                    }
+                    break;
+                }
+
+                // Increment.
+                s.timer++;
+            } break;
+
+            case CombatState_e::COOLDOWN:
+                if (s.timer == ec.allChains[s.chainIndex].cooldownBeats)
+                {
+                    // Get ready to find what action to do next.
+                    s.currentState = CombatState_e::IDLE;
+                }
+                else
+                    s.timer++;
+                break;
+        }
+    } while (s.currentState != currentStateCopy);
 }
 
 #if 0
@@ -2849,7 +2973,7 @@ void EXPERIMENTAL__TickCombatStateMachine(SimulationCharacter_XData* d)
 
     // Process input state machines.
     EXPERIMENTAL__playerCombatStateMachine(d);
-    // EXPERIMENTAL__enemyCombatStateMachine(d);
+    EXPERIMENTAL__enemyCombatStateMachine(d);
 
     // Process interactions.
     // EXPERIMENTAL__combatInteraction(d);
