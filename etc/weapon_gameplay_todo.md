@@ -54,7 +54,7 @@
             - [x] Make attack always fall on a certain point in the beat. Usu. the downbeat.
                 > THOUGHTS: This actually feels really good. You can start the weapon charge anytime, but the release is always going to land on the downbeat (or a little bit after to compensate for input delay).
 
-        - [ ] Attack.
+        - [x] Attack.
             > There's a weapon-charging state when holding the attack button (LMB), then the moment the attack button is let go of the attack is unleashed.
             > If attack an enemy at the same time they attack, both player and enemy will get knocked back by a large clang, and posture gets lost by both people.
                 > Higher level enemies will know to parry the player's attack, however.
@@ -63,17 +63,39 @@
             > Holding the block button (RMB) brings the player into a block state. Player will double their defense in this position for the majority of attack types. Receiving an attack while guarding loses some posture.
             > If player started an attack, at the beginning of the attack they can switch to doing a block, else no way to cancel the attack animation.
 
-        - [ ] Parry.
+        - [x] Parry.
             > Tapping the block button (RMB) at the same time as an enemy is attacking allows player to protect themselves from an attack without losing any posture, moreso causing the enemy to lose a bit of posture.
 
-    - [ ] Enemy combat.
-        - [ ] Rhythm based timer.
+    - [x] Enemy combat.
+        - [x] Rhythm based timer.
 
-    - [ ] Combat interaction.
-        - [ ] Parry tuning.
-            - [ ] Would wanna have good fudging so that player doesn't have to try to overcompensate and parry earlier than wanted.
+    - [x] Combat interaction.
+        - [x] Parry tuning.
+            - [x] Would wanna have good fudging so that player doesn't have to try to overcompensate and parry earlier than wanted.
 
-        - [ ] 
+
+
+- [ ] NEW APPROACH/REFACTORING: interaction figured out.
+    - [ ] ~~Create capsule-triangle overlap algorithm (for sword path and opponent collision).~~
+        > ~~Well, it seems like doing a bunch of OBB to capsule collisions is what will be the ticket. The issue will just be figuring out how to represent the collision with the OBB.~~
+
+    - [ ] Create a bunch of capsule overlap actions.
+        - [ ] Have the traversal of the slice happen over the 3 ticks @40hz (0.075ms), so about 2 24fps frames (0.0833ms).
+            > 3 ticks isn't nearly enough to have good hitbox coverage, so precompute all the necessary hitbox capsules, then just test all of them to see if they connect with any enemies.
+
+    - [ ] ANALYIS OF SEKIRO.
+        - Stealth sneak into battle. Get rid of first enemies that don't spot you.
+        - Enemies see you performing stealth kill, battle music starts and no more can get stealth killed.
+        - Whittle at the enemies' posture meter and kill them.
+            - Slice, parry, and use any shinobi tactics to accomplish this.
+        
+        - THOUGHTS: it's a dance during the meat of the battle. In the beginning, you're always watching and listening for where enemies are/could be and reacting to that. During battle too, you're always reacting to enemies and aggressively defending and offending until the posture meter is filled.
+
+        - LIKEN TO MY GAME: the dance with the enemies is essential and with it the parry/guard/attack aggressive play style I really want. I want to include breathing techniques. This would replace the shinobi-like stealth & posture break kill actions. Instead, the player would (due to it requiring time and precise timing) stand afar and jump into action with a breath technique, then upon breaking the posture of the enemy, can do another breathing technique. Ultimately the player can do a breathing technique at any time, however, the risk is higher vulnerability (i.e. will take more damage and more posture if hit), with the tradeoff of higher offensive power. With mastery of the breathing techniques, the player could just use them instead of the normal offensive attacks.
+            > One breathing technique is usually a short set pattern of inputs and timings of R1 that equate to the attack pattern sequence. You have to have the right weapon type to do the actual attack sequence, and if you're the right transformation, you get KNY-like elemental art with the breathing technique. So you have to plan what blades you'll have, and what terrain/transformation you'll be during the battle. If not, performing the attack sequence without the right transformation does not give advantage (i.e., with the right blade, transformation, and breathing technique, an attack can just wipe out a whole health bar of an opponent (mini-bosses and bosses will have 2+, but regular enemies will have 1)).
+            > And what if you run off as the player, to do a breath technique? If the enemies see you running off, they'll have some kind of projectile weapon (shuriken or something) that they can throw at you which you can parry away or jump away from, but likely it'll hit you and it will cause a lot of damage, esp. if hit in the back.
+
+    - [ ] Put enemy combat into a manager class.
 
 
 
