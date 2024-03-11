@@ -75,15 +75,15 @@
 
 
 
-- [ ] NEW APPROACH/REFACTORING: interaction figured out.
-    - [ ] ~~Create capsule-triangle overlap algorithm (for sword path and opponent collision).~~
+- NEW APPROACH/REFACTORING: interaction figured out.
+    - ~~Create capsule-triangle overlap algorithm (for sword path and opponent collision).~~
         > ~~Well, it seems like doing a bunch of OBB to capsule collisions is what will be the ticket. The issue will just be figuring out how to represent the collision with the OBB.~~
 
-    - [ ] Create a bunch of capsule overlap actions.
-        - [ ] Have the traversal of the slice happen over the 3 ticks @40hz (0.075ms), so about 2 24fps frames (0.0833ms).
+    - Create a bunch of capsule overlap actions.
+        - Have the traversal of the slice happen over the 3 ticks @40hz (0.075ms), so about 2 24fps frames (0.0833ms).
             > 3 ticks isn't nearly enough to have good hitbox coverage, so precompute all the necessary hitbox capsules, then just test all of them to see if they connect with any enemies.
 
-    - [ ] ANALYIS OF SEKIRO.
+    - ANALYIS OF SEKIRO.
         - Stealth sneak into battle. Get rid of first enemies that don't spot you.
         - Enemies see you performing stealth kill, battle music starts and no more can get stealth killed.
         - Whittle at the enemies' posture meter and kill them.
@@ -95,7 +95,52 @@
             > One breathing technique is usually a short set pattern of inputs and timings of R1 that equate to the attack pattern sequence. You have to have the right weapon type to do the actual attack sequence, and if you're the right transformation, you get KNY-like elemental art with the breathing technique. So you have to plan what blades you'll have, and what terrain/transformation you'll be during the battle. If not, performing the attack sequence without the right transformation does not give advantage (i.e., with the right blade, transformation, and breathing technique, an attack can just wipe out a whole health bar of an opponent (mini-bosses and bosses will have 2+, but regular enemies will have 1)).
             > And what if you run off as the player, to do a breath technique? If the enemies see you running off, they'll have some kind of projectile weapon (shuriken or something) that they can throw at you which you can parry away or jump away from, but likely it'll hit you and it will cause a lot of damage, esp. if hit in the back.
 
-    - [ ] Put enemy combat into a manager class.
+    - 2024/03/10 UPDATE --------------------------------------------------------
+    
+    - Only special breathing technique moves will use the heartbeat.
+        - It feels really "non-reaction timely" when every attack has to land on a certain part of the beat. Something slow like a heavy two-handed sword should be good to do heavy attacks, but something light like a one-handed sword should be able to have immediate attacks.
+            - @NOTE: okay after doing some research, there are techniques to repeately swing a two-handed heavy sword, but the first charge up is the longest/heaviest.
+        
+        - Breathing techniques are in-line with the global timer (that enemies and npcs are based off of, and the heartbeat sfx are based off of), so holding the attack button for 1-2 beats (depending on where the beats fall once player starts hearing heartbeats).
+
+
+- [ ] TASKS (@NOTE: all timings are with 40 ticks/sec simulation pace)
+    - [ ] Separate the enemy into separate sim char.
+        - [ ] Has model (just use same slimegirl model).
+
+        - [ ] Has idle, weapon chargeup, and release animations.
+
+        - [ ] Some enemy behavior in a certain pattern (@NOTE: no actual enemy attacks until combat manager and hit-/hurt-capsules are created) as a state machine w/ animations.
+
+    - [ ] Combat manager class.
+        - [ ] Each entity wanting to engage in combat (player, enemies, npcs) will register themselves into the combat manager class.
+
+        - [ ] For each collision with a hurt-capsule and a hit-capsule, submit a "hurt request"
+            - @NOTE: after some research (i.e. copying Lies of P), there will be a 1 frame response time for a parry or another attack to come in and match up with it (pretty unlikely, but still possible. @THOUGHT: fudge it so that if enemy attack will happen sometime soon after player attack, make it so both attacks happened the same time and the big damage to both player and enemy weapon durability happens)
+
+            - @TODO: figure out how "posture" goes into these different interactions.
+
+            - [ ] If there is a parry that occurs within the time frame (12 frames of parry effect, can happen 1 frame after the "hurt request" is submitted), then do "parry interrupt".
+
+            - [ ] If an enemy attack is about to happen (XXX frames after player-to-enemy "hurt request" was submitted) (not a parry), then do "weapon durability interrupt".
+
+            - [ ] If "hurt request" is approved, then send callback to party2 (uke) for defense and hurt calculations, then send callback to party1 (seme) for weapon durability. If party2 (uke) is in "guard mode" (i.e. still holding guard after parry window is over), then the damage that would've been applied to the party's HP goes to the party's weapon durability instead.
+
+            - [ ] If "hurt request" comes out with "weapon durability interrupt", then send callback to both parties to subtract weapon durability from opposing party's attack power (i.e. clashing with a heavy attack is better, since you inflict more durability damage to enemies)
+
+            - [ ] If "hurt request" comes out with "parry interrupt", then send callback to seme for getting parried (i.e. bigger posture penalty and weapon durability penalty), and callback to uke for parrying (i.e. smaller posture penalty).
+
+            - @NOTE: unless if party has a certain level of poise (only >=mini-bosses would, and even then only the big, burly ones), then all approved "hurt requests" onto the uke will interrupt them and do a short stagger.
+
+    - [ ] Create hit-/hurt-capsules for entities in combat (incl. npc's).
+        - [ ] Better capsule debug rendering. (i.e. capsules that can be any arbitrary direction)
+        - [ ] Hurt-capsules for sword.
+        - [ ] Hit-capsules for player character.
+            - @NOTE: for first enemy, just reuse player character model and attack sequences.
+            - @REF: https://www.youtube.com/watch?v=8zdbqTHtnr4
+            - [ ] Have each hit-capsule be assigned a bone and some offset of the bone.
+
+    - [ ] NOW YOU ARE FREE TO LOOK AT THE PROGRESS. I HONESTLY FEEL LIKE YOU (timo) LOOK INTO DETAILS AND RANDOM FACTS THAT ANSWER QUESTIONS OF SUPER LOW-LEVEL DETAILS YOU DON'T NEED TO KNOW THE ANSWER TO AT THE TIME, IF EVER. SEEK TO MAKE SOMETHING MAGICAL, BEAUTIFUL, FUN, AND ENTERTAINING.
 
 
 

@@ -1298,6 +1298,21 @@ namespace vkglTF
 						// Assign loop
 						newState.loop = (bool)std::stoi(line);
 					}
+					else if (line.rfind("timeframe ", 0) == 0)
+					{
+						line = line.substr(sizeof("timeframe ") - 1);
+						trim(line);
+
+						// Assign timeframe
+						std::string param0 = line.substr(0, line.find(' '));
+						trim(param0);
+
+						std::string param1 = line.substr(line.find(' '));
+						trim(param1);
+
+						newState.timeframe[0] = std::stof(param0);
+						newState.timeframe[1] = std::stof(param1);
+					}
 					else if (line.rfind("on_finish ", 0) == 0)
 					{
 						line = line.substr(sizeof("on_finish ") - 1);
@@ -1426,13 +1441,23 @@ namespace vkglTF
 
 			// Add the same number of mask players as masks
 			for (auto& mask : animStateMachine.masks)
+			{
+				// Make sure mask got set up properly.
+				assert(&mask == &animStateMachine.masks[0] || !mask.maskName.empty());
+
 				animStateMachine.maskPlayers.push_back(StateMachine::MaskPlayer());
+			}
 
 			//
 			// Assign tempNewStates to masks
 			//
 			for (auto& s : tempNewStates)
 			{
+				// Make sure state got set up properly.
+				assert(!s.stateName.empty());
+				assert(!s.animationName.empty());
+				// assert(s.animationIndex != (uint32_t)-1);  // @NOTE: this is set later.
+
 				for (auto& m : animStateMachine.masks)
 					if (s.maskName == m.maskName)
 						m.states.push_back(s);
@@ -2468,7 +2493,7 @@ namespace vkglTF
 			size_t i = 0;
 			for (auto& mask : animStateMachineCopy.masks)
 			{
-				playAnimation(i++, mask.states[0].animationIndex, mask.states[0].loop);
+				playAnimation(i++, mask.states[0].animationIndex, mask.states[0].loop, mask.states[0].timeframe);
 			}
 		}
 		else
@@ -2554,7 +2579,7 @@ namespace vkglTF
 		return &nodeCollectionBuffers[engine->_frameNumber % FRAME_OVERLAP].descriptorSet;
 	}
 
-	void Animator::playAnimation(size_t maskIndex, uint32_t animationIndex, bool loop, float_t time)
+	void Animator::playAnimation(size_t maskIndex, uint32_t animationIndex, bool loop, vec2 timeframe, float_t time)
 	{
 		if (model->animations.empty())
 		{
@@ -2574,6 +2599,7 @@ namespace vkglTF
 
 		animStateMachineCopy.maskPlayers[maskIndex].animationIndex = animationIndex;
 		animStateMachineCopy.maskPlayers[maskIndex].loop           = loop;
+		glm_vec2_copy(timeframe, animStateMachineCopy.maskPlayers[maskIndex].timeframe);
 		animStateMachineCopy.maskPlayers[maskIndex].time           = time;
 
 		// @TODO: Do we need to hit updateAnimation()? This playAnimation() function will be run likely in the entity updates, so it's not like the update will be a frame late. I'm just gonna not worry about it  -Timo 2022/11/5
@@ -2588,7 +2614,20 @@ namespace vkglTF
 			mp.timeRange[1] = mp.time;  // @NOTE: this has to be pre-clamped/pre-repeat because the 2nd time is exclusive in the check
 
 			mp.animEndedThisFrame = false;
-			mp.animDuration = model->animations[mp.animationIndex].end;
+
+			// @OPTIMIZATION: this if-else block can be just pre-calculated instead
+			//                performed each step like this.  -Timo 2024/03/09
+			if (mp.timeframe[0] >= 0.0f && mp.timeframe[1] >= 0.0f)
+			{
+				mp.animDuration = mp.timeframe[1] - mp.timeframe[0];
+				mp.animBaseTime = mp.timeframe[0];
+			}
+			else
+			{
+				mp.animDuration = model->animations[mp.animationIndex].end;
+				mp.animBaseTime = 0.0f;
+			}
+
 			if (mp.loop)
 			{
 				// Loop animation
@@ -2771,7 +2810,7 @@ namespace vkglTF
 							<< "INFO: ASM: State changed to " << mask.states[mask.asmStateIndex].stateName << std::endl;
 
 						auto& state = mask.states[mask.asmStateIndex];
-						playAnimation(i, state.animationIndex, state.loop);
+						playAnimation(i, state.animationIndex, state.loop, state.timeframe);
 					}
 				}
 			} while (keepLookingOuter);
@@ -2813,7 +2852,7 @@ namespace vkglTF
 				if (state.stateName == stateName)
 				{
 					mask.asmStateIndex = j;  // @NOTE: this needs to be set so that the event executor knows what states are being played by the mask players.
-					playAnimation(i, state.animationIndex, state.loop, time);
+					playAnimation(i, state.animationIndex, state.loop, state.timeframe, time);
 					if (forceImmediateUpdate)
 						updateAnimation();
 
@@ -2887,6 +2926,8 @@ namespace vkglTF
 			if (!mask.enabled)
 				continue;
 
+			float_t mpTimeActual = mp.time + mp.animBaseTime;
+
 			for (auto& channel : animation.channels)
 			{
 				if (!mask.boneRefList.empty())
@@ -2913,9 +2954,9 @@ namespace vkglTF
 
 				for (size_t i = 0, inputsSizeSub1 = sampler.inputs.size() - 1; i < inputsSizeSub1; i++)
 				{
-					if (mp.time >= sampler.inputs[i] && mp.time <= sampler.inputs[i + 1])
+					if (mpTimeActual >= sampler.inputs[i] && mpTimeActual <= sampler.inputs[i + 1])
 					{
-						float_t u = std::max(0.0f, mp.time - sampler.inputs[i]) / (sampler.inputs[i + 1] - sampler.inputs[i]);
+						float_t u = std::max(0.0f, mpTimeActual - sampler.inputs[i]) / (sampler.inputs[i + 1] - sampler.inputs[i]);
 						switch (channel.path)
 						{
 							case vkglTF::AnimationChannel::PathType::TRANSLATION:

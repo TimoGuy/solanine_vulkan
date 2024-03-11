@@ -111,7 +111,7 @@ struct SimulationCharacter_XData
             };
 
             ChargeUnleash lightAttack = {
-                .beatsToCharge = 20,
+                .beatsToCharge = 0,//20,
                 .unleashBeatTick = 0,
                 .beatsToUnleash = 10,
             };
@@ -125,7 +125,7 @@ struct SimulationCharacter_XData
         struct InputLatencyBufferingSettings
         {
             int32_t ticksToCancelAttack = 5;  // If a parry is pressed before this number of ticks passes in the attack state, then the state is changed to a parry state. If not, have to go thru the whole attack animation. Can switch to parry anytime during weapon charge.
-            int32_t parryCoverTicks = 10;  // From moment press `parry` input, how many frames to wait for attack to come before end parry stance.
+            int32_t parryCoverTicks = 12;  // From moment press `parry` input, how many frames to wait for attack to come before end parry stance.
             int32_t ticksToWhyNotJustWaitForHeavyAttack = 5;  // If released input a little too soon before the heavy attack is charged enough, this metric just fudges it into a heavy attack.
             int32_t fudgeAttackOntoBeatTick = 5;  // @NOTE: fudges not enough charge to be able to release attack on beat.
             int32_t fudgeLateReleaseAttackOntoBeatTick = 2;  // @HARDCODE: must be same as `EnemyCombat::InputLatencyBufferingSettings::parryFudgeTicks`.  @NOTE: fudges a late release to be usable as an attack.
@@ -168,8 +168,8 @@ struct SimulationCharacter_XData
         ChargeUnleash* allAttacks = new ChargeUnleash[] {
             {
                 .startChargeBeatTick = 0,
-                .beatsToCharge = 20,
-                .beatsToUnleash = 20,
+                .beatsToCharge = 24,
+                .beatsToUnleash = 24,
             }
         };
         // size_t numAttacks;
@@ -196,7 +196,11 @@ struct SimulationCharacter_XData
         // Input latency settings.
         struct InputLatencyBufferingSettings
         {
-            int32_t parryFudgeTicks = 2;  // How many ticks a parry can be late from the attack unleash and still be considered valid.
+            // 5 feels way too late.
+            // 2 feels really nice.
+            // 0 feels tight but feels like it eats my inputs.
+
+            int32_t parryFudgeTicks = 0;  // How many ticks a parry can be late from the attack unleash and still be considered valid.
             // @THOUGHTS: I feel like 10 should be it bc of it being forgiving, especially for something like
             //            tv and console, however, it doesn't play very nice with syncing up the sound and the
             //            video. Thus, the compromise of 2 should be good. It doesn't feel like it's a 16th beat
@@ -224,7 +228,7 @@ struct SimulationCharacter_XData
     struct EXPERIMENTAL__ShouldbeInSeparateClassCombatStateMachine
     {
         int32_t currentBeat = 0;
-        int32_t tempo = 20;  // Number of simulation ticks for one beat (40 ticks per second, 20 tempo: twice per second, i.e. 120bpm)
+        int32_t tempo = 24;  // Number of simulation ticks for one beat (40 ticks per second, 20 tempo: twice per second, i.e. 120bpm)
 
         ivec2 inputAcceptableRange = { -5, 10 };  // @NOTE: based off this data: https://www.desmos.com/calculator/gttn6iwzy6
         int32_t beatPerfectPosition = 0;
@@ -1851,7 +1855,7 @@ SimulationCharacter::SimulationCharacter(EntityManager* em, RenderObjectManager*
             },
             {
                 .model = weaponModel,
-                .renderLayer = RenderLayer::INVISIBLE,
+                .renderLayer = RenderLayer::VISIBLE,
                 .attachedEntityGuid = getGUID(),
             },
             /*{
@@ -2678,7 +2682,16 @@ void EXPERIMENTAL__playerCombatStateMachine(SimulationCharacter_XData* d)
         // Entered new combat state.
         switch (a.state.combatState)
         {
+            case CombatState_e::IDLE:
+                d->characterRenderObj->animator->setTrigger("goto_idle");
+                break;
+
+            case CombatState_e::WEAPON_CHARGING:
+                d->characterRenderObj->animator->setTrigger("goto_weapon_charge");
+                break;
+
             case CombatState_e::ATTACK:
+                d->characterRenderObj->animator->setTrigger("goto_weapon_unleash");
                 AudioEngine::getInstance().playSound(
                     a.state.isHeavyAttack ?
                     "res/sfx/wip_hollow_knight_sfx/hero_nail_art_great_slash.wav" :
@@ -2687,6 +2700,7 @@ void EXPERIMENTAL__playerCombatStateMachine(SimulationCharacter_XData* d)
                 break;
 
             case CombatState_e::PARRYGUARD:
+                d->characterRenderObj->animator->setTrigger("goto_parryguard");
                 AudioEngine::getInstance().playSound("res/sfx/wip_LSword_DownSwingAttackStart.wav");
                 break;
         }
@@ -2765,6 +2779,7 @@ void EXPERIMENTAL__enemyCombatStateMachine(SimulationCharacter_XData* d)
                     if (d->playerCombat.isValidParry())
                     {
                         s.gotParried = true;
+                        d->characterRenderObj->animator->setTrigger("goto_parryguard_successful");  // @TODO: @REFACTOR: oof this is very bad. Figure out how should handle combat interaction... and maybe some callbacks might be necessary.
                         // @TODO: add more "posture" here to enemy (me).
                         AudioEngine::getInstance().playSound("res/sfx/wip_hollow_knight_sfx/hero_parry.wav");
                     }
@@ -2949,28 +2964,6 @@ void EXPERIMENTAL__combatInteraction(SimulationCharacter_XData* d)
 
 void EXPERIMENTAL__TickCombatStateMachine(SimulationCharacter_XData* d)
 {
-    typedef SimulationCharacter_XData::EXPERIMENTAL__ShouldbeInSeparateClassCombatStateMachine::BeatState BeatState_e;
-
-    int32_t timing = d->csm.currentBeat % d->csm.tempo;
-    if (timing > d->csm.inputAcceptableRange[1])
-        timing -= d->csm.tempo;
-
-    // Compute current beat state.
-    if (timing < d->csm.inputAcceptableRange[0])
-        d->csm.currentBeatState = BeatState_e::VOID_AREA;
-    else if (timing == d->csm.inputAcceptableRange[0])
-        d->csm.currentBeatState = BeatState_e::NEW_BEAT_START;
-    else if (timing < d->csm.beatPerfectPosition)
-        d->csm.currentBeatState = BeatState_e::PRE_DOWN_BEAT;
-    else if (timing == d->csm.beatPerfectPosition)
-        d->csm.currentBeatState = BeatState_e::DOWN_BEAT;
-    else if (timing < d->csm.inputAcceptableRange[1])
-        d->csm.currentBeatState = BeatState_e::POST_DOWN_BEAT;
-    else if (timing == d->csm.inputAcceptableRange[1])
-        d->csm.currentBeatState = BeatState_e::BEAT_FINAL_TICK;
-    else
-        d->csm.currentBeatState = BeatState_e::VOID_AREA;
-
     // Process input state machines.
     EXPERIMENTAL__playerCombatStateMachine(d);
     EXPERIMENTAL__enemyCombatStateMachine(d);
@@ -2979,7 +2972,9 @@ void EXPERIMENTAL__TickCombatStateMachine(SimulationCharacter_XData* d)
     // EXPERIMENTAL__combatInteraction(d);
 
     // Heartbeat sound cue.
-    if (d->csm.currentBeatState == BeatState_e::DOWN_BEAT)
+    typedef SimulationCharacter_XData::CombatState CombatState_e;
+    if (d->playerCombat.state.combatState == CombatState_e::WEAPON_CHARGING &&
+        d->csm.currentBeat % d->csm.tempo == 0)
         AudioEngine::getInstance().playSoundFromList({
             "res/sfx/wip_heart_down_0.wav",
             "res/sfx/wip_heart_down_1.wav",

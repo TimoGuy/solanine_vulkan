@@ -239,11 +239,12 @@ namespace vkglTF
 
 		struct State
 		{
-			std::string             stateName = "";  // @NOTE: just for referencing for debugging etc. after setup
-			std::string             maskName  = "";  // @NOTE: just for setup
-			std::string             animationName;
-			uint32_t                animationIndex;
-			bool                    loop;
+			std::string             stateName      = "";  // @NOTE: just for referencing for debugging etc. after setup
+			std::string             maskName       = "";  // @NOTE: just for setup
+			std::string             animationName  = "";
+			uint32_t                animationIndex = (uint32_t)-1;
+			bool                    loop           = false;
+			vec2                    timeframe      = { -1.0f, -1.0f };
 			OnFinish                onFinish;
 			std::vector<Transition> transitions;
 			std::vector<Event>      events;
@@ -264,11 +265,13 @@ namespace vkglTF
 			uint32_t animationIndex;  // @TODO: instead of having this be the end all be all, have each bone capture this number as a pointer, so that this will be the index for the global layer, and have the AnimStateMachine carry the mask animation indices and have the relevant bones point to that animationIndex using a pointer  -Timo 2022/11/19
 			float_t  time;
 			bool     loop;
+			vec2     timeframe;
 
 			// Temp data holders:
 			bool     animEndedThisFrame;
 			float_t  animDuration;
 			vec2     timeRange;
+			float_t  animBaseTime;
 		};
 
 		bool                          loaded = false;
@@ -421,7 +424,7 @@ namespace vkglTF
 		static void destroyEmpty(VulkanEngine* engine);
 		static VkDescriptorSet* getGlobalAnimatorNodeCollectionDescriptorSet(VulkanEngine* engine);  // For binding to represent a non-skinned mesh
 
-		void playAnimation(size_t maskIndex, uint32_t animationIndex, bool loop, float_t time = 0.0f);  // This is for direct control of the animation index
+		void playAnimation(size_t maskIndex, uint32_t animationIndex, bool loop, vec2 timeframe = vec2{ -1.0f, -1.0f }, float_t time = 0.0f);  // This is for direct control of the animation index
 		void update(float_t deltaTime);
 
 		void runEvent(const std::string& eventName);  // @NOTE: this is really naive btw
