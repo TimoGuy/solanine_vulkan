@@ -105,12 +105,20 @@
 
 
 - [ ] TASKS (@NOTE: all timings are with 40 ticks/sec simulation pace)
-    - [ ] Separate the enemy into separate sim char.
-        - [ ] Has model (just use same slimegirl model).
+    - [x] Separate the enemy into separate sim char.
+        - [x] Has model (just use same slimegirl model).
 
-        - [ ] Has idle, weapon chargeup, and release animations.
+        - [x] Has idle, weapon chargeup, and release animations.
 
-        - [ ] Some enemy behavior in a certain pattern (@NOTE: no actual enemy attacks until combat manager and hit-/hurt-capsules are created) as a state machine w/ animations.
+        - [x] Some enemy behavior in a certain pattern (@NOTE: no actual enemy attacks until combat manager and hit-/hurt-capsules are created) as a state machine w/ animations.
+
+    - [ ] Create hit-/hurt-capsules for entities in combat (incl. npc's).
+        - [ ] Better capsule debug rendering. (i.e. capsules that can be any arbitrary direction)
+        - [ ] Hurt-capsules for sword.
+        - [ ] Hit-capsules for player character.
+            - @NOTE: for first enemy, just reuse player character model and attack sequences.
+            - @REF: https://www.youtube.com/watch?v=8zdbqTHtnr4
+            - [ ] Have each hit-capsule be assigned a bone and some offset of the bone.
 
     - [ ] Combat manager class.
         - [ ] Each entity wanting to engage in combat (player, enemies, npcs) will register themselves into the combat manager class.
@@ -131,14 +139,6 @@
             - [ ] If "hurt request" comes out with "parry interrupt", then send callback to seme for getting parried (i.e. bigger posture penalty and weapon durability penalty), and callback to uke for parrying (i.e. smaller posture penalty).
 
             - @NOTE: unless if party has a certain level of poise (only >=mini-bosses would, and even then only the big, burly ones), then all approved "hurt requests" onto the uke will interrupt them and do a short stagger.
-
-    - [ ] Create hit-/hurt-capsules for entities in combat (incl. npc's).
-        - [ ] Better capsule debug rendering. (i.e. capsules that can be any arbitrary direction)
-        - [ ] Hurt-capsules for sword.
-        - [ ] Hit-capsules for player character.
-            - @NOTE: for first enemy, just reuse player character model and attack sequences.
-            - @REF: https://www.youtube.com/watch?v=8zdbqTHtnr4
-            - [ ] Have each hit-capsule be assigned a bone and some offset of the bone.
 
     - [ ] NOW YOU ARE FREE TO LOOK AT THE PROGRESS. I HONESTLY FEEL LIKE YOU (timo) LOOK INTO DETAILS AND RANDOM FACTS THAT ANSWER QUESTIONS OF SUPER LOW-LEVEL DETAILS YOU DON'T NEED TO KNOW THE ANSWER TO AT THE TIME, IF EVER. SEEK TO MAKE SOMETHING MAGICAL, BEAUTIFUL, FUN, AND ENTERTAINING.
 

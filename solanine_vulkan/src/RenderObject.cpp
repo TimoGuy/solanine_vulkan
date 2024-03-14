@@ -392,8 +392,6 @@ vkglTF::Model* RenderObjectManager::createModel(vkglTF::Model* model, const std:
 {
 	// @NOTE: no need to reserve any size of models for this vector, bc we're just giving
 	// away the pointer to the model itself instead bc the model is created on the heap
-	if (name == "SlimeGirl")
-		int32_t ian = 69;
 	_renderObjectModels[name] = model;
 	return _renderObjectModels[name];  // Ehhh, we could've just sent back the original model pointer
 }

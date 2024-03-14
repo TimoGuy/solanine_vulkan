@@ -17,6 +17,7 @@
 #include "EntityManager.h"
 #include "SimulationCharacter.h"
 #include "GlobalState.h"
+#include "CombatInteractionManager.h"
 
 JPH_SUPPRESS_WARNINGS
 using namespace JPH;
@@ -359,6 +360,8 @@ namespace physengine
 
     void cleanup()
     {
+        comim::cleanup();
+
         delete simSetChain[0];
         delete simSetChain[1];
         delete simSetChain[2];
@@ -704,6 +707,8 @@ namespace physengine
         simSetChain[2] = new SimulationInterpolationSet;
         calcInterpolatedSet = new SimulationInterpolationSet;
 
+        comim::init();
+
 #ifdef _DEVELOP
         input::registerEditorInputSetOnThisThread();
 #endif
@@ -742,9 +747,12 @@ namespace physengine
             //         if the timescale slows down, then the tick rate should also slow down
             //         proportionate to the timescale.  -Timo 2023/06/10
             transformSwap();
+            
             input::editorInputSet().update();
             input::simInputSet().update(simDeltaTime);
             entityManager->INTERNALsimulationUpdate(simDeltaTime);  // @NOTE: if timescale changes, then the system just waits longer/shorter per loop.
+            comim::simulationTick();
+
             if (runPhysicsSimulations)
             {
                 ZoneScopedN("Update Jolt phys sys");

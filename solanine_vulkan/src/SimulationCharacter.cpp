@@ -18,6 +18,7 @@
 #include "StringHelper.h"
 #include "HarvestableItem.h"
 #include "ScannableItem.h"
+#include "CombatInteractionManager.h"
 #include "Debug.h"
 #ifdef _DEVELOP
 #include "HotswapResources.h"
@@ -25,6 +26,9 @@
 
 
 std::string CHARACTER_TYPE_PLAYER = "PLAYER";
+// @NOTE: more enemy types will be available, but this one is just the first
+//        "testbenchy"-type one.
+std::string CHARACTER_TYPE_ENEMY = "ENEMY";
 std::string CHARACTER_TYPE_NPC = "NPC";
 
 struct SimulationCharacter_XData
@@ -157,6 +161,38 @@ struct SimulationCharacter_XData
     {
         // @NOTE: all commented-out code is supposed to be the default (i.e. nullptr's and stuff).
 
+        // Usu. a blade, but holds state of hurtbox deltas.
+        struct HurtboxState
+        {
+            std::string bladeBoneName = "Hand Attachment";
+            vec3 prevBladeStart       = GLM_VEC3_ZERO_INIT;
+            vec3 prevBladeEnd         = GLM_VEC3_ZERO_INIT;
+            float_t capsuleRadius     = 1.0f;
+            float_t bladeStartOffset  = 0.5f;
+            float_t bladeLength       = 4.0f;
+            bool isBladeActive        = false;
+
+            inline void calculateNumCrossCapsules()
+            {
+                assert(bladeLength > 0.0f);
+                _bakedNumCrossCapsules =
+                    (uint32_t)std::ceilf(bladeLength / capsuleRadius);
+                assert(_bakedNumCrossCapsules >= 1);
+            }
+
+            inline uint32_t getNumCrossCapsules()
+            {
+                // Check that `calculateNumCrossCapsules()` was run before trying to
+                // retrieve the resulting value.
+                assert(_bakedNumCrossCapsules != (uint32_t)-1);
+
+                return _bakedNumCrossCapsules;
+            }
+
+        private:
+            uint32_t _bakedNumCrossCapsules = (uint32_t)-1;
+        } hurtboxState;
+
         // List of all attacks to be referenced from.
         struct ChargeUnleash
         {
@@ -199,8 +235,14 @@ struct SimulationCharacter_XData
             // 5 feels way too late.
             // 2 feels really nice.
             // 0 feels tight but feels like it eats my inputs.
+            // 1 is a tradeoff, but it really honestly just feels like Lies of P, so it's fine I suppose.
+            //   It's really interesting how it changes when the ticks in the simulation system get changed
+            //   to 50hz, though. It feels so much less forgiving than working in 40hz, so at least for combat
+            //   inputs, it really should be kept at 40hz. I wonder if physics would need to speed up for that
+            //   with something like combat hitbox sensing. I wonder if doing async for everything and have it
+            //   running at different rates would work okay for it all if that were the case.
 
-            int32_t parryFudgeTicks = 0;  // How many ticks a parry can be late from the attack unleash and still be considered valid.
+            int32_t parryFudgeTicks = 1;  // How many ticks a parry can be late from the attack unleash and still be considered valid.
             // @THOUGHTS: I feel like 10 should be it bc of it being forgiving, especially for something like
             //            tv and console, however, it doesn't play very nice with syncing up the sound and the
             //            video. Thus, the compromise of 2 should be good. It doesn't feel like it's a 16th beat
@@ -225,6 +267,7 @@ struct SimulationCharacter_XData
         } state;
     } enemyCombat;
 
+#if 0
     struct EXPERIMENTAL__ShouldbeInSeparateClassCombatStateMachine
     {
         int32_t currentBeat = 0;
@@ -250,6 +293,7 @@ struct SimulationCharacter_XData
 
         bool interactionProcessed = false;
     } csm;
+#endif
 
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -522,6 +566,7 @@ struct SimulationCharacter_XData
 };
 
 inline bool isPlayer(SimulationCharacter_XData* d) { return d->characterType == CHARACTER_TYPE_PLAYER; }
+inline bool isEnemy(SimulationCharacter_XData* d) { return d->characterType == CHARACTER_TYPE_ENEMY; }
 
 void processOutOfHealth(EntityManager* em, Entity* e, SimulationCharacter_XData* d)
 {
@@ -1873,6 +1918,13 @@ SimulationCharacter::SimulationCharacter(EntityManager* em, RenderObjectManager*
     glm_translate(_data->characterRenderObj->simTransformOffset, vec3{ 0.0f, -physengine::getLengthOffsetToBase(*_data->cpd), 0.0f });
     glm_scale(_data->characterRenderObj->simTransformOffset, vec3{ _data->modelSize, _data->modelSize, _data->modelSize });
 
+    // Calculate hurtbox state
+    // @NOCHECKIN: extend this to player character!!!!!!
+    if (isEnemy(_data))  // @NOCHECKIN
+    {
+        _data->enemyCombat.hurtboxState.calculateNumCrossCapsules();
+    }
+
     // @HARDCODED: there should be a sensing algorithm to know which lightgrid to assign itself to.
     for (auto& inst : _data->characterRenderObj->calculatedModelInstances)
         inst.voxelFieldLightingGridID = 1;
@@ -2558,7 +2610,6 @@ inline void frontendMovementFallingAndJumping(SimulationCharacter_XData* d, floa
 void EXPERIMENTAL__playerCombatStateMachine(SimulationCharacter_XData* d)
 {
     typedef SimulationCharacter_XData::CombatState CombatState_e;
-    typedef SimulationCharacter_XData::EXPERIMENTAL__ShouldbeInSeparateClassCombatStateMachine::BeatState BeatState_e;
 
     auto& a = d->playerCombat;
 
@@ -2593,7 +2644,7 @@ void EXPERIMENTAL__playerCombatStateMachine(SimulationCharacter_XData* d)
                 auto& attack =
                     (goForHeavyAttack ? a.variable.heavyAttack : a.variable.lightAttack);
 
-                int32_t timing = (d->csm.currentBeat % d->csm.tempo) - attack.unleashBeatTick;
+                int32_t timing = comim::getCurrentBeat() - attack.unleashBeatTick;
                 bool fudgedLateRelease =  // Allow fudging late input release.
                     (input::simInputSet().attack.onRelease &&
                         timing <= a.input.fudgeLateReleaseAttackOntoBeatTick);
@@ -2705,17 +2756,29 @@ void EXPERIMENTAL__playerCombatStateMachine(SimulationCharacter_XData* d)
                 break;
         }
     }
+    
+    // Heartbeat sound cue.
+    typedef SimulationCharacter_XData::CombatState CombatState_e;
+    if (d->playerCombat.state.combatState == CombatState_e::WEAPON_CHARGING &&
+        comim::getCurrentBeat() == 0)
+        AudioEngine::getInstance().playSoundFromList({
+            "res/sfx/wip_heart_down_0.wav",
+            "res/sfx/wip_heart_down_1.wav",
+            "res/sfx/wip_heart_down_2.wav",
+            "res/sfx/wip_heart_down_3.wav",
+            "res/sfx/wip_heart_down_4.wav",
+        });
 }
 
 void EXPERIMENTAL__enemyCombatStateMachine(SimulationCharacter_XData* d)
 {
     typedef SimulationCharacter_XData::EnemyCombat::SimulationState::EnemyCombatState CombatState_e;
-    typedef SimulationCharacter_XData::CombatState PlayerCombatState_e;
     auto& ec = d->enemyCombat;
     auto& s = d->enemyCombat.state;
 
     // Process state machine.
     CombatState_e currentStateCopy;
+    int32_t iterations = 0;
     do
     {
         currentStateCopy = s.currentState;
@@ -2723,7 +2786,7 @@ void EXPERIMENTAL__enemyCombatStateMachine(SimulationCharacter_XData* d)
         {
             case CombatState_e::IDLE:
                 // Immediately choose attack to go for.
-                if (d->csm.currentBeat % d->csm.tempo == 0)
+                if (comim::getCurrentBeat() == 0)
                 {
                     s.currentState = CombatState_e::WAITING_TO_BEGIN_ATTACK;
                     s.chainIndex = rng::randomIntegerRange(0, ec.numChains - 1);
@@ -2734,12 +2797,11 @@ void EXPERIMENTAL__enemyCombatStateMachine(SimulationCharacter_XData* d)
             case CombatState_e::WAITING_TO_BEGIN_ATTACK:
             {
                 size_t attackIdx = ec.allChains[s.chainIndex].serialAttackIndices[s.chainSerialIndex];
-                if (d->csm.currentBeat % d->csm.tempo == ec.allAttacks[attackIdx].startChargeBeatTick)
+                if (comim::getCurrentBeat() == ec.allAttacks[attackIdx].startChargeBeatTick)
                 {
                     // Start attack (charging).
                     s.currentState = CombatState_e::ATTACK_CHARGING;
                     s.timer = 0;
-                    AudioEngine::getInstance().playSound("res/sfx/wip_hollow_knight_sfx/hero_unsheath.wav");
                 }
             } break;
 
@@ -2833,7 +2895,109 @@ void EXPERIMENTAL__enemyCombatStateMachine(SimulationCharacter_XData* d)
                     s.timer++;
                 break;
         }
+
+        iterations++;
     } while (s.currentState != currentStateCopy);
+
+    if (iterations > 1)
+    {
+        // Entered new state.
+        switch (s.currentState)
+        {
+            case CombatState_e::IDLE:
+                d->characterRenderObj->animator->setTrigger("goto_idle");
+                break;
+
+            case CombatState_e::WAITING_TO_BEGIN_ATTACK:
+                d->characterRenderObj->animator->setTrigger("goto_idle");
+                break;
+
+            case CombatState_e::ATTACK_CHARGING:
+                d->characterRenderObj->animator->setTrigger("goto_weapon_charge");
+                AudioEngine::getInstance().playSound("res/sfx/wip_hollow_knight_sfx/hero_unsheath.wav");
+                break;
+
+            case CombatState_e::ATTACK_UNLEASH:
+                d->characterRenderObj->animator->setTrigger("goto_weapon_unleash");
+                break;
+
+            case CombatState_e::COOLDOWN:
+                d->characterRenderObj->animator->setTrigger("goto_idle");
+                break;
+        }
+    }
+
+
+    // Hitbox calculations.
+    // @TODO
+
+
+    // Hurtbox calculations.
+
+    // Calculate new blade start/end.
+    auto& hbs = d->enemyCombat.hurtboxState;
+
+    mat4 attachmentJointMat;
+    d->characterRenderObj->animator->getJointMatrix(hbs.bladeBoneName, attachmentJointMat);
+    glm_mat4_mul(d->characterRenderObj->transformMatrix, attachmentJointMat, attachmentJointMat);
+
+    vec3 bladeStart;
+    vec3 bladeEnd;
+    glm_mat4_mulv3(attachmentJointMat, vec3{ 0.0f, hbs.bladeStartOffset, 0.0f }, 1.0f, bladeStart);
+    glm_mat4_mulv3(attachmentJointMat, vec3{ 0.0f, hbs.bladeStartOffset + hbs.bladeLength, 0.0f }, 1.0f, bladeEnd);
+    physengine::drawDebugVisLine(bladeStart, bladeEnd, physengine::DebugVisLineType::VELOCITY);
+
+    hbs.isBladeActive = true;  // @NOCHECKIN @DEBUG
+
+    // Calculate cross capsules and submit hurt request if found.
+    if (hbs.isBladeActive)
+    {
+        float_t bladeTStride = 0.0f;
+        if (hbs.getNumCrossCapsules() > 1 && hbs.bladeLength > hbs.capsuleRadius * 2.0f)
+            bladeTStride =
+                (hbs.bladeLength - hbs.capsuleRadius * 2.0f) /
+                    (float_t)(hbs.getNumCrossCapsules() - 1) /
+                    hbs.bladeLength;
+        float_t bladeT = hbs.capsuleRadius / hbs.bladeLength;
+        for (size_t i = 0; i < hbs.getNumCrossCapsules(); i++)
+        {
+            // Calc cross capsule start/end.
+            vec3 crossCapsuleStart;
+            vec3 crossCapsuleEnd;
+            glm_vec3_lerp(bladeStart, bladeEnd, bladeT, crossCapsuleStart);
+            glm_vec3_lerp(hbs.prevBladeStart, hbs.prevBladeEnd, bladeT, crossCapsuleEnd);
+            physengine::drawDebugVisLine(crossCapsuleStart, crossCapsuleEnd, physengine::DebugVisLineType::VELOCITY);
+
+            // Test if hurt request needed.
+
+            // @TODO: write a helper function to do a capsule overlap
+
+            // @TODO: create capsule shape with these capsule ends, run the test,
+            //        and then delete the capsule shape.
+            std::vector<std::string> hitGuids;
+
+            // Send hurt requests to all hit guids.
+            // @NOTE: getting parried doesn't stagger an individual, but it will
+            //        lead to getting staggered by breaking the individual's posture.
+            for (auto& guid : hitGuids)
+                comim::hurtRequest(
+                    guid,
+                    []() {
+                        std::cout << "hurt request SUCCESS." << std::endl;
+                    },
+                    []() {
+                        std::cout << "hurt request GOT PARRIED." << std::endl;
+                    }
+                );
+
+            // Increment.
+            bladeT += bladeTStride;
+        }
+    }
+
+    // Finish.
+    glm_vec3_copy(bladeStart, hbs.prevBladeStart);
+    glm_vec3_copy(bladeEnd, hbs.prevBladeEnd);
 }
 
 #if 0
@@ -2962,47 +3126,20 @@ void EXPERIMENTAL__combatInteraction(SimulationCharacter_XData* d)
 }
 #endif
 
-void EXPERIMENTAL__TickCombatStateMachine(SimulationCharacter_XData* d)
-{
-    // Process input state machines.
-    EXPERIMENTAL__playerCombatStateMachine(d);
-    EXPERIMENTAL__enemyCombatStateMachine(d);
-
-    // Process interactions.
-    // EXPERIMENTAL__combatInteraction(d);
-
-    // Heartbeat sound cue.
-    typedef SimulationCharacter_XData::CombatState CombatState_e;
-    if (d->playerCombat.state.combatState == CombatState_e::WEAPON_CHARGING &&
-        d->csm.currentBeat % d->csm.tempo == 0)
-        AudioEngine::getInstance().playSoundFromList({
-            "res/sfx/wip_heart_down_0.wav",
-            "res/sfx/wip_heart_down_1.wav",
-            "res/sfx/wip_heart_down_2.wav",
-            "res/sfx/wip_heart_down_3.wav",
-            "res/sfx/wip_heart_down_4.wav",
-        });
-        // AudioEngine::getInstance().playSoundFromList({
-        //     "res/sfx/wip_heart_up_0.wav",
-        //     "res/sfx/wip_heart_up_1.wav",
-        //     "res/sfx/wip_heart_up_2.wav",
-        //     "res/sfx/wip_heart_up_3.wav",
-        //     "res/sfx/wip_heart_up_4.wav",
-        // });
-
-    // End tick.
-    d->csm.currentBeat++;
-}
-
 void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, EntityManager* em, const std::string& myGuid)
 {
     ZoneScoped;
 
     // @NOCHECKIN: @EXPERIMENT /////////////////////////////////////////////////////////////////////////////////////////
     if (isPlayer(d))
-    {
-        EXPERIMENTAL__TickCombatStateMachine(d);
+        EXPERIMENTAL__playerCombatStateMachine(d);
+    else if (isEnemy(d))
+        EXPERIMENTAL__enemyCombatStateMachine(d);
 
+
+
+    if (isPlayer(d))
+    {
 #if 0
         static int32_t jojo = 0;
         // static int32_t tempo = 30;
