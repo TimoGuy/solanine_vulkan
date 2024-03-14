@@ -193,6 +193,22 @@ struct SimulationCharacter_XData
             uint32_t _bakedNumCrossCapsules = (uint32_t)-1;
         } hurtboxState;
 
+        // Usu. all the relevant bones in an individual, but they can be activated
+        // or deactivated depending on the scenario.
+        struct HitboxState
+        {
+            struct HitCapsule
+            {
+                bool active          = true;
+                std::string boneName = "";
+                vec3 center          = GLM_VEC3_ZERO_INIT;
+                vec3 up              = { 0.0f, 1.0f, 0.0f };
+                float_t height       = 2.0f;
+                float_t radius       = 1.0f;
+            };
+            std::vector<HitCapsule> hitCapsules;
+        } hitboxState;
+
         // List of all attacks to be referenced from.
         struct ChargeUnleash
         {
@@ -2929,7 +2945,11 @@ void EXPERIMENTAL__enemyCombatStateMachine(SimulationCharacter_XData* d)
 
 
     // Hitbox calculations.
-    // @TODO
+    for (auto& hitCapsule : d->enemyCombat.hitboxState.hitCapsules)
+    {
+        // @TODO Align all requisite capsules to their respective bones.
+
+    }
 
 
     // Hurtbox calculations.
