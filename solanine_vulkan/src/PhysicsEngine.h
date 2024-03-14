@@ -124,6 +124,21 @@ namespace physengine
     bool cylinderCast(vec3 origin, float_t radius, float_t height, JPH::BodyID ignoreBodyId, vec3 directionAndMagnitude, float_t& outFraction, vec3& outSurfaceNormal);
     bool cylinderCast(vec3 origin, float_t radius, float_t height, JPH::BodyID ignoreBodyId, vec3 directionAndMagnitude, float_t& outFraction, vec3& outSurfaceNormal, vec3& outLocalContactPosition);
 
+    // @NOTE: this is specifically used/created for overlapping hitboxes and hurtboxes.
+    //        It would probably be wise to expand this function's use to be agnostic to
+    //        its intended use, but for now this is to just get the functionality
+    //        up and running.  -Timo 2024/03/14
+    struct BodyAndSubshapeID
+    {
+        JPH::BodyID bodyId;
+        JPH::SubShapeID subShapeId;
+    };
+    bool capsuleOverlap(vec3 origin, versor rotation, float_t radius, float_t height, JPH::BodyID ignoreBodyId, std::vector<BodyAndSubshapeID>& outHitIds);
+
+
+    // Helper functions.
+    std::string bodyIdToEntityGuid(JPH::BodyID bodyId);
+
 #ifdef _DEVELOP
     enum class DebugVisLineType { PURPTEAL, AUDACITY, SUCCESS, VELOCITY, KIKKOARMY, YUUJUUFUDAN };
     void drawDebugVisLine(vec3 pt1, vec3 pt2, DebugVisLineType type = DebugVisLineType::PURPTEAL);

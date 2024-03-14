@@ -2990,18 +2990,43 @@ void EXPERIMENTAL__enemyCombatStateMachine(SimulationCharacter_XData* d)
 
             // Test if hurt request needed.
 
-            // @TODO: write a helper function to do a capsule overlap
+            // Run capsule overlap for cross capsule.
+            float_t crossCapsuleHeight =
+                glm_vec3_distance(crossCapsuleStart, crossCapsuleEnd);
 
-            // @TODO: create capsule shape with these capsule ends, run the test,
-            //        and then delete the capsule shape.
-            std::vector<std::string> hitGuids;
+            if (crossCapsuleHeight < 0.001f)
+                continue;
+
+            vec3 crossCapsuleOrigin;
+            glm_vec3_add(crossCapsuleStart, crossCapsuleEnd, crossCapsuleOrigin);
+            glm_vec3_scale(crossCapsuleOrigin, 0.5f, crossCapsuleOrigin);
+
+            vec3 crossCapsuleUp;
+            glm_vec3_sub(crossCapsuleEnd, crossCapsuleStart, crossCapsuleUp);
+            glm_vec3_normalize(crossCapsuleUp);
+
+            versor crossCapsuleRotation;
+            glm_quat_from_vecs(vec3{ 0.0f, 1.0f, 0.0f }, crossCapsuleUp, crossCapsuleRotation);
+
+            std::vector<physengine::BodyAndSubshapeID> hitIds;
+            (void)physengine::capsuleOverlap(
+                crossCapsuleOrigin,
+                crossCapsuleRotation,
+                hbs.capsuleRadius,
+                crossCapsuleHeight,
+                JPH::BodyID(),  // @TODO
+                hitIds
+            );
 
             // Send hurt requests to all hit guids.
             // @NOTE: getting parried doesn't stagger an individual, but it will
             //        lead to getting staggered by breaking the individual's posture.
-            for (auto& guid : hitGuids)
+            for (auto& id : hitIds)
+            {
+                auto guid = physengine::bodyIdToEntityGuid(id.bodyId);
                 comim::hurtRequest(
                     guid,
+                    id.subShapeId,
                     []() {
                         std::cout << "hurt request SUCCESS." << std::endl;
                     },
@@ -3009,6 +3034,7 @@ void EXPERIMENTAL__enemyCombatStateMachine(SimulationCharacter_XData* d)
                         std::cout << "hurt request GOT PARRIED." << std::endl;
                     }
                 );
+            }
 
             // Increment.
             bladeT += bladeTStride;

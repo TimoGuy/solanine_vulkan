@@ -46,7 +46,7 @@ namespace physengine
     bool runPhysicsSimulations = false;
 
     PhysicsSystem* physicsSystem = nullptr;
-    std::map<uint32_t, std::string> bodyIdToEntityGuidMap;
+    std::unordered_map<JPH::BodyID, std::string> bodyIdToEntityGuidMap;
 
     enum class UserDataMeaning
     {
@@ -499,14 +499,15 @@ namespace physengine
 #endif // JPH_ENABLE_ASSERTS
 
     // Layer that objects can be in, determines which other objects it can collide with
-// Typically you at least want to have 1 layer for moving bodies and 1 layer for static bodies, but you can have more
-// layers if you want. E.g. you could have a layer for high detail collision (which is not used by the physics simulation
-// but only if you do collision testing).
+    // Typically you at least want to have 1 layer for moving bodies and 1 layer for static bodies, but you can have more
+    // layers if you want. E.g. you could have a layer for high detail collision (which is not used by the physics simulation
+    // but only if you do collision testing).
     namespace Layers
     {
         static constexpr ObjectLayer NON_MOVING = 0;
         static constexpr ObjectLayer MOVING = 1;
-        static constexpr ObjectLayer NUM_LAYERS = 2;
+        static constexpr ObjectLayer HIT_HURT_BOX = 2;
+        static constexpr ObjectLayer NUM_LAYERS = 3;
     };
 
     /// Class that determines if two object layers can collide
@@ -537,7 +538,8 @@ namespace physengine
     {
         static constexpr BroadPhaseLayer NON_MOVING(0);
         static constexpr BroadPhaseLayer MOVING(1);
-        static constexpr uint32_t NUM_LAYERS(2);
+        static constexpr BroadPhaseLayer HIT_HURT_BOX(2);
+        static constexpr uint32_t NUM_LAYERS(3);
     };
 
     // BroadPhaseLayerInterface implementation
@@ -550,6 +552,7 @@ namespace physengine
             // Create a mapping table from object to broad phase layer
             mObjectToBroadPhase[Layers::NON_MOVING] = BroadPhaseLayers::NON_MOVING;
             mObjectToBroadPhase[Layers::MOVING] = BroadPhaseLayers::MOVING;
+            mObjectToBroadPhase[Layers::HIT_HURT_BOX] = BroadPhaseLayers::HIT_HURT_BOX;
         }
 
         virtual uint32_t GetNumBroadPhaseLayers() const override
@@ -570,6 +573,7 @@ namespace physengine
             {
             case (BroadPhaseLayer::Type)BroadPhaseLayers::NON_MOVING:	return "NON_MOVING";
             case (BroadPhaseLayer::Type)BroadPhaseLayers::MOVING:		return "MOVING";
+            case (BroadPhaseLayer::Type)BroadPhaseLayers::HIT_HURT_BOX: return "HIT_HURT_BOX";
             default:													JPH_ASSERT(false); return "INVALID";
             }
         }
@@ -620,9 +624,8 @@ namespace physengine
                 
                 case UserDataMeaning::IS_CHARACTER:
                 {
-                    uint32_t id = thisBody.GetID().GetIndex();
                     SimulationCharacter* entityAsChar;
-                    if (entityAsChar = dynamic_cast<SimulationCharacter*>(entityManager->getEntityViaGUID(bodyIdToEntityGuidMap[id])))
+                    if (entityAsChar = dynamic_cast<SimulationCharacter*>(entityManager->getEntityViaGUID(bodyIdToEntityGuidMap[thisBody.GetID()])))
                         entityAsChar->reportPhysicsContact(otherBody, manifold, &ioSettings);
                 } return;
             }
@@ -1208,7 +1211,7 @@ namespace physengine
         bodyInterface.AddBody(vfpd.bodyId, EActivation::DontActivate);
 
         // Add guid into references.
-        bodyIdToEntityGuidMap[vfpd.bodyId.GetIndex()] = entityGuid;
+        bodyIdToEntityGuidMap[vfpd.bodyId] = entityGuid;
     }
 
     void setVoxelFieldBodyTransform(VoxelFieldPhysicsData& vfpd, vec3 newPosition, versor newRotation)
@@ -1287,7 +1290,7 @@ namespace physengine
             cpd.simTransformId = registerSimulationTransform();
 
             // Add guid into references.
-            bodyIdToEntityGuidMap[cpd.character->GetBodyID().GetIndex()] = entityGuid;
+            bodyIdToEntityGuidMap[cpd.character->GetBodyID()] = entityGuid;
 
             return &cpd;
         }
@@ -1510,15 +1513,14 @@ namespace physengine
         {
             outFraction = result.GetEarlyOutFraction();
 
-            const uint32_t bodyIdIdx = result.mBodyID.GetIndex();
-            if (bodyIdToEntityGuidMap.find(bodyIdIdx) == bodyIdToEntityGuidMap.end())
+            if (bodyIdToEntityGuidMap.find(result.mBodyID) == bodyIdToEntityGuidMap.end())
             {
                 std::cout << "[RAYCAST]" << std::endl
-                    << "WARNING: body ID " << bodyIdIdx << " didn\'t match any entity GUIDs." << std::endl;
+                    << "WARNING: body ID " << result.mBodyID.GetIndexAndSequenceNumber() << " didn\'t match any entity GUIDs." << std::endl;
             }
             else
             {
-                outHitGuid = bodyIdToEntityGuidMap[bodyIdIdx];
+                outHitGuid = bodyIdToEntityGuidMap[result.mBodyID];
             }
 
             if (collectSurfNormal)
@@ -1576,9 +1578,8 @@ namespace physengine
         class MyCollector : public CastShapeCollector
         {
         public:
-            MyCollector(PhysicsSystem &inPhysicsSystem, const RShapeCast &inShapeCast, JPH::BodyID ignoreBodyId) :
+            MyCollector(PhysicsSystem &inPhysicsSystem, JPH::BodyID ignoreBodyId) :
                 mPhysicsSystem(inPhysicsSystem),
-                mShapeCast(inShapeCast),
                 mIgnoreBodyId(ignoreBodyId) { }
 
             virtual void AddHit(const ShapeCastResult &inResult) override
@@ -1610,7 +1611,6 @@ namespace physengine
 
             // Configuration
             PhysicsSystem&      mPhysicsSystem;
-            const RShapeCast&   mShapeCast;
             JPH::BodyID         mIgnoreBodyId;
 
             // Resulting closest collision
@@ -1619,7 +1619,7 @@ namespace physengine
             RVec3              mLocalContactPosition;
             Vec3               mContactNormal;
         };
-        MyCollector collector(*physicsSystem, sc, ignoreBodyId);
+        MyCollector collector(*physicsSystem, ignoreBodyId);
 
         physicsSystem->GetNarrowPhaseQuery().CastShape(sc, scs, Vec3(origin[0], origin[1], origin[2]), collector);
         if (collector.mBody != nullptr)
@@ -1637,6 +1637,75 @@ namespace physengine
         return false;
     }
 
+    bool capsuleOverlap(vec3 origin, versor rotation, float_t radius, float_t height, JPH::BodyID ignoreBodyId, std::vector<BodyAndSubshapeID>& outHitIds)
+    {
+        bool hitAdded = false;
+
+        RMat44 transform =
+            RMat44::sRotationTranslation(
+                Quat(rotation[0], rotation[1], rotation[2], rotation[3]),
+                Vec3(origin[0], origin[1], origin[2])
+            );
+        CollideShapeSettings css;  // @NOTE: may need to increase things to collide with to include inactive edges too?
+
+        class MyCollector : public CollideShapeCollector
+        {
+        public:
+            MyCollector(PhysicsSystem &inPhysicsSystem, JPH::BodyID ignoreBodyId, std::vector<BodyAndSubshapeID>& outHitIds, bool& hitAdded) :
+                mPhysicsSystem(inPhysicsSystem),
+                mIgnoreBodyId(ignoreBodyId),
+                mHitIds(outHitIds),
+                mHitAdded(hitAdded) { }
+
+            virtual void AddHit(const CollideShapeResult &inResult) override
+            {
+                if (inResult.mBodyID2 == mIgnoreBodyId)
+                    return;
+
+                // Lock the body.
+                BodyLockRead lock(mPhysicsSystem.GetBodyLockInterfaceNoLock(), inResult.mBodyID2);
+                JPH_ASSERT(lock.Succeeded());  // When this runs all bodies are locked so this should not fail
+                const Body *body = &lock.GetBody();
+
+                if (body->IsSensor())
+                    return;
+
+                // Push the collision.
+                mHitIds.push_back({
+                    .bodyId = inResult.mBodyID2,
+                    .subShapeId = inResult.mSubShapeID2,
+                });
+            }
+
+            // Configuration
+            PhysicsSystem&                  mPhysicsSystem;
+            JPH::BodyID                     mIgnoreBodyId;
+
+            // Resulting closest collision
+            std::vector<BodyAndSubshapeID>& mHitIds;
+            bool&                           mHitAdded;
+        };
+        MyCollector collector(*physicsSystem, ignoreBodyId, outHitIds, hitAdded);
+
+        physicsSystem->GetNarrowPhaseQuery()
+            .CollideShape(
+                new CapsuleShape(height * 0.5f, radius),  // @RESEARCH: I STILL don't know whether this causes memory leaks by not deleting.
+                Vec3(1.0f, 1.0f, 1.0f),
+                transform,
+                css,
+                Vec3::sZero(),
+                collector,
+                SpecifiedBroadPhaseLayerFilter(BroadPhaseLayers::HIT_HURT_BOX),  // @RESEARCH: check that this actually reacts to collisions with only the hit/hurt boxes!
+                SpecifiedObjectLayerFilter(Layers::HIT_HURT_BOX)
+            );
+
+        return hitAdded;
+    }
+
+    std::string bodyIdToEntityGuid(JPH::BodyID bodyId)
+    {
+        return bodyIdToEntityGuidMap[bodyId];
+    }
 
 #ifdef _DEVELOP
     void drawDebugVisLine(vec3 pt1, vec3 pt2, DebugVisLineType type)

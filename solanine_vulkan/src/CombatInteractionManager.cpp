@@ -37,7 +37,7 @@ namespace comim
         return currentCombatBeat;
     }
     
-    void hurtRequest(const std::string& guid, void (*onSuccess)(), void (*onGotParried)())
+    void hurtRequest(const std::string& guid, JPH::SubShapeID subShapeId, void (*onSuccess)(), void (*onGotParried)())
     {
         // @TODO: write a real hurt request approval system!!!
         onSuccess();

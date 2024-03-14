@@ -11,5 +11,5 @@ namespace comim
 
     int32_t getCurrentBeat();
 
-    void hurtRequest(const std::string& guid, void (*onSuccess)(), void (*onGotParried)());
+    void hurtRequest(const std::string& guid, JPH::SubShapeID subShapeId, void (*onSuccess)(), void (*onGotParried)());
 }
