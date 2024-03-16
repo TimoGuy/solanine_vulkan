@@ -3023,6 +3023,8 @@ void EXPERIMENTAL__enemyCombatStateMachine(SimulationCharacter_XData* d)
             //        lead to getting staggered by breaking the individual's posture.
             for (auto& id : hitIds)
             {
+                physengine::drawDebugVisPoint(id.hitPosition);
+
                 auto guid = physengine::bodyIdToEntityGuid(id.bodyId);
                 comim::hurtRequest(
                     guid,

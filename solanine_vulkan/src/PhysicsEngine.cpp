@@ -1674,6 +1674,11 @@ namespace physengine
                 mHitIds.push_back({
                     .bodyId = inResult.mBodyID2,
                     .subShapeId = inResult.mSubShapeID2,
+                    .hitPosition = {
+                        inResult.mContactPointOn2.GetX(),
+                        inResult.mContactPointOn2.GetY(),
+                        inResult.mContactPointOn2.GetZ(),
+                    },
                 });
             }
 
@@ -1696,7 +1701,7 @@ namespace physengine
                 Vec3::sZero(),
                 collector,
                 SpecifiedBroadPhaseLayerFilter(BroadPhaseLayers::HIT_HURT_BOX),  // @RESEARCH: check that this actually reacts to collisions with only the hit/hurt boxes!
-                SpecifiedObjectLayerFilter(Layers::HIT_HURT_BOX)
+                SpecifiedObjectLayerFilter(Layers::HIT_HURT_BOX)                 // @TODO: make a kinematic mutatable compound shape that can be in this layer and automatically update to the animation bones the shapes are assigned to.
             );
 
         return hitAdded;
@@ -1717,6 +1722,23 @@ namespace physengine
 
         std::lock_guard<std::mutex> lg(mutateDebugVisLines);
         debugVisLines.push_back(dvl);
+    }
+    
+    void drawDebugVisPoint(vec3 pt, DebugVisLineType type)
+    {
+        const static float_t radius = 0.25f;
+
+        // Draw lines in each dimension.
+        for (size_t dim = 0; dim < 3; dim++)
+        {
+            vec3 pt1;
+            vec3 pt2;
+            glm_vec3_copy(pt, pt1);
+            glm_vec3_copy(pt, pt2);
+            pt1[dim] -= radius;
+            pt2[dim] += radius;
+            drawDebugVisLine(pt1, pt2, type);
+        }
     }
 
     void renderImguiPerformanceStats()

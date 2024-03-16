@@ -132,6 +132,7 @@ namespace physengine
     {
         JPH::BodyID bodyId;
         JPH::SubShapeID subShapeId;
+        vec3 hitPosition;
     };
     bool capsuleOverlap(vec3 origin, versor rotation, float_t radius, float_t height, JPH::BodyID ignoreBodyId, std::vector<BodyAndSubshapeID>& outHitIds);
 
@@ -142,6 +143,7 @@ namespace physengine
 #ifdef _DEVELOP
     enum class DebugVisLineType { PURPTEAL, AUDACITY, SUCCESS, VELOCITY, KIKKOARMY, YUUJUUFUDAN };
     void drawDebugVisLine(vec3 pt1, vec3 pt2, DebugVisLineType type = DebugVisLineType::PURPTEAL);
+    void drawDebugVisPoint(vec3 pt, DebugVisLineType type = DebugVisLineType::PURPTEAL);
 
     void renderImguiPerformanceStats();
     void renderDebugVisualization(VkCommandBuffer cmd);

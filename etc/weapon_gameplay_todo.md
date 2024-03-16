@@ -1,7 +1,7 @@
 # Weapon attack art.
 
 
-- [ ] Prototype/research gameplay.
+- [x] Prototype/research gameplay.
     - [x] Does inputting button combos feel good in a set rhythm?
         > Yes. There needs to be a lot of wiggle room for input latency, and just bad sense of rhythm overall, but just going along with the "heartbeat" and doing the inputs feels really good.
     - [x] Does doing button combos in sync w/ rhythm feel good when fighting another enemy?
@@ -112,7 +112,7 @@
 
         - [x] Some enemy behavior in a certain pattern (@NOTE: no actual enemy attacks until combat manager and hit-/hurt-capsules are created) as a state machine w/ animations.
 
-    - [ ] Create hit-/hurt-capsules for entities in combat (incl. npc's).
+    - [ ] Create hit-/hurt-capsules for entities in combat (incl. npc's).  @@@@@TODO: DO THIS ONE NEXT!!!!!!
         - [ ] Better capsule debug rendering. (i.e. capsules that can be any arbitrary direction)
         - [ ] Hurt-capsules for sword.
         - [ ] Hit-capsules for player character.
