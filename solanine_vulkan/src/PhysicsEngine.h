@@ -3,6 +3,7 @@
 class EntityManager;
 struct DeletionQueue;
 namespace JPH { struct Character; }
+namespace vkglTF { struct Animator; }
 
 #ifdef _DEVELOP
 class VulkanEngine;
@@ -135,6 +136,41 @@ namespace physengine
         vec3 hitPosition;
     };
     bool capsuleOverlap(vec3 origin, versor rotation, float_t radius, float_t height, JPH::BodyID ignoreBodyId, std::vector<BodyAndSubshapeID>& outHitIds);
+
+    // Hitbox structure.
+    struct SkeletonBoundHitCapsuleSet
+    {
+        JPH::BodyID bodyId;  // This represents the `MutableCompoundShape`.
+        JPH::BodyID joinedTransformBodyId;
+        vkglTF::Animator* skeleton;
+        struct BoundHitCapsuleSubShape
+        {
+            JPH::SubShapeID subShapeId;
+            bool active = true;
+            std::string boneName = "";  // @NOTE: this is horrible to do a string
+                                        //        check every tick. There should
+                                        //        be a way with indices in the
+                                        //        @FUTURE.
+            vec3 offset = GLM_VEC3_ZERO_INIT;
+            float_t height = 1.0f;
+            float_t radius = 0.5f;
+        };
+        std::vector<BoundHitCapsuleSubShape> hitCapsuleSubShapes;
+    };
+    struct BoundHitCapsule
+    {
+        std::string boneName = "";  // @NOTE: the initial setup will be expensive
+                                    //        but is fine to do a string comparison.
+        vec3 offset = GLM_VEC3_ZERO_INIT;
+        // @TODO: there needs to be some way to rotate the capsule, so that there can be wide capsules, etc.
+        float_t height = 1.0f;
+        float_t radius = 0.5f;
+    };
+    typedef uint32_t sbhcs_key_t;
+    const static sbhcs_key_t kInvalidSBHCSKey = (sbhcs_key_t)-1;
+    sbhcs_key_t createSkeletonBoundHitCapsuleSet(std::vector<BoundHitCapsule>& hitCapsules, JPH::BodyID joinedTransformBodyId, vkglTF::Animator* skeleton);
+    bool destroySkeletonBoundHitCapsuleSet(sbhcs_key_t key);
+    void updateSkeletonBoundHitCapsuleSet(sbhcs_key_t key);
 
 
     // Helper functions.

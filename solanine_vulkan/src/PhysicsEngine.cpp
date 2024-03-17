@@ -18,6 +18,7 @@
 #include "SimulationCharacter.h"
 #include "GlobalState.h"
 #include "CombatInteractionManager.h"
+#include "VkglTFModel.h"
 
 JPH_SUPPRESS_WARNINGS
 using namespace JPH;
@@ -107,6 +108,7 @@ namespace physengine
         vec4 color2;
         vec4 pt1;  // Vec4's for padding.
         vec4 pt2;
+        mat4 capsuleRotation = GLM_MAT4_IDENTITY_INIT;
         float_t capsuleRadius;
     };
 
@@ -519,9 +521,15 @@ namespace physengine
             switch (inObject1)
             {
             case Layers::NON_MOVING:
-                return inObject2 == Layers::MOVING; // Non moving only collides with moving
+                return
+                    inObject2 == Layers::MOVING &&  // Non moving only collides with moving.
+                    inObject2 != Layers::HIT_HURT_BOX;
             case Layers::MOVING:
-                return true; // Moving collides with everything
+                return
+                    true && // Moving collides with everything (except hit hurt box).
+                    inObject2 != Layers::HIT_HURT_BOX;
+            case Layers::HIT_HURT_BOX:
+                return false;  // Hit/hurt boxes only do scene queries, so no collision.
             default:
                 JPH_ASSERT(false);
                 return false;
@@ -592,9 +600,15 @@ namespace physengine
             switch (inLayer1)
             {
             case Layers::NON_MOVING:
-                return inLayer2 == BroadPhaseLayers::MOVING;
+                return
+                    inLayer2 == BroadPhaseLayers::MOVING &&
+                    inLayer2 != BroadPhaseLayers::HIT_HURT_BOX;
             case Layers::MOVING:
-                return true;
+                return
+                    true &&
+                    inLayer2 != BroadPhaseLayers::HIT_HURT_BOX;
+            case Layers::HIT_HURT_BOX:
+                return false;
             default:
                 JPH_ASSERT(false);
                 return false;
@@ -1621,7 +1635,14 @@ namespace physengine
         };
         MyCollector collector(*physicsSystem, ignoreBodyId);
 
-        physicsSystem->GetNarrowPhaseQuery().CastShape(sc, scs, Vec3(origin[0], origin[1], origin[2]), collector);
+        physicsSystem->GetNarrowPhaseQuery().CastShape(
+            sc,
+            scs,
+            Vec3(origin[0], origin[1], origin[2]),
+            collector,
+            DefaultBroadPhaseLayerFilter(ObjectVsBroadPhaseLayerFilterImpl(), Layers::MOVING),
+            DefaultObjectLayerFilter(ObjectLayerPairFilterImpl(), Layers::MOVING)
+        );
         if (collector.mBody != nullptr)
         {
             outFraction = collector.GetEarlyOutFraction();
@@ -1707,6 +1728,298 @@ namespace physengine
         return hitAdded;
     }
 
+    // Skeleton-bound hit capsule set.
+
+    // @TODO: make all the pool stuff into its own interface and `Pool` thingo.
+    class SkeletonBoundHitCapsuleSetsPool
+    {
+    public:
+        SkeletonBoundHitCapsuleSetsPool()
+            : _pool(new SBHCSWithIncrement[(size_t)kPoolSize])
+            , _poolElemCount(0)
+        {
+            for (size_t i = 0; i < kPoolSize; i++)
+                _pool[i] = {};
+        }
+
+        ~SkeletonBoundHitCapsuleSetsPool()
+        {
+            delete[] _pool;
+        }
+
+        sbhcs_key_t allocNewSBHCS()
+        {
+            // Find open spot to allocate.
+            size_t allocIdx = (size_t)-1;
+            for (size_t i = 0; i < kPoolSize; i++)
+                if (_pool[i].metadata & kDeletedMask)
+                {
+                    allocIdx = i;
+                    break;
+                }
+            if (allocIdx == (size_t)-1)
+            {
+                std::cerr << "ERROR: new SkeletonBoundHitCapsuleSet not able to be allocated. No more space"
+                    << std::endl;
+                HAWSOO_CRASH();
+            }
+            auto& spot = _pool[allocIdx];
+            
+            // Set spot to "undeleted" and init.
+            spot.metadata = (spot.metadata & ~kDeletedMask);
+            spot.sbhcs = {};
+
+            // Generate key.
+            assert(allocIdx < (size_t)kPoolSize);  // Idk how you got this assert to trip if you did.
+            sbhcs_key_t newKey = 0;
+            newKey = ((sbhcs_key_t)spot.metadata << 16) | (sbhcs_key_t)allocIdx;
+
+            _poolElemCount++;
+
+            return newKey;
+        }
+
+        SkeletonBoundHitCapsuleSet* getSBHCSFromKey(sbhcs_key_t key)
+        {
+            if (isDeleted(key))
+                return nullptr;
+            return &getSBHCSWithIncrement(key)->sbhcs;
+        }
+
+        bool deleteSBHCSFromKey(sbhcs_key_t key)
+        {
+            if (isDeleted(key))
+            {
+                std::cerr << "ERROR: Attempted to delete already deleted key: "
+                    << key << std::endl;
+                return false;
+            }
+
+            // Increment and set to "deleted".
+            auto sbhcswi = getSBHCSWithIncrement(key);
+            uint16_t newMetadata = (sbhcswi->metadata & kCountMask);
+            newMetadata++;
+            newMetadata = (newMetadata | kDeletedMask);
+            sbhcswi->metadata = newMetadata;
+
+            _poolElemCount--;
+
+            return true;
+        }
+
+    private:
+        const static uint16_t kPoolSize    = 0xFFFF;
+        const static uint16_t kDeletedMask = 0x8000;
+        const static uint16_t kCountMask   = 0x7FFF;
+
+        struct SBHCSWithIncrement
+        {
+            uint16_t metadata = 0x8000;  // Set to initially deleted and count to 0.
+            SkeletonBoundHitCapsuleSet sbhcs;
+        };
+        SBHCSWithIncrement* _pool;
+        size_t _poolElemCount;
+        
+        inline uint16_t getMetadataBits(sbhcs_key_t key)                  { return (uint16_t)(key >> 16); }
+        inline uint16_t getIndexBits(sbhcs_key_t key)                     { return (uint16_t)key; }
+        inline SBHCSWithIncrement* getSBHCSWithIncrement(sbhcs_key_t key) { return &_pool[(size_t)getIndexBits(key)]; }
+        inline bool isDeleted(sbhcs_key_t key)
+        {
+            // Key indicates deleted.
+            uint16_t metadata = getMetadataBits(key);
+            if (metadata & kDeletedMask)
+                return true;
+
+            // Currently deleted.
+            auto sbhcswi = getSBHCSWithIncrement(key);
+            if (sbhcswi->metadata & kDeletedMask)
+                return true;
+
+            // Key increment doesn't equal current increment.
+            if (sbhcswi->metadata & kCountMask != metadata & kCountMask)
+                return true;
+            
+            // Not deleted.
+            return false;
+        }
+
+        friend void renderDebugVisualization(VkCommandBuffer cmd);
+    } sbhcsPool;
+
+    sbhcs_key_t createSkeletonBoundHitCapsuleSet(std::vector<BoundHitCapsule>& hitCapsules, JPH::BodyID joinedTransformBodyId, vkglTF::Animator* skeleton)
+    {
+        ZoneScoped;
+
+        sbhcs_key_t key = sbhcsPool.allocNewSBHCS();
+        if (auto newSkeletonBoundHitCapsuleSet = sbhcsPool.getSBHCSFromKey(key))
+        {
+            newSkeletonBoundHitCapsuleSet->joinedTransformBodyId = joinedTransformBodyId;
+            newSkeletonBoundHitCapsuleSet->skeleton = skeleton;
+
+            // Add parts to mutable compound shape.
+            Ref<MutableCompoundShapeSettings> compoundShape = new MutableCompoundShapeSettings;
+            for (auto& hitCapsule : hitCapsules)
+            {
+                // Copy capsule params.
+                SkeletonBoundHitCapsuleSet::BoundHitCapsuleSubShape newBHCSS = {};
+                newBHCSS.boneName = hitCapsule.boneName;
+                glm_vec3_copy(hitCapsule.offset, newBHCSS.offset);
+                newBHCSS.height = hitCapsule.height;
+                newBHCSS.radius = hitCapsule.radius;
+
+                // Calc new shape connection to joint.
+                mat4 jointMat;
+                newSkeletonBoundHitCapsuleSet->skeleton->getJointMatrix(newBHCSS.boneName, jointMat);
+
+                vec3 capsuleOrigin;
+                glm_mat4_mulv3(jointMat, newBHCSS.offset, 1.0f, capsuleOrigin);
+
+                versor jointRot;
+                glm_mat4_quat(jointMat, jointRot);
+
+                // Add new shape.
+                compoundShape->AddShape(
+                    Vec3(capsuleOrigin[0], capsuleOrigin[1], capsuleOrigin[2]),
+                    Quat(jointRot[0], jointRot[1], jointRot[2], jointRot[3]),
+                    new CapsuleShape(newBHCSS.height * 0.5f, newBHCSS.radius)
+                );
+                // @TODO: @NOCHECKIN: @INCOMPLETE: it looks like I don't get to assign a subshape id,
+                //                                 so have to just rely on the physics engine itself.
+
+                newSkeletonBoundHitCapsuleSet->hitCapsuleSubShapes.push_back(newBHCSS);
+            }
+
+            // Get joined body transform.
+            auto& bodyInterface = physicsSystem->GetBodyInterface();
+
+            RVec3 position(0.0f, 0.0f, 0.0f);
+            Quat rotation = Quat::sIdentity();
+            if (!newSkeletonBoundHitCapsuleSet->joinedTransformBodyId.IsInvalid())
+            {
+                bodyInterface.GetPositionAndRotation(
+                    newSkeletonBoundHitCapsuleSet->joinedTransformBodyId,
+                    position,
+                    rotation
+                );
+            }
+
+            // Create kinematic body.
+            Body& body =
+                *bodyInterface.CreateBody(
+                    BodyCreationSettings(
+                        compoundShape,
+                        position,
+                        rotation,
+                        EMotionType::Kinematic,
+                        Layers::HIT_HURT_BOX
+                    )
+                );
+            bodyInterface.AddBody(body.GetID(), EActivation::Activate);
+            newSkeletonBoundHitCapsuleSet->bodyId = body.GetID();
+
+            return key;
+        }
+        else
+        {
+            std::cerr << "ERROR: unable to get newly allocated `SkeletonBoundHitCapsuleSet` with key: " << key << std::endl;
+            return kInvalidSBHCSKey;
+        }
+    }
+
+    bool destroySkeletonBoundHitCapsuleSet(sbhcs_key_t key)
+    {
+        ZoneScoped;
+
+        if (auto sbhcs = sbhcsPool.getSBHCSFromKey(key))
+        {
+            auto& bodyInterface = physicsSystem->GetBodyInterface();
+            bodyInterface.DestroyBody(sbhcs->bodyId);
+
+            return sbhcsPool.deleteSBHCSFromKey(key);
+        }
+        else
+        {
+            std::cerr << "ERROR: unable to find `SkeletonBoundHitCapsuleSet` with key: " << key << std::endl;
+            return false;
+        }
+    }
+    
+    void updateSkeletonBoundHitCapsuleSet(sbhcs_key_t key)
+    {
+        ZoneScoped;
+
+        if (auto sbhcs = sbhcsPool.getSBHCSFromKey(key))
+        {
+            {
+                ZoneScopedN("Lock body to mutate subshapes");
+
+                BodyInterface& noLock = physicsSystem->GetBodyInterfaceNoLock();
+                BodyLockWrite lock(physicsSystem->GetBodyLockInterface(), sbhcs->bodyId);
+                if (lock.Succeeded())
+                {
+                    Body& body = lock.GetBody();
+
+                    Vec3 prevCom = body.GetCenterOfMassPosition();
+
+                    // Get shape.
+                    MutableCompoundShape *shape = static_cast<MutableCompoundShape *>(const_cast<Shape *>(body.GetShape()));
+
+                    uint32_t count = shape->GetNumSubShapes();
+                    for (uint32_t i = 0; i < count; i++)
+                    {
+                        auto& subShape = shape->GetSubShape(i);
+                        auto& hitCapsuleSubShape = sbhcs->hitCapsuleSubShapes[i];
+
+                        // Calc new transform for sub shape.
+                        mat4 jointMat;
+                        sbhcs->skeleton->getJointMatrix(hitCapsuleSubShape.boneName, jointMat);
+
+                        vec3 capsuleOrigin;
+                        glm_mat4_mulv3(jointMat, hitCapsuleSubShape.offset, 1.0f, capsuleOrigin);
+
+                        versor jointRot;
+                        glm_mat4_quat(jointMat, jointRot);
+
+                        {
+                            ZoneScopedN("Mutate subshape");
+
+                            shape->ModifyShape(
+                                i,
+                                Vec3(capsuleOrigin[0], capsuleOrigin[1], capsuleOrigin[2]),
+                                Quat(jointRot[0], jointRot[1], jointRot[2], jointRot[3])
+                            );
+                        }
+                    }
+
+                    // Notify body to reincorporate new shapes.
+                    noLock.NotifyShapeChanged(sbhcs->bodyId, prevCom, false, EActivation::Activate);
+                }
+            }
+
+            {
+                ZoneScopedN("Apply joined body transform");
+
+                if (!sbhcs->joinedTransformBodyId.IsInvalid())
+                {
+                    auto& bodyInterface = physicsSystem->GetBodyInterface();
+                    RVec3 position;
+                    Quat rotation;
+                    bodyInterface.GetPositionAndRotation(
+                        sbhcs->joinedTransformBodyId,
+                        position,
+                        rotation
+                    );
+                    bodyInterface.SetPositionAndRotation(
+                        sbhcs->bodyId,
+                        position,
+                        rotation,
+                        EActivation::DontActivate  // Due to being a kinematic body.
+                    );
+                }
+            }
+        }
+    }
+
     std::string bodyIdToEntityGuid(JPH::BodyID bodyId)
     {
         return bodyIdToEntityGuidMap[bodyId];
@@ -1766,7 +2079,7 @@ namespace physengine
 
         const VkDeviceSize offsets[1] = { 0 };
 
-        // Draw capsules
+        // Draw character collisions (cylinder).  @FUTURE: get an actual cylinder mesh.
         if (engine->generateCollisionDebugVisualization)
         {
             vkCmdBindVertexBuffers(cmd, 0, 1, &capsuleVisVertexBuffer._buffer, offsets);
@@ -1784,10 +2097,95 @@ namespace physengine
                 glm_vec4_add(pc.pt1, vec4{ 0.0f, -cpd.height * 0.5f, 0.0f, 0.0f }, pc.pt1);
                 glm_vec4(comPosition, 0.0f, pc.pt2);
                 glm_vec4_add(pc.pt2, vec4{ 0.0f, cpd.height * 0.5f, 0.0f, 0.0f }, pc.pt2);
+
+                // @NOCHECKIN @TODO: use this for the capsules in the hitbox system
+                //                   (i.e. move it to there).
+                vec3 capsuleUp;
+                glm_vec3_sub(pc.pt2, pc.pt1, capsuleUp);
+                glm_vec3_normalize(capsuleUp);
+                versor rotV;
+                glm_quat_from_vecs(vec3{ 0.0f, 1.0f, 0.0f }, capsuleUp, rotV);
+                glm_quat_mat4(rotV, pc.capsuleRotation);
+                ///////////////////////////////////////////////////////////////////
+
                 pc.capsuleRadius = cpd.radius;
                 vkCmdPushConstants(cmd, debugVisPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUVisInstancePushConst), &pc);
 
                 vkCmdDraw(cmd, capsuleVisVertexCount, 1, 0, 0);
+            }
+        }
+
+        // Draw hit capsules.
+        if (engine->generateCollisionDebugVisualization)
+        {
+            vkCmdBindVertexBuffers(cmd, 0, 1, &capsuleVisVertexBuffer._buffer, offsets);
+
+            auto& bodyInterface = physicsSystem->GetBodyInterface();
+            size_t processedElems = 0;
+            for (size_t i = 0;
+                i < sbhcsPool.kPoolSize && processedElems < sbhcsPool._poolElemCount;
+                i++)
+            {
+                auto& sbhcswi = sbhcsPool._pool[i];
+                if (sbhcswi.metadata & sbhcsPool.kDeletedMask)
+                    continue;  // Skip over deleted elements.
+
+                // Draw each sub shape capsule.
+                MutableCompoundShape* shape =
+                    static_cast<MutableCompoundShape*>(const_cast<Shape*>(bodyInterface.GetShape(sbhcswi.sbhcs.bodyId).GetPtr()));
+                Vec3 bodyPosCom;
+                Quat bodyRot;
+                bodyInterface.GetPositionAndRotation(sbhcswi.sbhcs.bodyId, bodyPosCom, bodyRot);
+
+                uint32_t count = shape->GetNumSubShapes();
+                for (uint32_t i = 0; i < count; i++)
+                {
+                    auto& subShape = shape->GetSubShape(i);
+                    Vec3 posCom = bodyPosCom + subShape.GetPositionCOM();
+                    Quat rot = bodyRot * subShape.GetRotation();
+
+                    vec3 posComGlm = {
+                        posCom.GetX(),
+                        posCom.GetY(),
+                        posCom.GetZ(),
+                    };
+                    versor rotGlm = {
+                        rot.GetX(),
+                        rot.GetY(),
+                        rot.GetZ(),
+                        rot.GetW(),
+                    };
+
+                    // @NOCHECKIN: Assume that the order of creation of subshapes is the same order of iteration here.
+                    float_t height = sbhcswi.sbhcs.hitCapsuleSubShapes[i].height;
+                    float_t radius = sbhcswi.sbhcs.hitCapsuleSubShapes[i].radius;
+
+                    // Calc push constants.
+                    GPUVisInstancePushConst pc = {};
+                    glm_vec4_copy(vec4{ 0.25f, 1.0f, 0.0f, 1.0f }, pc.color1);
+                    glm_vec4_copy(pc.color1, pc.color2);
+
+                    mat4 rotMat4;
+                    glm_quat_mat4(rotGlm, rotMat4);
+                    vec3 offset1;
+                    glm_mat4_mulv3(rotMat4, vec3{ 0.0f, -height * 0.5f, 0.0f }, 0.0f, offset1);
+                    vec3 offset2;
+                    glm_mat4_mulv3(rotMat4, vec3{ 0.0f,  height * 0.5f, 0.0f }, 0.0f, offset2);
+
+                    glm_vec3_add(posComGlm, offset1, pc.pt1);
+                    glm_vec3_add(posComGlm, offset2, pc.pt2);
+                    pc.pt1[3] = 1.0f;
+                    pc.pt2[3] = 1.0f;
+
+                    glm_mat4_copy(rotMat4, pc.capsuleRotation);
+                    pc.capsuleRadius = radius;
+
+                    // Draw.
+                    vkCmdPushConstants(cmd, debugVisPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUVisInstancePushConst), &pc);
+                    vkCmdDraw(cmd, capsuleVisVertexCount, 1, 0, 0);
+                }
+
+                processedElems++;
             }
         }
 

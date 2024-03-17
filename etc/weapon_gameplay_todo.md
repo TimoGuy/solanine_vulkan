@@ -113,12 +113,18 @@
         - [x] Some enemy behavior in a certain pattern (@NOTE: no actual enemy attacks until combat manager and hit-/hurt-capsules are created) as a state machine w/ animations.
 
     - [ ] Create hit-/hurt-capsules for entities in combat (incl. npc's).  @@@@@TODO: DO THIS ONE NEXT!!!!!!
-        - [ ] Better capsule debug rendering. (i.e. capsules that can be any arbitrary direction)
+        - [x] Better capsule debug rendering. (i.e. capsules that can be any arbitrary direction)
         - [ ] Hurt-capsules for sword.
         - [ ] Hit-capsules for player character.
             - @NOTE: for first enemy, just reuse player character model and attack sequences.
             - @REF: https://www.youtube.com/watch?v=8zdbqTHtnr4
-            - [ ] Have each hit-capsule be assigned a bone and some offset of the bone.
+            - [x] Have each hit-capsule be assigned a bone and some offset of the bone.
+            - [ ] Improve the look of them, bc they look off. Also, figure out how you're gonna do this bc it looks like mutating the shape is pretty heavy for the physics engine.
+                - Try seeing if batching the mutate step into `mutateshapes()` instead of `mutateshape()` would be better.
+                - @NOTE: okay, so the reason why it was looking off is mainly bc the bone offset was 0, but there was height on the capsules, so the capsules were centered around the joints, instead of sprawling the joints. Also, I think the other reason why it doesn't look right is bc the model is scaled by 0.3 by the sim char, but that scaling isn't applied to the hit capsule shapes.
+                    - [ ] Scale slime girl model down by 0.3 (or the amt that the game is scaling the model down).
+                - [x] Align the body transform to the character.
+                - [ ] Align body to character using simTransformId.
 
     - [ ] Combat manager class.
         - [ ] Each entity wanting to engage in combat (player, enemies, npcs) will register themselves into the combat manager class.

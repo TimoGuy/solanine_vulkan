@@ -197,16 +197,7 @@ struct SimulationCharacter_XData
         // or deactivated depending on the scenario.
         struct HitboxState
         {
-            struct HitCapsule
-            {
-                bool active          = true;
-                std::string boneName = "";
-                vec3 center          = GLM_VEC3_ZERO_INIT;
-                vec3 up              = { 0.0f, 1.0f, 0.0f };
-                float_t height       = 2.0f;
-                float_t radius       = 1.0f;
-            };
-            std::vector<HitCapsule> hitCapsules;
+            physengine::sbhcs_key_t hitCapsuleSetId = physengine::kInvalidSBHCSKey;
         } hitboxState;
 
         // List of all attacks to be referenced from.
@@ -1939,6 +1930,112 @@ SimulationCharacter::SimulationCharacter(EntityManager* em, RenderObjectManager*
     if (isEnemy(_data))  // @NOCHECKIN
     {
         _data->enemyCombat.hurtboxState.calculateNumCrossCapsules();
+        std::vector<physengine::BoundHitCapsule> hitCapsules = {
+            {
+                .boneName = "Lower Back",
+                .offset = { 0.0f, 0.5f, 0.0f },
+                .height = 1.0f,
+                .radius = 0.25f,
+            },
+            {
+                .boneName = "Mid Back",
+                .offset = { 0.0f, 0.5f, 0.0f },
+                .height = 1.0f,
+                .radius = 0.25f,
+            },
+            {
+                .boneName = "Upper Back",
+                .offset = { 0.0f, 0.5f, 0.0f },
+                .height = 1.0f,
+                .radius = 0.25f,
+            },
+            {
+                .boneName = "Neck",
+                .offset = { 0.0f, 0.5f, 0.0f },
+                .height = 1.0f,
+                .radius = 0.25f,
+            },
+            {
+                .boneName = "Head",
+                .offset = { 0.0f, 0.5f, 0.0f },
+                .height = 1.0f,
+                .radius = 0.25f,
+            },
+            {
+                .boneName = "Upper Arm.L",
+                .offset = { 0.0f, 0.5f, 0.0f },
+                .height = 1.0f,
+                .radius = 0.25f,
+            },
+            {
+                .boneName = "Forearm.L",
+                .offset = { 0.0f, 0.5f, 0.0f },
+                .height = 1.0f,
+                .radius = 0.25f,
+            },
+            {
+                .boneName = "Hand.L",
+                .offset = { 0.0f, 0.5f, 0.0f },
+                .height = 1.0f,
+                .radius = 0.25f,
+            },
+            {
+                .boneName = "Upper Arm.R",
+                .offset = { 0.0f, 0.5f, 0.0f },
+                .height = 1.0f,
+                .radius = 0.25f,
+            },
+            {
+                .boneName = "Forearm.R",
+                .offset = { 0.0f, 0.5f, 0.0f },
+                .height = 1.0f,
+                .radius = 0.25f,
+            },
+            {
+                .boneName = "Hand.R",
+                .offset = { 0.0f, 0.5f, 0.0f },
+                .height = 1.0f,
+                .radius = 0.25f,
+            },
+            {
+                .boneName = "Thigh.L",
+                .offset = { 0.0f, 0.5f, 0.0f },
+                .height = 1.0f,
+                .radius = 0.25f,
+            },
+            {
+                .boneName = "Calf.L",
+                .offset = { 0.0f, 0.5f, 0.0f },
+                .height = 1.0f,
+                .radius = 0.25f,
+            },
+            {
+                .boneName = "Foot.L",
+                .offset = { 0.0f, 0.5f, 0.0f },
+                .height = 1.0f,
+                .radius = 0.25f,
+            },
+            {
+                .boneName = "Thigh.R",
+                .offset = { 0.0f, 0.5f, 0.0f },
+                .height = 1.0f,
+                .radius = 0.25f,
+            },
+            {
+                .boneName = "Calf.R",
+                .offset = { 0.0f, 0.5f, 0.0f },
+                .height = 1.0f,
+                .radius = 0.25f,
+            },
+            {
+                .boneName = "Foot.R",
+                .offset = { 0.0f, 0.5f, 0.0f },
+                .height = 1.0f,
+                .radius = 0.25f,
+            },
+        };
+        _data->enemyCombat.hitboxState.hitCapsuleSetId =
+            physengine::createSkeletonBoundHitCapsuleSet(hitCapsules, _data->cpd->character->GetBodyID(), _data->characterRenderObj->animator);
     }
 
     // @HARDCODED: there should be a sensing algorithm to know which lightgrid to assign itself to.
@@ -2944,12 +3041,16 @@ void EXPERIMENTAL__enemyCombatStateMachine(SimulationCharacter_XData* d)
     }
 
 
-    // Hitbox calculations.
-    for (auto& hitCapsule : d->enemyCombat.hitboxState.hitCapsules)
-    {
-        // @TODO Align all requisite capsules to their respective bones.
+    // // Hitbox calculations.
+    // for (auto& hitCapsule : d->enemyCombat.hitboxState.hitCapsules)
+    // {
+    //     // @TODO Align all requisite capsules to their respective bones.
+            // @NOTE: @TODO: this will get taken care of by the physics engine itself instead of simulationcharacter.
 
-    }
+    // }
+
+    // @NOCHECKIN: DO IT ANYWAY... just so we have some poc.
+    physengine::updateSkeletonBoundHitCapsuleSet(d->enemyCombat.hitboxState.hitCapsuleSetId);
 
 
     // Hurtbox calculations.

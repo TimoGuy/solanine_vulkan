@@ -3080,6 +3080,8 @@ namespace vkglTF
 
 	bool Animator::getJointMatrix(const std::string& jointName, mat4& out)
 	{
+		ZoneScoped;
+
 		// Find the joint with this name
 		if (jointNameToMatrix.find(jointName) != jointNameToMatrix.end())
 		{
