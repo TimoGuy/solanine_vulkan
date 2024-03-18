@@ -32,6 +32,7 @@ namespace physengine
     void updateSimulationTransformRotation(size_t id, versor rot);
     void getInterpSimulationTransformPosition(size_t id, vec3& outPos);
     void getInterpSimulationTransformRotation(size_t id, versor& outRot);
+    void getCurrentSimulationTransformPositionAndRotation(size_t id, vec3& outPos, versor& outRot);
 
     struct VoxelFieldPhysicsData
     {
@@ -141,7 +142,7 @@ namespace physengine
     struct SkeletonBoundHitCapsuleSet
     {
         JPH::BodyID bodyId;  // This represents the `MutableCompoundShape`.
-        JPH::BodyID joinedTransformBodyId;
+        size_t simTransformId = (size_t)-1;
         vkglTF::Animator* skeleton;
         struct BoundHitCapsuleSubShape
         {
@@ -168,7 +169,7 @@ namespace physengine
     };
     typedef uint32_t sbhcs_key_t;
     const static sbhcs_key_t kInvalidSBHCSKey = (sbhcs_key_t)-1;
-    sbhcs_key_t createSkeletonBoundHitCapsuleSet(std::vector<BoundHitCapsule>& hitCapsules, JPH::BodyID joinedTransformBodyId, vkglTF::Animator* skeleton);
+    sbhcs_key_t createSkeletonBoundHitCapsuleSet(std::vector<BoundHitCapsule>& hitCapsules, size_t simTransformId, vkglTF::Animator* skeleton);
     bool destroySkeletonBoundHitCapsuleSet(sbhcs_key_t key);
     void updateSkeletonBoundHitCapsuleSet(sbhcs_key_t key);
 

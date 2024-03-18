@@ -124,7 +124,8 @@
                 - @NOTE: okay, so the reason why it was looking off is mainly bc the bone offset was 0, but there was height on the capsules, so the capsules were centered around the joints, instead of sprawling the joints. Also, I think the other reason why it doesn't look right is bc the model is scaled by 0.3 by the sim char, but that scaling isn't applied to the hit capsule shapes.
                     - [ ] Scale slime girl model down by 0.3 (or the amt that the game is scaling the model down).
                 - [x] Align the body transform to the character.
-                - [ ] Align body to character using simTransformId.
+                - [x] Align body to character using simTransformId.
+                    > @NOTE: this provides much better alignment than using the physics character, bc the physics char doesn't contain any rotation data.
 
     - [ ] Combat manager class.
         - [ ] Each entity wanting to engage in combat (player, enemies, npcs) will register themselves into the combat manager class.

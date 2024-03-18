@@ -470,6 +470,13 @@ namespace physengine
         glm_quat_copy(calcInterpolatedSet->simTransforms[id].rotation, outRot);
     }
 
+    void getCurrentSimulationTransformPositionAndRotation(size_t id, vec3& outPos, versor& outRot)
+    {
+        auto& transform = simSetChain[(simSetOffset % 3)]->simTransforms[id];
+        glm_vec3_copy(transform.position, outPos);
+        glm_quat_copy(transform.rotation, outRot);
+    }
+
     void transformSwap();
     void copyResultTransforms();
 
@@ -1846,14 +1853,14 @@ namespace physengine
         friend void renderDebugVisualization(VkCommandBuffer cmd);
     } sbhcsPool;
 
-    sbhcs_key_t createSkeletonBoundHitCapsuleSet(std::vector<BoundHitCapsule>& hitCapsules, JPH::BodyID joinedTransformBodyId, vkglTF::Animator* skeleton)
+    sbhcs_key_t createSkeletonBoundHitCapsuleSet(std::vector<BoundHitCapsule>& hitCapsules, size_t simTransformId, vkglTF::Animator* skeleton)
     {
         ZoneScoped;
 
         sbhcs_key_t key = sbhcsPool.allocNewSBHCS();
         if (auto newSkeletonBoundHitCapsuleSet = sbhcsPool.getSBHCSFromKey(key))
         {
-            newSkeletonBoundHitCapsuleSet->joinedTransformBodyId = joinedTransformBodyId;
+            newSkeletonBoundHitCapsuleSet->simTransformId = simTransformId;
             newSkeletonBoundHitCapsuleSet->skeleton = skeleton;
 
             // Add parts to mutable compound shape.
@@ -1894,13 +1901,17 @@ namespace physengine
 
             RVec3 position(0.0f, 0.0f, 0.0f);
             Quat rotation = Quat::sIdentity();
-            if (!newSkeletonBoundHitCapsuleSet->joinedTransformBodyId.IsInvalid())
+            if (newSkeletonBoundHitCapsuleSet->simTransformId != (size_t)-1)
             {
-                bodyInterface.GetPositionAndRotation(
-                    newSkeletonBoundHitCapsuleSet->joinedTransformBodyId,
-                    position,
-                    rotation
+                vec3 posGlm;
+                versor rotGlm;
+                getCurrentSimulationTransformPositionAndRotation(
+                    newSkeletonBoundHitCapsuleSet->simTransformId,
+                    posGlm,
+                    rotGlm
                 );
+                position = RVec3(posGlm[0], posGlm[1], posGlm[2]);
+                rotation = Quat(rotGlm[0], rotGlm[1], rotGlm[2], rotGlm[3]);
             }
 
             // Create kinematic body.
@@ -1999,20 +2010,19 @@ namespace physengine
             {
                 ZoneScopedN("Apply joined body transform");
 
-                if (!sbhcs->joinedTransformBodyId.IsInvalid())
+                if (sbhcs->simTransformId != (size_t)-1)
                 {
-                    auto& bodyInterface = physicsSystem->GetBodyInterface();
-                    RVec3 position;
-                    Quat rotation;
-                    bodyInterface.GetPositionAndRotation(
-                        sbhcs->joinedTransformBodyId,
-                        position,
-                        rotation
+                    vec3 posGlm;
+                    versor rotGlm;
+                    getCurrentSimulationTransformPositionAndRotation(
+                        sbhcs->simTransformId,
+                        posGlm,
+                        rotGlm
                     );
-                    bodyInterface.SetPositionAndRotation(
+                    physicsSystem->GetBodyInterface().SetPositionAndRotation(
                         sbhcs->bodyId,
-                        position,
-                        rotation,
+                        RVec3(posGlm[0], posGlm[1], posGlm[2]),
+                        Quat(rotGlm[0], rotGlm[1], rotGlm[2], rotGlm[3]),
                         EActivation::DontActivate  // Due to being a kinematic body.
                     );
                 }
@@ -2141,7 +2151,7 @@ namespace physengine
                 for (uint32_t i = 0; i < count; i++)
                 {
                     auto& subShape = shape->GetSubShape(i);
-                    Vec3 posCom = bodyPosCom + subShape.GetPositionCOM();
+                    Vec3 posCom = bodyPosCom + bodyRot * subShape.GetPositionCOM();
                     Quat rot = bodyRot * subShape.GetRotation();
 
                     vec3 posComGlm = {
@@ -2157,12 +2167,18 @@ namespace physengine
                     };
 
                     // @NOCHECKIN: Assume that the order of creation of subshapes is the same order of iteration here.
-                    float_t height = sbhcswi.sbhcs.hitCapsuleSubShapes[i].height;
-                    float_t radius = sbhcswi.sbhcs.hitCapsuleSubShapes[i].radius;
+                    auto& subShapeData = sbhcswi.sbhcs.hitCapsuleSubShapes[i];
+                    float_t height = subShapeData.height;
+                    float_t radius = subShapeData.radius;
 
                     // Calc push constants.
                     GPUVisInstancePushConst pc = {};
-                    glm_vec4_copy(vec4{ 0.25f, 1.0f, 0.0f, 1.0f }, pc.color1);
+                    glm_vec4_copy(
+                        (subShapeData.active ?
+                            vec4{ 0.25f, 0.0f, 1.0f, 1.0f } :
+                            vec4{ 0.75f, 0.75f, 0.0f, 1.0f }),
+                        pc.color1
+                    );
                     glm_vec4_copy(pc.color1, pc.color2);
 
                     mat4 rotMat4;

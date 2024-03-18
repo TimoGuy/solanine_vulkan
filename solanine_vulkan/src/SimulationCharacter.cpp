@@ -2035,7 +2035,7 @@ SimulationCharacter::SimulationCharacter(EntityManager* em, RenderObjectManager*
             },
         };
         _data->enemyCombat.hitboxState.hitCapsuleSetId =
-            physengine::createSkeletonBoundHitCapsuleSet(hitCapsules, _data->cpd->character->GetBodyID(), _data->characterRenderObj->animator);
+            physengine::createSkeletonBoundHitCapsuleSet(hitCapsules, _data->cpd->simTransformId, _data->characterRenderObj->animator);
     }
 
     // @HARDCODED: there should be a sensing algorithm to know which lightgrid to assign itself to.
