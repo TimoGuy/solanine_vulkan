@@ -556,7 +556,7 @@ struct SimulationCharacter_XData
     // Tweak Props
     vec3 position;
     float_t facingDirection = 0.0f;
-    float_t modelSize = 0.3f;
+    float_t modelSize = 1.0f;
     float_t jumpHeight = 15.0f;
     
     int32_t health = 100;
@@ -1930,112 +1930,119 @@ SimulationCharacter::SimulationCharacter(EntityManager* em, RenderObjectManager*
     if (isEnemy(_data))  // @NOCHECKIN
     {
         _data->enemyCombat.hurtboxState.calculateNumCrossCapsules();
+
+        // @TODO: @FUTURE: have some way to quickly create hitcapsules!!! (i.e. tooling)
         std::vector<physengine::BoundHitCapsule> hitCapsules = {
             {
                 .boneName = "Lower Back",
-                .offset = { 0.0f, 0.5f, 0.0f },
-                .height = 1.0f,
-                .radius = 0.25f,
+                .offset = { 0.0f, 0.0f, 0.0f },
+                .height = 0.01f,
+                .radius = 0.01f,
             },
             {
                 .boneName = "Mid Back",
-                .offset = { 0.0f, 0.5f, 0.0f },
-                .height = 1.0f,
-                .radius = 0.25f,
+                .offset = { 0.0f, 0.0f, 0.0f },
+                .height = 0.01f,
+                .radius = 0.01f,
             },
             {
                 .boneName = "Upper Back",
-                .offset = { 0.0f, 0.5f, 0.0f },
-                .height = 1.0f,
-                .radius = 0.25f,
+                .offset = { 0.0f, 0.0f, 0.0f },
+                .height = 0.01f,
+                .radius = 0.01f,
             },
             {
                 .boneName = "Neck",
-                .offset = { 0.0f, 0.5f, 0.0f },
-                .height = 1.0f,
-                .radius = 0.25f,
+                .offset = { 0.0f, 0.0f, 0.0f },
+                .height = 0.01f,
+                .radius = 0.01f,
             },
             {
                 .boneName = "Head",
-                .offset = { 0.0f, 0.5f, 0.0f },
-                .height = 1.0f,
-                .radius = 0.25f,
+                .offset = { 0.0f, 0.0f, 0.0f },
+                .height = 0.01f,
+                .radius = 0.01f,
             },
             {
                 .boneName = "Upper Arm.L",
-                .offset = { 0.0f, 0.5f, 0.0f },
-                .height = 1.0f,
-                .radius = 0.25f,
+                .offset = { 0.0f, 0.0f, 0.0f },
+                .height = 0.01f,
+                .radius = 0.01f,
             },
             {
                 .boneName = "Forearm.L",
-                .offset = { 0.0f, 0.5f, 0.0f },
-                .height = 1.0f,
-                .radius = 0.25f,
+                .offset = { 0.0f, 0.0f, 0.0f },
+                .height = 0.01f,
+                .radius = 0.01f,
             },
             {
                 .boneName = "Hand.L",
-                .offset = { 0.0f, 0.5f, 0.0f },
-                .height = 1.0f,
-                .radius = 0.25f,
+                .offset = { 0.0f, 0.0f, 0.0f },
+                .height = 0.01f,
+                .radius = 0.01f,
             },
             {
                 .boneName = "Upper Arm.R",
-                .offset = { 0.0f, 0.5f, 0.0f },
-                .height = 1.0f,
-                .radius = 0.25f,
+                .offset = { 0.0f, 0.0f, 0.0f },
+                .height = 0.01f,
+                .radius = 0.01f,
             },
             {
                 .boneName = "Forearm.R",
-                .offset = { 0.0f, 0.5f, 0.0f },
-                .height = 1.0f,
-                .radius = 0.25f,
+                .offset = { 0.0f, 0.0f, 0.0f },
+                .height = 0.01f,
+                .radius = 0.01f,
             },
             {
                 .boneName = "Hand.R",
-                .offset = { 0.0f, 0.5f, 0.0f },
-                .height = 1.0f,
-                .radius = 0.25f,
+                .offset = { 0.0f, 0.0f, 0.0f },
+                .height = 0.01f,
+                .radius = 0.01f,
             },
             {
                 .boneName = "Thigh.L",
-                .offset = { 0.0f, 0.5f, 0.0f },
-                .height = 1.0f,
-                .radius = 0.25f,
+                .offset = { 0.0f, 0.2f, 0.0f },
+                .height = 0.41f,
+                .radius = 0.01f,
             },
             {
                 .boneName = "Calf.L",
-                .offset = { 0.0f, 0.5f, 0.0f },
-                .height = 1.0f,
-                .radius = 0.25f,
+                .offset = { 0.0f, 0.185f, 0.0f },
+                .height = 0.37f,
+                .radius = 0.01f,
             },
             {
                 .boneName = "Foot.L",
-                .offset = { 0.0f, 0.5f, 0.0f },
-                .height = 1.0f,
-                .radius = 0.25f,
+                .offset = { 0.0f, 0.079f, 0.0f },
+                .height = 0.159f,
+                .radius = 0.01f,
             },
             {
                 .boneName = "Thigh.R",
-                .offset = { 0.0f, 0.5f, 0.0f },
-                .height = 1.0f,
-                .radius = 0.25f,
+                .offset = { 0.0f, 0.2f, 0.0f },
+                .height = 0.41f,
+                .radius = 0.01f,
             },
             {
                 .boneName = "Calf.R",
-                .offset = { 0.0f, 0.5f, 0.0f },
-                .height = 1.0f,
-                .radius = 0.25f,
+                .offset = { 0.0f, 0.185f, 0.0f },
+                .height = 0.37f,
+                .radius = 0.01f,
             },
             {
                 .boneName = "Foot.R",
-                .offset = { 0.0f, 0.5f, 0.0f },
-                .height = 1.0f,
-                .radius = 0.25f,
+                .offset = { 0.0f, 0.079f, 0.0f },
+                .height = 0.159f,
+                .radius = 0.01f,
             },
         };
         _data->enemyCombat.hitboxState.hitCapsuleSetId =
-            physengine::createSkeletonBoundHitCapsuleSet(hitCapsules, _data->cpd->simTransformId, _data->characterRenderObj->animator);
+            physengine::createSkeletonBoundHitCapsuleSet(
+                hitCapsules,
+                _data->cpd->simTransformId,
+                _data->characterRenderObj->animator,
+                -(_data->cpd->height * 0.5f + _data->cpd->radius)
+            );
     }
 
     // @HARDCODED: there should be a sensing algorithm to know which lightgrid to assign itself to.
@@ -4140,6 +4147,44 @@ void defaultRenderImGui(SimulationCharacter_XData* d)
         ImGui::DragFloat("wazaHitTimescale", &d->wazaHitTimescale);
         ImGui::DragFloat("wazaHitTimescaleOnHit", &d->wazaHitTimescaleOnHit);
         ImGui::DragFloat("wazaHitTimescaleReturnToOneSpeed", &d->wazaHitTimescaleReturnToOneSpeed);
+    }
+
+    if (ImGui::CollapsingHeader("Skeleton bound hit capsules", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        std::vector<physengine::BoundHitCapsule> allCapsules;
+        physengine::getAllSkeletonBoundHitCapsulesInSet(
+            d->enemyCombat.hitboxState.hitCapsuleSetId,
+            allCapsules
+        );
+
+        for (size_t i = 0; i < allCapsules.size(); i++)
+        {
+            auto& capsule = allCapsules[i];
+            if (ImGui::TreeNode(capsule.boneName.c_str()))
+            {
+                bool changed = false;
+                changed |= ImGui::InputText("boneName", &capsule.boneName);
+                changed |= ImGui::DragFloat3("offset", capsule.offset, 0.05f);
+                changed |= ImGui::DragFloat("height", &capsule.height, 0.05f);
+                changed |= ImGui::DragFloat("radius", &capsule.radius, 0.05f);
+
+                // Don't change bc will cause crashing.
+                if (capsule.height < 0.000001f ||
+                    capsule.radius < 0.000001f)
+                    changed = false;
+
+                if (changed)
+                    physengine::updateSkeletonBoundHitCapsuleInSet(
+                        d->enemyCombat.hitboxState.hitCapsuleSetId,
+                        i,
+                        capsule
+                    );
+
+                ImGui::TreePop();
+                ImGui::Separator();
+            }
+        }
+
     }
 
     if (ImGui::CollapsingHeader("Item Drops", ImGuiTreeNodeFlags_DefaultOpen))

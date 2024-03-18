@@ -2440,7 +2440,10 @@ namespace vkglTF
 	Animator::AnimatorNodeCollectionBuffer Animator::nodeCollectionBuffers[FRAME_OVERLAP];
 	std::vector<size_t> Animator::reservedNodeCollectionIndices;
 
-	Animator::Animator(vkglTF::Model* model, std::vector<AnimatorCallback>& eventCallbacks) : model(model), eventCallbacks(eventCallbacks), twitchAngle(0.0f)
+	Animator::Animator(vkglTF::Model* model, std::vector<AnimatorCallback>& eventCallbacks)
+		: model(model)
+		, eventCallbacks(eventCallbacks)
+		, twitchAngle(0.0f)
 	{
 		if (model == nullptr)
 			return;  // @NOTE: emptyAnimator does this on purpose

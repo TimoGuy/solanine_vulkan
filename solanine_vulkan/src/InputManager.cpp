@@ -18,6 +18,7 @@ namespace input
 		bool F1 = false;
 		bool F2 = false;
 		bool F3 = false;
+		bool F9 = false;
 		bool F10 = false;
 		bool F11 = false;
 		bool del = false;
@@ -105,6 +106,7 @@ namespace input
 					case SDLK_F1:                         keyMouseState.F1 = pressed; break;
 					case SDLK_F2:                         keyMouseState.F2 = pressed; break;
 					case SDLK_F3:                         keyMouseState.F3 = pressed; break;
+					case SDLK_F9:                         keyMouseState.F9 = pressed; break;
 					case SDLK_F10:                        keyMouseState.F10 = pressed; break;
 					case SDLK_F11:                        keyMouseState.F11 = pressed; break;
 					case SDLK_DELETE:                     keyMouseState.del = pressed; break;
@@ -204,6 +206,7 @@ namespace input
 		playModeCycleCameraModes.update(!keyMouseState.lShift && keyMouseState.F2);
 		playModeCycleCameraSubModes.update(keyMouseState.lShift && keyMouseState.F2);
 		cycleRenderingModes.update(keyMouseState.F3);
+		takePhysicsSnapshot.update(keyMouseState.F9);
 		toggleEditorUI.update(keyMouseState.F10);
 		cancel.update(keyMouseState.esc);
 		submit.update(keyMouseState.enter);

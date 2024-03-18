@@ -777,6 +777,10 @@ namespace physengine
             entityManager->INTERNALsimulationUpdate(simDeltaTime);  // @NOTE: if timescale changes, then the system just waits longer/shorter per loop.
             comim::simulationTick();
 
+            // @DEBUG: save snapshot of physics frame.
+            if (input::editorInputSet().takePhysicsSnapshot.onAction)
+                physengine::savePhysicsWorldSnapshot();
+
             if (runPhysicsSimulations)
             {
                 ZoneScopedN("Update Jolt phys sys");
@@ -1736,8 +1740,29 @@ namespace physengine
     }
 
     // Skeleton-bound hit capsule set.
+    struct SkeletonBoundHitCapsuleSet
+    {
+        JPH::BodyID bodyId;  // This represents the `MutableCompoundShape`.
+        size_t simTransformId = (size_t)-1;
+        vkglTF::Animator* skeleton;
+        float_t yOffset;
+        struct BoundHitCapsuleSubShape
+        {
+            JPH::SubShapeID subShapeId;
+            bool active = true;
+            std::string boneName = "";  // @NOTE: this is horrible to do a string
+                                        //        check every tick. There should
+                                        //        be a way with indices in the
+                                        //        @FUTURE.
+            vec3 offset = GLM_VEC3_ZERO_INIT;
+            float_t height = 1.0f;
+            float_t radius = 0.5f;
+            bool recreateShape = false;  // Trigger to recreate shape next time update happens.
+        };
+        std::vector<BoundHitCapsuleSubShape> hitCapsuleSubShapes;
+    };
 
-    // @TODO: make all the pool stuff into its own interface and `Pool` thingo.
+    // @TODO: make all the pool stuff into its own abstract interface `Pool` thingo.
     class SkeletonBoundHitCapsuleSetsPool
     {
     public:
@@ -1853,15 +1878,16 @@ namespace physengine
         friend void renderDebugVisualization(VkCommandBuffer cmd);
     } sbhcsPool;
 
-    sbhcs_key_t createSkeletonBoundHitCapsuleSet(std::vector<BoundHitCapsule>& hitCapsules, size_t simTransformId, vkglTF::Animator* skeleton)
+    sbhcs_key_t createSkeletonBoundHitCapsuleSet(std::vector<BoundHitCapsule>& hitCapsules, size_t simTransformId, vkglTF::Animator* skeleton, float_t yOffset)
     {
         ZoneScoped;
 
         sbhcs_key_t key = sbhcsPool.allocNewSBHCS();
-        if (auto newSkeletonBoundHitCapsuleSet = sbhcsPool.getSBHCSFromKey(key))
+        if (auto newSbhcs = sbhcsPool.getSBHCSFromKey(key))
         {
-            newSkeletonBoundHitCapsuleSet->simTransformId = simTransformId;
-            newSkeletonBoundHitCapsuleSet->skeleton = skeleton;
+            newSbhcs->simTransformId = simTransformId;
+            newSbhcs->skeleton = skeleton;
+            newSbhcs->yOffset = yOffset;
 
             // Add parts to mutable compound shape.
             Ref<MutableCompoundShapeSettings> compoundShape = new MutableCompoundShapeSettings;
@@ -1876,24 +1902,25 @@ namespace physengine
 
                 // Calc new shape connection to joint.
                 mat4 jointMat;
-                newSkeletonBoundHitCapsuleSet->skeleton->getJointMatrix(newBHCSS.boneName, jointMat);
+                newSbhcs->skeleton->getJointMatrix(newBHCSS.boneName, jointMat);
 
                 vec3 capsuleOrigin;
                 glm_mat4_mulv3(jointMat, newBHCSS.offset, 1.0f, capsuleOrigin);
 
                 versor jointRot;
                 glm_mat4_quat(jointMat, jointRot);
+                glm_quat_normalize(jointRot);  // If there's scale data in quat, normalization is needed.
 
                 // Add new shape.
                 compoundShape->AddShape(
-                    Vec3(capsuleOrigin[0], capsuleOrigin[1], capsuleOrigin[2]),
+                    Vec3(capsuleOrigin[0], capsuleOrigin[1] + newSbhcs->yOffset, capsuleOrigin[2]),
                     Quat(jointRot[0], jointRot[1], jointRot[2], jointRot[3]),
                     new CapsuleShape(newBHCSS.height * 0.5f, newBHCSS.radius)
                 );
                 // @TODO: @NOCHECKIN: @INCOMPLETE: it looks like I don't get to assign a subshape id,
                 //                                 so have to just rely on the physics engine itself.
 
-                newSkeletonBoundHitCapsuleSet->hitCapsuleSubShapes.push_back(newBHCSS);
+                newSbhcs->hitCapsuleSubShapes.push_back(newBHCSS);
             }
 
             // Get joined body transform.
@@ -1901,12 +1928,12 @@ namespace physengine
 
             RVec3 position(0.0f, 0.0f, 0.0f);
             Quat rotation = Quat::sIdentity();
-            if (newSkeletonBoundHitCapsuleSet->simTransformId != (size_t)-1)
+            if (newSbhcs->simTransformId != (size_t)-1)
             {
                 vec3 posGlm;
                 versor rotGlm;
                 getCurrentSimulationTransformPositionAndRotation(
-                    newSkeletonBoundHitCapsuleSet->simTransformId,
+                    newSbhcs->simTransformId,
                     posGlm,
                     rotGlm
                 );
@@ -1926,7 +1953,7 @@ namespace physengine
                     )
                 );
             bodyInterface.AddBody(body.GetID(), EActivation::Activate);
-            newSkeletonBoundHitCapsuleSet->bodyId = body.GetID();
+            newSbhcs->bodyId = body.GetID();
 
             return key;
         }
@@ -1990,15 +2017,29 @@ namespace physengine
 
                         versor jointRot;
                         glm_mat4_quat(jointMat, jointRot);
+                        glm_quat_normalize(jointRot);  // If there's scale data in quat, normalization is needed.
 
                         {
                             ZoneScopedN("Mutate subshape");
 
-                            shape->ModifyShape(
-                                i,
-                                Vec3(capsuleOrigin[0], capsuleOrigin[1], capsuleOrigin[2]),
-                                Quat(jointRot[0], jointRot[1], jointRot[2], jointRot[3])
-                            );
+                            if (hitCapsuleSubShape.recreateShape)
+                            {
+                                shape->ModifyShape(
+                                    i,
+                                    Vec3(capsuleOrigin[0], capsuleOrigin[1] + sbhcs->yOffset, capsuleOrigin[2]),
+                                    Quat(jointRot[0], jointRot[1], jointRot[2], jointRot[3]),
+                                    new CapsuleShape(hitCapsuleSubShape.height * 0.5f, hitCapsuleSubShape.radius)
+                                );
+                                hitCapsuleSubShape.recreateShape = false;
+                            }
+                            else
+                            {
+                                shape->ModifyShape(
+                                    i,
+                                    Vec3(capsuleOrigin[0], capsuleOrigin[1] + sbhcs->yOffset, capsuleOrigin[2]),
+                                    Quat(jointRot[0], jointRot[1], jointRot[2], jointRot[3]).Normalized()  // @NOTE: need to be normalized bc armature in blender is scaled 0.3.
+                                );
+                            }
                         }
                     }
 
@@ -2027,6 +2068,57 @@ namespace physengine
                     );
                 }
             }
+        }
+    }
+    
+    void getAllSkeletonBoundHitCapsulesInSet(sbhcs_key_t key, std::vector<BoundHitCapsule>& outHitCapsules)
+    {
+        ZoneScoped;
+
+        if (auto sbhcs = sbhcsPool.getSBHCSFromKey(key))
+        {
+            std::vector<BoundHitCapsule> capsules;
+
+            for (auto& subShape : sbhcs->hitCapsuleSubShapes)
+            {
+                capsules.push_back({
+                    .boneName = subShape.boneName,
+                    .offset = {
+                        subShape.offset[0],
+                        subShape.offset[1],
+                        subShape.offset[2],
+                    },
+                    .height = subShape.height,
+                    .radius = subShape.radius,
+                });
+            }
+
+            outHitCapsules = capsules;
+        }
+    }
+    
+    void updateSkeletonBoundHitCapsuleInSet(sbhcs_key_t setKey, size_t index, const BoundHitCapsule& newParams)
+    {
+        ZoneScoped;
+
+        if (auto sbhcs = sbhcsPool.getSBHCSFromKey(setKey))
+        {
+            auto& subShape = sbhcs->hitCapsuleSubShapes[index];
+
+            if (subShape.boneName == newParams.boneName)
+            {
+                std::cout << "WARNING: Changing name of subshape bone." << std::endl
+                    << "\tKey:     " << setKey << std::endl
+                    << "\tIdx:     " << index << std::endl
+                    << "\tOldName: " << subShape.boneName << std::endl
+                    << "\tNewName: " << newParams.boneName << std::endl;
+                subShape.boneName = newParams.boneName;
+            }
+            glm_vec3_copy(const_cast<float_t*>(newParams.offset), subShape.offset);
+            subShape.height = newParams.height;
+            subShape.radius = newParams.radius;
+
+            subShape.recreateShape = true;
         }
     }
 
@@ -2143,9 +2235,8 @@ namespace physengine
                 // Draw each sub shape capsule.
                 MutableCompoundShape* shape =
                     static_cast<MutableCompoundShape*>(const_cast<Shape*>(bodyInterface.GetShape(sbhcswi.sbhcs.bodyId).GetPtr()));
-                Vec3 bodyPosCom;
-                Quat bodyRot;
-                bodyInterface.GetPositionAndRotation(sbhcswi.sbhcs.bodyId, bodyPosCom, bodyRot);
+                Vec3 bodyPosCom = bodyInterface.GetCenterOfMassPosition(sbhcswi.sbhcs.bodyId);
+                Quat bodyRot = bodyInterface.GetRotation(sbhcswi.sbhcs.bodyId);
 
                 uint32_t count = shape->GetNumSubShapes();
                 for (uint32_t i = 0; i < count; i++)

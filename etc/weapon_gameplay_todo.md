@@ -119,13 +119,18 @@
             - @NOTE: for first enemy, just reuse player character model and attack sequences.
             - @REF: https://www.youtube.com/watch?v=8zdbqTHtnr4
             - [x] Have each hit-capsule be assigned a bone and some offset of the bone.
-            - [ ] Improve the look of them, bc they look off. Also, figure out how you're gonna do this bc it looks like mutating the shape is pretty heavy for the physics engine.
+            - [x] Improve the look of them, bc they look off. Also, figure out how you're gonna do this bc it looks like mutating the shape is pretty heavy for the physics engine.
                 - Try seeing if batching the mutate step into `mutateshapes()` instead of `mutateshape()` would be better.
                 - @NOTE: okay, so the reason why it was looking off is mainly bc the bone offset was 0, but there was height on the capsules, so the capsules were centered around the joints, instead of sprawling the joints. Also, I think the other reason why it doesn't look right is bc the model is scaled by 0.3 by the sim char, but that scaling isn't applied to the hit capsule shapes.
-                    - [ ] Scale slime girl model down by 0.3 (or the amt that the game is scaling the model down).
+                    - [x] Scale slime girl model down by 0.3 (or the amt that the game is scaling the model down).
+                        > @NOTE: scaled it by scaling the armature (simple but incomplete method). See https://blender.stackexchange.com/questions/268280/how-to-scale-rigged-model-and-animation-data on details.
+                        > The reason why this is the incomplete method is bc of quaternion scaling. Due to this, the quaternion rotation needs to be normalized in `PhysicsEngine.cpp`
+                        - [x] Okay, while setting up the hit capsules, I see that the quat normalization doesn't work that well, and I'll have to redo the model sizing and do the complete method.
+                            > @NOTE: doing the complex but complete method was actually not that hard. It just took a long time doing it to the ~50 animations lol.
                 - [x] Align the body transform to the character.
                 - [x] Align body to character using simTransformId.
                     > @NOTE: this provides much better alignment than using the physics character, bc the physics char doesn't contain any rotation data.
+                    > Plus, I guess since it's not retrieving any locks, it's a lot lighter to modify the shapes.
 
     - [ ] Combat manager class.
         - [ ] Each entity wanting to engage in combat (player, enemies, npcs) will register themselves into the combat manager class.

@@ -291,9 +291,6 @@ namespace scene
                 .type = 1,
                 });
 
-        // @DEBUG: save snapshot of physics frame.
-        physengine::savePhysicsWorldSnapshot();
-
         return true;
     }
 

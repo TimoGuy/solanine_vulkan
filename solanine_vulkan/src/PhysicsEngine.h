@@ -139,25 +139,6 @@ namespace physengine
     bool capsuleOverlap(vec3 origin, versor rotation, float_t radius, float_t height, JPH::BodyID ignoreBodyId, std::vector<BodyAndSubshapeID>& outHitIds);
 
     // Hitbox structure.
-    struct SkeletonBoundHitCapsuleSet
-    {
-        JPH::BodyID bodyId;  // This represents the `MutableCompoundShape`.
-        size_t simTransformId = (size_t)-1;
-        vkglTF::Animator* skeleton;
-        struct BoundHitCapsuleSubShape
-        {
-            JPH::SubShapeID subShapeId;
-            bool active = true;
-            std::string boneName = "";  // @NOTE: this is horrible to do a string
-                                        //        check every tick. There should
-                                        //        be a way with indices in the
-                                        //        @FUTURE.
-            vec3 offset = GLM_VEC3_ZERO_INIT;
-            float_t height = 1.0f;
-            float_t radius = 0.5f;
-        };
-        std::vector<BoundHitCapsuleSubShape> hitCapsuleSubShapes;
-    };
     struct BoundHitCapsule
     {
         std::string boneName = "";  // @NOTE: the initial setup will be expensive
@@ -169,9 +150,11 @@ namespace physengine
     };
     typedef uint32_t sbhcs_key_t;
     const static sbhcs_key_t kInvalidSBHCSKey = (sbhcs_key_t)-1;
-    sbhcs_key_t createSkeletonBoundHitCapsuleSet(std::vector<BoundHitCapsule>& hitCapsules, size_t simTransformId, vkglTF::Animator* skeleton);
+    sbhcs_key_t createSkeletonBoundHitCapsuleSet(std::vector<BoundHitCapsule>& hitCapsules, size_t simTransformId, vkglTF::Animator* skeleton, float_t yOffset);
     bool destroySkeletonBoundHitCapsuleSet(sbhcs_key_t key);
     void updateSkeletonBoundHitCapsuleSet(sbhcs_key_t key);
+    void getAllSkeletonBoundHitCapsulesInSet(sbhcs_key_t key, std::vector<BoundHitCapsule>& outHitCapsules);
+    void updateSkeletonBoundHitCapsuleInSet(sbhcs_key_t setKey, size_t index, const BoundHitCapsule& newParams);
 
 
     // Helper functions.

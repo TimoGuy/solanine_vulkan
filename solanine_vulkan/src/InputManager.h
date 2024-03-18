@@ -164,6 +164,7 @@ namespace input
 		OnAction            playModeCycleCameraModes;
 		OnAction            playModeCycleCameraSubModes;
 		OnAction            cycleRenderingModes;
+		OnAction            takePhysicsSnapshot;
 		OnAction            toggleEditorUI;
 		OnAction            cancel;
 		OnAction            submit;
