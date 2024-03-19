@@ -131,6 +131,8 @@
                 - [x] Align body to character using simTransformId.
                     > @NOTE: this provides much better alignment than using the physics character, bc the physics char doesn't contain any rotation data.
                     > Plus, I guess since it's not retrieving any locks, it's a lot lighter to modify the shapes.
+            - [x] Configures hitcapsule sizes, offsets, and lengths to match slimegirl armature.
+            - [ ] Add different axes capsules as options too. Default is y-axis capsule.
 
     - [ ] Combat manager class.
         - [ ] Each entity wanting to engage in combat (player, enemies, npcs) will register themselves into the combat manager class.
