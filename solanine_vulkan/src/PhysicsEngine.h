@@ -162,6 +162,7 @@ namespace physengine
 
 #ifdef _DEVELOP
     enum class DebugVisLineType { PURPTEAL, AUDACITY, SUCCESS, VELOCITY, KIKKOARMY, YUUJUUFUDAN };
+    void drawDebugVisCapsule(vec3 pt1, vec3 pt2, float_t radius, DebugVisLineType type = DebugVisLineType::PURPTEAL);
     void drawDebugVisLine(vec3 pt1, vec3 pt2, DebugVisLineType type = DebugVisLineType::PURPTEAL);
     void drawDebugVisPoint(vec3 pt, DebugVisLineType type = DebugVisLineType::PURPTEAL);
 

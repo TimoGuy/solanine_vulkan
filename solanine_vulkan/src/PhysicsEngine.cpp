@@ -123,13 +123,27 @@ namespace physengine
     uint32_t lineVisVertexCount;
     bool vertexBuffersInitialized = false;
 
-    struct DebugVisLine
+    struct DebugVisSet
     {
-        vec3 pt1, pt2;
-        DebugVisLineType type;
+        struct VisCapsule
+        {
+            vec3 pt1, pt2;
+            float_t radius;
+            DebugVisLineType type;
+        };
+        std::vector<VisCapsule> capsules;
+
+        struct VisLine
+        {
+            vec3 pt1, pt2;
+            DebugVisLineType type;
+        };
+        std::vector<VisLine> lines;
     };
-    std::vector<DebugVisLine> debugVisLines;
-    std::mutex mutateDebugVisLines;
+    DebugVisSet debugVisSets[2];
+    std::mutex debugVisReadingMutex;
+    std::atomic<size_t> debugVisSetOffset = 0;  // Will be mutated with simulation
+                                                // thread, then read with render thread.
 
     void initializeAndUploadBuffers()
     {
@@ -747,11 +761,6 @@ namespace physengine
             lastTick = SDL_GetTicks64();
 
 #ifdef _DEVELOP
-            {   // Reset all the debug vis lines.
-                std::lock_guard<std::mutex> lg(mutateDebugVisLines);
-                debugVisLines.clear();
-            }
-
             uint64_t perfTime = SDL_GetPerformanceCounter();
 #endif
 
@@ -776,6 +785,17 @@ namespace physengine
             input::simInputSet().update(simDeltaTime);
             entityManager->INTERNALsimulationUpdate(simDeltaTime);  // @NOTE: if timescale changes, then the system just waits longer/shorter per loop.
             comim::simulationTick();
+
+#ifdef _DEVELOP
+            // Finish writing debug vis, pass off data to render thread, then
+            // clear new current set for writing during next iteration.
+            {
+                std::lock_guard<std::mutex> lg(debugVisReadingMutex);
+                debugVisSetOffset++;
+                debugVisSets[debugVisSetOffset % 2].capsules.clear();
+                debugVisSets[debugVisSetOffset % 2].lines.clear();
+            }
+#endif
 
             // @DEBUG: save snapshot of physics frame.
             if (input::editorInputSet().takePhysicsSnapshot.onAction)
@@ -2145,15 +2165,25 @@ namespace physengine
     }
 
 #ifdef _DEVELOP
+    void drawDebugVisCapsule(vec3 pt1, vec3 pt2, float_t radius, DebugVisLineType type)
+    {
+        DebugVisSet::VisCapsule dvc = {};
+        glm_vec3_copy(pt1, dvc.pt1);
+        glm_vec3_copy(pt2, dvc.pt2);
+        dvc.radius = radius;
+        dvc.type = type;
+
+        debugVisSets[debugVisSetOffset % 2].capsules.push_back(dvc);
+    }
+
     void drawDebugVisLine(vec3 pt1, vec3 pt2, DebugVisLineType type)
     {
-        DebugVisLine dvl = {};
+        DebugVisSet::VisLine dvl = {};
         glm_vec3_copy(pt1, dvl.pt1);
         glm_vec3_copy(pt2, dvl.pt2);
         dvl.type = type;
 
-        std::lock_guard<std::mutex> lg(mutateDebugVisLines);
-        debugVisLines.push_back(dvl);
+        debugVisSets[debugVisSetOffset % 2].lines.push_back(dvl);
     }
     
     void drawDebugVisPoint(vec3 pt, DebugVisLineType type)
@@ -2313,50 +2343,82 @@ namespace physengine
             }
         }
 
-        // Draw lines
-        // @NOTE: draw all lines all the time, bc `generateCollisionDebugVisualization` controls creation of the lines (when doing a raycast only), not the drawing.
-        std::vector<DebugVisLine> visLinesCopy;
+        // Copy debug vis data.
+        // @NOTE: draw all vis all the time, bc `generateCollisionDebugVisualization`
+        //        controls creation of the lines (when doing a raycast only), not the drawing.
+        //        Thus, every vis that appears in the struct is one meant to be drawn.
+        DebugVisSet visCopy;
         {
-            // Copy debug vis lines so locking time is minimal.
-            std::lock_guard<std::mutex> lg(mutateDebugVisLines);
-            visLinesCopy = debugVisLines;
+            std::lock_guard<std::mutex> lg(debugVisReadingMutex);
+            for (auto& dvc : debugVisSets[(debugVisSetOffset + 1) % 2].capsules)
+                visCopy.capsules.push_back(dvc);
+            for (auto& dvl : debugVisSets[(debugVisSetOffset + 1) % 2].lines)
+                visCopy.lines.push_back(dvl);
         }
-        vkCmdBindVertexBuffers(cmd, 0, 1, &lineVisVertexBuffer._buffer, offsets);
-        for (DebugVisLine& dvl : visLinesCopy)
+
+        // Draw capsules.
+        auto lineTypeToColors = [](DebugVisLineType lineType, vec4& outColor1, vec4& outColor2)
         {
-            GPUVisInstancePushConst pc = {};
-            switch (dvl.type)
+            switch (lineType)
             {
                 case DebugVisLineType::PURPTEAL:
-                    glm_vec4_copy(vec4{ 0.75f, 0.0f, 1.0f, 1.0f }, pc.color1);
-                    glm_vec4_copy(vec4{ 0.0f, 0.75f, 1.0f, 1.0f }, pc.color2);
+                    glm_vec4_copy(vec4{ 0.75f, 0.0f, 1.0f, 1.0f }, outColor1);
+                    glm_vec4_copy(vec4{ 0.0f, 0.75f, 1.0f, 1.0f }, outColor2);
                     break;
 
                 case DebugVisLineType::AUDACITY:
-                    glm_vec4_copy(vec4{ 0.0f, 0.1f, 0.5f, 1.0f }, pc.color1);
-                    glm_vec4_copy(vec4{ 0.0f, 0.25f, 1.0f, 1.0f }, pc.color2);
+                    glm_vec4_copy(vec4{ 0.0f, 0.1f, 0.5f, 1.0f }, outColor1);
+                    glm_vec4_copy(vec4{ 0.0f, 0.25f, 1.0f, 1.0f }, outColor2);
                     break;
 
                 case DebugVisLineType::SUCCESS:
-                    glm_vec4_copy(vec4{ 0.1f, 0.1f, 0.1f, 1.0f }, pc.color1);
-                    glm_vec4_copy(vec4{ 0.0f, 1.0f, 0.7f, 1.0f }, pc.color2);
+                    glm_vec4_copy(vec4{ 0.1f, 0.1f, 0.1f, 1.0f }, outColor1);
+                    glm_vec4_copy(vec4{ 0.0f, 1.0f, 0.7f, 1.0f }, outColor2);
                     break;
 
                 case DebugVisLineType::VELOCITY:
-                    glm_vec4_copy(vec4{ 0.75f, 0.2f, 0.1f, 1.0f }, pc.color1);
-                    glm_vec4_copy(vec4{ 1.0f, 0.0f, 0.0f, 1.0f }, pc.color2);
+                    glm_vec4_copy(vec4{ 0.75f, 0.2f, 0.1f, 1.0f }, outColor1);
+                    glm_vec4_copy(vec4{ 1.0f, 0.0f, 0.0f, 1.0f }, outColor2);
                     break;
 
                 case DebugVisLineType::KIKKOARMY:
-                    glm_vec4_copy(vec4{ 0.0f, 0.0f, 0.0f, 1.0f }, pc.color1);
-                    glm_vec4_copy(vec4{ 0.0f, 0.25f, 0.0f, 1.0f }, pc.color2);
+                    glm_vec4_copy(vec4{ 0.0f, 0.0f, 0.0f, 1.0f }, outColor1);
+                    glm_vec4_copy(vec4{ 0.0f, 0.25f, 0.0f, 1.0f }, outColor2);
                     break;
 
                 case DebugVisLineType::YUUJUUFUDAN:
-                    glm_vec4_copy(vec4{ 0.69f, 0.69f, 0.69f, 1.0f }, pc.color1);
-                    glm_vec4_copy(vec4{ 1.0f, 1.0f, 1.0f, 1.0f }, pc.color2);
+                    glm_vec4_copy(vec4{ 0.69f, 0.69f, 0.69f, 1.0f }, outColor1);
+                    glm_vec4_copy(vec4{ 1.0f, 1.0f, 1.0f, 1.0f }, outColor2);
                     break;
             }
+        };
+        vkCmdBindVertexBuffers(cmd, 0, 1, &capsuleVisVertexBuffer._buffer, offsets);
+        for (auto& dvc : visCopy.capsules)
+        {
+            GPUVisInstancePushConst pc = {};
+            lineTypeToColors(dvc.type, pc.color1, pc.color2);
+            glm_vec4(dvc.pt1, 0.0f, pc.pt1);
+            glm_vec4(dvc.pt2, 0.0f, pc.pt2);
+
+            vec3 capsuleUp;
+            glm_vec3_sub(dvc.pt2, dvc.pt1, capsuleUp);
+            glm_vec3_normalize(capsuleUp);
+
+            versor capsuleRotation;
+            glm_quat_from_vecs(vec3{ 0.0f, 1.0f, 0.0f }, capsuleUp, capsuleRotation);
+            glm_quat_mat4(capsuleRotation, pc.capsuleRotation);
+            pc.capsuleRadius = dvc.radius;
+            vkCmdPushConstants(cmd, debugVisPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUVisInstancePushConst), &pc);
+
+            vkCmdDraw(cmd, capsuleVisVertexCount, 1, 0, 0);
+        }
+
+        // Draw lines.
+        vkCmdBindVertexBuffers(cmd, 0, 1, &lineVisVertexBuffer._buffer, offsets);
+        for (auto& dvl : visCopy.lines)
+        {
+            GPUVisInstancePushConst pc = {};
+            lineTypeToColors(dvl.type, pc.color1, pc.color2);
             glm_vec4(dvl.pt1, 0.0f, pc.pt1);
             glm_vec4(dvl.pt2, 0.0f, pc.pt2);
             vkCmdPushConstants(cmd, debugVisPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUVisInstancePushConst), &pc);

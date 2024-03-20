@@ -167,9 +167,9 @@ struct SimulationCharacter_XData
             std::string bladeBoneName = "Hand Attachment";
             vec3 prevBladeStart       = GLM_VEC3_ZERO_INIT;
             vec3 prevBladeEnd         = GLM_VEC3_ZERO_INIT;
-            float_t capsuleRadius     = 1.0f;
-            float_t bladeStartOffset  = 0.5f;
-            float_t bladeLength       = 4.0f;
+            float_t capsuleRadius     = 0.25f;
+            float_t bladeStartOffset  = 0.3f;
+            float_t bladeLength       = 1.25f;
             bool isBladeActive        = false;
 
             inline void calculateNumCrossCapsules()
@@ -3098,7 +3098,7 @@ void EXPERIMENTAL__enemyCombatStateMachine(SimulationCharacter_XData* d)
             vec3 crossCapsuleEnd;
             glm_vec3_lerp(bladeStart, bladeEnd, bladeT, crossCapsuleStart);
             glm_vec3_lerp(hbs.prevBladeStart, hbs.prevBladeEnd, bladeT, crossCapsuleEnd);
-            physengine::drawDebugVisLine(crossCapsuleStart, crossCapsuleEnd, physengine::DebugVisLineType::VELOCITY);
+            physengine::drawDebugVisCapsule(crossCapsuleStart, crossCapsuleEnd, hbs.capsuleRadius, physengine::DebugVisLineType::VELOCITY);
 
             // Test if hurt request needed.
 
