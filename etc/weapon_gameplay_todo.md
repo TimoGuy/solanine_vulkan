@@ -115,7 +115,7 @@
     - [ ] Create hit-/hurt-capsules for entities in combat (incl. npc's).  @@@@@TODO: DO THIS ONE NEXT!!!!!!
         - [x] Better capsule debug rendering. (i.e. capsules that can be any arbitrary direction)
         - [ ] Hurt-capsules for sword.
-        - [ ] Hit-capsules for player character.
+        - [x] Hit-capsules for player character.
             - @NOTE: for first enemy, just reuse player character model and attack sequences.
             - @REF: https://www.youtube.com/watch?v=8zdbqTHtnr4
             - [x] Have each hit-capsule be assigned a bone and some offset of the bone.
@@ -132,7 +132,8 @@
                     > @NOTE: this provides much better alignment than using the physics character, bc the physics char doesn't contain any rotation data.
                     > Plus, I guess since it's not retrieving any locks, it's a lot lighter to modify the shapes.
             - [x] Configures hitcapsule sizes, offsets, and lengths to match slimegirl armature.
-            - [ ] Add different axes capsules as options too. Default is y-axis capsule.
+            - [x] Add different axes capsules as options too. Default is y-axis capsule.
+                - Just ended up doing a quat multiplication.
 
     - [ ] Combat manager class.
         - [ ] Each entity wanting to engage in combat (player, enemies, npcs) will register themselves into the combat manager class.

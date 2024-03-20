@@ -144,7 +144,7 @@ namespace physengine
         std::string boneName = "";  // @NOTE: the initial setup will be expensive
                                     //        but is fine to do a string comparison.
         vec3 offset = GLM_VEC3_ZERO_INIT;
-        // @TODO: there needs to be some way to rotate the capsule, so that there can be wide capsules, etc.
+        versor rotation = GLM_QUAT_IDENTITY_INIT;
         float_t height = 1.0f;
         float_t radius = 0.5f;
     };

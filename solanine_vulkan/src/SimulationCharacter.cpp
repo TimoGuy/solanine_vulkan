@@ -1935,21 +1935,24 @@ SimulationCharacter::SimulationCharacter(EntityManager* em, RenderObjectManager*
         std::vector<physengine::BoundHitCapsule> hitCapsules = {
             {
                 .boneName = "Lower Back",
-                .offset = { 0.0f, 0.124595f, 0.0f },
-                .height = 0.24919f,
-                .radius = 0.01f,
+                .offset = { 0.0f, 0.05f, -0.05f },
+                .rotation = { 0.0f, 0.0f, 0.7071068f, 0.7071068f },
+                .height = 0.13f,
+                .radius = 0.14f,
             },
             {
                 .boneName = "Mid Back",
-                .offset = { 0.0f, 0.098541f, 0.0f },
-                .height = 0.197082f,
-                .radius = 0.01f,
+                .offset = { 0.0f, 0.034f, 0.05f },
+                .rotation = { 0.0f, 0.0f, 0.7071068f, 0.7071068f },
+                .height = 0.04f,
+                .radius = 0.11f,
             },
             {
                 .boneName = "Upper Back",
-                .offset = { 0.0f, 0.058709f, 0.0f },
-                .height = 0.117418f,
-                .radius = 0.01f,
+                .offset = { 0.0f, 0.059f, -0.05f },
+                .rotation = { 0.0f, 0.0f, 0.7071068f, 0.7071068f },
+                .height = 0.167f,
+                .radius = 0.11f,
             },
             {
                 .boneName = "Neck",
@@ -1959,9 +1962,10 @@ SimulationCharacter::SimulationCharacter(EntityManager* em, RenderObjectManager*
             },
             {
                 .boneName = "Head",
-                .offset = { 0.0f, 0.148f, 0.05f },
-                .height = 0.01f,
-                .radius = 0.16f,
+                .offset = { 0.0f, 0.16f, 0.03f },
+                .rotation = { 0.7071068f, 0.0f, 0.0f, 0.7071068f },
+                .height = 0.03f,
+                .radius = 0.12f,
             },
             {
                 .boneName = "Upper Arm.L",

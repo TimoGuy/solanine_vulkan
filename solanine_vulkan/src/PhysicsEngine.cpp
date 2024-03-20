@@ -1755,6 +1755,7 @@ namespace physengine
                                         //        be a way with indices in the
                                         //        @FUTURE.
             vec3 offset = GLM_VEC3_ZERO_INIT;
+            versor rotation = GLM_QUAT_IDENTITY_INIT;
             float_t height = 1.0f;
             float_t radius = 0.5f;
             bool recreateShape = false;  // Trigger to recreate shape next time update happens.
@@ -1897,6 +1898,7 @@ namespace physengine
                 SkeletonBoundHitCapsuleSet::BoundHitCapsuleSubShape newBHCSS = {};
                 newBHCSS.boneName = hitCapsule.boneName;
                 glm_vec3_copy(hitCapsule.offset, newBHCSS.offset);
+                glm_quat_copy(hitCapsule.rotation, newBHCSS.rotation);
                 newBHCSS.height = hitCapsule.height;
                 newBHCSS.radius = hitCapsule.radius;
 
@@ -1908,8 +1910,12 @@ namespace physengine
                 glm_mat4_mulv3(jointMat, newBHCSS.offset, 1.0f, capsuleOrigin);
 
                 versor jointRot;
-                glm_mat4_quat(jointMat, jointRot);
-                glm_quat_normalize(jointRot);  // If there's scale data in quat, normalization is needed.
+                glm_mat4_quat(jointMat, jointRot);  // @NOTE: if the armature has weird scaling in it,
+                                                    //        then the normalization assertion will fail.
+                                                    //        Personally I want to just not normalize bc it causes
+                                                    //        weird rotations to occur, so keep that assert check.
+                                                    //          -Timo 2024/03/20
+                glm_quat_mul(jointRot, newBHCSS.rotation, jointRot);
 
                 // Add new shape.
                 compoundShape->AddShape(
@@ -2016,8 +2022,12 @@ namespace physengine
                         glm_mat4_mulv3(jointMat, hitCapsuleSubShape.offset, 1.0f, capsuleOrigin);
 
                         versor jointRot;
-                        glm_mat4_quat(jointMat, jointRot);
-                        glm_quat_normalize(jointRot);  // If there's scale data in quat, normalization is needed.
+                        glm_mat4_quat(jointMat, jointRot);  // @NOTE: if the armature has weird scaling in it,
+                                                            //        then the normalization assertion will fail.
+                                                            //        Personally I want to just not normalize bc it causes
+                                                            //        weird rotations to occur, so keep that assert check.
+                                                            //          -Timo 2024/03/20
+                        glm_quat_mul(jointRot, hitCapsuleSubShape.rotation, jointRot);
 
                         {
                             ZoneScopedN("Mutate subshape");
@@ -2037,7 +2047,7 @@ namespace physengine
                                 shape->ModifyShape(
                                     i,
                                     Vec3(capsuleOrigin[0], capsuleOrigin[1] + sbhcs->yOffset, capsuleOrigin[2]),
-                                    Quat(jointRot[0], jointRot[1], jointRot[2], jointRot[3]).Normalized()  // @NOTE: need to be normalized bc armature in blender is scaled 0.3.
+                                    Quat(jointRot[0], jointRot[1], jointRot[2], jointRot[3])
                                 );
                             }
                         }
@@ -2088,6 +2098,12 @@ namespace physengine
                         subShape.offset[1],
                         subShape.offset[2],
                     },
+                    .rotation = {
+                        subShape.rotation[0],
+                        subShape.rotation[1],
+                        subShape.rotation[2],
+                        subShape.rotation[3],
+                    },
                     .height = subShape.height,
                     .radius = subShape.radius,
                 });
@@ -2115,6 +2131,7 @@ namespace physengine
                 subShape.boneName = newParams.boneName;
             }
             glm_vec3_copy(const_cast<float_t*>(newParams.offset), subShape.offset);
+            glm_quat_copy(const_cast<float_t*>(newParams.rotation), subShape.rotation);
             subShape.height = newParams.height;
             subShape.radius = newParams.radius;
 
