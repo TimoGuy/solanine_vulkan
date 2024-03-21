@@ -153,6 +153,7 @@ namespace physengine
     sbhcs_key_t createSkeletonBoundHitCapsuleSet(std::vector<BoundHitCapsule>& hitCapsules, size_t simTransformId, vkglTF::Animator* skeleton, float_t yOffset);
     bool destroySkeletonBoundHitCapsuleSet(sbhcs_key_t key);
     void updateSkeletonBoundHitCapsuleSet(sbhcs_key_t key);
+    JPH::BodyID getBodyIdOfSkeletonBoundHitCapsuleSet(sbhcs_key_t key);
     void getAllSkeletonBoundHitCapsulesInSet(sbhcs_key_t key, std::vector<BoundHitCapsule>& outHitCapsules);
     void updateSkeletonBoundHitCapsuleInSet(sbhcs_key_t setKey, size_t index, const BoundHitCapsule& newParams);
 

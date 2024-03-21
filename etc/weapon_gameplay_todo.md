@@ -134,7 +134,7 @@
             - [x] Configures hitcapsule sizes, offsets, and lengths to match slimegirl armature.
             - [x] Add different axes capsules as options too. Default is y-axis capsule.
                 - Just ended up doing a quat multiplication.
-        - [ ] FIX: 0.25 radius is good, but the capsule alignment overlap each other, leading to redundant checks. Make sure that 2*radius stride is present. Also, it might be good to come up with a bit more robust of a solution for aligning the capsules along the blade.
+        - [x] FIX: 0.25 radius is good, but the capsule alignment overlap each other, leading to redundant checks. Make sure that 2*radius stride is present. Also, it might be good to come up with a bit more robust of a solution for aligning the capsules along the blade.
 
     - [ ] Combat manager class.
         - [ ] Each entity wanting to engage in combat (player, enemies, npcs) will register themselves into the combat manager class.

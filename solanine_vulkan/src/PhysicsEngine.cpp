@@ -2100,7 +2100,16 @@ namespace physengine
             }
         }
     }
-    
+
+    JPH::BodyID getBodyIdOfSkeletonBoundHitCapsuleSet(sbhcs_key_t key)
+    {
+        ZoneScoped;
+
+        if (auto sbhcs = sbhcsPool.getSBHCSFromKey(key))
+            return sbhcs->bodyId;
+        return JPH::BodyID();
+    }
+
     void getAllSkeletonBoundHitCapsulesInSet(sbhcs_key_t key, std::vector<BoundHitCapsule>& outHitCapsules)
     {
         ZoneScoped;

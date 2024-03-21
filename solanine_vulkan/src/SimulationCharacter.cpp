@@ -175,8 +175,9 @@ struct SimulationCharacter_XData
             inline void calculateNumCrossCapsules()
             {
                 assert(bladeLength > 0.0f);
+                float_t diameter = capsuleRadius * 2.0f;
                 _bakedNumCrossCapsules =
-                    (uint32_t)std::ceilf(bladeLength / capsuleRadius);
+                    (uint32_t)std::ceilf(bladeLength / diameter);
                 assert(_bakedNumCrossCapsules >= 1);
             }
 
@@ -3085,11 +3086,15 @@ void EXPERIMENTAL__enemyCombatStateMachine(SimulationCharacter_XData* d)
     if (hbs.isBladeActive)
     {
         float_t bladeTStride = 0.0f;
-        if (hbs.getNumCrossCapsules() > 1 && hbs.bladeLength > hbs.capsuleRadius * 2.0f)
+        float_t effectiveLength = hbs.bladeLength - hbs.capsuleRadius * 2.0f;
+        if (hbs.getNumCrossCapsules() == 2)
+            bladeTStride = effectiveLength / hbs.bladeLength;
+        else if (hbs.getNumCrossCapsules() > 2)
+        {
+            uint32_t numMidCrossCaps = hbs.getNumCrossCapsules() - 2;
             bladeTStride =
-                (hbs.bladeLength - hbs.capsuleRadius * 2.0f) /
-                    (float_t)(hbs.getNumCrossCapsules() - 1) /
-                    hbs.bladeLength;
+                effectiveLength / (float_t)(numMidCrossCaps + 1) / hbs.bladeLength;
+        }
         float_t bladeT = hbs.capsuleRadius / hbs.bladeLength;
         for (size_t i = 0; i < hbs.getNumCrossCapsules(); i++)
         {
@@ -3126,7 +3131,9 @@ void EXPERIMENTAL__enemyCombatStateMachine(SimulationCharacter_XData* d)
                 crossCapsuleRotation,
                 hbs.capsuleRadius,
                 crossCapsuleHeight,
-                JPH::BodyID(),  // @TODO
+                physengine::getBodyIdOfSkeletonBoundHitCapsuleSet(
+                    d->enemyCombat.hitboxState.hitCapsuleSetId
+                ),
                 hitIds
             );
 
