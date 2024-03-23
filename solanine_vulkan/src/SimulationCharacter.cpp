@@ -237,26 +237,6 @@ struct SimulationCharacter_XData
         // size_t numChains;
         size_t numChains = 1;
 
-        // Input latency settings.
-        struct InputLatencyBufferingSettings
-        {
-            // 5 feels way too late.
-            // 2 feels really nice.
-            // 0 feels tight but feels like it eats my inputs.
-            // 1 is a tradeoff, but it really honestly just feels like Lies of P, so it's fine I suppose.
-            //   It's really interesting how it changes when the ticks in the simulation system get changed
-            //   to 50hz, though. It feels so much less forgiving than working in 40hz, so at least for combat
-            //   inputs, it really should be kept at 40hz. I wonder if physics would need to speed up for that
-            //   with something like combat hitbox sensing. I wonder if doing async for everything and have it
-            //   running at different rates would work okay for it all if that were the case.
-
-            int32_t parryFudgeTicks = 1;  // How many ticks a parry can be late from the attack unleash and still be considered valid.
-            // @THOUGHTS: I feel like 10 should be it bc of it being forgiving, especially for something like
-            //            tv and console, however, it doesn't play very nice with syncing up the sound and the
-            //            video. Thus, the compromise of 2 should be good. It doesn't feel like it's a 16th beat
-            //            off (like 5), and isn't noticably after the actual heartbeat sound.  -Timo 2024/03/05
-        } input;
-
         // State.
         struct SimulationState
         {
@@ -2946,6 +2926,8 @@ void EXPERIMENTAL__enemyCombatStateMachine(SimulationCharacter_XData* d)
 
             case CombatState_e::ATTACK_UNLEASH:
             {
+#define DO_STUFF_COMBAT_INTERACITON_MANAGER_IS_GONNA_DO__DEPR 0
+#if DO_STUFF_COMBAT_INTERACITON_MANAGER_IS_GONNA_DO__DEPR
                 // @TODO: right here, get list of entities that would get hit by the attack.
                 //        For now, just have the "player" always get attacked.
 
@@ -2978,14 +2960,17 @@ void EXPERIMENTAL__enemyCombatStateMachine(SimulationCharacter_XData* d)
                     // @TODO: create attack sending/receiving interface!
                     AudioEngine::getInstance().playSound("res/sfx/wip_OOT_YoungLink_Hurt3.wav");
                 }
+#endif
 
                 // Move to next state.
                 size_t attackIdx = ec.allChains[s.chainIndex].serialAttackIndices[s.chainSerialIndex];
 
+#if DO_STUFF_COMBAT_INTERACITON_MANAGER_IS_GONNA_DO__DEPR
                 // @NOTE: assert that the actual attack beat will be able to happen
                 //        (since player can parry during the fudge window, the actual attack has to happen
                 //        on the last beat of the window).
                 assert(ec.input.parryFudgeTicks <= ec.allAttacks[attackIdx].beatsToUnleash);
+#endif
 
                 if (s.timer == ec.allAttacks[attackIdx].beatsToUnleash)
                 {
