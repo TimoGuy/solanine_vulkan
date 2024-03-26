@@ -136,11 +136,13 @@
                 - Just ended up doing a quat multiplication.
         - [x] FIX: 0.25 radius is good, but the capsule alignment overlap each other, leading to redundant checks. Make sure that 2*radius stride is present. Also, it might be good to come up with a bit more robust of a solution for aligning the capsules along the blade.
 
-    - [ ] Standardize the hit-hurt capsule generation between enemy and player.
+    - [x] Standardize the hit-hurt capsule generation between enemy and player.
         - Essentially just copy the enemy struct and rewrite the stuff.
-        - [ ] Think how you want to hold combat structure in both player and enemies.
+        - [x] Think how you want to hold combat structure in both player and enemies.
             > @THOUGHTS: I personally feel like the player and enemies could have a similar struct for doing light/heavy attacks and rather they both have like an attack-player which the player's would be driven by inputs and the enemy's would be driven by choices.
             >            There would be different actions in the future like "healing" or "chanting" (idk I'm just thinking), so having all enemies and players being able to do the same things would be really good imo. "Taunt" would be a good one too, or maybe it can just be an AOE attack that instills fear or nothing to others.
+    
+    - [f] FUTURE: make all hit capsules update before doing first hurt capsule interactino test.
 
     - [ ] Combat manager class.
         - [ ] Each entity wanting to engage in combat (player, enemies, npcs) will register themselves into the combat manager class.

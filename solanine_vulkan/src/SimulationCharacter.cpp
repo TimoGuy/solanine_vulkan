@@ -95,6 +95,56 @@ struct SimulationCharacter_XData
         }
     } fmis;
 
+    struct BackendCombatState
+    {
+        // Usu. a blade, but can be switched and configured on the fly to be
+        // different things, e.g. a fist for a punch, a leg for a kick.
+        // @TODO: does not support multiple bones at the same time.
+        // @TODO: does not support switching contexts and holding the preconfigured
+        //        state of each contexts.
+        struct HurtboxState
+        {
+            std::string bladeBoneName = "Hand Attachment";
+            vec3 prevBladeStart       = GLM_VEC3_ZERO_INIT;
+            vec3 prevBladeEnd         = GLM_VEC3_ZERO_INIT;
+            float_t capsuleRadius     = 0.25f;
+            float_t bladeStartOffset  = 0.3f;
+            float_t bladeLength       = 1.25f;
+            bool isBladeActive        = false;
+
+            inline void calculateNumCrossCapsules()
+            {
+                assert(bladeLength > 0.0f);
+                float_t diameter = capsuleRadius * 2.0f;
+                _bakedNumCrossCapsules =
+                    (uint32_t)std::ceilf(bladeLength / diameter);
+                assert(_bakedNumCrossCapsules >= 1);
+            }
+
+            inline uint32_t getNumCrossCapsules()
+            {
+                // Check that `calculateNumCrossCapsules()` was run before trying to
+                // retrieve the resulting value.
+                assert(_bakedNumCrossCapsules != (uint32_t)-1);
+
+                return _bakedNumCrossCapsules;
+            }
+
+        private:
+            uint32_t _bakedNumCrossCapsules = (uint32_t)-1;
+        } hurtboxState;
+
+        // Usu. all the relevant bones in an individual, but they can be activated
+        // or deactivated depending on the scenario (i.e. when jumping, deactivate
+        // lower body capsules).
+        // @TODO: add different contexts that's easy to switch depending on if
+        //        char is jumping etc. and it does the capsule switching automatically.
+        struct HitboxState
+        {
+            physengine::sbhcs_key_t hitCapsuleSetId = physengine::kInvalidSBHCSKey;
+        } hitboxState;
+    } bcs;
+
     enum class CombatState
     {
         IDLE = 0,
@@ -161,45 +211,7 @@ struct SimulationCharacter_XData
     {
         // @NOTE: all commented-out code is supposed to be the default (i.e. nullptr's and stuff).
 
-        // Usu. a blade, but holds state of hurtbox deltas.
-        struct HurtboxState
-        {
-            std::string bladeBoneName = "Hand Attachment";
-            vec3 prevBladeStart       = GLM_VEC3_ZERO_INIT;
-            vec3 prevBladeEnd         = GLM_VEC3_ZERO_INIT;
-            float_t capsuleRadius     = 0.25f;
-            float_t bladeStartOffset  = 0.3f;
-            float_t bladeLength       = 1.25f;
-            bool isBladeActive        = false;
-
-            inline void calculateNumCrossCapsules()
-            {
-                assert(bladeLength > 0.0f);
-                float_t diameter = capsuleRadius * 2.0f;
-                _bakedNumCrossCapsules =
-                    (uint32_t)std::ceilf(bladeLength / diameter);
-                assert(_bakedNumCrossCapsules >= 1);
-            }
-
-            inline uint32_t getNumCrossCapsules()
-            {
-                // Check that `calculateNumCrossCapsules()` was run before trying to
-                // retrieve the resulting value.
-                assert(_bakedNumCrossCapsules != (uint32_t)-1);
-
-                return _bakedNumCrossCapsules;
-            }
-
-        private:
-            uint32_t _bakedNumCrossCapsules = (uint32_t)-1;
-        } hurtboxState;
-
-        // Usu. all the relevant bones in an individual, but they can be activated
-        // or deactivated depending on the scenario.
-        struct HitboxState
-        {
-            physengine::sbhcs_key_t hitCapsuleSetId = physengine::kInvalidSBHCSKey;
-        } hitboxState;
+        
 
         // List of all attacks to be referenced from.
         struct ChargeUnleash
@@ -1907,10 +1919,8 @@ SimulationCharacter::SimulationCharacter(EntityManager* em, RenderObjectManager*
     glm_scale(_data->characterRenderObj->simTransformOffset, vec3{ _data->modelSize, _data->modelSize, _data->modelSize });
 
     // Calculate hurtbox state
-    // @NOCHECKIN: extend this to player character!!!!!!
-    if (isEnemy(_data))  // @NOCHECKIN
     {
-        _data->enemyCombat.hurtboxState.calculateNumCrossCapsules();
+        _data->bcs.hurtboxState.calculateNumCrossCapsules();
 
         // @TODO: @FUTURE: have some way to quickly create hitcapsules!!! (i.e. tooling)
         std::vector<physengine::BoundHitCapsule> hitCapsules = {
@@ -2021,7 +2031,7 @@ SimulationCharacter::SimulationCharacter(EntityManager* em, RenderObjectManager*
                 .radius = 0.06f,
             },
         };
-        _data->enemyCombat.hitboxState.hitCapsuleSetId =
+        _data->bcs.hitboxState.hitCapsuleSetId =
             physengine::createSkeletonBoundHitCapsuleSet(
                 hitCapsules,
                 _data->cpd->simTransformId,
@@ -3036,120 +3046,6 @@ void EXPERIMENTAL__enemyCombatStateMachine(SimulationCharacter_XData* d)
                 break;
         }
     }
-
-
-    // // Hitbox calculations.
-    // for (auto& hitCapsule : d->enemyCombat.hitboxState.hitCapsules)
-    // {
-    //     // @TODO Align all requisite capsules to their respective bones.
-            // @NOTE: @TODO: this will get taken care of by the physics engine itself instead of simulationcharacter.
-
-    // }
-
-    // @NOCHECKIN: DO IT ANYWAY... just so we have some poc.
-    physengine::updateSkeletonBoundHitCapsuleSet(d->enemyCombat.hitboxState.hitCapsuleSetId);
-
-
-    // Hurtbox calculations.
-
-    // Calculate new blade start/end.
-    auto& hbs = d->enemyCombat.hurtboxState;
-
-    mat4 attachmentJointMat;
-    d->characterRenderObj->animator->getJointMatrix(hbs.bladeBoneName, attachmentJointMat);
-    glm_mat4_mul(d->characterRenderObj->transformMatrix, attachmentJointMat, attachmentJointMat);
-
-    vec3 bladeStart;
-    vec3 bladeEnd;
-    glm_mat4_mulv3(attachmentJointMat, vec3{ 0.0f, hbs.bladeStartOffset, 0.0f }, 1.0f, bladeStart);
-    glm_mat4_mulv3(attachmentJointMat, vec3{ 0.0f, hbs.bladeStartOffset + hbs.bladeLength, 0.0f }, 1.0f, bladeEnd);
-    physengine::drawDebugVisLine(bladeStart, bladeEnd, physengine::DebugVisLineType::VELOCITY);
-
-    hbs.isBladeActive = true;  // @NOCHECKIN @DEBUG
-
-    // Calculate cross capsules and submit hurt request if found.
-    if (hbs.isBladeActive)
-    {
-        float_t bladeTStride = 0.0f;
-        float_t effectiveLength = hbs.bladeLength - hbs.capsuleRadius * 2.0f;
-        if (hbs.getNumCrossCapsules() == 2)
-            bladeTStride = effectiveLength / hbs.bladeLength;
-        else if (hbs.getNumCrossCapsules() > 2)
-        {
-            uint32_t numMidCrossCaps = hbs.getNumCrossCapsules() - 2;
-            bladeTStride =
-                effectiveLength / (float_t)(numMidCrossCaps + 1) / hbs.bladeLength;
-        }
-        float_t bladeT = hbs.capsuleRadius / hbs.bladeLength;
-        for (size_t i = 0; i < hbs.getNumCrossCapsules(); i++)
-        {
-            // Calc cross capsule start/end.
-            vec3 crossCapsuleStart;
-            vec3 crossCapsuleEnd;
-            glm_vec3_lerp(bladeStart, bladeEnd, bladeT, crossCapsuleStart);
-            glm_vec3_lerp(hbs.prevBladeStart, hbs.prevBladeEnd, bladeT, crossCapsuleEnd);
-            physengine::drawDebugVisCapsule(crossCapsuleStart, crossCapsuleEnd, hbs.capsuleRadius, physengine::DebugVisLineType::VELOCITY);
-
-            // Test if hurt request needed.
-
-            // Run capsule overlap for cross capsule.
-            float_t crossCapsuleHeight =
-                glm_vec3_distance(crossCapsuleStart, crossCapsuleEnd);
-
-            if (crossCapsuleHeight < 0.001f)
-                continue;
-
-            vec3 crossCapsuleOrigin;
-            glm_vec3_add(crossCapsuleStart, crossCapsuleEnd, crossCapsuleOrigin);
-            glm_vec3_scale(crossCapsuleOrigin, 0.5f, crossCapsuleOrigin);
-
-            vec3 crossCapsuleUp;
-            glm_vec3_sub(crossCapsuleEnd, crossCapsuleStart, crossCapsuleUp);
-            glm_vec3_normalize(crossCapsuleUp);
-
-            versor crossCapsuleRotation;
-            glm_quat_from_vecs(vec3{ 0.0f, 1.0f, 0.0f }, crossCapsuleUp, crossCapsuleRotation);
-
-            std::vector<physengine::BodyAndSubshapeID> hitIds;
-            (void)physengine::capsuleOverlap(
-                crossCapsuleOrigin,
-                crossCapsuleRotation,
-                hbs.capsuleRadius,
-                crossCapsuleHeight,
-                physengine::getBodyIdOfSkeletonBoundHitCapsuleSet(
-                    d->enemyCombat.hitboxState.hitCapsuleSetId
-                ),
-                hitIds
-            );
-
-            // Send hurt requests to all hit guids.
-            // @NOTE: getting parried doesn't stagger an individual, but it will
-            //        lead to getting staggered by breaking the individual's posture.
-            for (auto& id : hitIds)
-            {
-                physengine::drawDebugVisPoint(id.hitPosition);
-
-                auto guid = physengine::bodyIdToEntityGuid(id.bodyId);
-                comim::hurtRequest(
-                    guid,
-                    id.subShapeId,
-                    []() {
-                        std::cout << "hurt request SUCCESS." << std::endl;
-                    },
-                    []() {
-                        std::cout << "hurt request GOT PARRIED." << std::endl;
-                    }
-                );
-            }
-
-            // Increment.
-            bladeT += bladeTStride;
-        }
-    }
-
-    // Finish.
-    glm_vec3_copy(bladeStart, hbs.prevBladeStart);
-    glm_vec3_copy(bladeEnd, hbs.prevBladeEnd);
 }
 
 #if 0
@@ -3278,6 +3174,109 @@ void EXPERIMENTAL__combatInteraction(SimulationCharacter_XData* d)
 }
 #endif
 
+void processHurtboxHitboxInteraction(SimulationCharacter_XData* d)
+{
+    // Calculate new blade start/end.
+    // @TODO: may have to put this into the agnostic code.
+    auto& hbs = d->bcs.hurtboxState;
+
+    mat4 attachmentJointMat;
+    d->characterRenderObj->animator->getJointMatrix(hbs.bladeBoneName, attachmentJointMat);
+    glm_mat4_mul(d->characterRenderObj->transformMatrix, attachmentJointMat, attachmentJointMat);
+
+    vec3 bladeStart;
+    vec3 bladeEnd;
+    glm_mat4_mulv3(attachmentJointMat, vec3{ 0.0f, hbs.bladeStartOffset, 0.0f }, 1.0f, bladeStart);
+    glm_mat4_mulv3(attachmentJointMat, vec3{ 0.0f, hbs.bladeStartOffset + hbs.bladeLength, 0.0f }, 1.0f, bladeEnd);
+    physengine::drawDebugVisLine(bladeStart, bladeEnd, physengine::DebugVisLineType::VELOCITY);
+
+    hbs.isBladeActive = true;  // @NOCHECKIN @DEBUG
+
+    // Calculate cross capsules and submit hurt request if found.
+    if (hbs.isBladeActive)
+    {
+        float_t bladeTStride = 0.0f;
+        float_t effectiveLength = hbs.bladeLength - hbs.capsuleRadius * 2.0f;
+        if (hbs.getNumCrossCapsules() == 2)
+            bladeTStride = effectiveLength / hbs.bladeLength;
+        else if (hbs.getNumCrossCapsules() > 2)
+        {
+            uint32_t numMidCrossCaps = hbs.getNumCrossCapsules() - 2;
+            bladeTStride =
+                effectiveLength / (float_t)(numMidCrossCaps + 1) / hbs.bladeLength;
+        }
+        float_t bladeT = hbs.capsuleRadius / hbs.bladeLength;
+        for (size_t i = 0; i < hbs.getNumCrossCapsules(); i++)
+        {
+            // Calc cross capsule start/end.
+            vec3 crossCapsuleStart;
+            vec3 crossCapsuleEnd;
+            glm_vec3_lerp(bladeStart, bladeEnd, bladeT, crossCapsuleStart);
+            glm_vec3_lerp(hbs.prevBladeStart, hbs.prevBladeEnd, bladeT, crossCapsuleEnd);
+            physengine::drawDebugVisCapsule(crossCapsuleStart, crossCapsuleEnd, hbs.capsuleRadius, physengine::DebugVisLineType::VELOCITY);
+
+            // Test if hurt request needed.
+
+            // Run capsule overlap for cross capsule.
+            float_t crossCapsuleHeight =
+                glm_vec3_distance(crossCapsuleStart, crossCapsuleEnd);
+
+            if (crossCapsuleHeight < 0.001f)
+                continue;
+
+            vec3 crossCapsuleOrigin;
+            glm_vec3_add(crossCapsuleStart, crossCapsuleEnd, crossCapsuleOrigin);
+            glm_vec3_scale(crossCapsuleOrigin, 0.5f, crossCapsuleOrigin);
+
+            vec3 crossCapsuleUp;
+            glm_vec3_sub(crossCapsuleEnd, crossCapsuleStart, crossCapsuleUp);
+            glm_vec3_normalize(crossCapsuleUp);
+
+            versor crossCapsuleRotation;
+            glm_quat_from_vecs(vec3{ 0.0f, 1.0f, 0.0f }, crossCapsuleUp, crossCapsuleRotation);
+
+            std::vector<physengine::BodyAndSubshapeID> hitIds;
+            (void)physengine::capsuleOverlap(
+                crossCapsuleOrigin,
+                crossCapsuleRotation,
+                hbs.capsuleRadius,
+                crossCapsuleHeight,
+                physengine::getBodyIdOfSkeletonBoundHitCapsuleSet(
+                    d->bcs.hitboxState.hitCapsuleSetId
+                ),
+                hitIds
+            );
+
+            // Send hurt requests to all hit guids.
+            // @NOTE: getting parried doesn't stagger an individual, but it will
+            //        lead to getting staggered by breaking the individual's posture.
+            for (auto& id : hitIds)
+            {
+                physengine::drawDebugVisPoint(id.hitPosition);
+
+                auto guid = physengine::bodyIdToEntityGuid(id.bodyId);
+                comim::hurtRequest(
+                    guid,
+                    id.subShapeId,
+                    []() {
+                        std::cout << "hurt request SUCCESS." << std::endl;
+                    },
+                    []() {
+                        std::cout << "hurt request GOT PARRIED." << std::endl;
+                    }
+                );
+            }
+
+            // Increment.
+            bladeT += bladeTStride;
+        }
+    }
+
+    // Finish.
+    glm_vec3_copy(bladeStart, hbs.prevBladeStart);
+    glm_vec3_copy(bladeEnd, hbs.prevBladeEnd);
+}
+
 void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, EntityManager* em, const std::string& myGuid)
 {
     ZoneScoped;
@@ -3288,6 +3287,9 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
     else if (isEnemy(d))
         EXPERIMENTAL__enemyCombatStateMachine(d);
 
+    // Update hit and hurt capsules.
+    physengine::updateSkeletonBoundHitCapsuleSet(d->bcs.hitboxState.hitCapsuleSetId);  // @TODO: make all the sim chars update their hit capsules before starting the first hurtbox test.
+    processHurtboxHitboxInteraction(d);
 
 
     if (isPlayer(d))
@@ -4149,7 +4151,7 @@ void defaultRenderImGui(SimulationCharacter_XData* d)
     {
         std::vector<physengine::BoundHitCapsule> allCapsules;
         physengine::getAllSkeletonBoundHitCapsulesInSet(
-            d->enemyCombat.hitboxState.hitCapsuleSetId,
+            d->bcs.hitboxState.hitCapsuleSetId,
             allCapsules
         );
 
@@ -4171,7 +4173,7 @@ void defaultRenderImGui(SimulationCharacter_XData* d)
 
                 if (changed)
                     physengine::updateSkeletonBoundHitCapsuleInSet(
-                        d->enemyCombat.hitboxState.hitCapsuleSetId,
+                        d->bcs.hitboxState.hitCapsuleSetId,
                         i,
                         capsule
                     );
