@@ -144,6 +144,11 @@
     
     - [f] FUTURE: make all hit capsules update before doing first hurt capsule interactino test.
 
+    - [ ] Frontend combat state machine.
+        - [x] Write empty framework that's agnostic to enemy and player.
+        - [ ] Implement animations if state machine has changed.
+        - [ ] Implement placeholder sfx.
+
     - [ ] Combat manager class.
         - [ ] Each entity wanting to engage in combat (player, enemies, npcs) will register themselves into the combat manager class.
 
