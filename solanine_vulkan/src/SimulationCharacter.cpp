@@ -145,6 +145,119 @@ struct SimulationCharacter_XData
         } hitboxState;
     } bcs;
 
+    struct FrontendCombatState
+    {
+        enum class CombatState
+        {
+            IDLE = 0,
+            CHARGE_ATTACK,
+            UNLEASH_ATTACK,
+            PARRY,
+            GUARD,
+            KNOCKBACK_HURT,
+            KNOCKBACK_PARRY,
+            KNOCKBACK_GUARD,
+            KNOCKBACK_POSTURE_BREAK,
+        };
+
+        struct InitiateCharge  // Either controlled by player input or AI.
+        {
+            uint32_t chargeIdx;
+        };
+        std::vector<InitiateCharge> attackEntrances = {
+            {
+                0,
+            }
+        };
+
+        struct Charge
+        {
+            std::vector<uint32_t> chargeToUnleashIndices;
+            std::string animName;
+        };
+        std::vector<Charge> attackCharges = {
+            {
+                { 0 },
+                "somename",
+            }
+        };
+
+        struct ChargeToUnleash
+        {
+            int32_t beatsToCharge;
+            // @TODO: add special inputs enum to do something like kokyuu wazas.
+            /* enum class UnleashInputTypes  @TODO: something like this.
+            {
+                RELEASE_ATTACK_INPUT = 0,
+                HOLD_THEN_JUMP,
+                HOLD_THEN_LEFT,
+                HOLD_THEN_RIGHT,
+                HOLD_THEN_UP,
+                HOLD_THEN_DOWN,
+            }; */
+            uint32_t unleashIdx;
+        };
+        std::vector<ChargeToUnleash> chargeToUnleashes = {
+            {
+                69,
+                0,
+            }
+        };
+
+        struct Unleash
+        {
+            std::vector<uint32_t> attackChainIndices;
+            int32_t beatsToFinish;
+            std::string animName;
+        };
+        std::vector<Unleash> unleashes = {
+            {
+                { 0 },
+                49,
+                "someName",
+            }
+        };
+
+        struct UnleashToCharge
+        {
+            int32_t unleashBeatToChain;
+            uint32_t chargeIdx;
+        };
+        std::vector<UnleashToCharge> attackChains = {
+            {
+                20,
+                0,
+            }
+        };
+
+        struct Knockback
+        {
+            int32_t beatsToFinish;
+            std::string animName;
+        };
+        std::vector<Knockback> knockbacks = {
+            {
+                0,
+                "someName",
+            }
+        };
+
+        struct State
+        {
+            CombatState currentState;
+            uint32_t idx;
+            int32_t timer;
+
+            inline void changeState(CombatState newState, uint32_t newIdx = 0)
+            {
+                std::cout << "CHANGED STATE: " << (int32_t)newState << std::endl;
+                currentState = newState;
+                idx          = newIdx;
+                timer        = 0;
+            }
+        } state;
+    } fcs;
+
     enum class CombatState
     {
         IDLE = 0,
@@ -2722,6 +2835,8 @@ inline void frontendMovementFallingAndJumping(SimulationCharacter_XData* d, floa
     glm_vec3_add(d->bmis.inputVelocity, deltaToTargetInput, d->bmis.inputVelocity);
 }
 
+#define EXPERIMENTAL_COMBAT_STATE_MACHINE 0
+#if EXPERIMENTAL_COMBAT_STATE_MACHINE
 void EXPERIMENTAL__playerCombatStateMachine(SimulationCharacter_XData* d)
 {
     typedef SimulationCharacter_XData::CombatState CombatState_e;
@@ -3047,8 +3162,10 @@ void EXPERIMENTAL__enemyCombatStateMachine(SimulationCharacter_XData* d)
         }
     }
 }
+#endif
 
-#if 0
+#define EXPERIMENTAL_COMBAT_INTERACTION 0
+#if EXPERIMENTAL_COMBAT_INTERACTION
 void EXPERIMENTAL__combatInteraction(SimulationCharacter_XData* d)
 {
     typedef SimulationCharacter_XData::EXPERIMENTAL__ShouldbeInSeparateClassCombatStateMachine::BeatState BeatState_e;
@@ -3174,6 +3291,222 @@ void EXPERIMENTAL__combatInteraction(SimulationCharacter_XData* d)
 }
 #endif
 
+void getCombatInput(SimulationCharacter_XData* d, bool& outAttackPressed, bool& outJumpPressed, bool& outGuardPressed)
+{
+    if (isPlayer(d))
+    {
+        outAttackPressed = input::simInputSet().attack.holding;
+        outJumpPressed   = input::simInputSet().jump.holding;
+        outGuardPressed  = input::simInputSet().parry.holding;
+    }
+    else
+    {
+        outAttackPressed = false;//true;
+        outJumpPressed   = false;
+        outGuardPressed  = false;
+    }
+}
+
+void updateCombatStateMachine(SimulationCharacter_XData* d)
+{
+    typedef SimulationCharacter_XData::FrontendCombatState::CombatState CombatState_e;
+
+    // @TODO: insert player or AI input here. //////////////////////////////////
+    bool isAttackPressed;
+    bool isJumpPressed;
+    bool isGuardPressed;
+    getCombatInput(d, isAttackPressed, isJumpPressed, isGuardPressed);
+    ////////////////////////////////////////////////////////////////////////////
+
+    auto& comb = d->fcs;
+    CombatState_e combatStateCopy;
+    do
+    {
+        combatStateCopy = comb.state.currentState;
+
+        // Read messages.
+        // @NOTE: this is where receiving attacks, getting parried, or getting
+        //        posture broken state enter would occur.
+        bool foundMessage = false;  // @TODO.
+        while (foundMessage)
+        {
+            // @TODO.
+        }
+
+        // Churn state machine.
+        switch (comb.state.currentState)
+        {
+            case CombatState_e::IDLE:
+                // Enter attack.
+                if (isAttackPressed)
+                {
+                    uint32_t newAttackChargeIdx = 0;
+                    comb.state.changeState(
+                        CombatState_e::CHARGE_ATTACK,
+                        newAttackChargeIdx
+                    );
+                }
+
+                // Enter parry.
+                else if (isGuardPressed)
+                {
+                    comb.state.changeState(
+                        CombatState_e::PARRY
+                    );
+                }
+                break;
+
+            case CombatState_e::CHARGE_ATTACK:
+                // Switch to parry.
+                if (isGuardPressed)
+                {
+                    comb.state.changeState(
+                        CombatState_e::PARRY
+                    );
+                }
+
+                // Unleash attack.
+                else if (!isAttackPressed)  // @TODO: add special inputs enum for kokyuu waza.
+                {
+                    struct UnleashAttackSearchResult
+                    {
+                        bool success = false;
+                        int32_t minBeatDelta = std::numeric_limits<int32_t>::max();
+                        uint32_t unleashIdx;
+                    } uasr;
+                    for (auto i : comb.attackCharges[comb.state.idx].chargeToUnleashIndices)
+                    {
+                        auto& chargeToUnleash = comb.chargeToUnleashes[i];
+                        int32_t beatDelta =
+                            comb.state.timer - chargeToUnleash.beatsToCharge;
+                        if (beatDelta >= 0 && beatDelta < uasr.minBeatDelta)
+                        {
+                            // New best entry for unleash attack.
+                            uasr.success = true;
+                            uasr.minBeatDelta = beatDelta;
+                            uasr.unleashIdx = chargeToUnleash.unleashIdx;
+                        }
+                    }
+
+                    // Switch to unleash.
+                    if (uasr.success)
+                    {
+                        comb.state.changeState(
+                            CombatState_e::UNLEASH_ATTACK,
+                            uasr.unleashIdx
+                        );
+                    }
+                }
+                break;
+
+            case CombatState_e::UNLEASH_ATTACK:
+                // Exit unleash with no chain.
+                if (comb.state.timer > comb.unleashes[comb.state.idx].beatsToFinish)
+                {
+                    comb.state.changeState(
+                        CombatState_e::IDLE
+                    );
+                }
+
+                // Link onto a chain.
+                else if (isAttackPressed)
+                {
+                    for (auto i : comb.unleashes[comb.state.idx].attackChainIndices)
+                    {
+                        auto& attackChain = comb.attackChains[i];
+                        if (comb.state.timer == attackChain.unleashBeatToChain)
+                        {
+                            // Connect to chain.
+                            comb.state.changeState(
+                                CombatState_e::CHARGE_ATTACK,
+                                attackChain.chargeIdx
+                            );
+                            break;
+                        }
+                    }
+                }
+                break;
+
+            case CombatState_e::PARRY:
+                // Stay in parry form until window finishes.
+                if (comb.state.timer > 40 * 0.5)  // @HARDCODE: Exit after a half-second.
+                {
+                    comb.state.changeState(
+                        CombatState_e::GUARD
+                    );
+                }
+                break;
+
+            case CombatState_e::GUARD:
+                // Exit guard once guard input is released.
+                if (!isGuardPressed)
+                {
+                    comb.state.changeState(
+                        CombatState_e::IDLE
+                    );
+                }
+                break;
+
+            case CombatState_e::KNOCKBACK_HURT:  // @TODO: I don't think we need all these different types
+                                                 //        of knockbacks, but just leaving a big commnet for
+                                                 //        how knockbacks can be used should be enough to show
+                                                 //        how they're supposed to be used.
+            case CombatState_e::KNOCKBACK_PARRY:
+            case CombatState_e::KNOCKBACK_GUARD:
+            case CombatState_e::KNOCKBACK_POSTURE_BREAK:
+                if (comb.state.timer > comb.knockbacks[comb.state.idx].beatsToFinish)
+                {
+                    comb.state.changeState(
+                        CombatState_e::IDLE
+                    );
+                }
+                break;
+
+#define HEYYYY_DO_WE_REALLY_NEED_4_DIFF_STATES_FOR_TYPES_OF_KNOCKBACK 0
+#if HEYYYY_DO_WE_REALLY_NEED_4_DIFF_STATES_FOR_TYPES_OF_KNOCKBACK
+            case CombatState_e::KNOCKBACK_HURT:
+                if (comb.state.timer > 40 * 2)  // @HARDCODE: Exit after 2 seconds.
+                {
+                    comb.state.changeState(
+                        CombatState_e::IDLE
+                    );
+                }
+                break;
+
+            case CombatState_e::KNOCKBACK_PARRY:
+                if (comb.state.timer > 40 * 0.5)  // @HARDCODE: Exit after a half-second.
+                {
+                    comb.state.changeState(
+                        CombatState_e::IDLE
+                    );
+                }
+                break;
+
+            case CombatState_e::KNOCKBACK_GUARD:
+                if (comb.state.timer > 40 * 1)  // @HARDCODE: Exit after 1 second.
+                {
+                    comb.state.changeState(
+                        CombatState_e::IDLE
+                    );
+                }
+                break;
+
+            case CombatState_e::KNOCKBACK_POSTURE_BREAK:
+                if (comb.state.timer > 40 * 5)  // @HARDCODE: Exit after 5 seconds.
+                {
+                    comb.state.changeState(
+                        CombatState_e::IDLE
+                    );
+                }
+                break;
+#endif
+        }
+    } while (combatStateCopy != comb.state.currentState);
+
+    // Increment timer.
+    comb.state.timer++;
+}
+
 void processHurtboxHitboxInteraction(SimulationCharacter_XData* d)
 {
     // Calculate new blade start/end.
@@ -3282,13 +3615,20 @@ void defaultPhysicsUpdate(float_t simDeltaTime, SimulationCharacter_XData* d, En
     ZoneScoped;
 
     // @NOCHECKIN: @EXPERIMENT /////////////////////////////////////////////////////////////////////////////////////////
-    if (isPlayer(d))
-        EXPERIMENTAL__playerCombatStateMachine(d);
-    else if (isEnemy(d))
-        EXPERIMENTAL__enemyCombatStateMachine(d);
+    // if (isPlayer(d))
+    //     EXPERIMENTAL__playerCombatStateMachine(d);
+    // else if (isEnemy(d))
+    //     EXPERIMENTAL__enemyCombatStateMachine(d);
+
+    // Update combat state machine.
+    updateCombatStateMachine(d);
 
     // Update hit and hurt capsules.
-    physengine::updateSkeletonBoundHitCapsuleSet(d->bcs.hitboxState.hitCapsuleSetId);  // @TODO: make all the sim chars update their hit capsules before starting the first hurtbox test.
+    // @TODO: make all the sim chars update their hit capsules before starting
+    //        the first hurtbox test.
+    // @NOTE: to accomplish the above todo, I think making a service on a different
+    //        thread would really help, or just adding it as a job.
+    physengine::updateSkeletonBoundHitCapsuleSet(d->bcs.hitboxState.hitCapsuleSetId);
     processHurtboxHitboxInteraction(d);
 
 
